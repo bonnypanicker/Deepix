@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.GallerySearch" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">#0A0A0A</item>
+        <item name="android:statusBarColor">#0A0A0A</item>
+        <item name="colorAccent">#5B4FE8</item>
+    </style>
+</resources>

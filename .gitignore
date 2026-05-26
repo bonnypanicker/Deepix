@@ -1,0 +1,8 @@
+.gradle/
+.idea/
+build/
+app/build/
+local.properties
+*.iml
+/text_model_int8.onnx
+/vision_model_int8.onnx
