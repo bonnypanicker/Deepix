@@ -15,6 +15,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.EOFException
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class GalleryRepository(
@@ -123,10 +124,14 @@ class GalleryRepository(
                 if (bitmap != null) {
                     try {
                         val embedding = imageEncoder.encode(bitmap)
-                        synchronized(indexLock) {
-                            embeddings[key] = embedding
+                        if (isEmbeddingValid(embedding)) {
+                            synchronized(indexLock) {
+                                embeddings[key] = embedding
+                            }
+                            newSinceLastSave += 1
+                        } else {
+                            Log.w(Tag, "Skipping invalid embedding for $uri")
                         }
-                        newSinceLastSave += 1
                     } catch (error: Throwable) {
                         Log.w(Tag, "Failed to encode $uri", error)
                     } finally {
@@ -157,9 +162,21 @@ class GalleryRepository(
         }
         if (snapshot.isEmpty()) return emptyList()
 
-        val queryEmbedding = textEncoder.encode(query)
-        val ranked = snapshot.asSequence()
-            .map { (uri, embedding) -> uri to EmbeddingUtils.cosineSimilarity(queryEmbedding, embedding) }
+        val variants = buildQueryVariants(query)
+        val bestScores = HashMap<String, Float>(snapshot.size)
+        for (variant in variants) {
+            val queryEmbedding = textEncoder.encode(variant)
+            for ((uri, embedding) in snapshot) {
+                val score = EmbeddingUtils.cosineSimilarity(queryEmbedding, embedding)
+                val current = bestScores[uri]
+                if (current == null || score > current) {
+                    bestScores[uri] = score
+                }
+            }
+        }
+
+        val ranked = bestScores.entries.asSequence()
+            .map { it.key to it.value }
             .sortedByDescending { it.second }
             .toList()
 
@@ -184,6 +201,24 @@ class GalleryRepository(
 
     private fun snapshotIndex(): LinkedHashMap<String, FloatArray> =
         synchronized(indexLock) { LinkedHashMap(embeddings) }
+
+    private fun buildQueryVariants(query: String): List<String> {
+        val cleaned = query.trim().replace(Regex("""\s+"""), " ")
+        if (cleaned.isBlank()) return listOf(query)
+        return listOf(
+            cleaned,
+            "a photo of $cleaned",
+            "a picture of $cleaned",
+            "$cleaned photo"
+        ).distinct()
+    }
+
+    private fun isEmbeddingValid(embedding: FloatArray): Boolean {
+        if (embedding.isEmpty()) return false
+        if (embedding.any { it.isNaN() || it.isInfinite() }) return false
+        if (embedding.all { abs(it) < 1e-8f }) return false
+        return true
+    }
 
     private fun scaleToMaxEdge(bitmap: Bitmap, maxEdge: Int): Bitmap {
         val currentMaxEdge = maxOf(bitmap.width, bitmap.height)
