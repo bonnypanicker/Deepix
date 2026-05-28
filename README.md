@@ -16,7 +16,7 @@ Deepix is an Android gallery app for local, offline semantic image search. The c
 
 The Android app expects these files in `app/src/main/assets/`:
 
-- `vision_model_int8.onnx`
+- `vision_model_fp16.onnx`
 - `text_model_int8.onnx`
 - `tokenizer.json`
 - `tokenizer_config.json`

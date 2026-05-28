@@ -213,7 +213,7 @@ class GalleryRepository(
         private const val Tag = "GalleryRepository"
         private const val IndexFileName = "embedding_index.bin"
         private const val IndexMagic = 0x47534958
-        private const val IndexVersion = 1
+        private const val IndexVersion = 2
         private const val MaxBitmapEdge = 512
         private const val SaveEvery = 20
         private const val ScoreThreshold = 0.17f

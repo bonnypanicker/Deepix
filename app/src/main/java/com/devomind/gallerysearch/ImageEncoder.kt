@@ -17,13 +17,16 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
     private val inputName: String
     private val outputName: String
     private val processorConfig = ProcessorConfig.fromAssets(context)
+    private val modelAssetName: String
 
     init {
-        val modelBytes = AssetUtils.readAssetBytes(context, "vision_model_android_int8.onnx")
+        modelAssetName = VisionModelAssetName
+        val modelBytes = AssetUtils.readAssetBytes(context, modelAssetName)
         val options = OnnxSessionOptions.create(Tag)
         session = environment.createSession(modelBytes, options)
         inputName = session.inputNames.first()
         outputName = session.outputNames.first()
+        Log.d(Tag, "Vision model asset: $modelAssetName")
         Log.d(Tag, "Vision model inputs: ${session.inputNames}")
         Log.d(Tag, "Vision model outputs: ${session.outputNames}")
         Log.d(Tag, "Vision processor config: $processorConfig")
@@ -101,6 +104,7 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
 
     companion object {
         private const val Tag = "CLIP"
+        private const val VisionModelAssetName = "vision_model_fp16.onnx"
         private const val ImageSize = 256
         private val Mean = floatArrayOf(0.48145466f, 0.4578275f, 0.40821073f)
         private val Std = floatArrayOf(0.26862954f, 0.26130258f, 0.27577711f)
