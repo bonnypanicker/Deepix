@@ -1,19 +1,29 @@
 package com.devomind.gallerysearch
 
 import android.content.Context
-import java.io.File
+import android.util.Log
+import java.io.ByteArrayOutputStream
 
 object AssetUtils {
-    fun copyAssetToCache(context: Context, assetName: String): String {
-        val outFile = File(context.cacheDir, assetName)
-        if (outFile.exists() && outFile.length() > 0L) return outFile.absolutePath
 
-        context.assets.open(assetName).use { input ->
-            outFile.outputStream().use { output ->
-                input.copyTo(output)
+    private const val Tag = "AssetUtils"
+
+    /**
+     * Reads an asset file fully into a byte array.
+     * Uses a buffered approach to handle large files (e.g. 60MB+ ONNX models).
+     */
+    fun readAssetBytes(context: Context, assetName: String): ByteArray {
+        return context.assets.open(assetName).use { input ->
+            val buffer = ByteArrayOutputStream(input.available().coerceAtLeast(8192))
+            val chunk = ByteArray(8192)
+            var bytesRead: Int
+            while (input.read(chunk).also { bytesRead = it } != -1) {
+                buffer.write(chunk, 0, bytesRead)
+            }
+            buffer.toByteArray().also {
+                Log.d(Tag, "Loaded $assetName: ${it.size} bytes")
             }
         }
-        return outFile.absolutePath
     }
 
     fun readAssetText(context: Context, assetName: String): String =

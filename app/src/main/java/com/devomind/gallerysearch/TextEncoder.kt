@@ -16,7 +16,7 @@ class TextEncoder(context: Context) : AutoCloseable {
     val tokenizer = ClipTokenizer(context)
 
     init {
-        val modelBytes = context.assets.open("text_model_int8.onnx").use { it.readBytes() }
+        val modelBytes = AssetUtils.readAssetBytes(context, "text_model_int8.onnx")
         val options = OnnxSessionOptions.create(Tag)
         session = environment.createSession(modelBytes, options)
         val inputNames = session.inputNames.toList()
