@@ -180,11 +180,15 @@ class GalleryRepository(
             .sortedByDescending { it.second }
             .toList()
 
-        val thresholded = ranked
+        val bestScore = ranked.firstOrNull()?.second ?: return emptyList()
+        val relativeCutoff = bestScore * SearchTuning.MaxScoreDropRatio
+        val ratioFiltered = ranked.filter { it.second >= relativeCutoff }
+
+        val thresholded = ratioFiltered
             .filter { it.second > SearchTuning.ScoreThreshold }
             .take(topK)
 
-        val selected = if (thresholded.isNotEmpty()) thresholded else ranked.take(SearchTuning.FallbackCount)
+        val selected = if (thresholded.isNotEmpty()) thresholded else ratioFiltered.take(SearchTuning.FallbackCount)
         return selected.map { Uri.parse(it.first) }
     }
 
