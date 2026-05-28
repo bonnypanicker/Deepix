@@ -22,6 +22,8 @@ class GalleryRepository(
     private val imageEncoder: ImageEncoder,
     private val textEncoder: TextEncoder
 ) {
+    data class Album(val id: String, val name: String, val count: Int)
+
     private val indexFile = File(context.filesDir, IndexFileName)
     private val indexLock = Any()
     private var embeddings = LinkedHashMap<String, FloatArray>()
@@ -30,23 +32,57 @@ class GalleryRepository(
         get() = synchronized(indexLock) { embeddings.size }
 
     fun getAllImageUris(): List<Uri> {
+        return getImageUrisForAlbumIds(emptySet())
+    }
+
+    fun getImageUrisForAlbumIds(albumIds: Set<String>): List<Uri> {
         val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
         } else {
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         }
 
-        val projection = arrayOf(MediaStore.Images.Media._ID)
+        val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.BUCKET_ID)
         val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
         val uris = ArrayList<Uri>()
 
         context.contentResolver.query(collection, projection, null, null, sortOrder)?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
             while (cursor.moveToNext()) {
-                uris += ContentUris.withAppendedId(collection, cursor.getLong(idColumn))
+                val bucketId = cursor.getString(bucketIdColumn) ?: continue
+                if (albumIds.isEmpty() || bucketId in albumIds) {
+                    uris += ContentUris.withAppendedId(collection, cursor.getLong(idColumn))
+                }
             }
         }
         return uris
+    }
+
+    fun getAlbums(): List<Album> {
+        val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
+        val projection = arrayOf(MediaStore.Images.Media.BUCKET_ID, MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+        val buckets = LinkedHashMap<String, Album>()
+
+        context.contentResolver.query(collection, projection, null, null, null)?.use { cursor ->
+            val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
+            val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+            while (cursor.moveToNext()) {
+                val bucketId = cursor.getString(bucketIdColumn) ?: continue
+                val bucketName = cursor.getString(bucketNameColumn)?.takeIf { it.isNotBlank() } ?: "Unnamed album"
+                val existing = buckets[bucketId]
+                if (existing == null) {
+                    buckets[bucketId] = Album(bucketId, bucketName, 1)
+                } else {
+                    buckets[bucketId] = existing.copy(count = existing.count + 1)
+                }
+            }
+        }
+        return buckets.values.sortedByDescending { it.count }
     }
 
     fun loadBitmap(uri: Uri): Bitmap? {
@@ -112,7 +148,13 @@ class GalleryRepository(
     }
 
     fun search(query: String, topK: Int = 30): List<Uri> {
-        val snapshot = snapshotIndex()
+        var snapshot = snapshotIndex()
+        if (snapshot.isEmpty()) {
+            synchronized(indexLock) {
+                if (embeddings.isEmpty()) embeddings = loadIndex()
+                snapshot = LinkedHashMap(embeddings)
+            }
+        }
         if (snapshot.isEmpty()) return emptyList()
 
         val queryEmbedding = textEncoder.encode(query)
@@ -131,6 +173,14 @@ class GalleryRepository(
 
     private fun containsEmbedding(uri: String): Boolean =
         synchronized(indexLock) { embeddings.containsKey(uri) }
+
+    fun loadCachedIndexForUris(uris: List<Uri>) {
+        val allowed = uris.mapTo(HashSet()) { it.toString() }
+        val loaded = loadIndex().filterKeys { it in allowed }
+        synchronized(indexLock) {
+            embeddings = LinkedHashMap(loaded)
+        }
+    }
 
     private fun snapshotIndex(): LinkedHashMap<String, FloatArray> =
         synchronized(indexLock) { LinkedHashMap(embeddings) }

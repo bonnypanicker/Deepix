@@ -14,6 +14,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.devomind.gallerysearch.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,6 +31,8 @@ class MainActivity : AppCompatActivity() {
     private var imageEncoder: ImageEncoder? = null
     private var textEncoder: TextEncoder? = null
     private var repository: GalleryRepository? = null
+    private var albums: List<GalleryRepository.Album> = emptyList()
+    private var selectedAlbumIds: Set<String> = emptySet()
     private var allUris: List<Uri> = emptyList()
     private var searchJob: Job? = null
 
@@ -33,7 +40,7 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
         if (grants.any { it.value }) {
-            initializeAndIndex()
+            initializeCore()
         } else {
             Toast.makeText(this, "Storage permission required", Toast.LENGTH_LONG).show()
             finish()
@@ -48,8 +55,12 @@ class MainActivity : AppCompatActivity() {
         binding.imageGrid.layoutManager = GridLayoutManager(this, 3)
         binding.imageGrid.adapter = adapter
         binding.searchBtn.isEnabled = false
+        binding.selectAlbumsBtn.isEnabled = false
+        binding.startIndexBtn.isEnabled = false
 
         binding.searchBtn.setOnClickListener { submitSearch() }
+        binding.selectAlbumsBtn.setOnClickListener { showAlbumSelector() }
+        binding.startIndexBtn.setOnClickListener { enqueueBackgroundIndexing() }
         binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
                 submitSearch()
@@ -60,6 +71,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         requestGalleryPermission()
+        observeIndexWorker()
     }
 
     private fun requestGalleryPermission() {
@@ -82,7 +94,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun initializeAndIndex() {
+    private fun initializeCore() {
         lifecycleScope.launch {
             setBusy("Loading AI models...")
             try {
@@ -93,18 +105,12 @@ class MainActivity : AppCompatActivity() {
                         image = ImageEncoder(applicationContext)
                         text = TextEncoder(applicationContext)
                         val repo = GalleryRepository(applicationContext, image, text)
-                        val uris = repo.getAllImageUris()
-
-                        withContext(Dispatchers.Main) {
-                            binding.statusText.text = "Indexing your photos..."
-                        }
-
-                        repo.buildIndex(uris) { current, total ->
-                            runOnUiThread {
-                                binding.statusText.text = "Indexing: $current / $total photos"
-                            }
-                        }
-                        InitResult(image, text, repo, uris)
+                        val availableAlbums = repo.getAlbums()
+                        val selectedIds = IndexPreferences.loadSelectedAlbums(applicationContext)
+                        val effectiveSelection = selectedIds.intersect(availableAlbums.map { it.id }.toSet())
+                        val uris = repo.getImageUrisForAlbumIds(effectiveSelection)
+                        repo.loadCachedIndexForUris(uris)
+                        InitResult(image, text, repo, uris, availableAlbums, effectiveSelection)
                     } catch (error: Throwable) {
                         image?.close()
                         text?.close()
@@ -116,10 +122,14 @@ class MainActivity : AppCompatActivity() {
                 textEncoder = result.textEncoder
                 repository = result.repository
                 allUris = result.uris
+                albums = result.albums
+                selectedAlbumIds = result.selectedAlbumIds
                 adapter.updateList(allUris)
                 binding.progressBar.visibility = View.GONE
                 binding.searchBtn.isEnabled = true
-                binding.statusText.text = "Ready - ${result.repository.indexedCount} photos indexed"
+                binding.selectAlbumsBtn.isEnabled = true
+                binding.startIndexBtn.isEnabled = true
+                binding.statusText.text = selectionSummaryText(result.albums, result.selectedAlbumIds, result.repository.indexedCount)
                 binding.resultCount.text = ""
             } catch (error: Throwable) {
                 binding.progressBar.visibility = View.GONE
@@ -136,7 +146,7 @@ class MainActivity : AppCompatActivity() {
         if (query.isBlank()) {
             adapter.updateList(allUris)
             binding.resultCount.text = ""
-            binding.statusText.text = "Ready - ${repo.indexedCount} photos indexed"
+            binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
             return
         }
 
@@ -150,7 +160,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 adapter.updateList(results)
                 binding.resultCount.text = "Found ${results.size} results for \"$query\""
-                binding.statusText.text = "Ready - ${repo.indexedCount} photos indexed"
+                binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
             } catch (error: Throwable) {
                 showFatalError(error)
             } finally {
@@ -164,6 +174,113 @@ class MainActivity : AppCompatActivity() {
         binding.statusText.text = message
         binding.progressBar.visibility = View.VISIBLE
         binding.searchBtn.isEnabled = false
+    }
+
+    private fun showAlbumSelector() {
+        if (albums.isEmpty()) {
+            Toast.makeText(this, "No albums found on device.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val labels = albums.map { "${it.name} (${it.count})" }.toTypedArray()
+        val checked = albums.map { it.id in selectedAlbumIds }.toBooleanArray()
+
+        AlertDialog.Builder(this)
+            .setTitle("Select albums to index")
+            .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
+                checked[which] = isChecked
+            }
+            .setNeutralButton("Select all") { _, _ ->
+                selectedAlbumIds = emptySet()
+                IndexPreferences.saveSelectedAlbums(this, selectedAlbumIds)
+                refreshVisibleUris()
+            }
+            .setPositiveButton("Apply") { _, _ ->
+                selectedAlbumIds = albums.filterIndexed { index, _ -> checked[index] }.map { it.id }.toSet()
+                IndexPreferences.saveSelectedAlbums(this, selectedAlbumIds)
+                refreshVisibleUris()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun refreshVisibleUris() {
+        val repo = repository ?: return
+        lifecycleScope.launch(Dispatchers.IO) {
+            val uris = repo.getImageUrisForAlbumIds(selectedAlbumIds)
+            repo.loadCachedIndexForUris(uris)
+            withContext(Dispatchers.Main) {
+                allUris = uris
+                adapter.updateList(allUris)
+                binding.resultCount.text = ""
+                binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+            }
+        }
+    }
+
+    private fun enqueueBackgroundIndexing() {
+        val payload = Data.Builder()
+            .putStringArray(IndexWorker.SelectedAlbumIdsKey, selectedAlbumIds.toTypedArray())
+            .build()
+
+        val request = OneTimeWorkRequestBuilder<IndexWorker>()
+            .setInputData(payload)
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniqueWork(
+            IndexWorkName,
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
+        Toast.makeText(this, "Indexing started in background.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun observeIndexWorker() {
+        WorkManager.getInstance(this)
+            .getWorkInfosForUniqueWorkLiveData(IndexWorkName)
+            .observe(this) { infos ->
+                val work = infos.firstOrNull() ?: return@observe
+                when (work.state) {
+                    WorkInfo.State.ENQUEUED,
+                    WorkInfo.State.BLOCKED -> {
+                        binding.progressBar.visibility = View.VISIBLE
+                        binding.statusText.text = "Index job queued..."
+                    }
+                    WorkInfo.State.RUNNING -> {
+                        val current = work.progress.getInt(IndexWorker.ProgressCurrentKey, 0)
+                        val total = work.progress.getInt(IndexWorker.ProgressTotalKey, 0)
+                        binding.progressBar.visibility = View.VISIBLE
+                        binding.statusText.text = "Background indexing: $current / $total"
+                    }
+                    WorkInfo.State.SUCCEEDED -> {
+                        binding.progressBar.visibility = View.GONE
+                        refreshVisibleUris()
+                        Toast.makeText(this, "Indexing complete.", Toast.LENGTH_SHORT).show()
+                    }
+                    WorkInfo.State.FAILED -> {
+                        binding.progressBar.visibility = View.GONE
+                        binding.statusText.text = "Background indexing failed."
+                    }
+                    WorkInfo.State.CANCELLED -> {
+                        binding.progressBar.visibility = View.GONE
+                        binding.statusText.text = "Background indexing cancelled."
+                    }
+                }
+            }
+    }
+
+    private fun selectionSummaryText(
+        albums: List<GalleryRepository.Album>,
+        selectedIds: Set<String>,
+        indexedCount: Int
+    ): String {
+        val albumText = if (selectedIds.isEmpty()) {
+            "All albums"
+        } else {
+            val selectedCount = albums.count { it.id in selectedIds }
+            "$selectedCount albums"
+        }
+        return "Ready - $indexedCount indexed ($albumText)"
     }
 
     private fun showFatalError(error: Throwable) {
@@ -185,6 +302,12 @@ class MainActivity : AppCompatActivity() {
         val imageEncoder: ImageEncoder,
         val textEncoder: TextEncoder,
         val repository: GalleryRepository,
-        val uris: List<Uri>
+        val uris: List<Uri>,
+        val albums: List<GalleryRepository.Album>,
+        val selectedAlbumIds: Set<String>
     )
+
+    companion object {
+        private const val IndexWorkName = "gallery_background_index"
+    }
 }
