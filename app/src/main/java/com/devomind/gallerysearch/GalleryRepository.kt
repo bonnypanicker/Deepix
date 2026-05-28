@@ -152,7 +152,7 @@ class GalleryRepository(
         saveIndex(snapshotIndex())
     }
 
-    fun search(query: String, topK: Int = 30): List<Uri> {
+    fun search(query: String, topK: Int = SearchTuning.DefaultTopK): List<Uri> {
         var snapshot = snapshotIndex()
         if (snapshot.isEmpty()) {
             synchronized(indexLock) {
@@ -181,10 +181,10 @@ class GalleryRepository(
             .toList()
 
         val thresholded = ranked
-            .filter { it.second > ScoreThreshold }
+            .filter { it.second > SearchTuning.ScoreThreshold }
             .take(topK)
 
-        val selected = if (thresholded.isNotEmpty()) thresholded else ranked.take(FallbackCount)
+        val selected = if (thresholded.isNotEmpty()) thresholded else ranked.take(SearchTuning.FallbackCount)
         return selected.map { Uri.parse(it.first) }
     }
 
@@ -301,8 +301,6 @@ class GalleryRepository(
         private const val IndexVersion = 2
         private const val MaxBitmapEdge = 512
         private const val SaveEvery = 20
-        private const val ScoreThreshold = 0.17f
-        private const val FallbackCount = 10
         private const val MaxUriBytes = 4096
         private const val MaxEmbeddingSize = 4096
     }
