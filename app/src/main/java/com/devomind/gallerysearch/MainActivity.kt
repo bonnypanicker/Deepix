@@ -35,6 +35,7 @@ class MainActivity : AppCompatActivity() {
     private var selectedAlbumIds: Set<String> = emptySet()
     private var allUris: List<Uri> = emptyList()
     private var searchJob: Job? = null
+    private var lastProgressRefresh = -1
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -77,7 +78,7 @@ class MainActivity : AppCompatActivity() {
     private fun requestGalleryPermission() {
         val permissions = requiredPermissions()
         if (permissions.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) {
-            initializeAndIndex()
+            initializeCore()
         } else {
             permissionLauncher.launch(permissions)
         }
@@ -251,6 +252,7 @@ class MainActivity : AppCompatActivity() {
                         val total = work.progress.getInt(IndexWorker.ProgressTotalKey, 0)
                         binding.progressBar.visibility = View.VISIBLE
                         binding.statusText.text = "Background indexing: $current / $total"
+                        maybeRefreshLiveIndex(current)
                     }
                     WorkInfo.State.SUCCEEDED -> {
                         binding.progressBar.visibility = View.GONE
@@ -281,6 +283,31 @@ class MainActivity : AppCompatActivity() {
             "$selectedCount albums"
         }
         return "Ready - $indexedCount indexed ($albumText)"
+    }
+
+    private fun maybeRefreshLiveIndex(current: Int) {
+        val shouldRefresh = current > 0 && (current % 20 == 0 || current == 1) && current != lastProgressRefresh
+        if (!shouldRefresh) return
+        lastProgressRefresh = current
+
+        val query = binding.searchInput.text?.toString()?.trim().orEmpty()
+        val repo = repository ?: return
+        lifecycleScope.launch(Dispatchers.IO) {
+            repo.loadCachedIndexForUris(allUris)
+            withContext(Dispatchers.Main) {
+                binding.statusText.text = "Background indexing: $current (live updates on)"
+                if (query.isNotBlank()) {
+                    searchJob?.cancel()
+                    searchJob = lifecycleScope.launch(Dispatchers.IO) {
+                        val results = repo.search(query)
+                        withContext(Dispatchers.Main) {
+                            adapter.updateList(results)
+                            binding.resultCount.text = "Found ${results.size} results for \"$query\""
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private fun showFatalError(error: Throwable) {
