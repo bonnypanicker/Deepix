@@ -19,7 +19,7 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
     private val processorConfig = ProcessorConfig.fromAssets(context)
 
     init {
-        val modelBytes = AssetUtils.readAssetBytes(context, "vision_model_int8.onnx")
+        val modelBytes = AssetUtils.readAssetBytes(context, "vision_model_android_int8.onnx")
         val options = OnnxSessionOptions.create(Tag)
         session = environment.createSession(modelBytes, options)
         inputName = session.inputNames.first()

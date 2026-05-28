@@ -1,0 +1,113 @@
+import os
+import sys
+from pathlib import Path
+
+import numpy as np
+import onnxruntime as ort
+from PIL import Image
+
+
+FP32_MODEL = "vision_model.onnx"
+DEFAULT_TEST_MODEL = "vision_model_android_w8.onnx"
+
+
+def l2_normalize(x: np.ndarray) -> np.ndarray:
+    denom = np.linalg.norm(x) + 1e-8
+    return x / denom
+
+
+def find_images(limit: int = 50) -> list[str]:
+    home = Path.home()
+    candidates = [
+        home / "AppData" / "Local" / "Microsoft" / "Edge" / "User Data",
+        home / "AppData" / "Local" / "Packages",
+        home / "AppData" / "Local" / "Microsoft" / "Windows" / "INetCache",
+        home / ".codex",
+    ]
+    exts = {".jpg", ".jpeg", ".png", ".webp"}
+    paths: list[str] = []
+    for root in candidates:
+        if not root.exists():
+            continue
+        for p in root.rglob("*"):
+            if len(paths) >= limit:
+                return paths
+            if p.is_file() and p.suffix.lower() in exts:
+                paths.append(str(p))
+    return paths
+
+
+def preprocess_image(path: str) -> np.ndarray | None:
+    mean = np.array([0.48145466, 0.4578275, 0.40821073], dtype=np.float32)
+    std = np.array([0.26862954, 0.26130258, 0.27577711], dtype=np.float32)
+    try:
+        with Image.open(path) as img:
+            img = img.convert("RGB")
+            w, h = img.size
+            if w <= 0 or h <= 0:
+                return None
+            scale = 256 / min(w, h)
+            new_w = max(int(round(w * scale)), 256)
+            new_h = max(int(round(h * scale)), 256)
+            img = img.resize((new_w, new_h), Image.Resampling.BICUBIC)
+            left = (new_w - 256) // 2
+            top = (new_h - 256) // 2
+            img = img.crop((left, top, left + 256, top + 256))
+            arr = np.asarray(img).astype(np.float32) / 255.0
+            arr = (arr - mean) / std
+            arr = arr.transpose(2, 0, 1)[None, ...]
+            return arr
+    except Exception:
+        return None
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    model_path = DEFAULT_TEST_MODEL
+    use_images = False
+    if args:
+        model_path = args[0]
+        use_images = any(a == "--images" for a in args[1:])
+
+    if not os.path.exists(FP32_MODEL):
+        raise SystemExit(f"Missing {FP32_MODEL}")
+    if not os.path.exists(model_path):
+        raise SystemExit(f"Missing {model_path}")
+
+    fp32 = ort.InferenceSession(FP32_MODEL, providers=["CPUExecutionProvider"])
+    test = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+    input_name = fp32.get_inputs()[0].name
+    test_input_name = test.get_inputs()[0].name
+    test_input_type = test.get_inputs()[0].type
+
+    rng = np.random.default_rng(0)
+    scores: list[float] = []
+
+    inputs: list[np.ndarray] = []
+    if use_images:
+        image_paths = find_images(limit=25)
+        for p in image_paths:
+            x = preprocess_image(p)
+            if x is not None:
+                inputs.append(x)
+        if not inputs:
+            raise SystemExit("No images found for --images mode")
+    else:
+        for _ in range(10):
+            inputs.append(rng.random((1, 3, 256, 256), dtype=np.float32))
+
+    for i, x in enumerate(inputs, start=1):
+        out_fp32 = fp32.run(None, {input_name: x})[0][0]
+        x_test = x
+        if "float16" in test_input_type:
+            x_test = x.astype(np.float16, copy=False)
+        out_test = test.run(None, {test_input_name: x_test})[0][0]
+        s = float(np.dot(l2_normalize(out_fp32), l2_normalize(out_test)))
+        scores.append(s)
+        print(f"{i:2d}: {s:.6f}")
+
+    print("avg", sum(scores) / len(scores), "min", min(scores), "max", max(scores))
+
+
+if __name__ == "__main__":
+    main()

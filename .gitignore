@@ -6,3 +6,30 @@ local.properties
 *.iml
 /text_model_int8.onnx
 /vision_model_int8.onnx
+__pycache__/
+*.pyc
+
+# Large local models / generated artifacts (do not commit)
+/vision_model.onnx
+/vision_model_fp16.onnx
+/vision_model_uint8.onnx
+/vision_model_android_int8.onnx
+/vision_model_android_w8.onnx
+/app/src/main/assets/vision_model.onnx
+
+# Local experiment outputs
+*_out*.txt
+compare_*.txt
+*_scan.txt
+*_ops.txt
+dtype_out.txt
+outputnames.txt
+quant_api.txt
+xenova_ops.txt
+opset_fp32.txt
+fp16_info.txt
+uint8_scan.txt
+compress_out*.txt
+requantize_out*.txt
+verify_*.txt
+error *.md
