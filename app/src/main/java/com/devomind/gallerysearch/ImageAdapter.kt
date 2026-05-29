@@ -30,6 +30,12 @@ class ImageAdapter(
         notifyDataSetChanged()
     }
 
+    fun appendList(newList: List<Uri>) {
+        val startPos = items.size
+        items.addAll(newList)
+        notifyItemRangeInserted(startPos, newList.size)
+    }
+
     class ImageViewHolder(private val binding: ItemImageBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(uri: Uri) {
             Glide.with(binding.thumbnail.context)

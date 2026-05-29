@@ -152,7 +152,7 @@ class GalleryRepository(
         saveIndex(snapshotIndex())
     }
 
-    fun search(query: String, topK: Int = SearchTuning.DefaultTopK): List<Uri> {
+    fun search(query: String): List<Uri> {
         var snapshot = snapshotIndex()
         if (snapshot.isEmpty()) {
             synchronized(indexLock) {
@@ -182,14 +182,13 @@ class GalleryRepository(
 
         val bestScore = ranked.firstOrNull()?.second ?: return emptyList()
         val relativeCutoff = bestScore * SearchTuning.MaxScoreDropRatio
-        val ratioFiltered = ranked.filter { it.second >= relativeCutoff }
 
-        val thresholded = ratioFiltered
-            .filter { it.second > SearchTuning.ScoreThreshold }
-            .take(topK)
+        val results = ranked
+            .filter { it.second >= relativeCutoff }
+            .filter { it.second >= SearchTuning.ScoreThreshold }
+            .map { Uri.parse(it.first) }
 
-        val selected = if (thresholded.isNotEmpty()) thresholded else ratioFiltered.take(SearchTuning.FallbackCount)
-        return selected.map { Uri.parse(it.first) }
+        return results
     }
 
     private fun containsEmbedding(uri: String): Boolean =

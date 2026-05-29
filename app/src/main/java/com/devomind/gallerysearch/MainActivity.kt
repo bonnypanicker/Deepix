@@ -14,6 +14,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -34,6 +35,7 @@ class MainActivity : AppCompatActivity() {
     private var albums: List<GalleryRepository.Album> = emptyList()
     private var selectedAlbumIds: Set<String> = emptySet()
     private var allUris: List<Uri> = emptyList()
+    private var resultManager: SearchResultManager? = null
     private var searchJob: Job? = null
     private var lastProgressRefresh = -1
 
@@ -55,6 +57,18 @@ class MainActivity : AppCompatActivity() {
 
         binding.imageGrid.layoutManager = GridLayoutManager(this, 3)
         binding.imageGrid.adapter = adapter
+        binding.imageGrid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                val layoutManager = rv.layoutManager as GridLayoutManager
+                val lastVisible = layoutManager.findLastVisibleItemPosition()
+                val total = adapter.itemCount
+                val manager = resultManager ?: return
+
+                if (!manager.isLastPage && lastVisible >= total - 6) {
+                    adapter.appendList(manager.nextPage())
+                }
+            }
+        })
         binding.searchBtn.isEnabled = false
         binding.selectAlbumsBtn.isEnabled = false
         binding.startIndexBtn.isEnabled = false
@@ -125,7 +139,10 @@ class MainActivity : AppCompatActivity() {
                 allUris = result.uris
                 albums = result.albums
                 selectedAlbumIds = result.selectedAlbumIds
-                adapter.updateList(allUris)
+                
+                resultManager = SearchResultManager(allUris)
+                adapter.updateList(resultManager!!.firstPage())
+                
                 binding.progressBar.visibility = View.GONE
                 binding.searchBtn.isEnabled = true
                 binding.selectAlbumsBtn.isEnabled = true
@@ -145,7 +162,8 @@ class MainActivity : AppCompatActivity() {
         searchJob?.cancel()
 
         if (query.isBlank()) {
-            adapter.updateList(allUris)
+            resultManager = SearchResultManager(allUris)
+            adapter.updateList(resultManager!!.firstPage())
             binding.resultCount.text = ""
             binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
             return
@@ -159,8 +177,17 @@ class MainActivity : AppCompatActivity() {
                 val results = withContext(Dispatchers.IO) {
                     repo.search(query)
                 }
-                adapter.updateList(results)
-                binding.resultCount.text = "Found ${results.size} results for \"$query\""
+                
+                resultManager = SearchResultManager(results)
+                adapter.updateList(resultManager!!.firstPage())
+                
+                val count = results.size
+                binding.resultCount.text = when {
+                    count == 0   -> "No results found"
+                    count <= SearchTuning.PageSize -> "Found $count photos"
+                    else         -> "Found $count photos — scroll to see more"
+                }
+                
                 binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
             } catch (error: Throwable) {
                 showFatalError(error)
@@ -212,7 +239,8 @@ class MainActivity : AppCompatActivity() {
             repo.loadCachedIndexForUris(uris)
             withContext(Dispatchers.Main) {
                 allUris = uris
-                adapter.updateList(allUris)
+                resultManager = SearchResultManager(allUris)
+                adapter.updateList(resultManager!!.firstPage())
                 binding.resultCount.text = ""
                 binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
             }
@@ -301,8 +329,14 @@ class MainActivity : AppCompatActivity() {
                     searchJob = lifecycleScope.launch(Dispatchers.IO) {
                         val results = repo.search(query)
                         withContext(Dispatchers.Main) {
-                            adapter.updateList(results)
-                            binding.resultCount.text = "Found ${results.size} results for \"$query\""
+                            resultManager = SearchResultManager(results)
+                            adapter.updateList(resultManager!!.firstPage())
+                            val count = results.size
+                            binding.resultCount.text = when {
+                                count == 0   -> "No results found"
+                                count <= SearchTuning.PageSize -> "Found $count photos"
+                                else         -> "Found $count photos — scroll to see more"
+                            }
                         }
                     }
                 }
