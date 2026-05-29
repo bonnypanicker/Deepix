@@ -43,6 +43,10 @@ class IndexWorker(
                 )
                 setForegroundAsync(createForegroundInfo(bounded, total))
             }
+
+            // Save timestamp so next run only processes new photos
+            IndexPreferences.saveLastIndexedTime(applicationContext)
+
             Result.success()
         }.getOrElse {
             Result.failure()

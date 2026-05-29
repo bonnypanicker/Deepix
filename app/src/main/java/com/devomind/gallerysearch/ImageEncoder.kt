@@ -32,6 +32,7 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
         Log.d(Tag, "Vision processor config: $processorConfig")
     }
 
+    /** Encode a single image. Kept for backward compatibility. */
     fun encode(bitmap: Bitmap): FloatArray {
         val image = preprocess(bitmap)
         OnnxTensor.createTensor(
@@ -48,7 +49,91 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
         }
     }
 
-    private fun preprocess(bitmap: Bitmap): FloatArray {
+    /**
+     * Encode a batch of images in a single model call.
+     * Stacks all preprocessed images into one [N, 3, 256, 256] tensor,
+     * reducing per-image framework overhead.
+     *
+     * Returns one L2-normalized embedding per input bitmap.
+     * If a bitmap fails to preprocess, it is skipped (the returned list
+     * may be shorter than the input list — callers must zip with original URIs
+     * using the bitmapIndices).
+     */
+    fun encodeBatch(bitmaps: List<Bitmap>): List<FloatArray> {
+        if (bitmaps.isEmpty()) return emptyList()
+        if (bitmaps.size == 1) return listOf(encode(bitmaps[0]))
+
+        val batchSize = bitmaps.size
+        val planeSize = ImageSize * ImageSize
+        val imageFloatCount = 3 * planeSize
+
+        // Stack all preprocessed images into one flat array
+        val batchArray = FloatArray(batchSize * imageFloatCount)
+        for (i in bitmaps.indices) {
+            val preprocessed = preprocess(bitmaps[i])
+            preprocessed.copyInto(batchArray, destinationOffset = i * imageFloatCount)
+        }
+
+        val shape = longArrayOf(batchSize.toLong(), 3, ImageSize.toLong(), ImageSize.toLong())
+        OnnxTensor.createTensor(
+            environment,
+            FloatBuffer.wrap(batchArray),
+            shape
+        ).use { tensor ->
+            session.run(mapOf(inputName to tensor)).use { result ->
+                val value = result.get(outputName).orElseThrow {
+                    IllegalStateException("Vision model did not return output '$outputName'")
+                }.value
+
+                // Output shape is [N, embeddingDim] — extract each row
+                return extractBatchEmbeddings(value, batchSize)
+            }
+        }
+    }
+
+    /**
+     * Extracts per-image embeddings from the batched model output.
+     * Handles both Array<FloatArray> (rank-2) and flat FloatArray outputs.
+     */
+    private fun extractBatchEmbeddings(value: Any, batchSize: Int): List<FloatArray> {
+        return when (value) {
+            is Array<*> -> {
+                // Output is Array<FloatArray> with shape [N, embeddingDim]
+                val results = mutableListOf<FloatArray>()
+                for (i in 0 until batchSize) {
+                    val row = value[i]
+                    val flat = OnnxOutput.flattenFloatArray(row!!)
+                    results.add(EmbeddingUtils.l2Normalize(flat))
+                }
+                results
+            }
+            is FloatArray -> {
+                // Flat output — split evenly into batchSize chunks
+                val embeddingDim = value.size / batchSize
+                val results = mutableListOf<FloatArray>()
+                for (i in 0 until batchSize) {
+                    val offset = i * embeddingDim
+                    val row = value.copyOfRange(offset, offset + embeddingDim)
+                    results.add(EmbeddingUtils.l2Normalize(row))
+                }
+                results
+            }
+            else -> {
+                // Fallback: flatten and split
+                val flat = OnnxOutput.flattenFloatArray(value)
+                val embeddingDim = flat.size / batchSize
+                val results = mutableListOf<FloatArray>()
+                for (i in 0 until batchSize) {
+                    val offset = i * embeddingDim
+                    val row = flat.copyOfRange(offset, offset + embeddingDim)
+                    results.add(EmbeddingUtils.l2Normalize(row))
+                }
+                results
+            }
+        }
+    }
+
+    internal fun preprocess(bitmap: Bitmap): FloatArray {
         val resized = resizeShortestEdge(bitmap, ImageSize)
         val left = ((resized.width - ImageSize) / 2).coerceAtLeast(0)
         val top = ((resized.height - ImageSize) / 2).coerceAtLeast(0)
@@ -105,7 +190,7 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
     companion object {
         private const val Tag = "CLIP"
         private const val VisionModelAssetName = "vision_model_fp16.onnx"
-        private const val ImageSize = 256
+        const val ImageSize = 256
         private val Mean = floatArrayOf(0.48145466f, 0.4578275f, 0.40821073f)
         private val Std = floatArrayOf(0.26862954f, 0.26130258f, 0.27577711f)
     }
