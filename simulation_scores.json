@@ -1,0 +1,72 @@
+{
+  "a photo of a cat": {
+    "best_score": NaN,
+    "matches": {
+      "Random Noise (Normal 1)": NaN,
+      "Random Noise (Normal 2)": NaN,
+      "Solid Black": NaN,
+      "Solid Red": NaN,
+      "Blurred/Uniform": 0.12348257005214691
+    }
+  },
+  "blurred": {
+    "best_score": NaN,
+    "matches": {
+      "Random Noise (Normal 1)": NaN,
+      "Random Noise (Normal 2)": NaN,
+      "Solid Black": NaN,
+      "Solid Red": NaN,
+      "Blurred/Uniform": 0.1880473494529724
+    }
+  },
+  "black": {
+    "best_score": NaN,
+    "matches": {
+      "Random Noise (Normal 1)": NaN,
+      "Random Noise (Normal 2)": NaN,
+      "Solid Black": NaN,
+      "Solid Red": NaN,
+      "Blurred/Uniform": 0.15537595748901367
+    }
+  },
+  "a solid red background": {
+    "best_score": NaN,
+    "matches": {
+      "Random Noise (Normal 1)": NaN,
+      "Random Noise (Normal 2)": NaN,
+      "Solid Black": NaN,
+      "Solid Red": NaN,
+      "Blurred/Uniform": 0.18538908660411835
+    }
+  },
+  "qewryasdf zxvc": {
+    "best_score": NaN,
+    "matches": {
+      "Random Noise (Normal 1)": NaN,
+      "Random Noise (Normal 2)": NaN,
+      "Solid Black": NaN,
+      "Solid Red": NaN,
+      "Blurred/Uniform": 0.16406244039535522
+    }
+  },
+  "asdfasdf": {
+    "best_score": NaN,
+    "matches": {
+      "Random Noise (Normal 1)": NaN,
+      "Random Noise (Normal 2)": NaN,
+      "Solid Black": NaN,
+      "Solid Red": NaN,
+      "Blurred/Uniform": 0.16415461897850037
+    }
+  },
+  "nothingness": {
+    "best_score": NaN,
+    "matches": {
+      "Random Noise (Normal 1)": NaN,
+      "Random Noise (Normal 2)": NaN,
+      "Solid Black": NaN,
+      "Solid Red": NaN,
+      "Blurred/Uniform": 0.1581648737192154
+    }
+  }
+}
