@@ -11,7 +11,12 @@ import org.json.JSONObject
 import java.nio.FloatBuffer
 import kotlin.math.roundToInt
 
-class ImageEncoder(private val context: Context) : AutoCloseable {
+class ImageEncoder(
+    private val context: Context,
+    threadCount: Int = 4,
+    ep: ExecutionProviderSelector.Ep? = null,
+    cacheDir: String? = null
+) : AutoCloseable {
     private val environment: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
     private val inputName: String
@@ -22,7 +27,7 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
     init {
         modelAssetName = VisionModelAssetName
         val modelBytes = AssetUtils.readAssetBytes(context, modelAssetName)
-        val options = OnnxSessionOptions.create(Tag)
+        val options = OnnxSessionOptions.create(Tag, threadCount, ep, cacheDir)
         session = environment.createSession(modelBytes, options)
         inputName = session.inputNames.first()
         outputName = session.outputNames.first()
@@ -31,6 +36,14 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
         Log.d(Tag, "Vision model outputs: ${session.outputNames}")
         Log.d(Tag, "Vision processor config: $processorConfig")
     }
+
+    // Sized for the max batch once; reused across calls.
+    private val maxBatch = 16
+    private val reusableBuffer: FloatBuffer =
+        java.nio.ByteBuffer
+            .allocateDirect(maxBatch * 3 * ImageSize * ImageSize * 4)
+            .order(java.nio.ByteOrder.nativeOrder())
+            .asFloatBuffer()
 
     /** Encode a single image. Kept for backward compatibility. */
     fun encode(bitmap: Bitmap): FloatArray {
@@ -67,17 +80,18 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
         val planeSize = ImageSize * ImageSize
         val imageFloatCount = 3 * planeSize
 
-        // Stack all preprocessed images into one flat array
-        val batchArray = FloatArray(batchSize * imageFloatCount)
+        // Stack all preprocessed images into the reusable direct buffer
+        reusableBuffer.clear()
         for (i in bitmaps.indices) {
             val preprocessed = preprocess(bitmaps[i])
-            preprocessed.copyInto(batchArray, destinationOffset = i * imageFloatCount)
+            reusableBuffer.put(preprocessed)
         }
+        reusableBuffer.flip()
 
         val shape = longArrayOf(batchSize.toLong(), 3, ImageSize.toLong(), ImageSize.toLong())
         OnnxTensor.createTensor(
             environment,
-            FloatBuffer.wrap(batchArray),
+            reusableBuffer,
             shape
         ).use { tensor ->
             session.run(mapOf(inputName to tensor)).use { result ->
@@ -150,11 +164,15 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
 
         val floats = FloatArray(3 * ImageSize * ImageSize)
         val planeSize = ImageSize * ImageSize
-        for (index in pixels.indices) {
-            val color = pixels[index]
-            floats[index] = normalize(Color.red(color) / 255f, 0)
-            floats[planeSize + index] = normalize(Color.green(color) / 255f, 1)
-            floats[2 * planeSize + index] = normalize(Color.blue(color) / 255f, 2)
+        java.util.stream.IntStream.range(0, ImageSize).parallel().forEach { y ->
+            val rowStart = y * ImageSize
+            for (x in 0 until ImageSize) {
+                val index = rowStart + x
+                val color = pixels[index]
+                floats[index] = normalize(Color.red(color) / 255f, 0)
+                floats[planeSize + index] = normalize(Color.green(color) / 255f, 1)
+                floats[2 * planeSize + index] = normalize(Color.blue(color) / 255f, 2)
+            }
         }
         return floats
     }

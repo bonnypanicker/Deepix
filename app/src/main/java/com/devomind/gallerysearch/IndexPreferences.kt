@@ -7,6 +7,7 @@ object IndexPreferences {
     private const val KeyAlbums = "selected_album_ids"
     private const val KeyLastIndexed = "last_indexed_time"
     private const val KeyOptimalThreads = "optimal_thread_count"
+    private const val KeyChosenEp = "chosen_ep"
 
     fun saveSelectedAlbums(context: Context, albumIds: Set<String>) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
@@ -45,5 +46,18 @@ object IndexPreferences {
     fun getOptimalThreadCount(context: Context): Int {
         return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .getInt(KeyOptimalThreads, 0)
+    }
+
+    fun saveChosenEp(context: Context, ep: ExecutionProviderSelector.Ep) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KeyChosenEp, ep.name)
+            .apply()
+    }
+
+    fun getChosenEp(context: Context): ExecutionProviderSelector.Ep? {
+        val name = context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getString(KeyChosenEp, null)
+        return name?.let { runCatching { ExecutionProviderSelector.Ep.valueOf(it) }.getOrNull() }
     }
 }

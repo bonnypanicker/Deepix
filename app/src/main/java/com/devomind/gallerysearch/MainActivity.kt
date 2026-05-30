@@ -258,6 +258,12 @@ class MainActivity : AppCompatActivity() {
 
         val request = OneTimeWorkRequestBuilder<IndexWorker>()
             .setInputData(payload)
+            .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .setConstraints(
+                androidx.work.Constraints.Builder()
+                    .setRequiresBatteryNotLow(true)
+                    .build()
+            )
             .build()
 
         WorkManager.getInstance(this).enqueueUniqueWork(
