@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import android.util.Log
 import kotlin.math.max
 
 class IndexWorker(
@@ -23,8 +24,16 @@ class IndexWorker(
         var textEncoder: TextEncoder? = null
 
         return runCatching {
-            val threads = ThreadBenchmark.getOrBenchmark(applicationContext)
-            val ep = ExecutionProviderSelector.getOrSelect(applicationContext)
+            val threads = runCatching { ThreadBenchmark.getOrBenchmark(applicationContext) }
+                .getOrElse {
+                    Log.w(Tag, "Thread benchmark failed; falling back to 4 threads", it)
+                    4
+                }
+            val ep = runCatching { ExecutionProviderSelector.getOrSelect(applicationContext) }
+                .getOrElse {
+                    Log.w(Tag, "EP selection failed; falling back to CPU", it)
+                    ExecutionProviderSelector.Ep.CPU
+                }
             val cacheDir = applicationContext.cacheDir.absolutePath
 
             imageEncoder = ImageEncoder(applicationContext, threads, ep, cacheDir)
@@ -62,6 +71,7 @@ class IndexWorker(
 
             Result.success()
         }.getOrElse {
+            Log.e(Tag, "IndexWorker failed", it)
             Result.failure()
         }.also {
             imageEncoder?.close()
@@ -94,6 +104,7 @@ class IndexWorker(
     }
 
     companion object {
+        private const val Tag = "IndexWorker"
         const val SelectedAlbumIdsKey = "selected_album_ids"
         const val ProgressCurrentKey = "progress_current"
         const val ProgressTotalKey = "progress_total"

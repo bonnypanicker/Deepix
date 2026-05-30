@@ -206,7 +206,7 @@ class ImageEncoder(
     }
 
     companion object {
-        private const val Tag = "CLIP"
+        private const val Tag = "CLIP_IMAGE"
         private const val VisionModelAssetName = "vision_model_fp16.onnx"
         const val ImageSize = 256
         private val Mean = floatArrayOf(0.48145466f, 0.4578275f, 0.40821073f)
