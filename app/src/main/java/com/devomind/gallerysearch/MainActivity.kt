@@ -261,7 +261,7 @@ class MainActivity : AppCompatActivity() {
             .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .setConstraints(
                 androidx.work.Constraints.Builder()
-                    .setRequiresBatteryNotLow(true)
+                    .setRequiresStorageNotLow(true)
                     .build()
             )
             .build()
