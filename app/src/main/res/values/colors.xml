@@ -1,3 +1,14 @@
 <resources>
     <color name="black">#000000</color>
+    <color name="gallery_background">#090B10</color>
+    <color name="surface_primary">#141823</color>
+    <color name="surface_secondary">#1C2230</color>
+    <color name="surface_raised">#242B3A</color>
+    <color name="stroke_subtle">#2E3748</color>
+    <color name="accent_primary">#8B7CFF</color>
+    <color name="accent_secondary">#68E3C2</color>
+    <color name="text_primary">#F8FAFF</color>
+    <color name="text_secondary">#B8C0D4</color>
+    <color name="text_muted">#74809A</color>
+    <color name="text_hint">#737C91</color>
 </resources>

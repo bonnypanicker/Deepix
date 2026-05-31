@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     private var resultManager: SearchResultManager? = null
     private var searchJob: Job? = null
     private var lastProgressRefresh = -1
+    private var automaticIndexStarted = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -69,9 +70,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         })
-        binding.searchBtn.isEnabled = false
-        binding.selectAlbumsBtn.isEnabled = false
-        binding.startIndexBtn.isEnabled = false
+        setControlsEnabled(false)
 
         binding.searchBtn.setOnClickListener { submitSearch() }
         binding.selectAlbumsBtn.setOnClickListener { showAlbumSelector() }
@@ -115,30 +114,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun initializeCore() {
         lifecycleScope.launch {
-            setBusy("Loading AI models...")
+            setBusy("Preparing your gallery...")
             try {
                 val result = withContext(Dispatchers.IO) {
-                    var image: ImageEncoder? = null
-                    var text: TextEncoder? = null
-                    try {
-                        image = ImageEncoder(applicationContext)
-                        text = TextEncoder(applicationContext)
-                        val repo = GalleryRepository(applicationContext, image, text)
-                        val availableAlbums = repo.getAlbums()
-                        val selectedIds = IndexPreferences.loadSelectedAlbums(applicationContext)
-                        val effectiveSelection = selectedIds.intersect(availableAlbums.map { it.id }.toSet())
-                        val uris = repo.getImageUrisForAlbumIds(effectiveSelection)
-                        repo.loadCachedIndexForUris(uris)
-                        InitResult(image, text, repo, uris, availableAlbums, effectiveSelection)
-                    } catch (error: Throwable) {
-                        image?.close()
-                        text?.close()
-                        throw error
-                    }
+                    val repo = GalleryRepository(applicationContext)
+                    val availableAlbums = repo.getAlbums()
+                    val selectedIds = IndexPreferences.loadSelectedAlbums(applicationContext)
+                    val effectiveSelection = selectedIds.intersect(availableAlbums.map { it.id }.toSet())
+                    val uris = repo.getImageUrisForAlbumIds(effectiveSelection)
+                    repo.loadCachedIndexForUris(uris)
+                    InitResult(repo, uris, availableAlbums, effectiveSelection)
                 }
 
-                imageEncoder = result.imageEncoder
-                textEncoder = result.textEncoder
                 repository = result.repository
                 allUris = result.uris
                 albums = result.albums
@@ -148,11 +135,12 @@ class MainActivity : AppCompatActivity() {
                 adapter.updateList(resultManager!!.firstPage())
                 
                 binding.progressBar.visibility = View.GONE
-                binding.searchBtn.isEnabled = true
                 binding.selectAlbumsBtn.isEnabled = true
                 binding.startIndexBtn.isEnabled = true
                 binding.statusText.text = selectionSummaryText(result.albums, result.selectedAlbumIds, result.repository.indexedCount)
-                binding.resultCount.text = ""
+                binding.resultCount.text = visibleCountText(result.uris.size)
+                initializeSearchModels()
+                enqueueBackgroundIndexing(replaceExisting = false)
             } catch (error: Throwable) {
                 binding.progressBar.visibility = View.GONE
                 showFatalError(error)
@@ -168,7 +156,7 @@ class MainActivity : AppCompatActivity() {
         if (query.isBlank()) {
             resultManager = SearchResultManager(allUris)
             adapter.updateList(resultManager!!.firstPage())
-            binding.resultCount.text = ""
+            binding.resultCount.text = visibleCountText(allUris.size)
             binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
             return
         }
@@ -205,7 +193,14 @@ class MainActivity : AppCompatActivity() {
     private fun setBusy(message: String) {
         binding.statusText.text = message
         binding.progressBar.visibility = View.VISIBLE
-        binding.searchBtn.isEnabled = false
+        setControlsEnabled(false)
+    }
+
+    private fun setControlsEnabled(enabled: Boolean) {
+        binding.searchBtn.isEnabled = enabled
+        binding.selectAlbumsBtn.isEnabled = enabled
+        binding.startIndexBtn.isEnabled = enabled
+        binding.searchInput.isEnabled = enabled
     }
 
     private fun showAlbumSelector() {
@@ -245,13 +240,37 @@ class MainActivity : AppCompatActivity() {
                 allUris = uris
                 resultManager = SearchResultManager(allUris)
                 adapter.updateList(resultManager!!.firstPage())
-                binding.resultCount.text = ""
+                binding.resultCount.text = visibleCountText(uris.size)
                 binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+                enqueueBackgroundIndexing(replaceExisting = true)
             }
         }
     }
 
-    private fun enqueueBackgroundIndexing() {
+    private fun initializeSearchModels() {
+        binding.statusText.text = "Loading semantic search..."
+        lifecycleScope.launch {
+            try {
+                val encoders = withContext(Dispatchers.IO) {
+                    val image = ImageEncoder(applicationContext)
+                    val text = TextEncoder(applicationContext)
+                    image to text
+                }
+                imageEncoder = encoders.first
+                textEncoder = encoders.second
+                repository?.attachEncoders(encoders.first, encoders.second)
+                binding.searchBtn.isEnabled = true
+                binding.searchInput.isEnabled = true
+                binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repository?.indexedCount ?: 0)
+            } catch (error: Throwable) {
+                showFatalError(error)
+            }
+        }
+    }
+
+    private fun enqueueBackgroundIndexing(replaceExisting: Boolean = true) {
+        if (!replaceExisting && automaticIndexStarted) return
+        automaticIndexStarted = true
         val payload = Data.Builder()
             .putStringArray(IndexWorker.SelectedAlbumIdsKey, selectedAlbumIds.toTypedArray())
             .build()
@@ -262,10 +281,12 @@ class MainActivity : AppCompatActivity() {
 
         WorkManager.getInstance(this).enqueueUniqueWork(
             IndexWorkName,
-            ExistingWorkPolicy.REPLACE,
+            if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
             request
         )
-        Toast.makeText(this, "Indexing started in background.", Toast.LENGTH_SHORT).show()
+        if (replaceExisting) {
+            Toast.makeText(this, "Indexing refreshed in background.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun observeIndexWorker() {
@@ -289,7 +310,6 @@ class MainActivity : AppCompatActivity() {
                     WorkInfo.State.SUCCEEDED -> {
                         binding.progressBar.visibility = View.GONE
                         refreshVisibleUris()
-                        Toast.makeText(this, "Indexing complete.", Toast.LENGTH_SHORT).show()
                     }
                     WorkInfo.State.FAILED -> {
                         binding.progressBar.visibility = View.GONE
@@ -315,6 +335,14 @@ class MainActivity : AppCompatActivity() {
             "$selectedCount albums"
         }
         return "Ready - $indexedCount indexed ($albumText)"
+    }
+
+    private fun visibleCountText(count: Int): String {
+        return when (count) {
+            0 -> "No photos found"
+            1 -> "1 photo"
+            else -> "$count photos"
+        }
     }
 
     private fun maybeRefreshLiveIndex(current: Int) {
@@ -364,8 +392,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private data class InitResult(
-        val imageEncoder: ImageEncoder,
-        val textEncoder: TextEncoder,
         val repository: GalleryRepository,
         val uris: List<Uri>,
         val albums: List<GalleryRepository.Album>,

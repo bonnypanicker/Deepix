@@ -25,8 +25,8 @@ import kotlin.math.roundToInt
 
 class GalleryRepository(
     private val context: Context,
-    private val imageEncoder: ImageEncoder,
-    private val textEncoder: TextEncoder
+    private var imageEncoder: ImageEncoder? = null,
+    private var textEncoder: TextEncoder? = null
 ) {
     data class Album(val id: String, val name: String, val count: Int)
 
@@ -36,6 +36,11 @@ class GalleryRepository(
 
     val indexedCount: Int
         get() = synchronized(indexLock) { embeddings.size }
+
+    fun attachEncoders(imageEncoder: ImageEncoder, textEncoder: TextEncoder) {
+        this.imageEncoder = imageEncoder
+        this.textEncoder = textEncoder
+    }
 
     fun getAllImageUris(): List<Uri> {
         return getImageUrisForAlbumIds(emptySet())
@@ -65,10 +70,6 @@ class GalleryRepository(
         return uris
     }
 
-    /**
-     * Returns only image URIs added to MediaStore after the given timestamp.
-     * Used for incremental indexing — skip photos that were already indexed.
-     */
     fun getNewImageUris(albumIds: Set<String>, sinceTimestamp: Long): List<Uri> {
         if (sinceTimestamp <= 0L) return getImageUrisForAlbumIds(albumIds)
 
@@ -83,7 +84,6 @@ class GalleryRepository(
             MediaStore.Images.Media.BUCKET_ID,
             MediaStore.Images.Media.DATE_ADDED
         )
-        // DATE_ADDED is stored as seconds since epoch in MediaStore
         val selection = "${MediaStore.Images.Media.DATE_ADDED} > ?"
         val selectionArgs = arrayOf((sinceTimestamp / 1000).toString())
         val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} ASC"
@@ -146,18 +146,8 @@ class GalleryRepository(
         }.getOrNull()
     }
 
-    /**
-     * Builds the embedding index using batched inference and pipelined preprocessing.
-     *
-     * Architecture:
-     * - Producer coroutine (Dispatchers.IO): loads bitmaps from disk in batches
-     * - Consumer (current coroutine): runs encodeBatch() on each prepared batch
-     * - Channel with capacity=2 lets the producer stay 1-2 batches ahead
-     *
-     * This overlaps IO (bitmap loading) with compute (inference), and
-     * batching reduces per-image ONNX framework overhead.
-     */
     suspend fun buildIndex(uris: List<Uri>, onProgress: (current: Int, total: Int) -> Unit) {
+        val encoder = imageEncoder ?: throw IllegalStateException("Image encoder is not ready.")
         val uriKeys = uris.map { it.toString() }
         val uriSet = uriKeys.toSet()
         val loaded = loadIndex().filterKeys { it in uriSet }
@@ -168,7 +158,6 @@ class GalleryRepository(
         val total = uris.size
         onProgress(0, total)
 
-        // Collect URIs that actually need encoding
         val unindexed = uris.filter { !containsEmbedding(it.toString()) }
 
         if (unindexed.isEmpty()) {
@@ -183,16 +172,13 @@ class GalleryRepository(
         var processedNew = 0
         var newSinceLastSave = 0
 
-        // Report the already-indexed count immediately
         onProgress(alreadyDone, total)
 
         val batches = unindexed.chunked(BatchSize)
 
-        // Pipeline: producer loads bitmaps, consumer runs inference
         coroutineScope {
             val channel = Channel<BatchData>(capacity = PipelineBuffer)
 
-            // Producer: load and preprocess bitmaps on IO threads
             val producer = launch(Dispatchers.IO) {
                 for (batch in batches) {
                     currentCoroutineContext().ensureActive()
@@ -211,15 +197,13 @@ class GalleryRepository(
                 channel.close()
             }
 
-            // Consumer: run batched inference
             for (batchData in channel) {
                 currentCoroutineContext().ensureActive()
 
                 val bitmaps = batchData.entries.map { it.bitmap }
                 try {
-                    val embeddings = imageEncoder.encodeBatch(bitmaps)
+                    val embeddings = encoder.encodeBatch(bitmaps)
 
-                    // Store each valid result
                     batchData.entries.zip(embeddings).forEach { (entry, embedding) ->
                         if (isEmbeddingValid(embedding)) {
                             synchronized(indexLock) {
@@ -232,10 +216,9 @@ class GalleryRepository(
                     }
                 } catch (error: Throwable) {
                     Log.w(Tag, "Batch encoding failed, falling back to single-image", error)
-                    // Fallback: encode one at a time
                     for (entry in batchData.entries) {
                         try {
-                            val embedding = imageEncoder.encode(entry.bitmap)
+                            val embedding = encoder.encode(entry.bitmap)
                             if (isEmbeddingValid(embedding)) {
                                 synchronized(indexLock) {
                                     this@GalleryRepository.embeddings[entry.uri.toString()] = embedding
@@ -247,7 +230,6 @@ class GalleryRepository(
                         }
                     }
                 } finally {
-                    // Recycle all bitmaps
                     bitmaps.forEach { it.recycle() }
                 }
 
@@ -267,6 +249,7 @@ class GalleryRepository(
     }
 
     fun search(query: String): List<Uri> {
+        val encoder = textEncoder ?: return emptyList()
         var snapshot = snapshotIndex()
         if (snapshot.isEmpty()) {
             synchronized(indexLock) {
@@ -279,7 +262,7 @@ class GalleryRepository(
         val variants = buildQueryVariants(query)
         val bestScores = HashMap<String, Float>(snapshot.size)
         for (variant in variants) {
-            val queryEmbedding = textEncoder.encode(variant)
+            val queryEmbedding = encoder.encode(variant)
             for ((uri, embedding) in snapshot) {
                 val score = EmbeddingUtils.cosineSimilarity(queryEmbedding, embedding)
                 val current = bestScores[uri]
@@ -411,10 +394,8 @@ class GalleryRepository(
         }
     }
 
-    /** Holds a URI + its loaded bitmap for batch processing. */
     private data class BitmapEntry(val uri: Uri, val bitmap: Bitmap)
 
-    /** A prepared batch ready for inference. */
     private data class BatchData(val entries: List<BitmapEntry>)
 
     companion object {
@@ -427,10 +408,8 @@ class GalleryRepository(
         private const val MaxUriBytes = 4096
         private const val MaxEmbeddingSize = 4096
 
-        /** Number of images per inference batch. Start at 4, reduce to 2 if OOM occurs. */
         const val BatchSize = 4
 
-        /** Pipeline channel buffer — producer can be this many batches ahead of consumer. */
         private const val PipelineBuffer = 2
     }
 }

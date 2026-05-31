@@ -28,7 +28,10 @@ class IndexWorker(
             val repository = GalleryRepository(applicationContext, imageEncoder!!, textEncoder!!)
 
             val selected = inputData.getStringArray(SelectedAlbumIdsKey)?.toSet() ?: emptySet()
-            val uris = repository.getImageUrisForAlbumIds(selected)
+            val allUris = repository.getImageUrisForAlbumIds(selected)
+            val lastIndexed = IndexPreferences.getLastIndexedTime(applicationContext)
+            val freshUris = repository.getNewImageUris(selected, lastIndexed)
+            val uris = if (lastIndexed > 0L && freshUris.isNotEmpty()) freshUris else allUris
             val total = max(1, uris.size)
 
             repository.buildIndex(uris) { current, _ ->

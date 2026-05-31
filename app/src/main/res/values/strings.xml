@@ -1,3 +1,10 @@
 <resources>
-    <string name="app_name">Gallery Search</string>
+    <string name="app_name">Deepix</string>
+    <string name="app_kicker">Private AI gallery</string>
+    <string name="app_subtitle">Browse now. Semantic indexing keeps working quietly.</string>
+    <string name="search_hint">Try “beach sunset”, “receipts”, “my dog”…</string>
+    <string name="search_action">Search</string>
+    <string name="albums_action">Albums</string>
+    <string name="index_action">Index</string>
+    <string name="status_waiting">Waiting for gallery permission…</string>
 </resources>
