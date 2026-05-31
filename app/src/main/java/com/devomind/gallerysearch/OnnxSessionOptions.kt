@@ -10,43 +10,14 @@ object OnnxSessionOptions {
     /**
      * Creates ORT session options with:
      * - Configurable thread count (from benchmark or default)
-     * - Graph optimization and caching
-     * - Specific EP routing
+     * - NNAPI acceleration with FP16 flags when available
+     * - Full graph optimization
      */
-    fun create(
-        tag: String,
-        threadCount: Int = DefaultThreadCount,
-        ep: ExecutionProviderSelector.Ep? = null,
-        cacheDir: String? = null
-    ): OrtSession.SessionOptions {
+    fun create(tag: String, threadCount: Int = DefaultThreadCount): OrtSession.SessionOptions {
         return OrtSession.SessionOptions().apply {
             setIntraOpNumThreads(threadCount)
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
-            setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
-            setMemoryPatternOptimization(true)
-            
-            if (cacheDir != null) {
-                val optimizedModelPath = "$cacheDir/optimized_$tag.onnx"
-                setOptimizedModelFilePath(optimizedModelPath)
-            }
-
-            when (ep) {
-                ExecutionProviderSelector.Ep.QNN_HTP -> tryAddQnnHtp(this, tag)
-                ExecutionProviderSelector.Ep.NNAPI -> tryAddNnapiWithFlags(this, tag)
-                ExecutionProviderSelector.Ep.XNNPACK -> tryAddXnnpack(this, tag, threadCount)
-                ExecutionProviderSelector.Ep.CPU -> Log.d(tag, "Using CPU EP")
-                null -> tryAddNnapiWithFlags(this, tag)
-            }
-        }
-    }
-
-    fun recommendedBatchSize(ep: ExecutionProviderSelector.Ep?): Int {
-        return when (ep) {
-            ExecutionProviderSelector.Ep.QNN_HTP,
-            ExecutionProviderSelector.Ep.NNAPI -> 1 // NPUs often prefer bs=1
-            ExecutionProviderSelector.Ep.XNNPACK,
-            ExecutionProviderSelector.Ep.CPU,
-            null -> 4
+            tryAddNnapiWithFlags(this, tag)
         }
     }
 
@@ -96,43 +67,7 @@ object OnnxSessionOptions {
             method.invoke(options)
             Log.d(tag, "NNAPI enabled (no flags)")
         } catch (e: Exception) {
-            Log.w(tag, "NNAPI unavailable.", e)
-        }
-    }
-
-    private fun tryAddXnnpack(options: OrtSession.SessionOptions, tag: String, threadCount: Int) {
-        try {
-            val method = options.javaClass.methods.firstOrNull {
-                it.name == "addXnnpack" && it.parameterCount == 1 &&
-                        it.parameterTypes[0] == Map::class.java
-            }
-            if (method != null) {
-                val config = mapOf("intra_op_num_threads" to threadCount.toString())
-                method.invoke(options, config)
-                Log.d(tag, "XNNPACK enabled")
-            }
-        } catch (e: Exception) {
-            Log.d(tag, "XNNPACK unavailable: ${e.message}")
-        }
-    }
-
-    private fun tryAddQnnHtp(options: OrtSession.SessionOptions, tag: String) {
-        try {
-            val method = options.javaClass.methods.firstOrNull {
-                it.name == "addQnn" && it.parameterCount == 1 &&
-                        it.parameterTypes[0] == Map::class.java
-            }
-            if (method != null) {
-                val config = mapOf(
-                    "backend_path" to "libQnnHtp.so",
-                    "htp_performance_mode" to "burst",
-                    "htp_graph_finalization_optimization_mode" to "3"
-                )
-                method.invoke(options, config)
-                Log.d(tag, "QNN HTP enabled")
-            }
-        } catch (e: Exception) {
-            Log.d(tag, "QNN HTP unavailable: ${e.message}")
+            Log.w(tag, "NNAPI unavailable; using CPU.", e)
         }
     }
 }

@@ -33,7 +33,6 @@ class GalleryRepository(
     private val indexFile = File(context.filesDir, IndexFileName)
     private val indexLock = Any()
     private var embeddings = LinkedHashMap<String, FloatArray>()
-    private val stageTimer = StageTimer()
 
     val indexedCount: Int
         get() = synchronized(indexLock) { embeddings.size }
@@ -132,28 +131,13 @@ class GalleryRepository(
 
     fun loadBitmap(uri: Uri): Bitmap? {
         return runCatching {
-            // Pass 1: read dimensions only
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            context.contentResolver.openInputStream(uri).use { input ->
-                if (input == null) return null
-                BitmapFactory.decodeStream(input, null, bounds)
-            }
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-
-            // Largest power-of-two sample that keeps shortest edge >= target.
-            val target = ImageEncoder.ImageSize
-            val shortEdge = minOf(bounds.outWidth, bounds.outHeight)
-            var sample = 1
-            while (shortEdge / (sample * 2) >= target) sample *= 2
-
-            // Pass 2: decode downsampled. Keep ARGB_8888 for safe recall.
-            val opts = BitmapFactory.Options().apply {
-                inSampleSize = sample
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = 4
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             }
             val decoded = context.contentResolver.openInputStream(uri).use { input ->
                 if (input == null) return null
-                BitmapFactory.decodeStream(input, null, opts)
+                BitmapFactory.decodeStream(input, null, options)
             } ?: return null
 
             scaleToMaxEdge(decoded, MaxBitmapEdge)
@@ -208,40 +192,22 @@ class GalleryRepository(
         coroutineScope {
             val channel = Channel<BatchData>(capacity = PipelineBuffer)
 
-            // Fan-out: N decoder coroutines share the batch list via an index channel.
-            val batchQueue = Channel<List<Uri>>(capacity = Channel.UNLIMITED).apply {
-                batches.forEach { trySend(it) }
-                close()
-            }
-
-            val decoderCount = Runtime.getRuntime().availableProcessors().coerceIn(2, 6)
-            val ioDispatcher = Dispatchers.IO.limitedParallelism(decoderCount)
-
-            val producers = (0 until decoderCount).map {
-                launch(ioDispatcher) {
-                    for (batch in batchQueue) {
+            // Producer: load and preprocess bitmaps on IO threads
+            val producer = launch(Dispatchers.IO) {
+                for (batch in batches) {
+                    currentCoroutineContext().ensureActive()
+                    val bitmapEntries = mutableListOf<BitmapEntry>()
+                    for (uri in batch) {
                         currentCoroutineContext().ensureActive()
-                        val bitmapEntries = mutableListOf<BitmapEntry>()
-                        for (uri in batch) {
-                            currentCoroutineContext().ensureActive()
-                            val t0 = android.os.SystemClock.elapsedRealtimeNanos()
-                            val bitmap = loadBitmap(uri)
-                            stageTimer.add(StageTimer.Bucket.DECODE, android.os.SystemClock.elapsedRealtimeNanos() - t0)
-                            
-                            if (bitmap != null) {
-                                bitmapEntries.add(BitmapEntry(uri, bitmap))
-                            }
-                        }
-                        if (bitmapEntries.isNotEmpty()) {
-                            channel.send(BatchData(bitmapEntries))
+                        val bitmap = loadBitmap(uri)
+                        if (bitmap != null) {
+                            bitmapEntries.add(BitmapEntry(uri, bitmap))
                         }
                     }
+                    if (bitmapEntries.isNotEmpty()) {
+                        channel.send(BatchData(bitmapEntries))
+                    }
                 }
-            }
-
-            // Close the inference channel only after ALL producers finish.
-            launch {
-                kotlinx.coroutines.joinAll(*producers.toTypedArray())
                 channel.close()
             }
 
@@ -251,11 +217,7 @@ class GalleryRepository(
 
                 val bitmaps = batchData.entries.map { it.bitmap }
                 try {
-                    val tInferenceStart = android.os.SystemClock.elapsedRealtimeNanos()
                     val embeddings = imageEncoder.encodeBatch(bitmaps)
-                    stageTimer.add(StageTimer.Bucket.INFERENCE, android.os.SystemClock.elapsedRealtimeNanos() - tInferenceStart)
-
-                    val newRecordsToPersist = mutableListOf<Pair<String, FloatArray>>()
 
                     // Store each valid result
                     batchData.entries.zip(embeddings).forEach { (entry, embedding) ->
@@ -263,17 +225,10 @@ class GalleryRepository(
                             synchronized(indexLock) {
                                 this@GalleryRepository.embeddings[entry.uri.toString()] = embedding
                             }
-                            newRecordsToPersist.add(entry.uri.toString() to embedding)
                             newSinceLastSave++
                         } else {
                             Log.w(Tag, "Skipping invalid embedding for ${entry.uri}")
                         }
-                    }
-
-                    if (newRecordsToPersist.isNotEmpty()) {
-                        val tPersistStart = android.os.SystemClock.elapsedRealtimeNanos()
-                        appendIndex(newRecordsToPersist)
-                        stageTimer.add(StageTimer.Bucket.PERSIST, android.os.SystemClock.elapsedRealtimeNanos() - tPersistStart)
                     }
                 } catch (error: Throwable) {
                     Log.w(Tag, "Batch encoding failed, falling back to single-image", error)
@@ -300,15 +255,14 @@ class GalleryRepository(
                 onProgress(alreadyDone + processedNew, total)
 
                 if (newSinceLastSave >= SaveEvery) {
-                    // Full compact is done at the end, intermediate saves are already appended.
+                    saveIndex(snapshotIndex())
                     newSinceLastSave = 0
                 }
-                
-                stageTimer.onImagesDone(batchData.entries.size)
             }
+
+            producer.join()
         }
 
-        // Full rewrite to compact the index at the end of the indexing session
         saveIndex(snapshotIndex())
     }
 
@@ -354,47 +308,11 @@ class GalleryRepository(
     private fun containsEmbedding(uri: String): Boolean =
         synchronized(indexLock) { embeddings.containsKey(uri) }
 
-    fun getNewImageUris(uris: List<Uri>): List<Uri> {
-        val existingUris = synchronized(indexLock) { embeddings.keys }
-        return uris.filter { it.toString() !in existingUris }
-    }
-
     fun loadCachedIndexForUris(uris: List<Uri>) {
         val allowed = uris.mapTo(HashSet()) { it.toString() }
         val loaded = loadIndex().filterKeys { it in allowed }
         synchronized(indexLock) {
             embeddings = LinkedHashMap(loaded)
-        }
-    }
-
-    fun pruneDeletedImages() {
-        val snapshot = snapshotIndex()
-        if (snapshot.isEmpty()) return
-        
-        var removed = 0
-        val toKeep = LinkedHashMap<String, FloatArray>(snapshot.size)
-        
-        for ((uriString, embedding) in snapshot) {
-            val uri = Uri.parse(uriString)
-            // Fast check: can we still open it?
-            val exists = runCatching {
-                context.contentResolver.openInputStream(uri)?.close()
-                true
-            }.getOrDefault(false)
-            
-            if (exists) {
-                toKeep[uriString] = embedding
-            } else {
-                removed++
-            }
-        }
-        
-        if (removed > 0) {
-            synchronized(indexLock) {
-                embeddings = toKeep
-            }
-            saveIndex(toKeep)
-            Log.d(Tag, "Pruned $removed deleted images from index.")
         }
     }
 
@@ -493,27 +411,6 @@ class GalleryRepository(
         }
     }
 
-    private fun appendIndex(newEntries: List<Pair<String, FloatArray>>) {
-        if (!indexFile.exists()) {
-            // Write initial header if file doesn't exist
-            saveIndex(emptyMap()) 
-        }
-        
-        runCatching {
-            DataOutputStream(BufferedOutputStream(java.io.FileOutputStream(indexFile, true))).use { out ->
-                for ((uri, emb) in newEntries) {
-                    val b = uri.toByteArray(Charsets.UTF_8)
-                    out.writeInt(b.size)
-                    out.write(b)
-                    out.writeInt(emb.size)
-                    for (v in emb) out.writeFloat(v)
-                }
-            }
-        }.onFailure { error ->
-            Log.w(Tag, "Failed to append to index", error)
-        }
-    }
-
     /** Holds a URI + its loaded bitmap for batch processing. */
     private data class BitmapEntry(val uri: Uri, val bitmap: Bitmap)
 
@@ -525,15 +422,15 @@ class GalleryRepository(
         private const val IndexFileName = "embedding_index.bin"
         private const val IndexMagic = 0x47534958
         private const val IndexVersion = 2
-        private const val MaxBitmapEdge = 320 // was 512
+        private const val MaxBitmapEdge = 512
         private const val SaveEvery = 20
         private const val MaxUriBytes = 4096
         private const val MaxEmbeddingSize = 4096
 
         /** Number of images per inference batch. Start at 4, reduce to 2 if OOM occurs. */
-        @Volatile var BatchSize = 4
+        const val BatchSize = 4
 
         /** Pipeline channel buffer — producer can be this many batches ahead of consumer. */
-        private const val PipelineBuffer = 4
+        private const val PipelineBuffer = 2
     }
 }

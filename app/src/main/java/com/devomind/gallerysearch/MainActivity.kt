@@ -20,8 +20,6 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import androidx.work.Constraints
-import androidx.work.OutOfQuotaPolicy
 import com.devomind.gallerysearch.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -257,23 +255,10 @@ class MainActivity : AppCompatActivity() {
         val payload = Data.Builder()
             .putStringArray(IndexWorker.SelectedAlbumIdsKey, selectedAlbumIds.toTypedArray())
             .build()
-        val storageConstraint = Constraints.Builder()
-            .setRequiresStorageNotLow(true)
-            .build()
 
-        val request = runCatching {
-            OneTimeWorkRequestBuilder<IndexWorker>()
-                .setInputData(payload)
-                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-                .setConstraints(storageConstraint)
-                .build()
-        }.getOrElse {
-            // Some WorkManager/OS combinations reject expedited constraints at build time.
-            OneTimeWorkRequestBuilder<IndexWorker>()
-                .setInputData(payload)
-                .setConstraints(storageConstraint)
-                .build()
-        }
+        val request = OneTimeWorkRequestBuilder<IndexWorker>()
+            .setInputData(payload)
+            .build()
 
         WorkManager.getInstance(this).enqueueUniqueWork(
             IndexWorkName,

@@ -9,7 +9,6 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
-import android.util.Log
 import kotlin.math.max
 
 class IndexWorker(
@@ -24,46 +23,25 @@ class IndexWorker(
         var textEncoder: TextEncoder? = null
 
         return runCatching {
-            val threads = runCatching { ThreadBenchmark.getOrBenchmark(applicationContext) }
-                .getOrElse {
-                    Log.w(Tag, "Thread benchmark failed; falling back to 4 threads", it)
-                    4
-                }
-            val ep = runCatching { ExecutionProviderSelector.getOrSelect(applicationContext) }
-                .getOrElse {
-                    Log.w(Tag, "EP selection failed; falling back to CPU", it)
-                    ExecutionProviderSelector.Ep.CPU
-                }
-            val cacheDir = applicationContext.cacheDir.absolutePath
-
-            imageEncoder = ImageEncoder(applicationContext, threads, ep, cacheDir)
-            textEncoder = TextEncoder(applicationContext, threads, ep, cacheDir)
+            imageEncoder = ImageEncoder(applicationContext)
+            textEncoder = TextEncoder(applicationContext)
             val repository = GalleryRepository(applicationContext, imageEncoder!!, textEncoder!!)
-            
-            GalleryRepository.BatchSize = OnnxSessionOptions.recommendedBatchSize(ep)
 
             val selected = inputData.getStringArray(SelectedAlbumIdsKey)?.toSet() ?: emptySet()
-            val allUris = repository.getImageUrisForAlbumIds(selected)
-            
-            repository.loadCachedIndexForUris(allUris)
-            repository.pruneDeletedImages()
-            
-            val urisToProcess = repository.getNewImageUris(allUris)
-            val total = max(1, urisToProcess.size)
+            val uris = repository.getImageUrisForAlbumIds(selected)
+            val total = max(1, uris.size)
 
-            if (urisToProcess.isNotEmpty()) {
-                repository.buildIndex(urisToProcess) { current, _ ->
-                    val bounded = current.coerceAtMost(total)
-                    val progressPercent = (bounded * 100) / total
-                    setProgressAsync(
-                        androidx.work.Data.Builder()
-                            .putInt(ProgressCurrentKey, bounded)
-                            .putInt(ProgressTotalKey, total)
-                            .putInt(ProgressPercentKey, progressPercent)
-                            .build()
-                    )
-                    setForegroundAsync(createForegroundInfo(bounded, total))
-                }
+            repository.buildIndex(uris) { current, _ ->
+                val bounded = current.coerceAtMost(total)
+                val progressPercent = (bounded * 100) / total
+                setProgressAsync(
+                    androidx.work.Data.Builder()
+                        .putInt(ProgressCurrentKey, bounded)
+                        .putInt(ProgressTotalKey, total)
+                        .putInt(ProgressPercentKey, progressPercent)
+                        .build()
+                )
+                setForegroundAsync(createForegroundInfo(bounded, total))
             }
 
             // Save timestamp so next run only processes new photos
@@ -71,7 +49,6 @@ class IndexWorker(
 
             Result.success()
         }.getOrElse {
-            Log.e(Tag, "IndexWorker failed", it)
             Result.failure()
         }.also {
             imageEncoder?.close()
@@ -104,7 +81,6 @@ class IndexWorker(
     }
 
     companion object {
-        private const val Tag = "IndexWorker"
         const val SelectedAlbumIdsKey = "selected_album_ids"
         const val ProgressCurrentKey = "progress_current"
         const val ProgressTotalKey = "progress_total"

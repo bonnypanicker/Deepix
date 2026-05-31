@@ -7,12 +7,7 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import java.nio.LongBuffer
 
-class TextEncoder(
-    context: Context,
-    threadCount: Int = 4,
-    ep: ExecutionProviderSelector.Ep? = null,
-    cacheDir: String? = null
-) : AutoCloseable {
+class TextEncoder(context: Context) : AutoCloseable {
     private val environment: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
     private val inputIdsName: String
@@ -22,7 +17,7 @@ class TextEncoder(
 
     init {
         val modelBytes = AssetUtils.readAssetBytes(context, "text_model_int8.onnx")
-        val options = OnnxSessionOptions.create(Tag, threadCount, ep, cacheDir)
+        val options = OnnxSessionOptions.create(Tag)
         session = environment.createSession(modelBytes, options)
         val inputNames = session.inputNames.toList()
         inputIdsName = inputNames.firstOrNull { it.contains("input_ids", ignoreCase = true) }
