@@ -7,6 +7,8 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.view.MotionEvent
 import android.view.View
@@ -25,6 +27,11 @@ class ViewerActivity : AppCompatActivity() {
     private var infoVisible = false
     private var uri: Uri? = null
     private val dateFormat = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault())
+    private val autoHideHandler = Handler(Looper.getMainLooper())
+    private val autoHideRunnable = Runnable { setControlsVisible(false) }
+    private var downY = 0f
+    private var dragDistance = 0f
+    private var draggingToDismiss = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,11 +55,17 @@ class ViewerActivity : AppCompatActivity() {
         val metadata = loadMetadata(currentUri)
         bindMetadata(metadata)
         bindActions(currentUri)
+        binding.infoPanel.post {
+            binding.infoPanel.translationY = binding.infoPanel.height.toFloat()
+        }
+        scheduleAutoHide()
     }
 
     private fun bindActions(uri: Uri) {
         binding.backBtn.setOnClickListener { finish() }
-        binding.photoView.setOnClickListener { toggleControls() }
+        binding.photoView.setOnClickListener {
+            if (!draggingToDismiss) toggleControls()
+        }
         binding.infoBtn.setOnClickListener { toggleInfoPanel() }
         binding.shareBtn.setOnClickListener { share(uri) }
         binding.favoriteBtn.setOnClickListener {
@@ -63,10 +76,7 @@ class ViewerActivity : AppCompatActivity() {
         }
         binding.deleteBtn.setOnClickListener { confirmDelete(uri) }
         binding.viewerRoot.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_UP && event.y > binding.viewerRoot.height * 0.72f) {
-                toggleInfoPanel()
-            }
-            false
+            handleViewerTouch(event)
         }
     }
 
@@ -91,19 +101,82 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     private fun toggleControls() {
-        controlsVisible = !controlsVisible
-        val targetAlpha = if (controlsVisible) 1f else 0f
+        setControlsVisible(!controlsVisible)
+    }
+
+    private fun setControlsVisible(visible: Boolean) {
+        controlsVisible = visible
+        val targetAlpha = if (visible) 1f else 0f
         binding.topBar.animate().alpha(targetAlpha).setDuration(200).start()
         binding.viewerPill.animate().alpha(targetAlpha).setDuration(200).start()
+        if (visible) {
+            scheduleAutoHide()
+        } else {
+            autoHideHandler.removeCallbacks(autoHideRunnable)
+        }
     }
 
     private fun toggleInfoPanel() {
         infoVisible = !infoVisible
-        val target = if (infoVisible) 0f else binding.infoPanel.height.coerceAtLeast(280).toFloat()
+        val target = if (infoVisible) 0f else binding.infoPanel.height.toFloat()
         binding.infoPanel.animate()
             .translationY(target)
             .setDuration(220)
             .start()
+        scheduleAutoHide()
+    }
+
+    private fun scheduleAutoHide() {
+        autoHideHandler.removeCallbacks(autoHideRunnable)
+        if (controlsVisible && !infoVisible) {
+            autoHideHandler.postDelayed(autoHideRunnable, 3000)
+        }
+    }
+
+    private fun handleViewerTouch(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downY = event.rawY
+                dragDistance = 0f
+                draggingToDismiss = false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                dragDistance = (event.rawY - downY).coerceAtLeast(0f)
+                if (!infoVisible && dragDistance > 8f) {
+                    draggingToDismiss = true
+                    val progress = (dragDistance / binding.viewerRoot.height).coerceIn(0f, 1f)
+                    binding.photoView.translationY = dragDistance
+                    val scale = 1f - (progress * 0.08f)
+                    binding.photoView.scaleX = scale
+                    binding.photoView.scaleY = scale
+                    val chromeAlpha = (1f - (progress * 0.8f)).coerceIn(0f, 1f)
+                    binding.topBar.alpha = chromeAlpha
+                    binding.viewerPill.alpha = chromeAlpha
+                }
+            }
+            MotionEvent.ACTION_CANCEL,
+            MotionEvent.ACTION_UP -> {
+                val dismissThreshold = binding.viewerRoot.height * 0.22f
+                if (draggingToDismiss) {
+                    if (dragDistance > dismissThreshold) {
+                        finish()
+                    } else {
+                        binding.photoView.animate().translationY(0f).scaleX(1f).scaleY(1f).setDuration(220).start()
+                        binding.topBar.animate().alpha(if (controlsVisible) 1f else 0f).setDuration(220).start()
+                        binding.viewerPill.animate().alpha(if (controlsVisible) 1f else 0f).setDuration(220).start()
+                    }
+                    dragDistance = 0f
+                    draggingToDismiss = false
+                    return true
+                }
+                if (event.y > binding.viewerRoot.height * 0.72f) {
+                    toggleInfoPanel()
+                    return true
+                }
+                scheduleAutoHide()
+            }
+        }
+        return false
     }
 
     private fun share(uri: Uri) {
@@ -205,5 +278,10 @@ class ViewerActivity : AppCompatActivity() {
 
     companion object {
         private const val DeleteRequestCode = 904
+    }
+
+    override fun onDestroy() {
+        autoHideHandler.removeCallbacks(autoHideRunnable)
+        super.onDestroy()
     }
 }

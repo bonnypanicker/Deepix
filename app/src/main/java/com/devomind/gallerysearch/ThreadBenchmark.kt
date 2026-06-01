@@ -45,7 +45,12 @@ object ThreadBenchmark {
 
     private fun runBenchmark(context: Context): Int {
         val env = OrtEnvironment.getEnvironment()
-        val modelBytes = AssetUtils.readAssetBytes(context, "vision_model_fp16.onnx")
+        val modelBytes = AssetUtils.readAssetBytes(
+            context,
+            context.assets.list("")?.firstOrNull {
+                it == "vision_model_android_int8.onnx" || it == "vision_model_fp16.onnx" || it == "vision_model.onnx"
+            } ?: "vision_model_android_int8.onnx"
+        )
         val testTensor = createSyntheticInput(env)
 
         var bestThreads = 4 // safe default

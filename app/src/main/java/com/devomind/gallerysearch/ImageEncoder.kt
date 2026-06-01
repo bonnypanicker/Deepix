@@ -20,7 +20,7 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
     private val modelAssetName: String
 
     init {
-        modelAssetName = VisionModelAssetName
+        modelAssetName = resolveVisionModelAssetName(context)
         val modelBytes = AssetUtils.readAssetBytes(context, modelAssetName)
         val options = OnnxSessionOptions.create(Tag)
         session = environment.createSession(modelBytes, options)
@@ -189,9 +189,20 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
 
     companion object {
         private const val Tag = "CLIP"
-        private const val VisionModelAssetName = "vision_model_fp16.onnx"
+        private val PreferredVisionModels = listOf(
+            "vision_model_android_int8.onnx",
+            "vision_model_fp16.onnx",
+            "vision_model.onnx",
+            "vision_model_int8.onnx"
+        )
         const val ImageSize = 256
         private val Mean = floatArrayOf(0.48145466f, 0.4578275f, 0.40821073f)
         private val Std = floatArrayOf(0.26862954f, 0.26130258f, 0.27577711f)
+
+        private fun resolveVisionModelAssetName(context: Context): String {
+            val available = context.assets.list("")?.toSet().orEmpty()
+            return PreferredVisionModels.firstOrNull { it in available }
+                ?: error("No vision model asset found. Checked: ${PreferredVisionModels.joinToString()}")
+        }
     }
 }
