@@ -11,17 +11,28 @@
         android:layout_height="match_parent"
         android:background="#000000">
 
-        <LinearLayout
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/imageGrid"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingStart="0dp"
+            android:paddingTop="2dp"
+            android:paddingEnd="0dp"
+            android:paddingBottom="96dp" />
+
+        <LinearLayout
+            android:id="@+id/topOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:background="#000000"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:paddingTop="8dp">
 
             <FrameLayout
                 android:id="@+id/topChrome"
                 android:layout_width="match_parent"
-                android:layout_height="104dp"
-                android:paddingTop="20dp">
+                android:layout_height="96dp">
 
                 <ImageButton
                     android:id="@+id/menuBtn"
@@ -132,50 +143,6 @@
                     android:textColor="#8A8A8A"
                     android:textSize="12sp" />
             </LinearLayout>
-
-            <TextView
-                android:id="@+id/statusText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:includeFontPadding="false"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:paddingBottom="6dp"
-                android:text="Waiting for gallery permission..."
-                android:textColor="#8A8A8A"
-                android:textSize="12sp" />
-
-            <ProgressBar
-                android:id="@+id/progressBar"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="2dp"
-                android:indeterminate="true"
-                android:indeterminateTint="#3B9EFF"
-                android:visibility="gone" />
-
-            <TextView
-                android:id="@+id/resultCount"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:includeFontPadding="false"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:paddingTop="6dp"
-                android:paddingBottom="4dp"
-                android:textColor="#6DB8FF"
-                android:textSize="12sp" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/imageGrid"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:clipToPadding="false"
-                android:paddingStart="0dp"
-                android:paddingTop="2dp"
-                android:paddingEnd="0dp"
-                android:paddingBottom="96dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -335,7 +302,7 @@
         android:layout_gravity="start"
         android:background="#0A0A0A"
         android:orientation="vertical"
-        android:paddingTop="28dp">
+        android:paddingTop="0dp">
 
         <TextView
             android:id="@+id/drawerCollection"
@@ -361,5 +328,41 @@
             android:id="@+id/drawerAlbumScope"
             style="@style/MetroDrawerItem"
             android:text="album scope" />
+
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:paddingStart="24dp"
+            android:paddingTop="24dp"
+            android:paddingEnd="24dp"
+            android:text="Waiting for gallery permission..."
+            android:textAllCaps="true"
+            android:textColor="#8A8A8A"
+            android:textSize="12sp" />
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:layout_marginStart="24dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginEnd="24dp"
+            android:indeterminate="true"
+            android:indeterminateTint="#3B9EFF"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/resultCount"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:paddingStart="24dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="24dp"
+            android:textColor="#6DB8FF"
+            android:textSize="12sp" />
     </LinearLayout>
 </androidx.drawerlayout.widget.DrawerLayout>

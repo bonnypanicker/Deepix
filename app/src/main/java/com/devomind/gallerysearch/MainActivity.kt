@@ -13,6 +13,7 @@ import android.provider.MediaStore
 import android.view.MotionEvent
 import android.view.View
 import android.view.Window
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -23,6 +24,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.updatePadding
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
@@ -35,11 +41,13 @@ import androidx.work.WorkManager
 import com.devomind.gallerysearch.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -62,6 +70,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
     private var isBottomPanelVisible = true
+    private var topInsetPx = 0
 
     private val monthFormat = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
     private val dayFormat = SimpleDateFormat("EEE, d", Locale.getDefault())
@@ -106,11 +115,13 @@ class MainActivity : AppCompatActivity() {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         super.onCreate(savedInstanceState)
         requestWindowFeature(Window.FEATURE_NO_TITLE)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.BLACK
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        configureEdgeToEdge()
         favoritesStore = FavoritesStore(this)
 
         adapter = ImageAdapter(
@@ -195,7 +206,7 @@ class MainActivity : AppCompatActivity() {
         binding.mainSurface.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_MOVE || event.action == MotionEvent.ACTION_DOWN) {
                 val nearMenu = event.x < 96f * resources.displayMetrics.density &&
-                    event.y < 116f * resources.displayMetrics.density
+                    event.y < topInsetPx + (116f * resources.displayMetrics.density)
                 if (adapter.selectionCount == 0) {
                     binding.menuBtn.animate().alpha(if (nearMenu) 1f else 0.2f).setDuration(120).start()
                 }
@@ -205,6 +216,46 @@ class MainActivity : AppCompatActivity() {
         binding.shareSelectionBtn.setOnClickListener { shareSelected() }
         binding.deleteSelectionBtn.setOnClickListener { confirmDeleteSelected() }
     }
+
+    private fun configureEdgeToEdge() {
+        configureCutoutMode()
+        hideStatusBar()
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            val systemInsets = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            topInsetPx = systemInsets.top
+            binding.topOverlay.updatePadding(top = systemInsets.top + dp(8))
+            binding.drawerPanel.updatePadding(top = systemInsets.top + dp(28), bottom = systemInsets.bottom + dp(24))
+            binding.imageGrid.updatePadding(bottom = systemInsets.bottom + dp(96))
+            binding.bottomPanel.updatePadding(bottom = systemInsets.bottom)
+
+            val selectionParams = binding.selectionPill.layoutParams as android.widget.FrameLayout.LayoutParams
+            selectionParams.bottomMargin = systemInsets.bottom + dp(84)
+            binding.selectionPill.layoutParams = selectionParams
+            insets
+        }
+    }
+
+    private fun configureCutoutMode() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+        val params = window.attributes
+        params.layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        } else {
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+        window.attributes = params
+    }
+
+    private fun hideStatusBar() {
+        WindowCompat.getInsetsController(window, binding.root)?.apply {
+            hide(WindowInsetsCompat.Type.statusBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
 
     private fun bindBackNavigation() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -486,6 +537,8 @@ class MainActivity : AppCompatActivity() {
                     else -> "${cells.size} results"
                 }
                 binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+            } catch (_: CancellationException) {
+                // Live search cancels the previous job on each new query; treat that as expected.
             } catch (error: Throwable) {
                 showFatalError(error)
             } finally {
@@ -874,6 +927,11 @@ class MainActivity : AppCompatActivity() {
             .setMessage(error.stackTraceToString())
             .setPositiveButton(android.R.string.ok, null)
             .show()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideStatusBar()
     }
 
     override fun onDestroy() {

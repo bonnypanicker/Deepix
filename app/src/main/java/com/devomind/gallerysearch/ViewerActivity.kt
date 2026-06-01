@@ -15,11 +15,17 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.updatePadding
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
@@ -30,6 +36,7 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 class ViewerActivity : AppCompatActivity() {
     private lateinit var binding: ActivityViewerBinding
@@ -65,10 +72,12 @@ class ViewerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.BLACK
         binding = ActivityViewerBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        configureEdgeToEdge()
 
         uri = intent.data
         val currentUri = uri
@@ -94,6 +103,49 @@ class ViewerActivity : AppCompatActivity() {
         }
         scheduleAutoHide()
     }
+
+    private fun configureEdgeToEdge() {
+        configureCutoutMode()
+        hideStatusBar()
+        ViewCompat.setOnApplyWindowInsetsListener(binding.viewerRoot) { _, insets ->
+            val systemInsets = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            binding.topBar.updatePadding(top = systemInsets.top + dp(8))
+
+            val pillParams = binding.viewerPill.layoutParams as android.widget.FrameLayout.LayoutParams
+            pillParams.bottomMargin = systemInsets.bottom + dp(24)
+            binding.viewerPill.layoutParams = pillParams
+
+            binding.infoPanel.updatePadding(
+                left = binding.infoPanel.paddingLeft,
+                top = binding.infoPanel.paddingTop,
+                right = binding.infoPanel.paddingRight,
+                bottom = systemInsets.bottom + dp(36)
+            )
+            insets
+        }
+    }
+
+    private fun configureCutoutMode() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+        val params = window.attributes
+        params.layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        } else {
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+        window.attributes = params
+    }
+
+    private fun hideStatusBar() {
+        WindowCompat.getInsetsController(window, binding.root)?.apply {
+            hide(WindowInsetsCompat.Type.statusBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
 
     private fun bindActions(uri: Uri) {
         binding.backBtn.setOnClickListener { finish() }
@@ -407,6 +459,11 @@ class ViewerActivity : AppCompatActivity() {
     override fun onDestroy() {
         autoHideHandler.removeCallbacks(autoHideRunnable)
         super.onDestroy()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideStatusBar()
     }
 
     override fun finish() {
