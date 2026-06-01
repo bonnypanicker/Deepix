@@ -4,6 +4,27 @@
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:navigationBarColor">#0A0A0A</item>
         <item name="android:statusBarColor">#0A0A0A</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
         <item name="colorAccent">#5B4FE8</item>
+    </style>
+
+    <style name="Theme.GallerySearch.Viewer" parent="Theme.GallerySearch">
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">#00000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+    </style>
+
+    <style name="MetroDrawerItem">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">60dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">24dp</item>
+        <item name="android:paddingEnd">24dp</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:background">#0A0A0A</item>
     </style>
 </resources>

@@ -28,7 +28,18 @@ class GalleryRepository(
     private val imageEncoder: ImageEncoder,
     private val textEncoder: TextEncoder
 ) {
-    data class Album(val id: String, val name: String, val count: Int)
+    data class MediaItem(
+        val uri: Uri,
+        val bucketId: String,
+        val bucketName: String,
+        val dateMillis: Long,
+        val width: Int,
+        val height: Int,
+        val mimeType: String?,
+        val displayName: String?
+    )
+
+    data class Album(val id: String, val name: String, val count: Int, val coverUri: Uri?)
 
     private val indexFile = File(context.filesDir, IndexFileName)
     private val indexLock = Any()
@@ -41,28 +52,60 @@ class GalleryRepository(
         return getImageUrisForAlbumIds(emptySet())
     }
 
-    fun getImageUrisForAlbumIds(albumIds: Set<String>): List<Uri> {
+    fun getImageItemsForAlbumIds(albumIds: Set<String>): List<MediaItem> {
         val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
         } else {
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         }
 
-        val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.BUCKET_ID)
+        val projection = arrayOf(
+            MediaStore.Images.Media._ID,
+            MediaStore.Images.Media.BUCKET_ID,
+            MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+            MediaStore.Images.Media.DATE_TAKEN,
+            MediaStore.Images.Media.DATE_ADDED,
+            MediaStore.Images.Media.WIDTH,
+            MediaStore.Images.Media.HEIGHT,
+            MediaStore.Images.Media.MIME_TYPE,
+            MediaStore.Images.Media.DISPLAY_NAME
+        )
         val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
-        val uris = ArrayList<Uri>()
+        val items = ArrayList<MediaItem>()
 
         context.contentResolver.query(collection, projection, null, null, sortOrder)?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
+            val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+            val dateTakenColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
+            val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+            val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
+            val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
+            val mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
+            val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
             while (cursor.moveToNext()) {
                 val bucketId = cursor.getString(bucketIdColumn) ?: continue
-                if (albumIds.isEmpty() || bucketId in albumIds) {
-                    uris += ContentUris.withAppendedId(collection, cursor.getLong(idColumn))
-                }
+                if (albumIds.isNotEmpty() && bucketId !in albumIds) continue
+
+                val dateTaken = cursor.getLong(dateTakenColumn)
+                val dateAdded = cursor.getLong(dateAddedColumn) * 1000L
+                items += MediaItem(
+                    uri = ContentUris.withAppendedId(collection, cursor.getLong(idColumn)),
+                    bucketId = bucketId,
+                    bucketName = cursor.getString(bucketNameColumn)?.takeIf { it.isNotBlank() } ?: "Unnamed album",
+                    dateMillis = if (dateTaken > 0L) dateTaken else dateAdded,
+                    width = cursor.getInt(widthColumn),
+                    height = cursor.getInt(heightColumn),
+                    mimeType = cursor.getString(mimeColumn),
+                    displayName = cursor.getString(nameColumn)
+                )
             }
         }
-        return uris
+        return items
+    }
+
+    fun getImageUrisForAlbumIds(albumIds: Set<String>): List<Uri> {
+        return getImageItemsForAlbumIds(albumIds).map { it.uri }
     }
 
     /**
@@ -109,18 +152,24 @@ class GalleryRepository(
         } else {
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         }
-        val projection = arrayOf(MediaStore.Images.Media.BUCKET_ID, MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+        val projection = arrayOf(
+            MediaStore.Images.Media._ID,
+            MediaStore.Images.Media.BUCKET_ID,
+            MediaStore.Images.Media.BUCKET_DISPLAY_NAME
+        )
         val buckets = LinkedHashMap<String, Album>()
 
         context.contentResolver.query(collection, projection, null, null, null)?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
             val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
             while (cursor.moveToNext()) {
                 val bucketId = cursor.getString(bucketIdColumn) ?: continue
                 val bucketName = cursor.getString(bucketNameColumn)?.takeIf { it.isNotBlank() } ?: "Unnamed album"
+                val coverUri = ContentUris.withAppendedId(collection, cursor.getLong(idColumn))
                 val existing = buckets[bucketId]
                 if (existing == null) {
-                    buckets[bucketId] = Album(bucketId, bucketName, 1)
+                    buckets[bucketId] = Album(bucketId, bucketName, 1, coverUri)
                 } else {
                     buckets[bucketId] = existing.copy(count = existing.count + 1)
                 }

@@ -19,6 +19,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.GallerySearch">
         <activity
+            android:name=".ViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.GallerySearch.Viewer" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>

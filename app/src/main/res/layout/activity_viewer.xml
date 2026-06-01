@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/viewerRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <ImageView
+        android:id="@+id/photoView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:adjustViewBounds="true"
+        android:background="#000000"
+        android:scaleType="fitCenter" />
+
+    <FrameLayout
+        android:id="@+id/topBar"
+        android:layout_width="match_parent"
+        android:layout_height="96dp"
+        android:background="@drawable/viewer_top_gradient"
+        android:paddingTop="20dp">
+
+        <ImageButton
+            android:id="@+id/backBtn"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="start|top"
+            android:layout_marginStart="4dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Back"
+            android:padding="12dp"
+            android:src="@drawable/ic_fluent_back_24_regular"
+            android:tint="#FFFFFF" />
+
+        <TextView
+            android:id="@+id/fileNameText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:ellipsize="middle"
+            android:includeFontPadding="false"
+            android:paddingStart="16dp"
+            android:paddingEnd="64dp"
+            android:paddingBottom="12dp"
+            android:singleLine="true"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp" />
+
+        <ImageButton
+            android:id="@+id/infoBtn"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="end|top"
+            android:layout_marginEnd="4dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Info"
+            android:padding="12dp"
+            android:src="@drawable/ic_fluent_more_24_regular"
+            android:tint="#FFFFFF" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/viewerPill"
+        android:layout_width="220dp"
+        android:layout_height="52dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="24dp"
+        android:background="@drawable/pill_bg"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/shareBtn"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Share"
+            android:padding="15dp"
+            android:src="@drawable/ic_fluent_share_24_regular"
+            android:tint="#FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/favoriteBtn"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Favorite"
+            android:padding="15dp"
+            android:src="@drawable/ic_fluent_heart_24_regular"
+            android:tint="#FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/editBtn"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Edit"
+            android:padding="15dp"
+            android:src="@drawable/ic_fluent_edit_24_regular"
+            android:tint="#FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/deleteBtn"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Delete"
+            android:padding="15dp"
+            android:src="@drawable/ic_fluent_delete_24_regular"
+            android:tint="#FFFFFF" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/infoPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="#0A0A0A"
+        android:orientation="vertical"
+        android:paddingStart="24dp"
+        android:paddingTop="24dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="36dp"
+        android:translationY="280dp">
+
+        <TextView
+            android:id="@+id/infoDate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-light"
+            android:includeFontPadding="false"
+            android:textColor="#FFFFFF"
+            android:textSize="22sp" />
+
+        <TextView
+            android:id="@+id/infoSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:paddingTop="14dp"
+            android:textColor="#8A8A8A"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/infoLocation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:paddingTop="14dp"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:visibility="gone" />
+    </LinearLayout>
+</FrameLayout>
