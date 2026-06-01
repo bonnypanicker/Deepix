@@ -15,13 +15,13 @@ import com.devomind.gallerysearch.databinding.ItemTimelineHeaderBinding
 
 sealed class GalleryCell {
     data class Header(val title: String, val subtitle: String) : GalleryCell()
-    data class Photo(val uri: Uri, val featured: Boolean = false) : GalleryCell()
+    data class Photo(val item: GalleryRepository.MediaItem, val featured: Boolean = false) : GalleryCell()
     data class AlbumCell(val album: GalleryRepository.Album) : GalleryCell()
     data class Empty(val text: String) : GalleryCell()
 }
 
 class ImageAdapter(
-    private val onPhotoClick: (Uri) -> Unit,
+    private val onPhotoClick: (GalleryRepository.MediaItem) -> Unit,
     private val onSelectionChanged: (Int) -> Unit,
     private val onAlbumClick: (GalleryRepository.Album) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
@@ -53,7 +53,7 @@ class ImageAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val cell = cells[position]) {
             is GalleryCell.Header -> (holder as HeaderViewHolder).bind(cell)
-            is GalleryCell.Photo -> (holder as PhotoViewHolder).bind(cell, selected.isNotEmpty(), cell.uri in selected)
+            is GalleryCell.Photo -> (holder as PhotoViewHolder).bind(cell, selected.isNotEmpty(), cell.item.uri in selected)
             is GalleryCell.AlbumCell -> (holder as AlbumViewHolder).bind(cell.album)
             is GalleryCell.Empty -> (holder as EmptyViewHolder).bind(cell)
         }
@@ -113,7 +113,7 @@ class ImageAdapter(
 
     class PhotoViewHolder(
         private val binding: ItemImageBinding,
-        private val onPhotoClick: (Uri) -> Unit,
+        private val onPhotoClick: (GalleryRepository.MediaItem) -> Unit,
         private val onSelectionToggle: (Uri) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(cell: GalleryCell.Photo, selectionMode: Boolean, isSelected: Boolean) {
@@ -125,18 +125,19 @@ class ImageAdapter(
 
             binding.dimScrim.visibility = if (selectionMode && !isSelected) View.VISIBLE else View.GONE
             binding.checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
+            binding.videoBadge.visibility = if (cell.item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
 
             Glide.with(binding.thumbnail.context)
-                .load(cell.uri)
+                .load(cell.item.uri)
                 .centerCrop()
                 .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
                 .into(binding.thumbnail)
 
             binding.root.setOnClickListener {
-                if (selectionMode) onSelectionToggle(cell.uri) else onPhotoClick(cell.uri)
+                if (selectionMode) onSelectionToggle(cell.item.uri) else onPhotoClick(cell.item)
             }
             binding.root.setOnLongClickListener {
-                onSelectionToggle(cell.uri)
+                onSelectionToggle(cell.item.uri)
                 true
             }
         }
@@ -148,7 +149,7 @@ class ImageAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(album: GalleryRepository.Album) {
             binding.albumName.text = album.name
-            binding.albumCount.text = "${album.count} photos"
+            binding.albumCount.text = if (album.count == 1) "1 item" else "${album.count} items"
             Glide.with(binding.albumCover.context)
                 .load(album.coverUri)
                 .centerCrop()

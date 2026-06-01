@@ -1,9 +1,12 @@
 package com.devomind.gallerysearch
 
 import android.app.RecoverableSecurityException
+import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.ContentUris
 import android.content.Intent
 import android.graphics.Color
+import android.location.Geocoder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -13,10 +16,17 @@ import android.provider.MediaStore
 import android.view.MotionEvent
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.exifinterface.media.ExifInterface
+import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import com.devomind.gallerysearch.databinding.ActivityViewerBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -26,12 +36,32 @@ class ViewerActivity : AppCompatActivity() {
     private var controlsVisible = true
     private var infoVisible = false
     private var uri: Uri? = null
+    private lateinit var favoritesStore: FavoritesStore
+    private var contentChanged = false
     private val dateFormat = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault())
     private val autoHideHandler = Handler(Looper.getMainLooper())
     private val autoHideRunnable = Runnable { setControlsVisible(false) }
     private var downY = 0f
     private var dragDistance = 0f
     private var draggingToDismiss = false
+    private var pendingDeleteUri: Uri? = null
+    private var pendingDeleteNeedsRetry = false
+
+    private val deleteRequestLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        val targetUri = pendingDeleteUri
+        val needsRetry = pendingDeleteNeedsRetry
+        pendingDeleteUri = null
+        pendingDeleteNeedsRetry = false
+
+        if (result.resultCode != RESULT_OK || targetUri == null) return@registerForActivityResult
+        if (needsRetry) {
+            deletePhoto(targetUri, afterApproval = true)
+        } else {
+            onDeleteCompleted()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,17 +76,21 @@ class ViewerActivity : AppCompatActivity() {
             finish()
             return
         }
+        favoritesStore = FavoritesStore(this)
 
         Glide.with(this)
             .load(currentUri)
             .fitCenter()
             .into(binding.photoView)
 
-        val metadata = loadMetadata(currentUri)
-        bindMetadata(metadata)
+        renderFavoriteState(favoritesStore.isFavorite(currentUri))
         bindActions(currentUri)
         binding.infoPanel.post {
             binding.infoPanel.translationY = binding.infoPanel.height.toFloat()
+        }
+        lifecycleScope.launch {
+            val metadata = withContext(Dispatchers.IO) { loadMetadata(currentUri) }
+            bindMetadata(metadata)
         }
         scheduleAutoHide()
     }
@@ -69,11 +103,11 @@ class ViewerActivity : AppCompatActivity() {
         binding.infoBtn.setOnClickListener { toggleInfoPanel() }
         binding.shareBtn.setOnClickListener { share(uri) }
         binding.favoriteBtn.setOnClickListener {
-            Toast.makeText(this, "Favorite state comes with the media database pass.", Toast.LENGTH_SHORT).show()
+            val isFavorite = favoritesStore.toggle(uri)
+            contentChanged = true
+            renderFavoriteState(isFavorite)
         }
-        binding.editBtn.setOnClickListener {
-            Toast.makeText(this, "Editor opens in the next feature pass.", Toast.LENGTH_SHORT).show()
-        }
+        binding.editBtn.setOnClickListener { edit(uri) }
         binding.deleteBtn.setOnClickListener { confirmDelete(uri) }
         binding.viewerRoot.setOnTouchListener { _, event ->
             handleViewerTouch(event)
@@ -98,6 +132,22 @@ class ViewerActivity : AppCompatActivity() {
             append("  ·  ")
             append(metadata.mimeType?.substringAfter("/")?.uppercase(Locale.getDefault()) ?: "IMAGE")
         }
+        if (metadata.locationName.isNullOrBlank()) {
+            binding.infoLocation.visibility = View.GONE
+            binding.infoLocation.text = ""
+        } else {
+            binding.infoLocation.visibility = View.VISIBLE
+            binding.infoLocation.text = metadata.locationName
+        }
+    }
+
+    private fun renderFavoriteState(isFavorite: Boolean) {
+        binding.favoriteBtn.setImageResource(
+            if (isFavorite) R.drawable.ic_fluent_heart_24_filled else R.drawable.ic_fluent_heart_24_regular
+        )
+        binding.favoriteBtn.imageTintList = android.content.res.ColorStateList.valueOf(
+            if (isFavorite) Color.parseColor("#FF6B8A") else Color.WHITE
+        )
     }
 
     private fun toggleControls() {
@@ -197,17 +247,33 @@ class ViewerActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun deletePhoto(uri: Uri) {
+    private fun deletePhoto(uri: Uri, afterApproval: Boolean = false) {
         runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !afterApproval) {
+                pendingDeleteUri = uri
+                pendingDeleteNeedsRetry = false
+                val request = MediaStore.createDeleteRequest(contentResolver, listOf(uri))
+                deleteRequestLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
+                return
+            }
             contentResolver.delete(uri, null, null)
-            finish()
+            onDeleteCompleted()
         }.onFailure { error ->
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && error is RecoverableSecurityException) {
-                startIntentSenderForResult(error.userAction.actionIntent.intentSender, DeleteRequestCode, null, 0, 0, 0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && error is RecoverableSecurityException && !afterApproval) {
+                pendingDeleteUri = uri
+                pendingDeleteNeedsRetry = true
+                deleteRequestLauncher.launch(
+                    IntentSenderRequest.Builder(error.userAction.actionIntent.intentSender).build()
+                )
             } else {
                 Toast.makeText(this, "Delete failed: ${error.message}", Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    private fun onDeleteCompleted() {
+        contentChanged = true
+        finish()
     }
 
     private fun loadMetadata(uri: Uri): PhotoMetadata {
@@ -236,7 +302,8 @@ class ViewerActivity : AppCompatActivity() {
                     width = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)),
                     height = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)),
                     sizeBytes = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)),
-                    mimeType = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE))
+                    mimeType = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)),
+                    locationName = resolveLocationName(uri)
                 )
             }
         }
@@ -253,12 +320,68 @@ class ViewerActivity : AppCompatActivity() {
                         width = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)),
                         height = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)),
                         sizeBytes = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)),
-                        mimeType = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE))
+                        mimeType = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)),
+                        locationName = resolveLocationName(uri)
                     )
                 }
             }
         }
         return PhotoMetadata()
+    }
+
+    private fun edit(uri: Uri) {
+        val mimeType = contentResolver.getType(uri) ?: "image/*"
+        val editIntent = Intent(Intent.ACTION_EDIT).apply {
+            setDataAndType(uri, mimeType)
+            clipData = ClipData.newUri(contentResolver, "photo", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        }
+        val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mimeType)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        try {
+            startActivity(Intent.createChooser(editIntent, "Edit photo"))
+        } catch (_: ActivityNotFoundException) {
+            try {
+                startActivity(fallbackIntent)
+            } catch (error: ActivityNotFoundException) {
+                Toast.makeText(this, "No editor available for this photo.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun resolveLocationName(uri: Uri): String? {
+        val latLong = readLatLong(uri) ?: return null
+        if (!Geocoder.isPresent()) return null
+
+        return runCatching {
+            val geocoder = Geocoder(this, Locale.getDefault())
+            @Suppress("DEPRECATION")
+            val addresses = geocoder.getFromLocation(latLong.first, latLong.second, 1).orEmpty()
+            val address = addresses.firstOrNull() ?: return@runCatching null
+            listOfNotNull(
+                address.locality,
+                address.subAdminArea,
+                address.adminArea,
+                address.countryName
+            ).distinct().take(2).joinToString(", ").ifBlank { null }
+        }.getOrNull()
+    }
+
+    private fun readLatLong(uri: Uri): Pair<Double, Double>? {
+        return runCatching {
+            contentResolver.openInputStream(uri)?.use { stream ->
+                val exif = ExifInterface(stream)
+                val latLong = FloatArray(2)
+                if (exif.getLatLong(latLong)) {
+                    latLong[0].toDouble() to latLong[1].toDouble()
+                } else {
+                    null
+                }
+            }
+        }.getOrNull()
     }
 
     private fun formatSize(bytes: Long): String {
@@ -273,15 +396,23 @@ class ViewerActivity : AppCompatActivity() {
         val width: Int = 0,
         val height: Int = 0,
         val sizeBytes: Long = 0L,
-        val mimeType: String? = null
+        val mimeType: String? = null,
+        val locationName: String? = null
     )
 
     companion object {
-        private const val DeleteRequestCode = 904
+        const val ExtraContentChanged = "content_changed"
     }
 
     override fun onDestroy() {
         autoHideHandler.removeCallbacks(autoHideRunnable)
         super.onDestroy()
+    }
+
+    override fun finish() {
+        if (contentChanged) {
+            setResult(RESULT_OK, Intent().putExtra(ExtraContentChanged, true))
+        }
+        super.finish()
     }
 }

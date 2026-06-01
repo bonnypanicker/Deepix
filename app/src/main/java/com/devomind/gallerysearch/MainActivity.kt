@@ -1,25 +1,29 @@
 package com.devomind.gallerysearch
 
 import android.Manifest
+import android.app.RecoverableSecurityException
 import android.content.Intent
+import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.view.Gravity
+import android.provider.MediaStore
 import android.view.MotionEvent
 import android.view.View
 import android.view.Window
 import android.view.inputmethod.EditorInfo
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -40,17 +44,24 @@ import java.util.Locale
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var adapter: ImageAdapter
+    private lateinit var favoritesStore: FavoritesStore
     private var imageEncoder: ImageEncoder? = null
     private var textEncoder: TextEncoder? = null
     private var repository: GalleryRepository? = null
     private var albums: List<GalleryRepository.Album> = emptyList()
+    private var imageItems: List<GalleryRepository.MediaItem> = emptyList()
+    private var collectionItems: List<GalleryRepository.MediaItem> = emptyList()
+    private var videoItems: List<GalleryRepository.MediaItem> = emptyList()
     private var selectedAlbumIds: Set<String> = emptySet()
-    private var allItems: List<GalleryRepository.MediaItem> = emptyList()
     private var allUris: List<Uri> = emptyList()
     private var currentAlbum: GalleryRepository.Album? = null
-    private var currentMode = Mode.Collection
+    private var currentMode = Mode.Browse
+    private var activeSection = Section.Collection
     private var searchJob: Job? = null
     private var lastProgressRefresh = -1
+    private var pendingDeleteUris: List<Uri> = emptyList()
+    private var pendingDeleteNeedsRetry = false
+    private var isBottomPanelVisible = true
 
     private val monthFormat = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
     private val dayFormat = SimpleDateFormat("EEE, d", Locale.getDefault())
@@ -66,6 +77,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val viewerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val changed = result.data?.getBooleanExtra(ViewerActivity.ExtraContentChanged, false) == true
+        if (result.resultCode == RESULT_OK && changed) {
+            refreshVisibleItems()
+        }
+    }
+
+    private val deleteRequestLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        val uris = pendingDeleteUris
+        val needsRetry = pendingDeleteNeedsRetry
+        pendingDeleteUris = emptyList()
+        pendingDeleteNeedsRetry = false
+
+        if (result.resultCode != RESULT_OK || uris.isEmpty()) return@registerForActivityResult
+        if (needsRetry) {
+            deleteUris(uris, afterApproval = true)
+        } else {
+            onDeleteCompleted(uris.size)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         super.onCreate(savedInstanceState)
@@ -75,18 +111,17 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        favoritesStore = FavoritesStore(this)
 
         adapter = ImageAdapter(
-            onPhotoClick = ::openViewer,
+            onPhotoClick = ::openMedia,
             onSelectionChanged = ::renderSelectionState,
             onAlbumClick = ::openAlbum
         )
 
         val layoutManager = GridLayoutManager(this, GridSpanCount)
         layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-            override fun getSpanSize(position: Int): Int {
-                return adapter.spanSizeAt(position, GridSpanCount)
-            }
+            override fun getSpanSize(position: Int): Int = adapter.spanSizeAt(position, GridSpanCount)
         }
 
         binding.imageGrid.layoutManager = layoutManager
@@ -94,7 +129,10 @@ class MainActivity : AppCompatActivity() {
         binding.imageGrid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 val alpha = if (rv.computeVerticalScrollOffset() > 32) 0.2f else 0.35f
-                binding.menuBtn.animate().alpha(alpha).setDuration(160).start()
+                if (adapter.selectionCount == 0) {
+                    binding.menuBtn.animate().alpha(alpha).setDuration(160).start()
+                }
+                if (dy > 8) hideBottomPanel() else if (dy < -8) showBottomPanel()
             }
         })
 
@@ -106,23 +144,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindChrome() {
         binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
+        binding.searchLaunchBtn.setOnClickListener { openSearch() }
+        binding.searchDismissBtn.setOnClickListener { closeSearch(clearQuery = true) }
+
         binding.drawerCollection.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
-            currentAlbum = null
-            currentMode = Mode.Collection
-            renderCollection()
+            switchSection(Section.Collection)
         }
         binding.drawerAlbums.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
-            currentAlbum = null
-            currentMode = Mode.Albums
-            renderAlbums()
+            switchSection(Section.Albums)
         }
         binding.drawerSearch.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
-            currentAlbum = null
-            currentMode = Mode.Search
-            renderSearchShell()
+            openSearch()
         }
         binding.drawerIndex.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
@@ -132,6 +167,12 @@ class MainActivity : AppCompatActivity() {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             showAlbumSelector()
         }
+
+        binding.bottomCollections.setOnClickListener { switchSection(Section.Collection) }
+        binding.bottomVideos.setOnClickListener { switchSection(Section.Videos) }
+        binding.bottomAlbums.setOnClickListener { switchSection(Section.Albums) }
+        binding.bottomFavorites.setOnClickListener { switchSection(Section.Favorites) }
+
         binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
                 submitSearch()
@@ -140,20 +181,29 @@ class MainActivity : AppCompatActivity() {
                 false
             }
         }
-        binding.searchInput.setOnFocusChangeListener { _, hasFocus ->
-            if (hasFocus) currentMode = Mode.Search
+        binding.searchInput.doAfterTextChanged {
+            if (currentMode == Mode.Search && binding.searchPanel.visibility == View.VISIBLE) {
+                submitSearch()
+            }
         }
+        binding.searchInput.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus && currentMode != Mode.Search) {
+                openSearch()
+            }
+        }
+
         binding.mainSurface.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_MOVE || event.action == MotionEvent.ACTION_DOWN) {
-                val nearMenu = event.x < 96f * resources.displayMetrics.density && event.y < 116f * resources.displayMetrics.density
-                binding.menuBtn.animate().alpha(if (nearMenu) 1f else 0.2f).setDuration(120).start()
+                val nearMenu = event.x < 96f * resources.displayMetrics.density &&
+                    event.y < 116f * resources.displayMetrics.density
+                if (adapter.selectionCount == 0) {
+                    binding.menuBtn.animate().alpha(if (nearMenu) 1f else 0.2f).setDuration(120).start()
+                }
             }
             false
         }
         binding.shareSelectionBtn.setOnClickListener { shareSelected() }
-        binding.deleteSelectionBtn.setOnClickListener {
-            Toast.makeText(this, "Delete confirmation will be wired in the media-safe deletion pass.", Toast.LENGTH_SHORT).show()
-        }
+        binding.deleteSelectionBtn.setOnClickListener { confirmDeleteSelected() }
     }
 
     private fun bindBackNavigation() {
@@ -162,18 +212,11 @@ class MainActivity : AppCompatActivity() {
                 when {
                     binding.drawerLayout.isDrawerOpen(GravityCompat.START) -> binding.drawerLayout.closeDrawer(GravityCompat.START)
                     adapter.selectionCount > 0 -> adapter.clearSelection()
+                    currentMode == Mode.Search && !binding.searchInput.text.isNullOrBlank() -> binding.searchInput.text?.clear()
+                    currentMode == Mode.Search -> closeSearch(clearQuery = false)
                     currentMode == Mode.AlbumDetail -> {
                         currentAlbum = null
-                        currentMode = Mode.Albums
-                        renderAlbums()
-                    }
-                    currentMode == Mode.Search && !binding.searchInput.text.isNullOrBlank() -> {
-                        binding.searchInput.text?.clear()
-                        renderSearchShell()
-                    }
-                    currentMode == Mode.Search -> {
-                        currentMode = Mode.Collection
-                        renderCollection()
+                        switchSection(Section.Albums)
                     }
                     else -> finish()
                 }
@@ -216,13 +259,9 @@ class MainActivity : AppCompatActivity() {
                         image = ImageEncoder(applicationContext)
                         text = TextEncoder(applicationContext)
                         val repo = GalleryRepository(applicationContext, image, text)
-                        val availableAlbums = repo.getAlbums()
                         val selectedIds = IndexPreferences.loadSelectedAlbums(applicationContext)
-                        val effectiveSelection = selectedIds.intersect(availableAlbums.map { it.id }.toSet())
-                        val items = repo.getImageItemsForAlbumIds(effectiveSelection)
-                        val uris = items.map { it.uri }
-                        repo.loadCachedIndexForUris(uris)
-                        InitResult(image, text, repo, items, availableAlbums, effectiveSelection)
+                        val snapshot = loadLibrarySnapshot(repo, selectedIds)
+                        InitResult(image, text, repo, snapshot)
                     } catch (error: Throwable) {
                         image?.close()
                         text?.close()
@@ -233,15 +272,12 @@ class MainActivity : AppCompatActivity() {
                 imageEncoder = result.imageEncoder
                 textEncoder = result.textEncoder
                 repository = result.repository
-                allItems = result.items
-                allUris = result.items.map { it.uri }
-                albums = result.albums
-                selectedAlbumIds = result.selectedAlbumIds
+                applyLibrarySnapshot(result.snapshot)
                 currentAlbum = null
                 lastProgressRefresh = -1
                 binding.progressBar.visibility = View.GONE
-                binding.statusText.text = selectionSummaryText(result.albums, result.selectedAlbumIds, result.repository.indexedCount)
-                renderCollection()
+                binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, result.repository.indexedCount)
+                renderCurrentState()
                 maybeStartBackgroundIndexing()
             } catch (error: Throwable) {
                 binding.progressBar.visibility = View.GONE
@@ -250,56 +286,170 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun renderCollection() {
-        currentMode = Mode.Collection
+    private suspend fun loadLibrarySnapshot(
+        repo: GalleryRepository,
+        requestedSelection: Set<String>
+    ): LibrarySnapshot {
+        val refreshedAlbums = repo.getAlbums()
+        val effectiveSelection = requestedSelection.intersect(refreshedAlbums.map { it.id }.toSet())
+        val refreshedImages = repo.getImageItemsForAlbumIds(effectiveSelection)
+        val refreshedCollection = repo.getAllMediaItemsForAlbumIds(effectiveSelection)
+        val refreshedVideos = repo.getVideoItemsForAlbumIds(effectiveSelection)
+        repo.loadCachedIndexForUris(refreshedImages.map { it.uri })
+        return LibrarySnapshot(
+            albums = refreshedAlbums,
+            imageItems = refreshedImages,
+            collectionItems = refreshedCollection,
+            videoItems = refreshedVideos,
+            selectedAlbumIds = effectiveSelection
+        )
+    }
+
+    private fun applyLibrarySnapshot(snapshot: LibrarySnapshot) {
+        albums = snapshot.albums
+        imageItems = snapshot.imageItems
+        collectionItems = snapshot.collectionItems
+        videoItems = snapshot.videoItems
+        selectedAlbumIds = snapshot.selectedAlbumIds
+        allUris = snapshot.imageItems.map { it.uri }
+        IndexPreferences.saveSelectedAlbums(this, snapshot.selectedAlbumIds)
+    }
+
+    private val favoriteItems: List<GalleryRepository.MediaItem>
+        get() {
+            val favoriteKeys = favoritesStore.all()
+            return collectionItems.filter { it.uri.toString() in favoriteKeys }
+        }
+
+    private val albumDetailItems: List<GalleryRepository.MediaItem>
+        get() = currentAlbum?.let { album -> collectionItems.filter { it.bucketId == album.id } }.orEmpty()
+
+    private fun currentSearchItems(): List<GalleryRepository.MediaItem> {
+        return when {
+            currentAlbum != null -> albumDetailItems
+            activeSection == Section.Collection -> collectionItems
+            activeSection == Section.Videos -> videoItems
+            activeSection == Section.Favorites -> favoriteItems
+            else -> collectionItems
+        }
+    }
+
+    private fun switchSection(section: Section) {
+        activeSection = section
         currentAlbum = null
-        binding.screenTitle.visibility = View.GONE
+        adapter.clearSelection()
+        if (currentMode == Mode.Search) {
+            updateSearchMetaText()
+            submitSearch()
+        } else {
+            renderCurrentSection()
+        }
+    }
+
+    private fun renderCurrentState() {
+        when (currentMode) {
+            Mode.Browse -> renderCurrentSection()
+            Mode.AlbumDetail -> currentAlbum?.let(::renderAlbumDetail) ?: renderCurrentSection()
+            Mode.Search -> openSearch()
+        }
+    }
+
+    private fun renderCurrentSection() {
+        when (activeSection) {
+            Section.Collection -> renderMediaSection(title = null, items = collectionItems, emptyText = "No media yet")
+            Section.Videos -> renderMediaSection(title = "videos", items = videoItems, emptyText = "No videos yet")
+            Section.Albums -> renderAlbums()
+            Section.Favorites -> renderMediaSection(title = "favorites", items = favoriteItems, emptyText = "No favorites yet")
+        }
+    }
+
+    private fun renderMediaSection(
+        title: String?,
+        items: List<GalleryRepository.MediaItem>,
+        emptyText: String
+    ) {
+        currentMode = Mode.Browse
         binding.searchPanel.visibility = View.GONE
         binding.resultCount.text = ""
-        adapter.updateCells(buildTimelineCells(allItems))
-        updateTopBarForMode()
+        adapter.updateCells(buildTimelineCells(items, emptyText))
+        updateTopBarForMode(title)
         updateDrawerState()
+        updateBottomPanelState()
+        showBottomPanel()
     }
 
     private fun renderAlbums() {
-        currentMode = Mode.Albums
-        currentAlbum = null
-        binding.screenTitle.visibility = View.VISIBLE
-        binding.screenTitle.text = "albums"
+        currentMode = Mode.Browse
         binding.searchPanel.visibility = View.GONE
         binding.resultCount.text = ""
-        adapter.updateCells(if (albums.isEmpty()) listOf(GalleryCell.Empty("No albums yet")) else albums.map { GalleryCell.AlbumCell(it) })
-        updateTopBarForMode()
+        adapter.updateCells(
+            if (albums.isEmpty()) listOf(GalleryCell.Empty("No albums yet"))
+            else albums.map { GalleryCell.AlbumCell(it) }
+        )
+        updateTopBarForMode("albums")
         updateDrawerState()
+        updateBottomPanelState()
+        showBottomPanel()
     }
 
     private fun renderAlbumDetail(album: GalleryRepository.Album) {
         currentMode = Mode.AlbumDetail
         currentAlbum = album
-        binding.screenTitle.visibility = View.VISIBLE
-        binding.screenTitle.text = album.name.lowercase(Locale.getDefault())
         binding.searchPanel.visibility = View.GONE
-        val items = allItems.filter { it.bucketId == album.id }
-        binding.resultCount.text = if (items.isEmpty()) "" else "${items.size} photos"
-        adapter.updateCells(buildTimelineCells(items))
-        updateTopBarForMode()
+        val items = albumDetailItems
+        binding.resultCount.text = if (items.isEmpty()) "" else if (items.size == 1) "1 item" else "${items.size} items"
+        adapter.updateCells(buildTimelineCells(items, "No media in this album"))
+        updateTopBarForMode(album.name.lowercase(Locale.getDefault()))
         updateDrawerState()
+        updateBottomPanelState()
+        showBottomPanel()
     }
 
-    private fun renderSearchShell() {
+    private fun openSearch() {
         currentMode = Mode.Search
-        currentAlbum = null
+        binding.searchPanel.visibility = View.VISIBLE
         binding.screenTitle.visibility = View.VISIBLE
         binding.screenTitle.text = "search"
-        binding.searchPanel.visibility = View.VISIBLE
         binding.resultCount.text = ""
+        updateSearchMetaText()
+        updateTopBarForMode("search")
+        updateDrawerState()
+        updateBottomPanelState()
         if (binding.searchInput.text.isNullOrBlank()) {
-            adapter.updateCells(listOf(GalleryCell.Empty("Search your photos")))
+            adapter.updateCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
         } else {
             submitSearch()
         }
-        updateTopBarForMode()
-        updateDrawerState()
+    }
+
+    private fun closeSearch(clearQuery: Boolean) {
+        binding.searchPanel.visibility = View.GONE
+        if (clearQuery) {
+            binding.searchInput.text?.clear()
+        }
+        binding.searchInput.clearFocus()
+        currentMode = if (currentAlbum != null) Mode.AlbumDetail else Mode.Browse
+        renderCurrentState()
+    }
+
+    private fun updateSearchMetaText() {
+        binding.searchMetaText.text = when {
+            currentAlbum != null -> "Semantic + metadata search inside ${currentAlbum?.name?.lowercase(Locale.getDefault())}"
+            activeSection == Section.Albums -> "Live album search in the current gallery scope"
+            activeSection == Section.Videos -> "Metadata search across videos in the current gallery scope"
+            activeSection == Section.Favorites -> "Semantic + metadata search across your favorites"
+            else -> "Semantic + metadata search across the current gallery scope"
+        }
+    }
+
+    private fun searchPlaceholderText(): String {
+        return when {
+            currentAlbum != null -> "Search this album"
+            activeSection == Section.Albums -> "Search albums"
+            activeSection == Section.Videos -> "Search videos"
+            activeSection == Section.Favorites -> "Search favorites"
+            else -> "Search your gallery"
+        }
     }
 
     private fun submitSearch() {
@@ -308,27 +458,28 @@ class MainActivity : AppCompatActivity() {
         searchJob?.cancel()
 
         if (query.isBlank()) {
-            adapter.updateCells(listOf(GalleryCell.Empty("Search your photos")))
+            adapter.updateCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
             binding.resultCount.text = ""
             binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
             return
         }
 
         currentMode = Mode.Search
-        binding.screenTitle.visibility = View.VISIBLE
-        binding.screenTitle.text = "search"
-        binding.searchPanel.visibility = View.VISIBLE
-        updateDrawerState()
+        binding.progressBar.visibility = View.VISIBLE
+        binding.statusText.text = "Searching..."
 
         searchJob = lifecycleScope.launch {
-            binding.progressBar.visibility = View.VISIBLE
-            binding.statusText.text = "Searching..."
             try {
-                val results = withContext(Dispatchers.IO) {
-                    repo.search(query)
+                val cells = withContext(Dispatchers.IO) {
+                    if (currentAlbum == null && activeSection == Section.Albums) {
+                        buildAlbumSearchCells(query)
+                    } else {
+                        val baseItems = currentSearchItems()
+                        val semanticResults = if (activeSection == Section.Videos) emptyList() else repo.search(query)
+                        buildMediaSearchCells(query, baseItems, semanticResults)
+                    }
                 }
-                val cells = buildSearchCells(query, results)
-                adapter.updateCells(if (cells.isEmpty()) listOf(GalleryCell.Empty("No matching photos")) else cells)
+                adapter.updateCells(if (cells.isEmpty()) listOf(GalleryCell.Empty("No matching results")) else cells)
                 binding.resultCount.text = when {
                     cells.isEmpty() -> "No results found"
                     cells.size == 1 -> "1 result"
@@ -343,19 +494,67 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun buildTimelineCells(items: List<GalleryRepository.MediaItem>): List<GalleryCell> {
-        if (items.isEmpty()) return listOf(GalleryCell.Empty("No photos yet"))
+    private fun buildTimelineCells(
+        items: List<GalleryRepository.MediaItem>,
+        emptyText: String
+    ): List<GalleryCell> {
+        if (items.isEmpty()) return listOf(GalleryCell.Empty(emptyText))
         val cells = ArrayList<GalleryCell>()
         items.groupBy { monthFormat.format(Date(it.dateMillis)) }.forEach { (month, monthItems) ->
             val first = monthItems.first()
             cells += GalleryCell.Header(month, dayFormat.format(Date(first.dateMillis)).uppercase(Locale.getDefault()))
             monthItems.groupBy { dayFormat.format(Date(it.dateMillis)) }.values.forEach { dayItems ->
                 dayItems.forEachIndexed { index, item ->
-                    cells += GalleryCell.Photo(item.uri, featured = index == 0)
+                    cells += GalleryCell.Photo(item, featured = index == 0)
                 }
             }
         }
         return cells
+    }
+
+    private fun buildAlbumSearchCells(query: String): List<GalleryCell> {
+        val normalized = query.trim().lowercase(Locale.getDefault())
+        return albums
+            .filter { album ->
+                album.name.lowercase(Locale.getDefault()).contains(normalized) ||
+                    album.count.toString().contains(normalized)
+            }
+            .map { GalleryCell.AlbumCell(it) }
+    }
+
+    private fun buildMediaSearchCells(
+        query: String,
+        baseItems: List<GalleryRepository.MediaItem>,
+        semanticResults: List<Uri>
+    ): List<GalleryCell> {
+        val byUri = baseItems.associateBy { it.uri }
+        val ordered = LinkedHashSet<Uri>()
+        semanticResults.forEach { uri ->
+            val item = byUri[uri] ?: return@forEach
+            if (item.mediaType == GalleryRepository.MediaType.Image) {
+                ordered += uri
+            }
+        }
+
+        val normalized = query.trim().lowercase(Locale.getDefault())
+        baseItems.asSequence()
+            .filter { item ->
+                val dateText = monthFormat.format(Date(item.dateMillis)).lowercase(Locale.getDefault())
+                val dayText = dayFormat.format(Date(item.dateMillis)).lowercase(Locale.getDefault())
+                val typeText = if (item.mediaType == GalleryRepository.MediaType.Video) "video" else "photo"
+                listOfNotNull(
+                    item.displayName,
+                    item.bucketName,
+                    item.mimeType,
+                    dateText,
+                    dayText,
+                    typeText
+                ).any { it.lowercase(Locale.getDefault()).contains(normalized) }
+            }
+            .take(80)
+            .forEach { ordered += it.uri }
+
+        return ordered.mapNotNull { uri -> byUri[uri]?.let { GalleryCell.Photo(it, featured = false) } }
     }
 
     private fun setBusy(message: String) {
@@ -367,8 +566,16 @@ class MainActivity : AppCompatActivity() {
         renderAlbumDetail(album)
     }
 
-    private fun openViewer(uri: Uri) {
-        startActivity(Intent(this, ViewerActivity::class.java).setData(uri))
+    private fun openMedia(item: GalleryRepository.MediaItem) {
+        if (item.mediaType == GalleryRepository.MediaType.Video) {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(item.uri, item.mimeType ?: "video/*")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, "Play video"))
+        } else {
+            viewerLauncher.launch(Intent(this, ViewerActivity::class.java).setData(item.uri))
+        }
     }
 
     private fun renderSelectionState(count: Int) {
@@ -376,14 +583,23 @@ class MainActivity : AppCompatActivity() {
         if (count > 0) {
             binding.screenTitle.visibility = View.VISIBLE
             binding.screenTitle.text = "$count selected"
-            binding.menuBtn.setImageResource(android.R.color.transparent)
             binding.menuBtn.setImageResource(R.drawable.ic_fluent_back_24_regular)
             binding.menuBtn.alpha = 1f
             binding.menuBtn.setOnClickListener { adapter.clearSelection() }
+            binding.searchLaunchBtn.visibility = View.GONE
         } else {
-            binding.menuBtn.setImageResource(R.drawable.ic_fluent_navigation_24_regular)
-            binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
-            updateTopBarForMode()
+            binding.searchLaunchBtn.visibility = View.VISIBLE
+            updateTopBarForMode(
+                when {
+                    currentMode == Mode.Search -> "search"
+                    currentMode == Mode.AlbumDetail -> currentAlbum?.name?.lowercase(Locale.getDefault())
+                    activeSection == Section.Collection -> null
+                    activeSection == Section.Videos -> "videos"
+                    activeSection == Section.Albums -> "albums"
+                    activeSection == Section.Favorites -> "favorites"
+                    else -> null
+                }
+            )
         }
     }
 
@@ -391,11 +607,27 @@ class MainActivity : AppCompatActivity() {
         val selected = adapter.selectedUris()
         if (selected.isEmpty()) return
         val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-            type = "image/*"
+            type = "*/*"
             putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(selected))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        startActivity(Intent.createChooser(intent, "Share photos"))
+        startActivity(Intent.createChooser(intent, "Share items"))
+    }
+
+    private fun confirmDeleteSelected() {
+        val selected = adapter.selectedUris()
+        if (selected.isEmpty()) return
+        val message = if (selected.size == 1) {
+            "Delete the selected item from this device?"
+        } else {
+            "Delete ${selected.size} selected items from this device?"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Delete items?")
+            .setMessage(message)
+            .setPositiveButton("Delete") { _, _ -> deleteUris(selected) }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun showAlbumSelector() {
@@ -426,27 +658,65 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun refreshVisibleItems(renderAfterRefresh: Mode = currentMode) {
+    private fun refreshVisibleItems() {
         val repo = repository ?: return
         lifecycleScope.launch(Dispatchers.IO) {
-            val items = repo.getImageItemsForAlbumIds(selectedAlbumIds)
-            repo.loadCachedIndexForUris(items.map { it.uri })
+            val snapshot = loadLibrarySnapshot(repo, selectedAlbumIds)
             withContext(Dispatchers.Main) {
-                allItems = items
-                allUris = items.map { it.uri }
+                applyLibrarySnapshot(snapshot)
+                currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
                 binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
-                when (renderAfterRefresh) {
-                    Mode.Collection -> renderCollection()
-                    Mode.Albums -> renderAlbums()
-                    Mode.Search -> renderSearchShell()
-                    Mode.AlbumDetail -> {
-                        val album = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
-                        if (album != null) renderAlbumDetail(album) else renderAlbums()
-                    }
+                if (currentMode == Mode.Search) {
+                    updateSearchMetaText()
+                    submitSearch()
+                } else if (currentMode == Mode.AlbumDetail && currentAlbum != null) {
+                    renderAlbumDetail(currentAlbum!!)
+                } else {
+                    renderCurrentSection()
                 }
                 maybeStartBackgroundIndexing()
             }
         }
+    }
+
+    private fun deleteUris(uris: List<Uri>, afterApproval: Boolean = false) {
+        if (uris.isEmpty()) return
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q && uris.size > 1 && !afterApproval) {
+            Toast.makeText(this, "Bulk delete requires Android 11 or newer.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !afterApproval) {
+                pendingDeleteUris = uris
+                pendingDeleteNeedsRetry = false
+                val request = MediaStore.createDeleteRequest(contentResolver, uris)
+                deleteRequestLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
+                return
+            }
+
+            uris.forEach { contentResolver.delete(it, null, null) }
+            onDeleteCompleted(uris.size)
+        } catch (error: Throwable) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && error is RecoverableSecurityException && !afterApproval) {
+                pendingDeleteUris = uris
+                pendingDeleteNeedsRetry = true
+                launchDeleteConsent(error.userAction.actionIntent.intentSender)
+            } else {
+                Toast.makeText(this, "Delete failed: ${error.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun launchDeleteConsent(intentSender: IntentSender) {
+        deleteRequestLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+    }
+
+    private fun onDeleteCompleted(requestedCount: Int) {
+        adapter.clearSelection()
+        refreshVisibleItems()
+        val label = if (requestedCount == 1) "Item deleted." else "$requestedCount items deleted."
+        Toast.makeText(this, label, Toast.LENGTH_SHORT).show()
     }
 
     private fun enqueueBackgroundIndexing(showToast: Boolean = true) {
@@ -528,7 +798,9 @@ class MainActivity : AppCompatActivity() {
             repo.loadCachedIndexForUris(allUris)
             withContext(Dispatchers.Main) {
                 binding.statusText.text = "Indexing: $current · live search ready"
-                if (query.isNotBlank() && currentMode == Mode.Search) submitSearch()
+                if (query.isNotBlank() && currentMode == Mode.Search) {
+                    submitSearch()
+                }
             }
         }
     }
@@ -538,77 +810,62 @@ class MainActivity : AppCompatActivity() {
         if (allUris.isEmpty()) return
         if (repo.indexedCount >= allUris.size) return
         enqueueBackgroundIndexing(showToast = false)
-        binding.statusText.text = "Background indexing queued · ${selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)}"
+        binding.statusText.text =
+            "Background indexing queued · ${selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)}"
     }
 
-    private fun buildSearchCells(query: String, semanticResults: List<Uri>): List<GalleryCell.Photo> {
-        val byUri = allItems.associateBy { it.uri }
-        val ordered = LinkedHashSet<Uri>()
-        semanticResults.forEach { if (it in byUri) ordered += it }
-
-        val normalized = query.trim().lowercase(Locale.getDefault())
-        if (normalized.isNotBlank()) {
-            allItems.asSequence()
-                .filter { item ->
-                    val dateText = monthFormat.format(Date(item.dateMillis)).lowercase(Locale.getDefault())
-                    val dayText = dayFormat.format(Date(item.dateMillis)).lowercase(Locale.getDefault())
-                    listOfNotNull(
-                        item.displayName,
-                        item.bucketName,
-                        item.mimeType,
-                        dateText,
-                        dayText
-                    ).any { it.lowercase(Locale.getDefault()).contains(normalized) }
-                }
-                .take(60)
-                .forEach { ordered += it.uri }
+    private fun updateTopBarForMode(title: String?) {
+        if (currentMode == Mode.AlbumDetail) {
+            binding.menuBtn.setImageResource(R.drawable.ic_fluent_back_24_regular)
+            binding.menuBtn.alpha = 1f
+            binding.menuBtn.setOnClickListener {
+                currentAlbum = null
+                switchSection(Section.Albums)
+            }
+        } else {
+            binding.menuBtn.setImageResource(R.drawable.ic_fluent_navigation_24_regular)
+            binding.menuBtn.alpha = if (title == null) 0.2f else 1f
+            binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
         }
 
-        return ordered.mapNotNull { uri -> byUri[uri]?.let { GalleryCell.Photo(it.uri, featured = false) } }
-    }
-
-    private fun updateTopBarForMode() {
-        when (currentMode) {
-            Mode.Collection -> {
-                binding.screenTitle.visibility = View.GONE
-                binding.menuBtn.setImageResource(R.drawable.ic_fluent_navigation_24_regular)
-                binding.menuBtn.alpha = 0.2f
-                binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
-            }
-            Mode.Albums -> {
-                binding.screenTitle.visibility = View.VISIBLE
-                binding.screenTitle.text = "albums"
-                binding.menuBtn.setImageResource(R.drawable.ic_fluent_navigation_24_regular)
-                binding.menuBtn.alpha = 1f
-                binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
-            }
-            Mode.Search -> {
-                binding.screenTitle.visibility = View.VISIBLE
-                binding.screenTitle.text = "search"
-                binding.menuBtn.setImageResource(R.drawable.ic_fluent_navigation_24_regular)
-                binding.menuBtn.alpha = 1f
-                binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
-            }
-            Mode.AlbumDetail -> {
-                binding.screenTitle.visibility = View.VISIBLE
-                binding.screenTitle.text = currentAlbum?.name?.lowercase(Locale.getDefault()) ?: "album"
-                binding.menuBtn.setImageResource(R.drawable.ic_fluent_back_24_regular)
-                binding.menuBtn.alpha = 1f
-                binding.menuBtn.setOnClickListener {
-                    currentAlbum = null
-                    currentMode = Mode.Albums
-                    renderAlbums()
-                }
-            }
-        }
+        binding.screenTitle.visibility = if (title == null) View.GONE else View.VISIBLE
+        binding.screenTitle.text = title.orEmpty()
+        binding.searchLaunchBtn.visibility = if (adapter.selectionCount > 0) View.GONE else View.VISIBLE
     }
 
     private fun updateDrawerState() {
         val inactive = Color.rgb(10, 10, 10)
         val active = Color.rgb(17, 17, 17)
-        binding.drawerCollection.setBackgroundColor(if (currentMode == Mode.Collection) active else inactive)
-        binding.drawerAlbums.setBackgroundColor(if (currentMode == Mode.Albums || currentMode == Mode.AlbumDetail) active else inactive)
+        binding.drawerCollection.setBackgroundColor(
+            if (currentMode != Mode.Search && activeSection == Section.Collection) active else inactive
+        )
+        binding.drawerAlbums.setBackgroundColor(
+            if ((currentMode != Mode.Search && activeSection == Section.Albums) || currentMode == Mode.AlbumDetail) active else inactive
+        )
         binding.drawerSearch.setBackgroundColor(if (currentMode == Mode.Search) active else inactive)
+    }
+
+    private fun updateBottomPanelState() {
+        updateBottomTab(binding.bottomCollections, activeSection == Section.Collection)
+        updateBottomTab(binding.bottomVideos, activeSection == Section.Videos)
+        updateBottomTab(binding.bottomAlbums, activeSection == Section.Albums)
+        updateBottomTab(binding.bottomFavorites, activeSection == Section.Favorites)
+    }
+
+    private fun updateBottomTab(tab: View, active: Boolean) {
+        tab.alpha = if (active) 1f else 0.58f
+    }
+
+    private fun hideBottomPanel() {
+        if (!isBottomPanelVisible || adapter.selectionCount > 0) return
+        isBottomPanelVisible = false
+        binding.bottomPanel.animate().translationY(binding.bottomPanel.height.toFloat()).setDuration(180).start()
+    }
+
+    private fun showBottomPanel() {
+        if (isBottomPanelVisible) return
+        isBottomPanelVisible = true
+        binding.bottomPanel.animate().translationY(0f).setDuration(180).start()
     }
 
     private fun showFatalError(error: Throwable) {
@@ -630,16 +887,28 @@ class MainActivity : AppCompatActivity() {
         val imageEncoder: ImageEncoder,
         val textEncoder: TextEncoder,
         val repository: GalleryRepository,
-        val items: List<GalleryRepository.MediaItem>,
+        val snapshot: LibrarySnapshot
+    )
+
+    private data class LibrarySnapshot(
         val albums: List<GalleryRepository.Album>,
+        val imageItems: List<GalleryRepository.MediaItem>,
+        val collectionItems: List<GalleryRepository.MediaItem>,
+        val videoItems: List<GalleryRepository.MediaItem>,
         val selectedAlbumIds: Set<String>
     )
 
     private enum class Mode {
-        Collection,
-        Albums,
+        Browse,
         Search,
         AlbumDetail
+    }
+
+    private enum class Section {
+        Collection,
+        Videos,
+        Albums,
+        Favorites
     }
 
     companion object {
