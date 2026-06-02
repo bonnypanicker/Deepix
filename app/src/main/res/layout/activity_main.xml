@@ -19,7 +19,7 @@
             android:paddingStart="0dp"
             android:paddingTop="2dp"
             android:paddingEnd="0dp"
-            android:paddingBottom="96dp" />
+            android:paddingBottom="84dp" />
 
         <LinearLayout
             android:id="@+id/topOverlay"
@@ -32,7 +32,7 @@
             <FrameLayout
                 android:id="@+id/topChrome"
                 android:layout_width="match_parent"
-                android:layout_height="96dp">
+                android:layout_height="128dp">
 
                 <ImageButton
                     android:id="@+id/menuBtn"
@@ -53,14 +53,14 @@
                     android:layout_height="wrap_content"
                     android:layout_gravity="bottom"
                     android:includeFontPadding="false"
-                    android:paddingStart="24dp"
+                    android:paddingStart="16dp"
                     android:paddingEnd="16dp"
-                    android:paddingBottom="12dp"
+                    android:paddingBottom="16dp"
                     android:text="collection"
                     android:textColor="#FFFFFF"
-                    android:textSize="26sp"
+                    android:textSize="40sp"
                     android:fontFamily="sans-serif-light"
-                    android:visibility="gone" />
+                    android:visibility="visible" />
 
                 <ImageButton
                     android:id="@+id/searchLaunchBtn"
@@ -180,7 +180,7 @@
         <LinearLayout
             android:id="@+id/bottomPanel"
             android:layout_width="match_parent"
-            android:layout_height="72dp"
+            android:layout_height="60dp"
             android:layout_gravity="bottom"
             android:background="#000000"
             android:orientation="horizontal">
@@ -191,52 +191,16 @@
                 android:layout_height="match_parent"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:orientation="vertical">
+                android:orientation="vertical"
+                android:paddingTop="2dp">
 
                 <ImageView
+                    android:id="@+id/bottomCollectionsIcon"
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_fluent_image_24_regular"
                     android:tint="#FFFFFF" />
-
-                <TextView
-                    android:id="@+id/bottomCollectionsLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:includeFontPadding="false"
-                    android:paddingTop="6dp"
-                    android:text="collections"
-                    android:textAllCaps="true"
-                    android:textColor="#FFFFFF"
-                    android:textSize="11sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/bottomVideos"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical">
-
-                <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:contentDescription="@null"
-                    android:src="@drawable/ic_fluent_video_24_regular"
-                    android:tint="#8A8A8A" />
-
-                <TextView
-                    android:id="@+id/bottomVideosLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:includeFontPadding="false"
-                    android:paddingTop="6dp"
-                    android:text="videos"
-                    android:textAllCaps="true"
-                    android:textColor="#8A8A8A"
-                    android:textSize="11sp" />
             </LinearLayout>
 
             <LinearLayout
@@ -245,25 +209,16 @@
                 android:layout_height="match_parent"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:orientation="vertical">
+                android:orientation="vertical"
+                android:paddingTop="2dp">
 
                 <ImageView
+                    android:id="@+id/bottomAlbumsIcon"
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_fluent_album_24_regular"
                     android:tint="#8A8A8A" />
-
-                <TextView
-                    android:id="@+id/bottomAlbumsLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:includeFontPadding="false"
-                    android:paddingTop="6dp"
-                    android:text="albums"
-                    android:textAllCaps="true"
-                    android:textColor="#8A8A8A"
-                    android:textSize="11sp" />
             </LinearLayout>
 
             <LinearLayout
@@ -272,25 +227,34 @@
                 android:layout_height="match_parent"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:orientation="vertical">
+                android:orientation="vertical"
+                android:paddingTop="2dp">
 
                 <ImageView
+                    android:id="@+id/bottomFavoritesIcon"
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_fluent_heart_24_regular"
                     android:tint="#8A8A8A" />
+            </LinearLayout>
 
-                <TextView
-                    android:id="@+id/bottomFavoritesLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:includeFontPadding="false"
-                    android:paddingTop="6dp"
-                    android:text="favorites"
-                    android:textAllCaps="true"
-                    android:textColor="#8A8A8A"
-                    android:textSize="11sp" />
+            <LinearLayout
+                android:id="@+id/bottomVideos"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingTop="2dp">
+
+                <ImageView
+                    android:id="@+id/bottomVideosIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_fluent_video_24_regular"
+                    android:tint="#8A8A8A" />
             </LinearLayout>
         </LinearLayout>
     </FrameLayout>

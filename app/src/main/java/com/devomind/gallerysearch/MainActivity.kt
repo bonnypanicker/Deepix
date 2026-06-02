@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -69,7 +70,6 @@ class MainActivity : AppCompatActivity() {
     private var lastProgressRefresh = -1
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
-    private var isBottomPanelVisible = true
     private var topInsetPx = 0
 
     private val monthFormat = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
@@ -143,7 +143,6 @@ class MainActivity : AppCompatActivity() {
                 if (adapter.selectionCount == 0) {
                     binding.menuBtn.animate().alpha(alpha).setDuration(160).start()
                 }
-                if (dy > 8) hideBottomPanel() else if (dy < -8) showBottomPanel()
             }
         })
 
@@ -180,9 +179,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.bottomCollections.setOnClickListener { switchSection(Section.Collection) }
-        binding.bottomVideos.setOnClickListener { switchSection(Section.Videos) }
         binding.bottomAlbums.setOnClickListener { switchSection(Section.Albums) }
         binding.bottomFavorites.setOnClickListener { switchSection(Section.Favorites) }
+        binding.bottomVideos.setOnClickListener { switchSection(Section.Videos) }
 
         binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
@@ -227,7 +226,7 @@ class MainActivity : AppCompatActivity() {
             topInsetPx = systemInsets.top
             binding.topOverlay.updatePadding(top = systemInsets.top + dp(8))
             binding.drawerPanel.updatePadding(top = systemInsets.top + dp(28), bottom = systemInsets.bottom + dp(24))
-            binding.imageGrid.updatePadding(bottom = systemInsets.bottom + dp(96))
+            binding.imageGrid.updatePadding(bottom = systemInsets.bottom + dp(84))
             binding.bottomPanel.updatePadding(bottom = systemInsets.bottom)
 
             val selectionParams = binding.selectionPill.layoutParams as android.widget.FrameLayout.LayoutParams
@@ -407,7 +406,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderCurrentSection() {
         when (activeSection) {
-            Section.Collection -> renderMediaSection(title = null, items = collectionItems, emptyText = "No media yet")
+            Section.Collection -> renderMediaSection(title = "collections", items = collectionItems, emptyText = "No media yet")
             Section.Videos -> renderMediaSection(title = "videos", items = videoItems, emptyText = "No videos yet")
             Section.Albums -> renderAlbums()
             Section.Favorites -> renderMediaSection(title = "favorites", items = favoriteItems, emptyText = "No favorites yet")
@@ -450,7 +449,7 @@ class MainActivity : AppCompatActivity() {
         val items = albumDetailItems
         binding.resultCount.text = if (items.isEmpty()) "" else if (items.size == 1) "1 item" else "${items.size} items"
         adapter.updateCells(buildTimelineCells(items, "No media in this album"))
-        updateTopBarForMode(album.name.lowercase(Locale.getDefault()))
+        updateTopBarForMode(album.name)
         updateDrawerState()
         updateBottomPanelState()
         showBottomPanel()
@@ -557,8 +556,15 @@ class MainActivity : AppCompatActivity() {
             val first = monthItems.first()
             cells += GalleryCell.Header(month, dayFormat.format(Date(first.dateMillis)).uppercase(Locale.getDefault()))
             monthItems.groupBy { dayFormat.format(Date(it.dateMillis)) }.values.forEach { dayItems ->
-                dayItems.forEachIndexed { index, item ->
-                    cells += GalleryCell.Photo(item, featured = index == 0)
+                if (dayItems.size >= 3) {
+                    cells += GalleryCell.Collage(dayItems.take(3))
+                    dayItems.drop(3).forEach { item ->
+                        cells += GalleryCell.Photo(item, featured = false)
+                    }
+                } else {
+                    dayItems.forEach { item ->
+                        cells += GalleryCell.Photo(item, featured = false)
+                    }
                 }
             }
         }
@@ -642,17 +648,19 @@ class MainActivity : AppCompatActivity() {
             binding.searchLaunchBtn.visibility = View.GONE
         } else {
             binding.searchLaunchBtn.visibility = View.VISIBLE
-            updateTopBarForMode(
-                when {
-                    currentMode == Mode.Search -> "search"
-                    currentMode == Mode.AlbumDetail -> currentAlbum?.name?.lowercase(Locale.getDefault())
-                    activeSection == Section.Collection -> null
-                    activeSection == Section.Videos -> "videos"
-                    activeSection == Section.Albums -> "albums"
-                    activeSection == Section.Favorites -> "favorites"
-                    else -> null
-                }
-            )
+            updateTopBarForMode(currentTopTitle())
+        }
+    }
+
+    private fun currentTopTitle(): String? {
+        return when {
+            currentMode == Mode.Search -> "search"
+            currentMode == Mode.AlbumDetail -> currentAlbum?.name
+            activeSection == Section.Collection -> "collections"
+            activeSection == Section.Videos -> "videos"
+            activeSection == Section.Albums -> "albums"
+            activeSection == Section.Favorites -> "favorites"
+            else -> null
         }
     }
 
@@ -877,7 +885,7 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             binding.menuBtn.setImageResource(R.drawable.ic_fluent_navigation_24_regular)
-            binding.menuBtn.alpha = if (title == null) 0.2f else 1f
+            binding.menuBtn.alpha = 1f
             binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
         }
 
@@ -899,26 +907,39 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateBottomPanelState() {
-        updateBottomTab(binding.bottomCollections, activeSection == Section.Collection)
-        updateBottomTab(binding.bottomVideos, activeSection == Section.Videos)
-        updateBottomTab(binding.bottomAlbums, activeSection == Section.Albums)
-        updateBottomTab(binding.bottomFavorites, activeSection == Section.Favorites)
+        updateBottomTab(
+            tab = binding.bottomCollections,
+            icon = binding.bottomCollectionsIcon,
+            active = currentMode != Mode.Search && activeSection == Section.Collection
+        )
+        updateBottomTab(
+            tab = binding.bottomAlbums,
+            icon = binding.bottomAlbumsIcon,
+            active = (currentMode != Mode.Search && activeSection == Section.Albums) || currentMode == Mode.AlbumDetail
+        )
+        updateBottomTab(
+            tab = binding.bottomFavorites,
+            icon = binding.bottomFavoritesIcon,
+            active = currentMode != Mode.Search && activeSection == Section.Favorites
+        )
+        updateBottomTab(
+            tab = binding.bottomVideos,
+            icon = binding.bottomVideosIcon,
+            active = currentMode != Mode.Search && activeSection == Section.Videos
+        )
     }
 
-    private fun updateBottomTab(tab: View, active: Boolean) {
-        tab.alpha = if (active) 1f else 0.58f
-    }
-
-    private fun hideBottomPanel() {
-        if (!isBottomPanelVisible || adapter.selectionCount > 0) return
-        isBottomPanelVisible = false
-        binding.bottomPanel.animate().translationY(binding.bottomPanel.height.toFloat()).setDuration(180).start()
+    private fun updateBottomTab(tab: View, icon: android.widget.ImageView, active: Boolean) {
+        tab.alpha = if (active) 1f else 0.72f
+        icon.imageTintList = ColorStateList.valueOf(
+            if (active) Color.WHITE else Color.parseColor("#6F6F6F")
+        )
+        icon.scaleX = if (active) 1f else 0.92f
+        icon.scaleY = if (active) 1f else 0.92f
     }
 
     private fun showBottomPanel() {
-        if (isBottomPanelVisible) return
-        isBottomPanelVisible = true
-        binding.bottomPanel.animate().translationY(0f).setDuration(180).start()
+        binding.bottomPanel.translationY = 0f
     }
 
     private fun showFatalError(error: Throwable) {
