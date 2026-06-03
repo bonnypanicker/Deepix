@@ -25,7 +25,7 @@ import kotlin.math.roundToInt
 class GalleryRepository(
     private val context: Context,
     private val imageEncoder: ImageEncoder,
-    private val textEncoder: TextEncoder
+    private val textEncoder: TextEncoder?
 ) {
     data class MediaItem(
         val uri: Uri,
@@ -41,6 +41,13 @@ class GalleryRepository(
     )
 
     data class Album(val id: String, val name: String, val count: Int, val coverUri: Uri?)
+
+    data class Snapshot(
+        val albums: List<Album>,
+        val imageItems: List<MediaItem>,
+        val collectionItems: List<MediaItem>,
+        val videoItems: List<MediaItem>
+    )
 
     enum class MediaType {
         Image,
@@ -61,6 +68,18 @@ class GalleryRepository(
     fun getAllMediaItemsForAlbumIds(albumIds: Set<String>): List<MediaItem> {
         return (queryImageItems(albumIds) + queryVideoItems(albumIds))
             .sortedByDescending { it.dateMillis }
+    }
+
+    fun loadSnapshot(albumIds: Set<String>): Snapshot {
+        val images = queryImageItems(albumIds)
+        val videos = queryVideoItems(albumIds)
+        val allItems = (images + videos).sortedByDescending { it.dateMillis }
+        return Snapshot(
+            albums = buildAlbumsFrom(allItems),
+            imageItems = images,
+            collectionItems = allItems,
+            videoItems = videos
+        )
     }
 
     fun getImageItemsForAlbumIds(albumIds: Set<String>): List<MediaItem> {
@@ -112,7 +131,7 @@ class GalleryRepository(
                     uri = ContentUris.withAppendedId(collection, cursor.getLong(idColumn)),
                     bucketId = bucketId,
                     bucketName = cursor.getString(bucketNameColumn)?.takeIf { it.isNotBlank() } ?: "Unnamed album",
-                    dateMillis = if (dateTaken > 0L) dateTaken else dateAdded,
+                    dateMillis = sanitizeDate(dateTaken, dateAdded),
                     width = cursor.getInt(widthColumn),
                     height = cursor.getInt(heightColumn),
                     mimeType = cursor.getString(mimeColumn),
@@ -167,7 +186,7 @@ class GalleryRepository(
                     uri = ContentUris.withAppendedId(collection, cursor.getLong(idColumn)),
                     bucketId = bucketId,
                     bucketName = cursor.getString(bucketNameColumn)?.takeIf { it.isNotBlank() } ?: "Unnamed album",
-                    dateMillis = if (dateTaken > 0L) dateTaken else dateAdded,
+                    dateMillis = sanitizeDate(dateTaken, dateAdded),
                     width = cursor.getInt(widthColumn),
                     height = cursor.getInt(heightColumn),
                     mimeType = cursor.getString(mimeColumn),
@@ -223,16 +242,7 @@ class GalleryRepository(
     }
 
     fun getAlbums(): List<Album> {
-        val buckets = LinkedHashMap<String, Album>()
-        getAllMediaItemsForAlbumIds(emptySet()).forEach { item ->
-            val existing = buckets[item.bucketId]
-            if (existing == null) {
-                buckets[item.bucketId] = Album(item.bucketId, item.bucketName, 1, item.uri)
-            } else {
-                buckets[item.bucketId] = existing.copy(count = existing.count + 1)
-            }
-        }
-        return buckets.values.sortedByDescending { it.count }
+        return buildAlbumsFrom(getAllMediaItemsForAlbumIds(emptySet()))
     }
 
     fun loadBitmap(uri: Uri): Bitmap? {
@@ -373,6 +383,7 @@ class GalleryRepository(
     }
 
     fun search(query: String): List<Uri> {
+        val textEncoder = textEncoder ?: return emptyList()
         var snapshot = snapshotIndex()
         if (snapshot.isEmpty()) {
             synchronized(indexLock) {
@@ -424,6 +435,29 @@ class GalleryRepository(
 
     private fun snapshotIndex(): LinkedHashMap<String, FloatArray> =
         synchronized(indexLock) { LinkedHashMap(embeddings) }
+
+    private fun buildAlbumsFrom(items: List<MediaItem>): List<Album> {
+        val buckets = LinkedHashMap<String, Album>()
+        items.forEach { item ->
+            val existing = buckets[item.bucketId]
+            if (existing == null) {
+                buckets[item.bucketId] = Album(item.bucketId, item.bucketName, 1, item.uri)
+            } else {
+                buckets[item.bucketId] = existing.copy(count = existing.count + 1)
+            }
+        }
+        return buckets.values.sortedByDescending { it.count }
+    }
+
+    private fun sanitizeDate(dateTakenMs: Long, dateAddedMs: Long): Long {
+        val nowPlusDay = System.currentTimeMillis() + OneDayMillis
+        return when {
+            dateTakenMs in MinValidMillis..nowPlusDay -> dateTakenMs
+            dateAddedMs in MinValidMillis..nowPlusDay -> dateAddedMs
+            dateAddedMs > 0L -> dateAddedMs.coerceIn(MinValidMillis, nowPlusDay)
+            else -> System.currentTimeMillis()
+        }
+    }
 
     private fun buildQueryVariants(query: String): List<String> {
         val cleaned = query.trim().replace(Regex("""\s+"""), " ")
@@ -532,6 +566,8 @@ class GalleryRepository(
         private const val SaveEvery = 20
         private const val MaxUriBytes = 4096
         private const val MaxEmbeddingSize = 4096
+        private const val MinValidMillis = 631152000000L
+        private const val OneDayMillis = 86_400_000L
 
         /** Number of images per inference batch. Start at 4, reduce to 2 if OOM occurs. */
         const val BatchSize = 4

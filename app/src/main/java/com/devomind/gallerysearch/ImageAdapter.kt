@@ -11,6 +11,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.Glide
 import com.devomind.gallerysearch.databinding.ItemAlbumBinding
 import com.devomind.gallerysearch.databinding.ItemCollageBinding
@@ -74,6 +75,18 @@ class ImageAdapter(
         }
     }
 
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int, payloads: MutableList<Any>) {
+        if (payloads.any { it == PayloadSelection }) {
+            when (val cell = cells[position]) {
+                is GalleryCell.Photo -> (holder as PhotoViewHolder).bindSelection(cell, selected.isNotEmpty(), cell.item.uri in selected)
+                is GalleryCell.Collage -> (holder as CollageViewHolder).bindSelection(cell, selected)
+                else -> onBindViewHolder(holder, position)
+            }
+            return
+        }
+        onBindViewHolder(holder, position)
+    }
+
     override fun getItemCount(): Int = cells.size
 
     fun spanSizeAt(position: Int, totalSpanCount: Int): Int {
@@ -127,21 +140,46 @@ class ImageAdapter(
 
     fun clearSelection() {
         if (selected.isEmpty()) return
+        val previous = selected.toSet()
         selected.clear()
-        notifyDataSetChanged()
+        notifySelectionChanged(previous, selectionModeChanged = true)
         onSelectionChanged(0)
     }
 
     fun selectedUris(): List<Uri> = selected.toList()
 
     private fun toggleSelection(uri: Uri) {
+        val hadSelection = selected.isNotEmpty()
         if (uri in selected) {
             selected -= uri
         } else {
             selected += uri
         }
-        notifyDataSetChanged()
+        notifySelectionChanged(setOf(uri), selectionModeChanged = hadSelection != selected.isNotEmpty())
         onSelectionChanged(selected.size)
+    }
+
+    private fun notifySelectionChanged(affectedUris: Set<Uri>, selectionModeChanged: Boolean) {
+        if (selectionModeChanged) {
+            cells.forEachIndexed { index, cell ->
+                if (cell is GalleryCell.Photo || cell is GalleryCell.Collage) {
+                    notifyItemChanged(index, PayloadSelection)
+                }
+            }
+            return
+        }
+        affectedUris.forEach { uri ->
+            cells.forEachIndexed { index, cell ->
+                val containsUri = when (cell) {
+                    is GalleryCell.Photo -> cell.item.uri == uri
+                    is GalleryCell.Collage -> cell.items.any { it.uri == uri }
+                    else -> false
+                }
+                if (containsUri) {
+                    notifyItemChanged(index, PayloadSelection)
+                }
+            }
+        }
     }
 
     private fun stableIdFor(cell: GalleryCell): Long {
@@ -152,7 +190,7 @@ class ImageAdapter(
             is GalleryCell.AlbumCell -> "album:${cell.album.id}"
             is GalleryCell.Empty -> "empty:${cell.text}"
         }
-        return key.hashCode().toLong()
+        return key.fold(1125899906842597L) { hash, char -> 31L * hash + char.code.toLong() }
     }
 
     class HeaderViewHolder(private val binding: ItemTimelineHeaderBinding) : RecyclerView.ViewHolder(binding.root) {
@@ -174,16 +212,21 @@ class ImageAdapter(
             val height = if (cell.featured) regularSize * 2 + gutter else regularSize
             binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply { this.height = height }
 
-            binding.dimScrim.visibility = if (selectionMode && !isSelected) View.VISIBLE else View.GONE
-            binding.checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
-            binding.videoBadge.visibility = if (cell.item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
-
             Glide.with(binding.thumbnail.context)
                 .load(cell.item.uri)
+                .format(DecodeFormat.PREFER_RGB_565)
                 .centerCrop()
+                .override(regularSize, height)
                 .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
                 .into(binding.thumbnail)
 
+            bindSelection(cell, selectionMode, isSelected)
+        }
+
+        fun bindSelection(cell: GalleryCell.Photo, selectionMode: Boolean, isSelected: Boolean) {
+            binding.dimScrim.visibility = if (selectionMode && !isSelected) View.VISIBLE else View.GONE
+            binding.checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
+            binding.videoBadge.visibility = if (cell.item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
             binding.root.setOnClickListener {
                 if (selectionMode) onSelectionToggle(cell.item.uri) else onPhotoClick(cell.item)
             }
@@ -204,6 +247,7 @@ class ImageAdapter(
             val metrics = binding.root.resources.displayMetrics
             val gutter = (2f * metrics.density).toInt()
             val regularSize = ((metrics.widthPixels - gutter * 6) / 3).coerceAtLeast(96)
+            val leadSize = regularSize * 2 + gutter
             binding.collageRoot.layoutParams = binding.collageRoot.layoutParams.apply {
                 height = regularSize * 2 + gutter
             }
@@ -215,8 +259,11 @@ class ImageAdapter(
                 checkBadge = binding.leadCheckBadge,
                 videoBadge = binding.leadVideoBadge,
                 item = cell.items[0],
+                overrideWidth = leadSize,
+                overrideHeight = leadSize,
                 selectionMode = selected.isNotEmpty(),
-                isSelected = cell.items[0].uri in selected
+                isSelected = cell.items[0].uri in selected,
+                loadImage = true
             )
             bindTile(
                 container = binding.topRightTile,
@@ -225,8 +272,11 @@ class ImageAdapter(
                 checkBadge = binding.topRightCheckBadge,
                 videoBadge = binding.topRightVideoBadge,
                 item = cell.items[1],
+                overrideWidth = regularSize,
+                overrideHeight = regularSize,
                 selectionMode = selected.isNotEmpty(),
-                isSelected = cell.items[1].uri in selected
+                isSelected = cell.items[1].uri in selected,
+                loadImage = true
             )
             bindTile(
                 container = binding.bottomRightTile,
@@ -235,8 +285,57 @@ class ImageAdapter(
                 checkBadge = binding.bottomRightCheckBadge,
                 videoBadge = binding.bottomRightVideoBadge,
                 item = cell.items[2],
+                overrideWidth = regularSize,
+                overrideHeight = regularSize,
                 selectionMode = selected.isNotEmpty(),
-                isSelected = cell.items[2].uri in selected
+                isSelected = cell.items[2].uri in selected,
+                loadImage = true
+            )
+        }
+
+        fun bindSelection(cell: GalleryCell.Collage, selected: Set<Uri>) {
+            val metrics = binding.root.resources.displayMetrics
+            val gutter = (2f * metrics.density).toInt()
+            val regularSize = ((metrics.widthPixels - gutter * 6) / 3).coerceAtLeast(96)
+            val leadSize = regularSize * 2 + gutter
+            bindTile(
+                container = binding.leadTile,
+                thumbnail = binding.leadThumbnail,
+                dimScrim = binding.leadDimScrim,
+                checkBadge = binding.leadCheckBadge,
+                videoBadge = binding.leadVideoBadge,
+                item = cell.items[0],
+                overrideWidth = leadSize,
+                overrideHeight = leadSize,
+                selectionMode = selected.isNotEmpty(),
+                isSelected = cell.items[0].uri in selected,
+                loadImage = false
+            )
+            bindTile(
+                container = binding.topRightTile,
+                thumbnail = binding.topRightThumbnail,
+                dimScrim = binding.topRightDimScrim,
+                checkBadge = binding.topRightCheckBadge,
+                videoBadge = binding.topRightVideoBadge,
+                item = cell.items[1],
+                overrideWidth = regularSize,
+                overrideHeight = regularSize,
+                selectionMode = selected.isNotEmpty(),
+                isSelected = cell.items[1].uri in selected,
+                loadImage = false
+            )
+            bindTile(
+                container = binding.bottomRightTile,
+                thumbnail = binding.bottomRightThumbnail,
+                dimScrim = binding.bottomRightDimScrim,
+                checkBadge = binding.bottomRightCheckBadge,
+                videoBadge = binding.bottomRightVideoBadge,
+                item = cell.items[2],
+                overrideWidth = regularSize,
+                overrideHeight = regularSize,
+                selectionMode = selected.isNotEmpty(),
+                isSelected = cell.items[2].uri in selected,
+                loadImage = false
             )
         }
 
@@ -247,19 +346,26 @@ class ImageAdapter(
             checkBadge: TextView,
             videoBadge: TextView,
             item: GalleryRepository.MediaItem,
+            overrideWidth: Int,
+            overrideHeight: Int,
             selectionMode: Boolean,
-            isSelected: Boolean
+            isSelected: Boolean,
+            loadImage: Boolean
         ) {
             dimScrim.visibility = if (selectionMode && !isSelected) View.VISIBLE else View.GONE
             checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
             videoBadge.visibility =
                 if (item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
 
-            Glide.with(thumbnail.context)
-                .load(item.uri)
-                .centerCrop()
-                .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
-                .into(thumbnail)
+            if (loadImage) {
+                Glide.with(thumbnail.context)
+                    .load(item.uri)
+                    .format(DecodeFormat.PREFER_RGB_565)
+                    .centerCrop()
+                    .override(overrideWidth, overrideHeight)
+                    .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
+                    .into(thumbnail)
+            }
 
             container.setOnClickListener {
                 if (selectionMode) onSelectionToggle(item.uri) else onPhotoClick(item)
@@ -276,11 +382,16 @@ class ImageAdapter(
         private val onAlbumClick: (GalleryRepository.Album) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(album: GalleryRepository.Album) {
+            val metrics = binding.root.resources.displayMetrics
+            val coverWidth = (metrics.widthPixels / 2).coerceAtLeast(160)
+            val coverHeight = (coverWidth * 3) / 4
             binding.albumName.text = album.name
             binding.albumCount.text = if (album.count == 1) "1 item" else "${album.count} items"
             Glide.with(binding.albumCover.context)
                 .load(album.coverUri)
+                .format(DecodeFormat.PREFER_RGB_565)
                 .centerCrop()
+                .override(coverWidth, coverHeight)
                 .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
                 .into(binding.albumCover)
             binding.root.setOnClickListener { onAlbumClick(album) }
@@ -294,6 +405,7 @@ class ImageAdapter(
     }
 
     companion object {
+        private const val PayloadSelection = "payload_selection"
         const val ViewTypeHeader = 1
         const val ViewTypePhoto = 2
         const val ViewTypeCollage = 3

@@ -34,6 +34,7 @@ import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.work.BackoffPolicy
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -48,6 +49,7 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
@@ -67,13 +69,18 @@ class MainActivity : AppCompatActivity() {
     private var currentMode = Mode.Browse
     private var activeSection = Section.Collection
     private var searchJob: Job? = null
+    private var renderJob: Job? = null
     private var lastProgressRefresh = -1
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
     private var topInsetPx = 0
 
-    private val monthFormat = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
-    private val dayFormat = SimpleDateFormat("EEE, d", Locale.getDefault())
+    private val monthFormat = object : ThreadLocal<SimpleDateFormat>() {
+        override fun initialValue(): SimpleDateFormat = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
+    }
+    private val dayFormat = object : ThreadLocal<SimpleDateFormat>() {
+        override fun initialValue(): SimpleDateFormat = SimpleDateFormat("EEE, d", Locale.getDefault())
+    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -342,15 +349,13 @@ class MainActivity : AppCompatActivity() {
     ): LibrarySnapshot {
         val refreshedAlbums = repo.getAlbums()
         val effectiveSelection = requestedSelection.intersect(refreshedAlbums.map { it.id }.toSet())
-        val refreshedImages = repo.getImageItemsForAlbumIds(effectiveSelection)
-        val refreshedCollection = repo.getAllMediaItemsForAlbumIds(effectiveSelection)
-        val refreshedVideos = repo.getVideoItemsForAlbumIds(effectiveSelection)
-        repo.loadCachedIndexForUris(refreshedImages.map { it.uri })
+        val refreshedSnapshot = repo.loadSnapshot(effectiveSelection)
+        repo.loadCachedIndexForUris(refreshedSnapshot.imageItems.map { it.uri })
         return LibrarySnapshot(
             albums = refreshedAlbums,
-            imageItems = refreshedImages,
-            collectionItems = refreshedCollection,
-            videoItems = refreshedVideos,
+            imageItems = refreshedSnapshot.imageItems,
+            collectionItems = refreshedSnapshot.collectionItems,
+            videoItems = refreshedSnapshot.videoItems,
             selectedAlbumIds = effectiveSelection
         )
     }
@@ -418,14 +423,24 @@ class MainActivity : AppCompatActivity() {
         items: List<GalleryRepository.MediaItem>,
         emptyText: String
     ) {
+        renderJob?.cancel()
         currentMode = Mode.Browse
         binding.searchPanel.visibility = View.GONE
         binding.resultCount.text = ""
-        adapter.updateCells(buildTimelineCells(items, emptyText))
         updateTopBarForMode(title)
         updateDrawerState()
         updateBottomPanelState()
         showBottomPanel()
+        val expectedSection = activeSection
+        val cappedItems = items.take(DisplayCap)
+        renderJob = lifecycleScope.launch {
+            val cells = withContext(Dispatchers.Default) {
+                buildTimelineCells(cappedItems, emptyText)
+            }
+            if (currentMode == Mode.Browse && currentAlbum == null && activeSection == expectedSection) {
+                adapter.updateCells(cells)
+            }
+        }
     }
 
     private fun renderAlbums() {
@@ -443,19 +458,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderAlbumDetail(album: GalleryRepository.Album) {
+        renderJob?.cancel()
         currentMode = Mode.AlbumDetail
         currentAlbum = album
         binding.searchPanel.visibility = View.GONE
         val items = albumDetailItems
         binding.resultCount.text = if (items.isEmpty()) "" else if (items.size == 1) "1 item" else "${items.size} items"
-        adapter.updateCells(buildTimelineCells(items, "No media in this album"))
         updateTopBarForMode(album.name)
         updateDrawerState()
         updateBottomPanelState()
         showBottomPanel()
+        val expectedAlbumId = album.id
+        val cappedItems = items.take(DisplayCap)
+        renderJob = lifecycleScope.launch {
+            val cells = withContext(Dispatchers.Default) {
+                buildTimelineCells(cappedItems, "No media in this album")
+            }
+            if (currentMode == Mode.AlbumDetail && currentAlbum?.id == expectedAlbumId) {
+                adapter.updateCells(cells)
+            }
+        }
     }
 
     private fun openSearch() {
+        renderJob?.cancel()
         currentMode = Mode.Search
         binding.searchPanel.visibility = View.VISIBLE
         binding.screenTitle.visibility = View.VISIBLE
@@ -473,6 +499,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun closeSearch(clearQuery: Boolean) {
+        renderJob?.cancel()
         binding.searchPanel.visibility = View.GONE
         if (clearQuery) {
             binding.searchInput.text?.clear()
@@ -552,10 +579,13 @@ class MainActivity : AppCompatActivity() {
     ): List<GalleryCell> {
         if (items.isEmpty()) return listOf(GalleryCell.Empty(emptyText))
         val cells = ArrayList<GalleryCell>()
-        items.groupBy { monthFormat.format(Date(it.dateMillis)) }.forEach { (month, monthItems) ->
+        items.groupBy { safeFormat(monthFormat, it.dateMillis, "Unknown date") }.forEach { (month, monthItems) ->
             val first = monthItems.first()
-            cells += GalleryCell.Header(month, dayFormat.format(Date(first.dateMillis)).uppercase(Locale.getDefault()))
-            monthItems.groupBy { dayFormat.format(Date(it.dateMillis)) }.values.forEach { dayItems ->
+            cells += GalleryCell.Header(
+                month,
+                safeFormat(dayFormat, first.dateMillis, "").uppercase(Locale.getDefault())
+            )
+            monthItems.groupBy { safeFormat(dayFormat, it.dateMillis, "") }.values.forEach { dayItems ->
                 if (dayItems.size >= 3) {
                     cells += GalleryCell.Collage(dayItems.take(3))
                     dayItems.drop(3).forEach { item ->
@@ -598,8 +628,8 @@ class MainActivity : AppCompatActivity() {
         val normalized = query.trim().lowercase(Locale.getDefault())
         baseItems.asSequence()
             .filter { item ->
-                val dateText = monthFormat.format(Date(item.dateMillis)).lowercase(Locale.getDefault())
-                val dayText = dayFormat.format(Date(item.dateMillis)).lowercase(Locale.getDefault())
+                val dateText = safeFormat(monthFormat, item.dateMillis, "").lowercase(Locale.getDefault())
+                val dayText = safeFormat(dayFormat, item.dateMillis, "").lowercase(Locale.getDefault())
                 val typeText = if (item.mediaType == GalleryRepository.MediaType.Video) "video" else "photo"
                 listOfNotNull(
                     item.displayName,
@@ -614,6 +644,16 @@ class MainActivity : AppCompatActivity() {
             .forEach { ordered += it.uri }
 
         return ordered.mapNotNull { uri -> byUri[uri]?.let { GalleryCell.Photo(it, featured = false) } }
+    }
+
+    private fun safeFormat(
+        formatter: ThreadLocal<SimpleDateFormat>,
+        millis: Long,
+        fallback: String
+    ): String {
+        return runCatching {
+            formatter.get()?.format(Date(millis))
+        }.getOrNull().orEmpty().ifBlank { fallback }
     }
 
     private fun setBusy(message: String) {
@@ -787,6 +827,7 @@ class MainActivity : AppCompatActivity() {
 
         val request = OneTimeWorkRequestBuilder<IndexWorker>()
             .setInputData(payload)
+            .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
             .build()
 
         WorkManager.getInstance(this).enqueueUniqueWork(
@@ -958,6 +999,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         searchJob?.cancel()
+        renderJob?.cancel()
         imageEncoder?.close()
         textEncoder?.close()
     }
@@ -993,5 +1035,6 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val IndexWorkName = "gallery_background_index"
         private const val GridSpanCount = 6
+        private const val DisplayCap = 800
     }
 }

@@ -20,15 +20,22 @@ class IndexWorker(
         setForeground(createForegroundInfo(0, 1))
 
         var imageEncoder: ImageEncoder? = null
-        var textEncoder: TextEncoder? = null
 
-        return runCatching {
+        return try {
             imageEncoder = ImageEncoder(applicationContext)
-            textEncoder = TextEncoder(applicationContext)
-            val repository = GalleryRepository(applicationContext, imageEncoder!!, textEncoder!!)
+            val repository = GalleryRepository(applicationContext, imageEncoder!!, null)
 
             val selected = inputData.getStringArray(SelectedAlbumIdsKey)?.toSet() ?: emptySet()
-            val uris = repository.getImageUrisForAlbumIds(selected)
+            val since = IndexPreferences.loadLastIndexedTime(applicationContext)
+            val uris = if (since > 0L) {
+                repository.getNewImageUris(selected, since)
+            } else {
+                repository.getImageUrisForAlbumIds(selected)
+            }
+            if (uris.isEmpty()) {
+                IndexPreferences.saveLastIndexedTime(applicationContext)
+                return Result.success()
+            }
             val total = max(1, uris.size)
 
             repository.buildIndex(uris) { current, _ ->
@@ -48,11 +55,12 @@ class IndexWorker(
             IndexPreferences.saveLastIndexedTime(applicationContext)
 
             Result.success()
-        }.getOrElse {
-            Result.failure()
-        }.also {
+        } catch (oom: OutOfMemoryError) {
+            if (runAttemptCount < MaxRetryCount) Result.retry() else Result.failure()
+        } catch (_: Throwable) {
+            if (runAttemptCount < MaxRetryCount) Result.retry() else Result.failure()
+        } finally {
             imageEncoder?.close()
-            textEncoder?.close()
         }
     }
 
@@ -85,6 +93,7 @@ class IndexWorker(
         const val ProgressCurrentKey = "progress_current"
         const val ProgressTotalKey = "progress_total"
         const val ProgressPercentKey = "progress_percent"
+        private const val MaxRetryCount = 3
         private const val ChannelId = "gallery_index_channel"
         private const val NotificationId = 1001
     }

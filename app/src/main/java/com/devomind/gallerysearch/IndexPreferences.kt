@@ -34,6 +34,8 @@ object IndexPreferences {
             .getLong(KeyLastIndexed, 0L)
     }
 
+    fun loadLastIndexedTime(context: Context): Long = getLastIndexedTime(context)
+
     fun saveOptimalThreadCount(context: Context, count: Int) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
