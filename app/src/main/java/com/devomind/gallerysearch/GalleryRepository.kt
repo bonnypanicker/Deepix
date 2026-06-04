@@ -24,9 +24,15 @@ import kotlin.math.roundToInt
 
 class GalleryRepository(
     private val context: Context,
-    private val imageEncoder: ImageEncoder,
-    private val textEncoder: TextEncoder?
+    @Volatile private var imageEncoder: ImageEncoder? = null,
+    @Volatile private var textEncoder: TextEncoder? = null
 ) {
+    /** Attaches the MobileCLIP encoders once they finish loading on a background thread. */
+    fun attachEncoders(image: ImageEncoder, text: TextEncoder?) {
+        this.imageEncoder = image
+        this.textEncoder = text
+    }
+
     data class MediaItem(
         val uri: Uri,
         val bucketId: String,
@@ -333,7 +339,8 @@ class GalleryRepository(
 
                 val bitmaps = batchData.entries.map { it.bitmap }
                 try {
-                    val embeddings = imageEncoder.encodeBatch(bitmaps)
+                    val encoder = imageEncoder ?: error("Image encoder not attached yet; indexing must wait for model load")
+                    val embeddings = encoder.encodeBatch(bitmaps)
 
                     // Store each valid result
                     batchData.entries.zip(embeddings).forEach { (entry, embedding) ->
@@ -351,7 +358,8 @@ class GalleryRepository(
                     // Fallback: encode one at a time
                     for (entry in batchData.entries) {
                         try {
-                            val embedding = imageEncoder.encode(entry.bitmap)
+                            val encoder = imageEncoder ?: continue
+                            val embedding = encoder.encode(entry.bitmap)
                             if (isEmbeddingValid(embedding)) {
                                 synchronized(indexLock) {
                                     this@GalleryRepository.embeddings[entry.uri.toString()] = embedding

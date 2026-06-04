@@ -45,6 +45,7 @@ import com.devomind.gallerysearch.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -319,41 +320,80 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initializeCore() {
-        lifecycleScope.launch {
-            setBusy("Loading AI models...")
-            try {
-                val result = withContext(Dispatchers.IO) {
-                    var image: ImageEncoder? = null
-                    var text: TextEncoder? = null
-                    try {
-                        image = ImageEncoder(applicationContext)
-                        text = TextEncoder(applicationContext)
-                        val repo = GalleryRepository(applicationContext, image, text)
-                        val selectedIds = IndexPreferences.loadSelectedAlbums(applicationContext)
-                        val snapshot = loadLibrarySnapshot(repo, selectedIds)
-                        InitResult(image, text, repo, snapshot)
-                    } catch (error: Throwable) {
-                        image?.close()
-                        text?.close()
-                        throw error
-                    }
-                }
+        // -------------------- TRACK C (fire first) --------------------
+        enqueueBackgroundIndexingIfPossible(showToast = false)
 
-                imageEncoder = result.imageEncoder
-                textEncoder = result.textEncoder
-                repository = result.repository
-                applyLibrarySnapshot(result.snapshot)
+        // -------------------- TRACK A (UI critical path) --------------
+        lifecycleScope.launch {
+            setBusy("Loading gallery…")
+            try {
+                val selectedIds = withContext(Dispatchers.IO) {
+                    IndexPreferences.loadSelectedAlbums(applicationContext)
+                }
+                val repo = GalleryRepository(applicationContext)
+                repository = repo
+                val snapshot = withContext(Dispatchers.IO) {
+                    loadLibrarySnapshot(repo, selectedIds)
+                }
+                applyLibrarySnapshot(snapshot)
                 currentAlbum = null
                 lastProgressRefresh = -1
                 binding.progressBar.visibility = View.GONE
-                binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, result.repository.indexedCount)
+                binding.statusText.text =
+                    selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
                 renderCurrentState()
-                maybeStartBackgroundIndexing()
             } catch (error: Throwable) {
                 binding.progressBar.visibility = View.GONE
                 showFatalError(error)
+                return@launch
             }
+
+            // -------------------- TRACK B (model warm-up) -------------
+            loadEncodersInBackground()
         }
+    }
+
+    private fun loadEncodersInBackground() {
+        lifecycleScope.launch {
+            val encoders = withContext(Dispatchers.IO) {
+                val imageAsync = async { runCatching { ImageEncoder(applicationContext) }.getOrNull() }
+                val textAsync = async { runCatching { TextEncoder(applicationContext) }.getOrNull() }
+                imageAsync.await() to textAsync.await()
+            }
+            val image = encoders.first
+            val text = encoders.second
+            if (image == null) {
+                Log.w(TAG, "Vision encoder failed to load; semantic search disabled.")
+                return@launch
+            }
+            imageEncoder = image
+            textEncoder = text
+            repository?.attachEncoders(image, text)
+            if (currentMode == Mode.Search && !binding.searchInput.text.isNullOrBlank()) {
+                submitSearch()
+            }
+            withContext(Dispatchers.IO) {
+                repository?.loadCachedIndexForUris(allUris)
+            }
+            maybeStartBackgroundIndexing()
+        }
+    }
+
+    private fun enqueueBackgroundIndexingIfPossible(showToast: Boolean) {
+        val savedSelection = IndexPreferences.loadSelectedAlbums(applicationContext)
+        val payload = Data.Builder()
+            .putStringArray(IndexWorker.SelectedAlbumIdsKey, savedSelection.toTypedArray())
+            .build()
+        val request = OneTimeWorkRequestBuilder<IndexWorker>()
+            .setInputData(payload)
+            .setBackoffCriteria(BackoffPolicy.LINEAR, DesignTokens.INDEX_BACKOFF_SECONDS, TimeUnit.SECONDS)
+            .build()
+        WorkManager.getInstance(this).enqueueUniqueWork(
+            INDEX_WORK_NAME,
+            ExistingWorkPolicy.KEEP,
+            request
+        )
+        if (showToast) Toast.makeText(this, "Indexing started.", Toast.LENGTH_SHORT).show()
     }
 
     private suspend fun loadLibrarySnapshot(
@@ -558,6 +598,12 @@ class MainActivity : AppCompatActivity() {
     private fun submitSearch() {
         val query = binding.searchInput.text?.toString()?.trim().orEmpty()
         val repo = repository ?: return
+        if (textEncoder == null) {
+            adapter.updateCells(
+                listOf(GalleryCell.Empty("Models still warming up — try again in a moment."))
+            )
+            return
+        }
         searchJob?.cancel()
 
         if (query.isBlank()) {
