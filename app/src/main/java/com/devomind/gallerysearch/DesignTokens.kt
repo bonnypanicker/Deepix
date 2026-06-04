@@ -35,4 +35,13 @@ object DesignTokens {
 
     const val DISPLAY_CAP = 800
     const val GRID_SPAN_COUNT = 6
+
+    const val MENU_FADE_DURATION_MS: Long = 160L
+    const val MENU_NEAR_FADE_DURATION_MS: Long = 120L
+    const val MENU_NEAR_X_DP: Float = 96f
+    const val MENU_NEAR_Y_DP: Float = 116f
+    const val SCROLL_THRESHOLD_PX: Int = 32
+    const val SEARCH_METADATA_HARD_CAP: Int = 80
+    const val INDEX_BACKOFF_SECONDS: Long = 10L
+    const val INDEX_LIVE_REFRESH_STEP: Int = 20
 }

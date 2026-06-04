@@ -5,8 +5,8 @@ import android.app.RecoverableSecurityException
 import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -219,10 +219,14 @@ class MainActivity : AppCompatActivity() {
 
         binding.mainSurface.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_MOVE || event.action == MotionEvent.ACTION_DOWN) {
-                val nearMenu = event.x < 96f * resources.displayMetrics.density &&
-                    event.y < topInsetPx + (116f * resources.displayMetrics.density)
+                val nearMenu = event.x < DesignTokens.MENU_NEAR_X_DP * resources.displayMetrics.density &&
+                    event.y < topInsetPx + (DesignTokens.MENU_NEAR_Y_DP * resources.displayMetrics.density)
                 if (adapter.selectionCount == 0) {
-                    binding.menuBtn.animate().alpha(if (nearMenu) 1f else DesignTokens.SCROLLED_HEADER_ALPHA).setDuration(120).start()
+                    val alpha = if (nearMenu) 1f else DesignTokens.SCROLLED_HEADER_ALPHA
+                    binding.menuBtn.animate()
+                        .alpha(alpha)
+                        .setDuration(DesignTokens.MENU_NEAR_FADE_DURATION_MS)
+                        .start()
                 }
             }
             false
@@ -530,8 +534,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSearchMetaText() {
+        val locale = Locale.getDefault()
+        val album = currentAlbum
         binding.searchMetaText.text = when {
-            currentAlbum != null -> "Semantic + metadata search inside ${currentAlbum?.name?.lowercase(Locale.getDefault())}"
+            album != null -> "Semantic + metadata search inside ${album.name.lowercase(locale)}"
             activeSection == Section.Albums -> "Live album search in the current gallery scope"
             activeSection == Section.Videos -> "Metadata search across videos in the current gallery scope"
             activeSection == Section.Favorites -> "Semantic + metadata search across your favorites"
@@ -608,33 +614,29 @@ class MainActivity : AppCompatActivity() {
                 safeFormat(dayFormat, first.dateMillis, "").uppercase(Locale.getDefault())
             )
             monthItems.groupBy { safeFormat(dayFormat, it.dateMillis, "") }.values.forEach { dayItems ->
-                when {
-                    isFirstGroup && dayItems.isNotEmpty() -> {
-                        cells += GalleryCell.Photo(dayItems[0], featured = true)
-                        val remaining = if (dayItems.size > 1) dayItems.drop(1) else emptyList()
-                        remaining.take(2).forEach { item ->
-                            cells += GalleryCell.Photo(item, featured = false)
-                        }
-                        remaining.drop(2).forEach { item ->
-                            cells += GalleryCell.Photo(item, featured = false)
-                        }
-                        isFirstGroup = false
-                    }
-                    dayItems.size >= 3 -> {
-                        cells += GalleryCell.Collage(dayItems.take(3))
-                        dayItems.drop(3).forEach { item ->
-                            cells += GalleryCell.Photo(item, featured = false)
-                        }
-                    }
-                    else -> {
-                        dayItems.forEach { item ->
-                            cells += GalleryCell.Photo(item, featured = false)
-                        }
-                    }
-                }
+                appendDayCells(cells, dayItems, isFirstGroup)
+                if (isFirstGroup && dayItems.isNotEmpty()) isFirstGroup = false
             }
         }
         return cells
+    }
+
+    private fun appendDayCells(
+        cells: MutableList<GalleryCell>,
+        dayItems: List<GalleryRepository.MediaItem>,
+        isFirstGroup: Boolean
+    ) {
+        when {
+            isFirstGroup && dayItems.isNotEmpty() -> {
+                cells += GalleryCell.Photo(dayItems[0], featured = true)
+                dayItems.asSequence().drop(1).forEach { cells += GalleryCell.Photo(it, featured = false) }
+            }
+            dayItems.size >= 3 -> {
+                cells += GalleryCell.Collage(dayItems.take(3))
+                dayItems.asSequence().drop(3).forEach { cells += GalleryCell.Photo(it, featured = false) }
+            }
+            else -> dayItems.forEach { cells += GalleryCell.Photo(it, featured = false) }
+        }
     }
 
     private fun buildAlbumSearchCells(query: String): List<GalleryCell> {
@@ -661,21 +663,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val normalized = query.trim().lowercase(Locale.getDefault())
+        val locale = Locale.getDefault()
+        val normalized = query.trim().lowercase(locale)
         baseItems.asSequence()
-            .filter { item ->
-                val dateText = safeFormat(monthFormat, item.dateMillis, "").lowercase(Locale.getDefault())
-                val dayText = safeFormat(dayFormat, item.dateMillis, "").lowercase(Locale.getDefault())
-                val typeText = if (item.mediaType == GalleryRepository.MediaType.Video) "video" else "photo"
-                listOfNotNull(
-                    item.displayName,
-                    item.bucketName,
-                    item.mimeType,
-                    dateText,
-                    dayText,
-                    typeText
-                ).any { it.lowercase(Locale.getDefault()).contains(normalized) }
-            }
+            .filter { item -> matchesSearch(item, normalized, locale) }
             .take(80)
             .forEach { ordered += it.uri }
 
@@ -687,9 +678,24 @@ class MainActivity : AppCompatActivity() {
         millis: Long,
         fallback: String
     ): String {
-        return runCatching {
-            formatter.get()?.format(Date(millis))
-        }.getOrNull().orEmpty().ifBlank { fallback }
+        val formatted = runCatching { formatter.get()?.format(Date(millis)) }.getOrNull()
+        return if (formatted.isNullOrBlank()) fallback else formatted
+    }
+
+    private fun matchesSearch(
+        item: GalleryRepository.MediaItem,
+        normalized: String,
+        locale: Locale
+    ): Boolean {
+        if (item.displayName?.lowercase(locale)?.contains(normalized) == true) return true
+        if (item.bucketName?.lowercase(locale)?.contains(normalized) == true) return true
+        if (item.mimeType?.lowercase(locale)?.contains(normalized) == true) return true
+        val dateText = safeFormat(monthFormat, item.dateMillis, "")
+        if (dateText.isNotEmpty() && dateText.lowercase(locale).contains(normalized)) return true
+        val dayText = safeFormat(dayFormat, item.dateMillis, "")
+        if (dayText.isNotEmpty() && dayText.lowercase(locale).contains(normalized)) return true
+        val typeText = if (item.mediaType == GalleryRepository.MediaType.Video) "video" else "photo"
+        return typeText.contains(normalized)
     }
 
     private fun setBusy(message: String) {
@@ -723,14 +729,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun currentTopTitle(): String? {
-        return when {
-            currentMode == Mode.Search -> "search"
-            currentMode == Mode.AlbumDetail -> currentAlbum?.name
-            activeSection == Section.Collection -> "collections"
-            activeSection == Section.Videos -> "videos"
-            activeSection == Section.Albums -> "albums"
-            activeSection == Section.Favorites -> "favorites"
-            else -> null
+        return when (currentMode) {
+            Mode.Search -> "search"
+            Mode.AlbumDetail -> currentAlbum?.name
+            Mode.Browse -> when (activeSection) {
+                Section.Collection -> "collections"
+                Section.Videos -> "videos"
+                Section.Albums -> "albums"
+                Section.Favorites -> "favorites"
+            }
         }
     }
 
@@ -797,13 +804,15 @@ class MainActivity : AppCompatActivity() {
                 applyLibrarySnapshot(snapshot)
                 currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
                 binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
-                if (currentMode == Mode.Search) {
-                    updateSearchMetaText()
-                    submitSearch()
-                } else if (currentMode == Mode.AlbumDetail && currentAlbum != null) {
-                    renderAlbumDetail(currentAlbum!!)
-                } else {
-                    renderCurrentSection()
+                val pinnedAlbum = currentAlbum
+                when {
+                    currentMode == Mode.Search -> {
+                        updateSearchMetaText()
+                        submitSearch()
+                    }
+                    currentMode == Mode.AlbumDetail && pinnedAlbum != null ->
+                        renderAlbumDetail(pinnedAlbum)
+                    else -> renderCurrentSection()
                 }
                 maybeStartBackgroundIndexing()
             }
@@ -857,11 +866,11 @@ class MainActivity : AppCompatActivity() {
 
         val request = OneTimeWorkRequestBuilder<IndexWorker>()
             .setInputData(payload)
-            .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
+            .setBackoffCriteria(BackoffPolicy.LINEAR, DesignTokens.INDEX_BACKOFF_SECONDS, TimeUnit.SECONDS)
             .build()
 
         WorkManager.getInstance(this).enqueueUniqueWork(
-            IndexWorkName,
+            INDEX_WORK_NAME,
             ExistingWorkPolicy.KEEP,
             request
         )
@@ -872,7 +881,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun observeIndexWorker() {
         WorkManager.getInstance(this)
-            .getWorkInfosForUniqueWorkLiveData(IndexWorkName)
+            .getWorkInfosForUniqueWorkLiveData(INDEX_WORK_NAME)
             .observe(this) { infos ->
                 val work = infos.firstOrNull() ?: return@observe
                 when (work.state) {
@@ -920,7 +929,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun maybeRefreshLiveIndex(current: Int) {
-        val shouldRefresh = current > 0 && (current % 20 == 0 || current == 1) && current != lastProgressRefresh
+        val shouldRefresh = current > 0 && (current % DesignTokens.INDEX_LIVE_REFRESH_STEP == 0 || current == 1) && current != lastProgressRefresh
         if (!shouldRefresh) return
         lastProgressRefresh = current
 
@@ -971,9 +980,9 @@ class MainActivity : AppCompatActivity() {
         binding.drawerCollection.setBackgroundColor(
             if (currentMode != Mode.Search && activeSection == Section.Collection) active else inactive
         )
-        binding.drawerAlbums.setBackgroundColor(
-            if ((currentMode != Mode.Search && activeSection == Section.Albums) || currentMode == Mode.AlbumDetail) active else inactive
-        )
+        val albumsHighlighted = (currentMode != Mode.Search && activeSection == Section.Albums) ||
+            currentMode == Mode.AlbumDetail
+        binding.drawerAlbums.setBackgroundColor(if (albumsHighlighted) active else inactive)
         binding.drawerSearch.setBackgroundColor(if (currentMode == Mode.Search) active else inactive)
     }
 
@@ -1034,36 +1043,11 @@ class MainActivity : AppCompatActivity() {
         textEncoder?.close()
     }
 
-    private data class InitResult(
-        val imageEncoder: ImageEncoder,
-        val textEncoder: TextEncoder,
-        val repository: GalleryRepository,
-        val snapshot: LibrarySnapshot
-    )
-
-    private data class LibrarySnapshot(
-        val albums: List<GalleryRepository.Album>,
-        val imageItems: List<GalleryRepository.MediaItem>,
-        val collectionItems: List<GalleryRepository.MediaItem>,
-        val videoItems: List<GalleryRepository.MediaItem>,
-        val selectedAlbumIds: Set<String>
-    )
-
-    private enum class Mode {
-        Browse,
-        Search,
-        AlbumDetail
-    }
-
-    private enum class Section {
-        Collection,
-        Videos,
-        Albums,
-        Favorites
-    }
-
     companion object {
-        private const val Tag = "MainActivity"
-        private const val IndexWorkName = "gallery_background_index"
+        private const val TAG = "MainActivity"
+        private const val INDEX_WORK_NAME = "gallery_background_index"
+    }
+}
+llery_background_index"
     }
 }

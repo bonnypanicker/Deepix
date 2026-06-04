@@ -43,6 +43,7 @@ complexity:
     thresholdInFiles: 90
   ReturnCount:
     active: false
+    excludeGuardClauses: true
 
 performance:
   active: true
