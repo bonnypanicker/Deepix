@@ -590,7 +590,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
             } catch (cancelled: CancellationException) {
-                Log.d(Tag, "Search job cancelled.", cancelled)
+                Log.d(TAG, "Search job cancelled.", cancelled)
             } catch (error: Throwable) {
                 showFatalError(error)
             } finally {
@@ -1046,8 +1046,5 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val INDEX_WORK_NAME = "gallery_background_index"
-    }
-}
-llery_background_index"
     }
 }
