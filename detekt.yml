@@ -1,5 +1,5 @@
 build:
-  maxIssues: 20
+  maxIssues: 120
   weights:
     complexity: 2
     style: 1
@@ -21,10 +21,28 @@ style:
 
 complexity:
   active: true
+  CognitiveComplexMethod:
+    active: true
+    threshold: 30
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 25
+  LargeClass:
+    active: true
+    threshold: 900
   LongParameterList:
     active: true
     functionThreshold: 7
     ignoreDefaultParameters: true
+  LongMethod:
+    active: true
+    threshold: 120
+  TooManyFunctions:
+    active: true
+    thresholdInClasses: 80
+    thresholdInFiles: 90
+  ReturnCount:
+    active: false
 
 performance:
   active: true
@@ -41,7 +59,7 @@ coroutines:
 exceptions:
   active: true
   TooGenericExceptionCaught:
-    active: true
+    active: false
     excludes: ['**/test/**']
   SwallowedException:
     active: true

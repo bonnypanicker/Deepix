@@ -13,9 +13,11 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.MediaController
 import android.widget.Toast
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -53,6 +55,8 @@ class ViewerActivity : AppCompatActivity() {
     private var draggingToDismiss = false
     private var pendingDeleteUri: Uri? = null
     private var pendingDeleteNeedsRetry = false
+    private var isVideo = false
+    private var videoPrepared = false
 
     private val deleteRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -87,10 +91,17 @@ class ViewerActivity : AppCompatActivity() {
         }
         favoritesStore = FavoritesStore(this)
 
-        Glide.with(this)
-            .load(currentUri)
-            .fitCenter()
-            .into(binding.photoView)
+        isVideo = (contentResolver.getType(currentUri) ?: "").startsWith("video/")
+        if (isVideo) {
+            bindVideo(currentUri)
+        } else {
+            binding.videoView.visibility = View.GONE
+            binding.photoView.visibility = View.VISIBLE
+            Glide.with(this)
+                .load(currentUri)
+                .fitCenter()
+                .into(binding.photoView)
+        }
 
         renderFavoriteState(favoritesStore.isFavorite(currentUri))
         bindActions(currentUri)
@@ -152,6 +163,9 @@ class ViewerActivity : AppCompatActivity() {
         binding.photoView.setOnClickListener {
             if (!draggingToDismiss) toggleControls()
         }
+        binding.videoView.setOnClickListener {
+            if (!draggingToDismiss) toggleControls()
+        }
         binding.infoBtn.setOnClickListener { toggleInfoPanel() }
         binding.shareBtn.setOnClickListener { share(uri) }
         binding.favoriteBtn.setOnClickListener {
@@ -159,10 +173,55 @@ class ViewerActivity : AppCompatActivity() {
             contentChanged = true
             renderFavoriteState(isFavorite)
         }
-        binding.editBtn.setOnClickListener { edit(uri) }
+        binding.editBtn.setOnClickListener {
+            if (isVideo) toggleVideoPlayback() else edit(uri)
+        }
         binding.deleteBtn.setOnClickListener { confirmDelete(uri) }
         binding.viewerRoot.setOnTouchListener { _, event ->
             handleViewerTouch(event)
+        }
+    }
+
+    private fun bindVideo(uri: Uri) {
+        binding.photoView.visibility = View.GONE
+        binding.videoView.visibility = View.VISIBLE
+        binding.editBtn.setImageResource(R.drawable.ic_fluent_pause_24_regular)
+        binding.editBtn.contentDescription = "Pause video"
+
+        val controller = MediaController(this)
+        controller.setAnchorView(binding.videoView)
+        binding.videoView.setMediaController(controller)
+        binding.videoView.setVideoURI(uri)
+        binding.videoView.setOnPreparedListener { player ->
+            videoPrepared = true
+            player.isLooping = false
+            binding.videoView.start()
+            scheduleAutoHide()
+        }
+        binding.videoView.setOnCompletionListener {
+            binding.editBtn.setImageResource(R.drawable.ic_fluent_play_24_regular)
+            binding.editBtn.contentDescription = "Play video"
+            setControlsVisible(true)
+        }
+        binding.videoView.setOnErrorListener { _, what, extra ->
+            Log.w(Tag, "Video playback failed for $uri. what=$what extra=$extra")
+            Toast.makeText(this, "This video cannot be played.", Toast.LENGTH_LONG).show()
+            true
+        }
+    }
+
+    private fun toggleVideoPlayback() {
+        if (!isVideo || !videoPrepared) return
+        if (binding.videoView.isPlaying) {
+            binding.videoView.pause()
+            binding.editBtn.setImageResource(R.drawable.ic_fluent_play_24_regular)
+            binding.editBtn.contentDescription = "Play video"
+            setControlsVisible(true)
+        } else {
+            binding.videoView.start()
+            binding.editBtn.setImageResource(R.drawable.ic_fluent_pause_24_regular)
+            binding.editBtn.contentDescription = "Pause video"
+            scheduleAutoHide()
         }
     }
 
@@ -247,10 +306,11 @@ class ViewerActivity : AppCompatActivity() {
                 if (!infoVisible && dragDistance > 8f) {
                     draggingToDismiss = true
                     val progress = (dragDistance / binding.viewerRoot.height).coerceIn(0f, 1f)
-                    binding.photoView.translationY = dragDistance
+                    val mediaView = if (isVideo) binding.videoView else binding.photoView
+                    mediaView.translationY = dragDistance
                     val scale = 1f - (progress * 0.08f)
-                    binding.photoView.scaleX = scale
-                    binding.photoView.scaleY = scale
+                    mediaView.scaleX = scale
+                    mediaView.scaleY = scale
                     val chromeAlpha = (1f - (progress * 0.8f)).coerceIn(0f, 1f)
                     binding.topBar.alpha = chromeAlpha
                     binding.viewerPill.alpha = chromeAlpha
@@ -263,7 +323,8 @@ class ViewerActivity : AppCompatActivity() {
                     if (dragDistance > dismissThreshold) {
                         finish()
                     } else {
-                        binding.photoView.animate().translationY(0f).scaleX(1f).scaleY(1f).setDuration(220).start()
+                        val mediaView = if (isVideo) binding.videoView else binding.photoView
+                        mediaView.animate().translationY(0f).scaleX(1f).scaleY(1f).setDuration(220).start()
                         binding.topBar.animate().alpha(if (controlsVisible) 1f else 0f).setDuration(220).start()
                         binding.viewerPill.animate().alpha(if (controlsVisible) 1f else 0f).setDuration(220).start()
                     }
@@ -283,7 +344,7 @@ class ViewerActivity : AppCompatActivity() {
 
     private fun share(uri: Uri) {
         val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "image/*"
+            type = if (isVideo) "video/*" else "image/*"
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
@@ -329,6 +390,8 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     private fun loadMetadata(uri: Uri): PhotoMetadata {
+        if (isVideo) return loadVideoMetadata(uri)
+
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
         } else {
@@ -381,6 +444,36 @@ class ViewerActivity : AppCompatActivity() {
         return PhotoMetadata()
     }
 
+    private fun loadVideoMetadata(uri: Uri): PhotoMetadata {
+        val projection = arrayOf(
+            MediaStore.Video.Media.DISPLAY_NAME,
+            MediaStore.Video.Media.DATE_TAKEN,
+            MediaStore.Video.Media.DATE_ADDED,
+            MediaStore.Video.Media.WIDTH,
+            MediaStore.Video.Media.HEIGHT,
+            MediaStore.Video.Media.SIZE,
+            MediaStore.Video.Media.MIME_TYPE,
+            MediaStore.Video.Media.DURATION
+        )
+        contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val dateTaken = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_TAKEN))
+                val dateAdded = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)) * 1000L
+                val duration = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION))
+                return PhotoMetadata(
+                    displayName = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)),
+                    dateMillis = if (dateTaken > 0L) dateTaken else dateAdded,
+                    width = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)),
+                    height = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)),
+                    sizeBytes = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)),
+                    mimeType = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)),
+                    locationName = formatDuration(duration)
+                )
+            }
+        }
+        return PhotoMetadata(mimeType = "video/*")
+    }
+
     private fun edit(uri: Uri) {
         val mimeType = contentResolver.getType(uri) ?: "image/*"
         val editIntent = Intent(Intent.ACTION_EDIT).apply {
@@ -395,10 +488,12 @@ class ViewerActivity : AppCompatActivity() {
 
         try {
             startActivity(Intent.createChooser(editIntent, "Edit photo"))
-        } catch (_: ActivityNotFoundException) {
+        } catch (missingEditor: ActivityNotFoundException) {
+            Log.d(Tag, "No edit activity available; falling back to view.", missingEditor)
             try {
                 startActivity(fallbackIntent)
             } catch (error: ActivityNotFoundException) {
+                Log.w(Tag, "No viewer fallback available for edit action.", error)
                 Toast.makeText(this, "No editor available for this photo.", Toast.LENGTH_SHORT).show()
             }
         }
@@ -419,6 +514,8 @@ class ViewerActivity : AppCompatActivity() {
                 address.adminArea,
                 address.countryName
             ).distinct().take(2).joinToString(", ").ifBlank { null }
+        }.onFailure { error ->
+            Log.d(Tag, "Unable to resolve location for $uri.", error)
         }.getOrNull()
     }
 
@@ -433,7 +530,17 @@ class ViewerActivity : AppCompatActivity() {
                     null
                 }
             }
+        }.onFailure { error ->
+            Log.d(Tag, "Unable to read EXIF location for $uri.", error)
         }.getOrNull()
+    }
+
+    private fun formatDuration(durationMillis: Long): String? {
+        if (durationMillis <= 0L) return null
+        val totalSeconds = durationMillis / 1000L
+        val minutes = totalSeconds / 60L
+        val seconds = totalSeconds % 60L
+        return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
     }
 
     private fun formatSize(bytes: Long): String {
@@ -453,11 +560,15 @@ class ViewerActivity : AppCompatActivity() {
     )
 
     companion object {
+        private const val Tag = "ViewerActivity"
         const val ExtraContentChanged = "content_changed"
     }
 
     override fun onDestroy() {
         autoHideHandler.removeCallbacks(autoHideRunnable)
+        if (isVideo) {
+            binding.videoView.stopPlayback()
+        }
         super.onDestroy()
     }
 

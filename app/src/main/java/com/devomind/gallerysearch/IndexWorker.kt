@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
@@ -56,8 +57,10 @@ class IndexWorker(
 
             Result.success()
         } catch (oom: OutOfMemoryError) {
+            Log.w(Tag, "Index worker ran out of memory on attempt $runAttemptCount.", oom)
             if (runAttemptCount < MaxRetryCount) Result.retry() else Result.failure()
-        } catch (_: Throwable) {
+        } catch (error: Throwable) {
+            Log.w(Tag, "Index worker failed on attempt $runAttemptCount.", error)
             if (runAttemptCount < MaxRetryCount) Result.retry() else Result.failure()
         } finally {
             imageEncoder?.close()
@@ -93,6 +96,7 @@ class IndexWorker(
         const val ProgressCurrentKey = "progress_current"
         const val ProgressTotalKey = "progress_total"
         const val ProgressPercentKey = "progress_percent"
+        private const val Tag = "IndexWorker"
         private const val MaxRetryCount = 3
         private const val ChannelId = "gallery_index_channel"
         private const val NotificationId = 1001

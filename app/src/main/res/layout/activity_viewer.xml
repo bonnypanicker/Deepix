@@ -13,6 +13,13 @@
         android:background="#000000"
         android:scaleType="fitCenter" />
 
+    <VideoView
+        android:id="@+id/videoView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:visibility="gone" />
+
     <FrameLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"

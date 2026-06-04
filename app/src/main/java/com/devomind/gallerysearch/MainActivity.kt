@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.view.Window
@@ -582,7 +583,8 @@ class MainActivity : AppCompatActivity() {
                     else -> "${cells.size} results"
                 }
                 binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
-            } catch (_: CancellationException) {
+            } catch (cancelled: CancellationException) {
+                Log.d(Tag, "Search job cancelled.", cancelled)
             } catch (error: Throwable) {
                 showFatalError(error)
             } finally {
@@ -700,15 +702,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openMedia(item: GalleryRepository.MediaItem) {
-        if (item.mediaType == GalleryRepository.MediaType.Video) {
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(item.uri, item.mimeType ?: "video/*")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            startActivity(Intent.createChooser(intent, "Play video"))
-        } else {
-            viewerLauncher.launch(Intent(this, ViewerActivity::class.java).setData(item.uri))
-        }
+        viewerLauncher.launch(Intent(this, ViewerActivity::class.java).setData(item.uri))
     }
 
     private fun renderSelectionState(count: Int) {
@@ -1069,6 +1063,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val Tag = "MainActivity"
         private const val IndexWorkName = "gallery_background_index"
     }
 }
