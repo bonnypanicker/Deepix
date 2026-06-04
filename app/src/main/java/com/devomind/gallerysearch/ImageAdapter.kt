@@ -172,7 +172,6 @@ class ImageAdapter(
         if (uri in selected) {
             selected -= uri
         } else {
-            animateCheckBadge(uri)
             selected += uri
         }
         notifySelectionChanged(setOf(uri), selectionModeChanged = hadSelection != selected.isNotEmpty())
