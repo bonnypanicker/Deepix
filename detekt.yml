@@ -1,0 +1,47 @@
+build:
+  maxIssues: 20
+  weights:
+    complexity: 2
+    style: 1
+    performance: 3
+
+style:
+  active: true
+  MaxLineLength:
+    active: true
+    maxLineLength: 140
+  WildcardImport:
+    active: true
+  UnusedImports:
+    active: true
+  NoTabs:
+    active: true
+  MagicNumber:
+    active: false
+
+complexity:
+  active: true
+  LongParameterList:
+    active: true
+    functionThreshold: 7
+    ignoreDefaultParameters: true
+
+performance:
+  active: true
+  SpreadOperator:
+    active: true
+
+coroutines:
+  active: true
+  GlobalCoroutineUsage:
+    active: true
+  RedundantSuspendModifier:
+    active: true
+
+exceptions:
+  active: true
+  TooGenericExceptionCaught:
+    active: true
+    excludes: ['**/test/**']
+  SwallowedException:
+    active: true

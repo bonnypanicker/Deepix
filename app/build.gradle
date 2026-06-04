@@ -1,6 +1,13 @@
 plugins {
     id "com.android.application"
     id "org.jetbrains.kotlin.android"
+    id "io.gitlab.arturbosch.detekt"
+}
+
+detekt {
+    config.setFrom(rootProject.file("detekt.yml"))
+    buildUponDefaultConfig = true
+    parallel = true
 }
 
 android {

@@ -137,16 +137,23 @@ class MainActivity : AppCompatActivity() {
             onAlbumClick = ::openAlbum
         )
 
-        val layoutManager = GridLayoutManager(this, GridSpanCount)
+        val layoutManager = GridLayoutManager(this, DesignTokens.GRID_SPAN_COUNT)
         layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-            override fun getSpanSize(position: Int): Int = adapter.spanSizeAt(position, GridSpanCount)
+            override fun getSpanSize(position: Int): Int = adapter.spanSizeAt(position, DesignTokens.GRID_SPAN_COUNT)
         }
 
         binding.imageGrid.layoutManager = layoutManager
         binding.imageGrid.adapter = adapter
+        binding.imageGrid.addItemDecoration(StickyHeaderDecoration(adapter))
+        binding.fastScrollIndicator.attach(binding.imageGrid, adapter)
+
         binding.imageGrid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
-                val alpha = if (rv.computeVerticalScrollOffset() > 32) 0.2f else 0.35f
+                val alpha = if (rv.computeVerticalScrollOffset() > 32) {
+                    DesignTokens.SCROLLED_HEADER_ALPHA
+                } else {
+                    DesignTokens.HEADER_ALPHA
+                }
                 if (adapter.selectionCount == 0) {
                     binding.menuBtn.animate().alpha(alpha).setDuration(160).start()
                 }
@@ -214,11 +221,12 @@ class MainActivity : AppCompatActivity() {
                 val nearMenu = event.x < 96f * resources.displayMetrics.density &&
                     event.y < topInsetPx + (116f * resources.displayMetrics.density)
                 if (adapter.selectionCount == 0) {
-                    binding.menuBtn.animate().alpha(if (nearMenu) 1f else 0.2f).setDuration(120).start()
+                    binding.menuBtn.animate().alpha(if (nearMenu) 1f else DesignTokens.SCROLLED_HEADER_ALPHA).setDuration(120).start()
                 }
             }
             false
         }
+        binding.selectAllBtn.setOnClickListener { adapter.selectAll() }
         binding.shareSelectionBtn.setOnClickListener { shareSelected() }
         binding.deleteSelectionBtn.setOnClickListener { confirmDeleteSelected() }
     }
@@ -431,8 +439,10 @@ class MainActivity : AppCompatActivity() {
         updateDrawerState()
         updateBottomPanelState()
         showBottomPanel()
+        updateFastScrollVisibility()
+
         val expectedSection = activeSection
-        val cappedItems = items.take(DisplayCap)
+        val cappedItems = items.take(DesignTokens.DISPLAY_CAP)
         renderJob = lifecycleScope.launch {
             val cells = withContext(Dispatchers.Default) {
                 buildTimelineCells(cappedItems, emptyText)
@@ -455,6 +465,7 @@ class MainActivity : AppCompatActivity() {
         updateDrawerState()
         updateBottomPanelState()
         showBottomPanel()
+        updateFastScrollVisibility()
     }
 
     private fun renderAlbumDetail(album: GalleryRepository.Album) {
@@ -468,8 +479,10 @@ class MainActivity : AppCompatActivity() {
         updateDrawerState()
         updateBottomPanelState()
         showBottomPanel()
+        updateFastScrollVisibility()
+
         val expectedAlbumId = album.id
-        val cappedItems = items.take(DisplayCap)
+        val cappedItems = items.take(DesignTokens.DISPLAY_CAP)
         renderJob = lifecycleScope.launch {
             val cells = withContext(Dispatchers.Default) {
                 buildTimelineCells(cappedItems, "No media in this album")
@@ -480,6 +493,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateFastScrollVisibility() {
+        val hasManyItems = adapter.cells.count { it is GalleryCell.Header } > 2
+        binding.fastScrollIndicator.visibility = if (hasManyItems) View.VISIBLE else View.GONE
+    }
+
     private fun openSearch() {
         renderJob?.cancel()
         currentMode = Mode.Search
@@ -487,6 +505,7 @@ class MainActivity : AppCompatActivity() {
         binding.screenTitle.visibility = View.VISIBLE
         binding.screenTitle.text = "search"
         binding.resultCount.text = ""
+        binding.fastScrollIndicator.visibility = View.GONE
         updateSearchMetaText()
         updateTopBarForMode("search")
         updateDrawerState()
@@ -564,7 +583,6 @@ class MainActivity : AppCompatActivity() {
                 }
                 binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
             } catch (_: CancellationException) {
-                // Live search cancels the previous job on each new query; treat that as expected.
             } catch (error: Throwable) {
                 showFatalError(error)
             } finally {
@@ -579,6 +597,8 @@ class MainActivity : AppCompatActivity() {
     ): List<GalleryCell> {
         if (items.isEmpty()) return listOf(GalleryCell.Empty(emptyText))
         val cells = ArrayList<GalleryCell>()
+        var isFirstGroup = true
+
         items.groupBy { safeFormat(monthFormat, it.dateMillis, "Unknown date") }.forEach { (month, monthItems) ->
             val first = monthItems.first()
             cells += GalleryCell.Header(
@@ -586,14 +606,28 @@ class MainActivity : AppCompatActivity() {
                 safeFormat(dayFormat, first.dateMillis, "").uppercase(Locale.getDefault())
             )
             monthItems.groupBy { safeFormat(dayFormat, it.dateMillis, "") }.values.forEach { dayItems ->
-                if (dayItems.size >= 3) {
-                    cells += GalleryCell.Collage(dayItems.take(3))
-                    dayItems.drop(3).forEach { item ->
-                        cells += GalleryCell.Photo(item, featured = false)
+                when {
+                    isFirstGroup && dayItems.isNotEmpty() -> {
+                        cells += GalleryCell.Photo(dayItems[0], featured = true)
+                        val remaining = if (dayItems.size > 1) dayItems.drop(1) else emptyList()
+                        remaining.take(2).forEach { item ->
+                            cells += GalleryCell.Photo(item, featured = false)
+                        }
+                        remaining.drop(2).forEach { item ->
+                            cells += GalleryCell.Photo(item, featured = false)
+                        }
+                        isFirstGroup = false
                     }
-                } else {
-                    dayItems.forEach { item ->
-                        cells += GalleryCell.Photo(item, featured = false)
+                    dayItems.size >= 3 -> {
+                        cells += GalleryCell.Collage(dayItems.take(3))
+                        dayItems.drop(3).forEach { item ->
+                            cells += GalleryCell.Photo(item, featured = false)
+                        }
+                    }
+                    else -> {
+                        dayItems.forEach { item ->
+                            cells += GalleryCell.Photo(item, featured = false)
+                        }
                     }
                 }
             }
@@ -679,6 +713,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderSelectionState(count: Int) {
         binding.selectionPill.visibility = if (count > 0) View.VISIBLE else View.GONE
+        binding.selectAllBtn.visibility = if (count > 0) View.VISIBLE else View.GONE
+
         if (count > 0) {
             binding.screenTitle.visibility = View.VISIBLE
             binding.screenTitle.text = "$count selected"
@@ -1034,7 +1070,5 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val IndexWorkName = "gallery_background_index"
-        private const val GridSpanCount = 6
-        private const val DisplayCap = 800
     }
 }

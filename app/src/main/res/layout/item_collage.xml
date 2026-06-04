@@ -3,7 +3,7 @@
     android:id="@+id/collageRoot"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="#000000"
+    android:background="@color/metroBgPrimary"
     android:orientation="horizontal"
     android:padding="2dp">
 
@@ -18,7 +18,7 @@
             android:id="@+id/leadThumbnail"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="#1A1A1A"
+            android:background="@color/metroBgCard"
             android:contentDescription="@null"
             android:scaleType="centerCrop" />
 
@@ -26,7 +26,7 @@
             android:id="@+id/leadDimScrim"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="#66000000"
+            android:background="@color/metroDimScrim"
             android:visibility="gone" />
 
         <TextView
@@ -39,7 +39,7 @@
             android:background="@drawable/selection_badge_bg"
             android:gravity="center"
             android:text="✓"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/metroTextPrimary"
             android:textSize="15sp"
             android:visibility="gone" />
 
@@ -59,7 +59,7 @@
             android:paddingBottom="4dp"
             android:text="VIDEO"
             android:textAllCaps="true"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/metroTextPrimary"
             android:textSize="11sp"
             android:visibility="gone" />
     </FrameLayout>
@@ -81,7 +81,7 @@
                 android:id="@+id/topRightThumbnail"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="#1A1A1A"
+                android:background="@color/metroBgCard"
                 android:contentDescription="@null"
                 android:scaleType="centerCrop" />
 
@@ -89,7 +89,7 @@
                 android:id="@+id/topRightDimScrim"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="#66000000"
+                android:background="@color/metroDimScrim"
                 android:visibility="gone" />
 
             <TextView
@@ -102,7 +102,7 @@
                 android:background="@drawable/selection_badge_bg"
                 android:gravity="center"
                 android:text="✓"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/metroTextPrimary"
                 android:textSize="15sp"
                 android:visibility="gone" />
 
@@ -122,7 +122,7 @@
                 android:paddingBottom="4dp"
                 android:text="VIDEO"
                 android:textAllCaps="true"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/metroTextPrimary"
                 android:textSize="11sp"
                 android:visibility="gone" />
         </FrameLayout>
@@ -137,7 +137,7 @@
                 android:id="@+id/bottomRightThumbnail"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="#1A1A1A"
+                android:background="@color/metroBgCard"
                 android:contentDescription="@null"
                 android:scaleType="centerCrop" />
 
@@ -145,7 +145,7 @@
                 android:id="@+id/bottomRightDimScrim"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="#66000000"
+                android:background="@color/metroDimScrim"
                 android:visibility="gone" />
 
             <TextView
@@ -158,7 +158,7 @@
                 android:background="@drawable/selection_badge_bg"
                 android:gravity="center"
                 android:text="✓"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/metroTextPrimary"
                 android:textSize="15sp"
                 android:visibility="gone" />
 
@@ -178,7 +178,7 @@
                 android:paddingBottom="4dp"
                 android:text="VIDEO"
                 android:textAllCaps="true"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/metroTextPrimary"
                 android:textSize="11sp"
                 android:visibility="gone" />
         </FrameLayout>

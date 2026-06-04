@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="#000000"
+    android:background="@color/metroBgPrimary"
     android:orientation="vertical"
     android:padding="2dp">
 
@@ -10,7 +10,7 @@
         android:id="@+id/albumCover"
         android:layout_width="match_parent"
         android:layout_height="132dp"
-        android:background="#111111"
+        android:background="@color/metroBgTertiary"
         android:contentDescription="@null"
         android:scaleType="centerCrop" />
 
@@ -22,7 +22,7 @@
         android:paddingStart="2dp"
         android:paddingTop="8dp"
         android:paddingEnd="2dp"
-        android:textColor="#FFFFFF"
+        android:textColor="@color/metroTextPrimary"
         android:textSize="16sp" />
 
     <TextView
@@ -34,6 +34,6 @@
         android:paddingTop="2dp"
         android:paddingEnd="2dp"
         android:paddingBottom="12dp"
-        android:textColor="#8A8A8A"
+        android:textColor="@color/metroTextSecondary"
         android:textSize="12sp" />
 </LinearLayout>

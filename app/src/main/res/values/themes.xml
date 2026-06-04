@@ -1,19 +1,19 @@
 <resources>
     <style name="Theme.GallerySearch" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <item name="android:fontFamily">sans</item>
+        <item name="android:fontFamily">sans-serif</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:navigationBarColor">#0A0A0A</item>
-        <item name="android:statusBarColor">#0A0A0A</item>
+        <item name="android:navigationBarColor">@color/metroNavBar</item>
+        <item name="android:statusBarColor">@color/metroStatusBar</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
-        <item name="colorAccent">#5B4FE8</item>
+        <item name="colorAccent">@color/metroAccent</item>
     </style>
 
     <style name="Theme.GallerySearch.Viewer" parent="Theme.GallerySearch">
         <item name="android:windowFullscreen">false</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
         <item name="android:statusBarColor">#00000000</item>
-        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:navigationBarColor">@color/metroNavBar</item>
     </style>
 
     <style name="MetroDrawerItem">
@@ -22,9 +22,9 @@
         <item name="android:gravity">center_vertical</item>
         <item name="android:paddingStart">24dp</item>
         <item name="android:paddingEnd">24dp</item>
-        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textColor">@color/metroTextPrimary</item>
         <item name="android:textSize">18sp</item>
         <item name="android:fontFamily">sans-serif</item>
-        <item name="android:background">#0A0A0A</item>
+        <item name="android:background">@color/metroBgSecondary</item>
     </style>
 </resources>

@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="360dp"
-    android:background="#000000"
+    android:background="@color/metroBgPrimary"
     android:gravity="center"
     android:orientation="vertical">
 
@@ -11,7 +11,7 @@
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:src="@drawable/ic_fluent_image_24_regular"
-        android:tint="#484848" />
+        android:tint="@color/metroTextDisabled" />
 
     <TextView
         android:id="@+id/emptyText"
@@ -20,6 +20,6 @@
         android:fontFamily="sans-serif-light"
         android:includeFontPadding="false"
         android:paddingTop="18dp"
-        android:textColor="#8A8A8A"
+        android:textColor="@color/metroTextSecondary"
         android:textSize="18sp" />
 </LinearLayout>

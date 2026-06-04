@@ -6,6 +6,7 @@ import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
@@ -32,7 +33,10 @@ class ImageAdapter(
     private val onSelectionChanged: (Int) -> Unit,
     private val onAlbumClick: (GalleryRepository.Album) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-    private val cells = mutableListOf<GalleryCell>()
+
+    var cells = mutableListOf<GalleryCell>()
+        private set
+
     private val selected = linkedSetOf<Uri>()
 
     init {
@@ -41,6 +45,25 @@ class ImageAdapter(
 
     val selectionCount: Int
         get() = selected.size
+
+    fun selectAll() {
+        val allUris = cells.asSequence()
+            .flatMap { cell ->
+                when (cell) {
+                    is GalleryCell.Photo -> sequenceOf(cell.item.uri)
+                    is GalleryCell.Collage -> cell.items.asSequence().map { it.uri }
+                    else -> emptySequence()
+                }
+            }
+            .toSet()
+
+        val added = allUris - selected
+        selected.addAll(allUris)
+        if (added.isNotEmpty()) {
+            notifySelectionChanged(added, selectionModeChanged = selected.size == added.size)
+            onSelectionChanged(selected.size)
+        }
+    }
 
     override fun getItemViewType(position: Int): Int {
         return when (cells[position]) {
@@ -92,10 +115,12 @@ class ImageAdapter(
     fun spanSizeAt(position: Int, totalSpanCount: Int): Int {
         return when (val cell = cells.getOrNull(position)) {
             is GalleryCell.Header,
-            is GalleryCell.Collage,
             is GalleryCell.Empty -> totalSpanCount
+            is GalleryCell.Collage -> totalSpanCount
             is GalleryCell.AlbumCell -> totalSpanCount / 2
-            is GalleryCell.Photo -> if (cell.featured) 4 else 2
+            is GalleryCell.Photo -> {
+                if (cell.featured) totalSpanCount else totalSpanCount / 3
+            }
             null -> 2
         }
     }
@@ -132,12 +157,6 @@ class ImageAdapter(
         onSelectionChanged(selected.size)
     }
 
-    fun appendCells(newCells: List<GalleryCell>) {
-        val start = cells.size
-        cells.addAll(newCells)
-        notifyItemRangeInserted(start, newCells.size)
-    }
-
     fun clearSelection() {
         if (selected.isEmpty()) return
         val previous = selected.toSet()
@@ -153,6 +172,7 @@ class ImageAdapter(
         if (uri in selected) {
             selected -= uri
         } else {
+            animateCheckBadge(uri)
             selected += uri
         }
         notifySelectionChanged(setOf(uri), selectionModeChanged = hadSelection != selected.isNotEmpty())
@@ -205,20 +225,41 @@ class ImageAdapter(
         private val onPhotoClick: (GalleryRepository.MediaItem) -> Unit,
         private val onSelectionToggle: (Uri) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
+
         fun bind(cell: GalleryCell.Photo, selectionMode: Boolean, isSelected: Boolean) {
             val metrics = binding.root.resources.displayMetrics
-            val gutter = (2f * metrics.density).toInt()
+            val gutter = (DesignTokens.GRID_GUTTER * metrics.density).toInt()
             val regularSize = ((metrics.widthPixels - gutter * 6) / 3).coerceAtLeast(96)
-            val height = if (cell.featured) regularSize * 2 + gutter else regularSize
-            binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply { this.height = height }
 
-            Glide.with(binding.thumbnail.context)
-                .load(cell.item.uri)
-                .format(DecodeFormat.PREFER_RGB_565)
-                .centerCrop()
-                .override(regularSize, height)
-                .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
-                .into(binding.thumbnail)
+            when {
+                cell.featured -> {
+                    val spanWidth = metrics.widthPixels
+                    val height = (spanWidth * 0.56f).toInt()
+                    binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
+                        this.height = height
+                    }
+                    Glide.with(binding.thumbnail.context)
+                        .load(cell.item.uri)
+                        .format(DecodeFormat.PREFER_RGB_565)
+                        .centerCrop()
+                        .override(spanWidth, height)
+                        .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
+                        .into(binding.thumbnail)
+                }
+                else -> {
+                    val height = regularSize
+                    binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
+                        this.height = height
+                    }
+                    Glide.with(binding.thumbnail.context)
+                        .load(cell.item.uri)
+                        .format(DecodeFormat.PREFER_RGB_565)
+                        .centerCrop()
+                        .override(regularSize, height)
+                        .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
+                        .into(binding.thumbnail)
+                }
+            }
 
             bindSelection(cell, selectionMode, isSelected)
         }
@@ -226,6 +267,16 @@ class ImageAdapter(
         fun bindSelection(cell: GalleryCell.Photo, selectionMode: Boolean, isSelected: Boolean) {
             binding.dimScrim.visibility = if (selectionMode && !isSelected) View.VISIBLE else View.GONE
             binding.checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
+            if (isSelected) {
+                binding.checkBadge.scaleX = 0f
+                binding.checkBadge.scaleY = 0f
+                binding.checkBadge.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(200)
+                    .setInterpolator(OvershootInterpolator(1.2f))
+                    .start()
+            }
             binding.videoBadge.visibility = if (cell.item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
             binding.root.setOnClickListener {
                 if (selectionMode) onSelectionToggle(cell.item.uri) else onPhotoClick(cell.item)
@@ -245,7 +296,7 @@ class ImageAdapter(
 
         fun bind(cell: GalleryCell.Collage, selected: Set<Uri>) {
             val metrics = binding.root.resources.displayMetrics
-            val gutter = (2f * metrics.density).toInt()
+            val gutter = (DesignTokens.GRID_GUTTER * metrics.density).toInt()
             val regularSize = ((metrics.widthPixels - gutter * 6) / 3).coerceAtLeast(96)
             val leadSize = regularSize * 2 + gutter
             binding.collageRoot.layoutParams = binding.collageRoot.layoutParams.apply {
@@ -295,7 +346,7 @@ class ImageAdapter(
 
         fun bindSelection(cell: GalleryCell.Collage, selected: Set<Uri>) {
             val metrics = binding.root.resources.displayMetrics
-            val gutter = (2f * metrics.density).toInt()
+            val gutter = (DesignTokens.GRID_GUTTER * metrics.density).toInt()
             val regularSize = ((metrics.widthPixels - gutter * 6) / 3).coerceAtLeast(96)
             val leadSize = regularSize * 2 + gutter
             bindTile(
@@ -354,6 +405,16 @@ class ImageAdapter(
         ) {
             dimScrim.visibility = if (selectionMode && !isSelected) View.VISIBLE else View.GONE
             checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
+            if (isSelected) {
+                checkBadge.scaleX = 0f
+                checkBadge.scaleY = 0f
+                checkBadge.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(200)
+                    .setInterpolator(OvershootInterpolator(1.2f))
+                    .start()
+            }
             videoBadge.visibility =
                 if (item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
 
