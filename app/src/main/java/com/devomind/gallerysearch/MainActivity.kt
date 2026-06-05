@@ -498,7 +498,6 @@ class MainActivity : AppCompatActivity() {
         updateDrawerState()
         updateBottomPanelState()
         showBottomPanel()
-        updateFastScrollVisibility()
 
         val expectedSection = activeSection
         val cappedItems = items.take(DesignTokens.DISPLAY_CAP)
@@ -508,6 +507,8 @@ class MainActivity : AppCompatActivity() {
             }
             if (currentMode == Mode.Browse && currentAlbum == null && activeSection == expectedSection) {
                 adapter.updateCells(cells)
+                updateFastScrollVisibility()
+                binding.fastScrollIndicator.syncToRecyclerView()
             }
         }
     }
@@ -520,11 +521,11 @@ class MainActivity : AppCompatActivity() {
             if (albums.isEmpty()) listOf(GalleryCell.Empty("No albums yet"))
             else albums.map { GalleryCell.AlbumCell(it) }
         )
+        updateFastScrollVisibility()
         updateTopBarForMode("albums")
         updateDrawerState()
         updateBottomPanelState()
         showBottomPanel()
-        updateFastScrollVisibility()
     }
 
     private fun renderAlbumDetail(album: GalleryRepository.Album) {
@@ -538,7 +539,6 @@ class MainActivity : AppCompatActivity() {
         updateDrawerState()
         updateBottomPanelState()
         showBottomPanel()
-        updateFastScrollVisibility()
 
         val expectedAlbumId = album.id
         val cappedItems = items.take(DesignTokens.DISPLAY_CAP)
@@ -548,13 +548,16 @@ class MainActivity : AppCompatActivity() {
             }
             if (currentMode == Mode.AlbumDetail && currentAlbum?.id == expectedAlbumId) {
                 adapter.updateCells(cells)
+                updateFastScrollVisibility()
+                binding.fastScrollIndicator.syncToRecyclerView()
             }
         }
     }
 
     private fun updateFastScrollVisibility() {
-        val hasManyItems = adapter.cells.count { it is GalleryCell.Header } > 2
-        binding.fastScrollIndicator.visibility = if (hasManyItems) View.VISIBLE else View.GONE
+        val hasTimeline = adapter.cells.count { it is GalleryCell.Header } > 2
+        binding.fastScrollIndicator.visibility = if (hasTimeline) View.VISIBLE else View.GONE
+        if (hasTimeline) binding.fastScrollIndicator.syncToRecyclerView()
     }
 
     private fun openSearch() {

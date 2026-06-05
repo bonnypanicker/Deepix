@@ -27,7 +27,7 @@ class FastScrollIndicator @JvmOverloads constructor(
         color = 0x00000000.toInt()
     }
     private val bubblePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xEE5B4FE8.toInt()
+        color = 0xEE3B9EFF.toInt()
     }
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
@@ -67,11 +67,17 @@ class FastScrollIndicator @JvmOverloads constructor(
         }
     }
 
+    fun syncToRecyclerView() {
+        val rv = recyclerView ?: return
+        updateFromOffset(rv.computeVerticalScrollOffset())
+        invalidate()
+    }
+
     fun attach(rv: RecyclerView, imageAdapter: ImageAdapter) {
         this.recyclerView = rv
         this.adapter = imageAdapter
         rv.addOnScrollListener(scrollListener)
-        alpha = 0f
+        alpha = 0.28f
         visibility = View.VISIBLE
     }
 
@@ -92,7 +98,7 @@ class FastScrollIndicator @JvmOverloads constructor(
         if (isDragging) {
             val cy = thumbY.coerceIn(dip(20f), height - dip(20f))
             thumbRadius = dip(12f)
-            thumbPaint.color = 0xEE5B4FE8.toInt()
+            thumbPaint.color = 0xEE3B9EFF.toInt()
 
             if (showBubble && bubbleText.isNotEmpty()) {
                 val bw = textPaint.measureText(bubbleText) + dip(32f)
@@ -223,7 +229,7 @@ class FastScrollIndicator @JvmOverloads constructor(
 
     private fun hide() {
         fadeAnim?.cancel()
-        fadeAnim = ObjectAnimator.ofFloat(this, "alpha", 0f).apply {
+        fadeAnim = ObjectAnimator.ofFloat(this, "alpha", 0.28f).apply {
             startDelay = 800
             duration = 200
             start()
