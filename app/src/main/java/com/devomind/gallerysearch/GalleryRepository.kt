@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Parcelable
 import android.provider.MediaStore
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -13,6 +14,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.parcelize.Parcelize
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.DataInputStream
@@ -33,6 +35,7 @@ class GalleryRepository(
         this.textEncoder = text
     }
 
+    @Parcelize
     data class MediaItem(
         val uri: Uri,
         val bucketId: String,
@@ -44,7 +47,7 @@ class GalleryRepository(
         val displayName: String?,
         val mediaType: MediaType,
         val durationMillis: Long = 0L
-    )
+    ) : Parcelable
 
     data class Album(val id: String, val name: String, val count: Int, val coverUri: Uri?)
 
@@ -55,7 +58,8 @@ class GalleryRepository(
         val videoItems: List<MediaItem>
     )
 
-    enum class MediaType {
+    @Parcelize
+    enum class MediaType : Parcelable {
         Image,
         Video
     }

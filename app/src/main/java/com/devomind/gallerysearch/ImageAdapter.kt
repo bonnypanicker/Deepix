@@ -10,6 +10,7 @@ import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.core.view.ViewCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.load.DecodeFormat
@@ -29,7 +30,7 @@ sealed class GalleryCell {
 }
 
 class ImageAdapter(
-    private val onPhotoClick: (GalleryRepository.MediaItem) -> Unit,
+    private val onPhotoClick: (GalleryRepository.MediaItem, android.widget.ImageView) -> Unit,
     private val onSelectionChanged: (Int) -> Unit,
     private val onAlbumClick: (GalleryRepository.Album) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
@@ -221,7 +222,7 @@ class ImageAdapter(
 
     class PhotoViewHolder(
         private val binding: ItemImageBinding,
-        private val onPhotoClick: (GalleryRepository.MediaItem) -> Unit,
+        private val onPhotoClick: (GalleryRepository.MediaItem, android.widget.ImageView) -> Unit,
         private val onSelectionToggle: (Uri) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
 
@@ -229,6 +230,8 @@ class ImageAdapter(
             val metrics = binding.root.resources.displayMetrics
             val gutter = (DesignTokens.GRID_GUTTER * metrics.density).toInt()
             val regularSize = ((metrics.widthPixels - gutter * 6) / 3).coerceAtLeast(96)
+
+            ViewCompat.setTransitionName(binding.thumbnail, "media_${cell.item.uri}")
 
             when {
                 cell.featured -> {
@@ -278,7 +281,7 @@ class ImageAdapter(
             }
             binding.videoBadge.visibility = if (cell.item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
             binding.root.setOnClickListener {
-                if (selectionMode) onSelectionToggle(cell.item.uri) else onPhotoClick(cell.item)
+                if (selectionMode) onSelectionToggle(cell.item.uri) else onPhotoClick(cell.item, binding.thumbnail)
             }
             binding.root.setOnLongClickListener {
                 onSelectionToggle(cell.item.uri)
@@ -289,7 +292,7 @@ class ImageAdapter(
 
     class CollageViewHolder(
         private val binding: ItemCollageBinding,
-        private val onPhotoClick: (GalleryRepository.MediaItem) -> Unit,
+        private val onPhotoClick: (GalleryRepository.MediaItem, android.widget.ImageView) -> Unit,
         private val onSelectionToggle: (Uri) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
 
@@ -402,6 +405,7 @@ class ImageAdapter(
             isSelected: Boolean,
             loadImage: Boolean
         ) {
+            ViewCompat.setTransitionName(thumbnail, "media_${item.uri}")
             dimScrim.visibility = if (selectionMode && !isSelected) View.VISIBLE else View.GONE
             checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
             if (isSelected) {
@@ -428,7 +432,7 @@ class ImageAdapter(
             }
 
             container.setOnClickListener {
-                if (selectionMode) onSelectionToggle(item.uri) else onPhotoClick(item)
+                if (selectionMode) onSelectionToggle(item.uri) else onPhotoClick(item, thumbnail)
             }
             container.setOnLongClickListener {
                 onSelectionToggle(item.uri)

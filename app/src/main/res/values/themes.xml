@@ -14,6 +14,7 @@
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
         <item name="android:statusBarColor">#00000000</item>
         <item name="android:navigationBarColor">@color/metroNavBar</item>
+        <item name="android:windowContentTransitions">true</item>
     </style>
 
     <style name="MetroDrawerItem">

@@ -17,6 +17,7 @@ import android.view.View
 import android.view.Window
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.IntentSenderRequest
@@ -24,6 +25,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.app.ActivityOptionsCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.core.view.ViewCompat
@@ -134,7 +136,7 @@ class MainActivity : AppCompatActivity() {
         favoritesStore = FavoritesStore(this)
 
         adapter = ImageAdapter(
-            onPhotoClick = ::openMedia,
+            onPhotoClick = { item, view -> openMedia(item, view) },
             onSelectionChanged = ::renderSelectionState,
             onAlbumClick = ::openAlbum
         )
@@ -770,8 +772,48 @@ class MainActivity : AppCompatActivity() {
         renderAlbumDetail(album)
     }
 
-    private fun openMedia(item: GalleryRepository.MediaItem) {
-        viewerLauncher.launch(Intent(this, ViewerActivity::class.java).setData(item.uri))
+    private fun openMedia(item: GalleryRepository.MediaItem, sharedView: ImageView) {
+        val items = currentViewerItems()
+        val position = items.indexOfFirst { it.uri == item.uri }
+        if (position < 0 || items.isEmpty()) {
+            val fallbackIntent = Intent(this, ViewerActivity::class.java).apply {
+                putParcelableArrayListExtra(ViewerActivity.ExtraItems, arrayListOf(item))
+                putExtra(ViewerActivity.ExtraPosition, 0)
+            }
+            viewerLauncher.launch(fallbackIntent)
+            return
+        }
+
+        val transitionName = ViewCompat.getTransitionName(sharedView) ?: ""
+        val intent = Intent(this, ViewerActivity::class.java).apply {
+            putParcelableArrayListExtra(ViewerActivity.ExtraItems, ArrayList(items))
+            putExtra(ViewerActivity.ExtraPosition, position)
+            putExtra(ViewerActivity.ExtraTransitionName, transitionName)
+        }
+
+        val options = ActivityOptionsCompat.makeSceneTransitionAnimation(this, sharedView, transitionName)
+        viewerLauncher.launch(intent, options)
+    }
+
+    private fun currentViewerItems(): List<GalleryRepository.MediaItem> {
+        return when {
+            currentAlbum != null -> albumDetailItems
+            currentMode == Mode.Search -> {
+                adapter.cells.asSequence()
+                    .flatMap { cell ->
+                        when (cell) {
+                            is GalleryCell.Photo -> sequenceOf(cell.item)
+                            is GalleryCell.Collage -> cell.items.asSequence()
+                            else -> emptySequence()
+                        }
+                    }
+                    .toList()
+            }
+            activeSection == Section.Collection -> collectionItems
+            activeSection == Section.Videos -> videoItems
+            activeSection == Section.Favorites -> favoriteItems
+            else -> collectionItems
+        }
     }
 
     private fun renderSelectionState(count: Int) {

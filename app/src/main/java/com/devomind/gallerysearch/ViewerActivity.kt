@@ -17,7 +17,6 @@ import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.MediaController
 import android.widget.Toast
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,7 +29,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.lifecycleScope
-import com.bumptech.glide.Glide
+import androidx.recyclerview.widget.RecyclerView
 import com.devomind.gallerysearch.databinding.ActivityViewerBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -42,10 +41,12 @@ import kotlin.math.roundToInt
 
 class ViewerActivity : AppCompatActivity() {
     private lateinit var binding: ActivityViewerBinding
+    private lateinit var adapter: MediaPagerAdapter
+    private lateinit var favoritesStore: FavoritesStore
+    private var items = mutableListOf<GalleryRepository.MediaItem>()
+    private var currentPosition = 0
     private var controlsVisible = true
     private var infoVisible = false
-    private var uri: Uri? = null
-    private lateinit var favoritesStore: FavoritesStore
     private var contentChanged = false
     private val dateFormat = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault())
     private val autoHideHandler = Handler(Looper.getMainLooper())
@@ -55,8 +56,6 @@ class ViewerActivity : AppCompatActivity() {
     private var draggingToDismiss = false
     private var pendingDeleteUri: Uri? = null
     private var pendingDeleteNeedsRetry = false
-    private var isVideo = false
-    private var videoPrepared = false
 
     private val deleteRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -70,7 +69,22 @@ class ViewerActivity : AppCompatActivity() {
         if (needsRetry) {
             deletePhoto(targetUri, afterApproval = true)
         } else {
-            onDeleteCompleted()
+            onDeleteCompleted(targetUri)
+        }
+    }
+
+    private var previousPosition = -1
+
+    private val pageChangeCallback = object : androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
+        override fun onPageSelected(position: Int) {
+            super.onPageSelected(position)
+            if (previousPosition >= 0 && previousPosition != position) {
+                getPageViewHolder(previousPosition)?.pausePlayback()
+            }
+            previousPosition = position
+            currentPosition = position
+            bindPage(position)
+            getPageViewHolder(position)?.startPlayback()
         }
     }
 
@@ -83,35 +97,51 @@ class ViewerActivity : AppCompatActivity() {
         setContentView(binding.root)
         configureEdgeToEdge()
 
-        uri = intent.data
-        val currentUri = uri
-        if (currentUri == null) {
+        val parcelables = intent.getParcelableArrayListExtra<GalleryRepository.MediaItem>(ExtraItems)
+        if (parcelables != null) {
+            items.addAll(parcelables)
+        }
+        currentPosition = intent.getIntExtra(ExtraPosition, 0)
+        val transitionName = intent.getStringExtra(ExtraTransitionName)
+
+        if (items.isEmpty() || currentPosition !in items.indices) {
             finish()
             return
         }
+
         favoritesStore = FavoritesStore(this)
 
-        isVideo = (contentResolver.getType(currentUri) ?: "").startsWith("video/")
-        if (isVideo) {
-            bindVideo(currentUri)
-        } else {
-            binding.videoView.visibility = View.GONE
-            binding.photoView.visibility = View.VISIBLE
-            Glide.with(this)
-                .load(currentUri)
-                .fitCenter()
-                .into(binding.photoView)
+        if (transitionName != null) {
+            postponeEnterTransition()
         }
 
-        renderFavoriteState(favoritesStore.isFavorite(currentUri))
-        bindActions(currentUri)
+        adapter = MediaPagerAdapter(
+            items = items,
+            initialPosition = currentPosition,
+            initialTransitionName = transitionName,
+            onInitialImageLoaded = {
+                startPostponedEnterTransition()
+            },
+            onMediaTap = {
+                if (!draggingToDismiss) toggleControls()
+            },
+            onVideoCompleted = {
+                binding.editBtn.setImageResource(R.drawable.ic_fluent_play_24_regular)
+                binding.editBtn.contentDescription = "Play video"
+                setControlsVisible(true)
+            }
+        )
+        binding.viewPager.adapter = adapter
+        binding.viewPager.setCurrentItem(currentPosition, false)
+        binding.viewPager.registerOnPageChangeCallback(pageChangeCallback)
+
+        bindPage(currentPosition)
+        bindGlobalActions()
+
         binding.infoPanel.post {
             binding.infoPanel.translationY = binding.infoPanel.height.toFloat()
         }
-        lifecycleScope.launch {
-            val metadata = withContext(Dispatchers.IO) { loadMetadata(currentUri) }
-            bindMetadata(metadata)
-        }
+
         scheduleAutoHide()
     }
 
@@ -158,71 +188,103 @@ class ViewerActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
 
-    private fun bindActions(uri: Uri) {
+    private fun bindPage(position: Int) {
+        val item = items.getOrNull(position) ?: return
+        val uri = item.uri
+        val isVideo = item.mediaType == GalleryRepository.MediaType.Video
+
+        binding.fileNameText.text = item.displayName ?: "Photo"
+        renderFavoriteState(favoritesStore.isFavorite(uri))
+
+        binding.editBtn.setImageResource(
+            if (isVideo) R.drawable.ic_fluent_play_24_regular else R.drawable.ic_fluent_edit_24_regular
+        )
+        binding.editBtn.contentDescription = if (isVideo) "Play video" else "Edit photo"
+
+        lifecycleScope.launch {
+            val metadata = withContext(Dispatchers.IO) { loadMetadata(uri, isVideo) }
+            bindMetadata(metadata)
+        }
+
+        setControlsVisible(true)
+        if (infoVisible) {
+            infoVisible = false
+            binding.infoPanel.translationY = binding.infoPanel.height.toFloat()
+        }
+        scheduleAutoHide()
+    }
+
+    private fun bindGlobalActions() {
         binding.backBtn.setOnClickListener { finish() }
-        binding.photoView.setOnClickListener {
-            if (!draggingToDismiss) toggleControls()
-        }
-        binding.videoView.setOnClickListener {
-            if (!draggingToDismiss) toggleControls()
-        }
         binding.infoBtn.setOnClickListener { toggleInfoPanel() }
-        binding.shareBtn.setOnClickListener { share(uri) }
+        binding.shareBtn.setOnClickListener { shareCurrent() }
         binding.favoriteBtn.setOnClickListener {
-            val isFavorite = favoritesStore.toggle(uri)
+            val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
+            val isFavorite = favoritesStore.toggle(item.uri)
             contentChanged = true
             renderFavoriteState(isFavorite)
         }
         binding.editBtn.setOnClickListener {
-            if (isVideo) toggleVideoPlayback() else edit(uri)
+            val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
+            if (item.mediaType == GalleryRepository.MediaType.Video) {
+                toggleVideoPlayback()
+            } else {
+                edit(item.uri)
+            }
         }
-        binding.deleteBtn.setOnClickListener { confirmDelete(uri) }
+        binding.deleteBtn.setOnClickListener {
+            val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
+            confirmDelete(item.uri)
+        }
         binding.viewerRoot.setOnTouchListener { _, event ->
             handleViewerTouch(event)
         }
     }
 
-    private fun bindVideo(uri: Uri) {
-        binding.photoView.visibility = View.GONE
-        binding.videoView.visibility = View.VISIBLE
-        binding.editBtn.setImageResource(R.drawable.ic_fluent_pause_24_regular)
-        binding.editBtn.contentDescription = "Pause video"
-
-        val controller = MediaController(this)
-        controller.setAnchorView(binding.videoView)
-        binding.videoView.setMediaController(controller)
-        binding.videoView.setVideoURI(uri)
-        binding.videoView.setOnPreparedListener { player ->
-            videoPrepared = true
-            player.isLooping = false
-            binding.videoView.start()
-            scheduleAutoHide()
+    private fun shareCurrent() {
+        val item = items.getOrNull(currentPosition) ?: return
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = if (item.mediaType == GalleryRepository.MediaType.Video) "video/*" else "image/*"
+            putExtra(Intent.EXTRA_STREAM, item.uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        binding.videoView.setOnCompletionListener {
-            binding.editBtn.setImageResource(R.drawable.ic_fluent_play_24_regular)
-            binding.editBtn.contentDescription = "Play video"
-            setControlsVisible(true)
-        }
-        binding.videoView.setOnErrorListener { _, what, extra ->
-            Log.w(Tag, "Video playback failed for $uri. what=$what extra=$extra")
-            Toast.makeText(this, "This video cannot be played.", Toast.LENGTH_LONG).show()
-            true
-        }
+        startActivity(Intent.createChooser(intent, "Share photo"))
     }
 
     private fun toggleVideoPlayback() {
-        if (!isVideo || !videoPrepared) return
-        if (binding.videoView.isPlaying) {
-            binding.videoView.pause()
+        val holder = getCurrentPageViewHolder() ?: return
+        val videoView = holder.binding.videoView
+        if (videoView.isPlaying) {
+            videoView.pause()
             binding.editBtn.setImageResource(R.drawable.ic_fluent_play_24_regular)
             binding.editBtn.contentDescription = "Play video"
             setControlsVisible(true)
         } else {
-            binding.videoView.start()
+            videoView.start()
             binding.editBtn.setImageResource(R.drawable.ic_fluent_pause_24_regular)
             binding.editBtn.contentDescription = "Pause video"
             scheduleAutoHide()
         }
+    }
+
+    private fun getPageViewHolder(position: Int): MediaPagerAdapter.PageViewHolder? {
+        val recyclerView = binding.viewPager.getChildAt(0) as? RecyclerView ?: return null
+        for (i in 0 until recyclerView.childCount) {
+            val child = recyclerView.getChildAt(i)
+            val holder = recyclerView.getChildViewHolder(child) as? MediaPagerAdapter.PageViewHolder
+            if (holder != null && recyclerView.layoutManager?.getPosition(child) == position) {
+                return holder
+            }
+        }
+        return null
+    }
+
+    private fun getCurrentPageViewHolder(): MediaPagerAdapter.PageViewHolder? {
+        return getPageViewHolder(binding.viewPager.currentItem)
+    }
+
+    private fun isCurrentPageZoomed(): Boolean {
+        return getCurrentPageViewHolder()?.isZoomed() == true
     }
 
     private fun bindMetadata(metadata: PhotoMetadata) {
@@ -303,14 +365,14 @@ class ViewerActivity : AppCompatActivity() {
             }
             MotionEvent.ACTION_MOVE -> {
                 dragDistance = (event.rawY - downY).coerceAtLeast(0f)
-                if (!infoVisible && dragDistance > 8f) {
+                if (!infoVisible && dragDistance > 8f && !isCurrentPageZoomed()) {
                     draggingToDismiss = true
                     val progress = (dragDistance / binding.viewerRoot.height).coerceIn(0f, 1f)
-                    val mediaView = if (isVideo) binding.videoView else binding.photoView
-                    mediaView.translationY = dragDistance
+                    val mediaView = getCurrentMediaView()
+                    mediaView?.translationY = dragDistance
                     val scale = 1f - (progress * 0.08f)
-                    mediaView.scaleX = scale
-                    mediaView.scaleY = scale
+                    mediaView?.scaleX = scale
+                    mediaView?.scaleY = scale
                     val chromeAlpha = (1f - (progress * 0.8f)).coerceIn(0f, 1f)
                     binding.topBar.alpha = chromeAlpha
                     binding.viewerPill.alpha = chromeAlpha
@@ -323,8 +385,8 @@ class ViewerActivity : AppCompatActivity() {
                     if (dragDistance > dismissThreshold) {
                         finish()
                     } else {
-                        val mediaView = if (isVideo) binding.videoView else binding.photoView
-                        mediaView.animate().translationY(0f).scaleX(1f).scaleY(1f).setDuration(220).start()
+                        val mediaView = getCurrentMediaView()
+                        mediaView?.animate()?.translationY(0f)?.scaleX(1f)?.scaleY(1f)?.setDuration(220)?.start()
                         binding.topBar.animate().alpha(if (controlsVisible) 1f else 0f).setDuration(220).start()
                         binding.viewerPill.animate().alpha(if (controlsVisible) 1f else 0f).setDuration(220).start()
                     }
@@ -342,13 +404,14 @@ class ViewerActivity : AppCompatActivity() {
         return false
     }
 
-    private fun share(uri: Uri) {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = if (isVideo) "video/*" else "image/*"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    private fun getCurrentMediaView(): View? {
+        val holder = getCurrentPageViewHolder() ?: return null
+        val item = items.getOrNull(currentPosition) ?: return null
+        return if (item.mediaType == GalleryRepository.MediaType.Video) {
+            holder.binding.videoView
+        } else {
+            holder.binding.photoView
         }
-        startActivity(Intent.createChooser(intent, "Share photo"))
     }
 
     private fun confirmDelete(uri: Uri) {
@@ -370,7 +433,7 @@ class ViewerActivity : AppCompatActivity() {
                 return
             }
             contentResolver.delete(uri, null, null)
-            onDeleteCompleted()
+            onDeleteCompleted(uri)
         }.onFailure { error ->
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && error is RecoverableSecurityException && !afterApproval) {
                 pendingDeleteUri = uri
@@ -384,12 +447,50 @@ class ViewerActivity : AppCompatActivity() {
         }
     }
 
-    private fun onDeleteCompleted() {
+    private fun onDeleteCompleted(uri: Uri) {
         contentChanged = true
-        finish()
+        val index = items.indexOfFirst { it.uri == uri }
+        if (index >= 0) {
+            items.removeAt(index)
+            adapter.notifyItemRemoved(index)
+            if (items.isEmpty()) {
+                finish()
+                return
+            }
+            if (index >= items.size) {
+                currentPosition = items.size - 1
+            }
+            binding.viewPager.setCurrentItem(currentPosition, false)
+            bindPage(currentPosition)
+        }
     }
 
-    private fun loadMetadata(uri: Uri): PhotoMetadata {
+    private fun edit(uri: Uri) {
+        val mimeType = contentResolver.getType(uri) ?: "image/*"
+        val editIntent = Intent(Intent.ACTION_EDIT).apply {
+            setDataAndType(uri, mimeType)
+            clipData = ClipData.newUri(contentResolver, "photo", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        }
+        val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mimeType)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        try {
+            startActivity(Intent.createChooser(editIntent, "Edit photo"))
+        } catch (missingEditor: ActivityNotFoundException) {
+            Log.d(Tag, "No edit activity available; falling back to view.", missingEditor)
+            try {
+                startActivity(fallbackIntent)
+            } catch (error: ActivityNotFoundException) {
+                Log.w(Tag, "No viewer fallback available for edit action.", error)
+                Toast.makeText(this, "No editor available for this photo.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun loadMetadata(uri: Uri, isVideo: Boolean): PhotoMetadata {
         if (isVideo) return loadVideoMetadata(uri)
 
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -474,31 +575,6 @@ class ViewerActivity : AppCompatActivity() {
         return PhotoMetadata(mimeType = "video/*")
     }
 
-    private fun edit(uri: Uri) {
-        val mimeType = contentResolver.getType(uri) ?: "image/*"
-        val editIntent = Intent(Intent.ACTION_EDIT).apply {
-            setDataAndType(uri, mimeType)
-            clipData = ClipData.newUri(contentResolver, "photo", uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-        }
-        val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mimeType)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-
-        try {
-            startActivity(Intent.createChooser(editIntent, "Edit photo"))
-        } catch (missingEditor: ActivityNotFoundException) {
-            Log.d(Tag, "No edit activity available; falling back to view.", missingEditor)
-            try {
-                startActivity(fallbackIntent)
-            } catch (error: ActivityNotFoundException) {
-                Log.w(Tag, "No viewer fallback available for edit action.", error)
-                Toast.makeText(this, "No editor available for this photo.", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
     private fun resolveLocationName(uri: Uri): String? {
         val latLong = readLatLong(uri) ?: return null
         if (!Geocoder.isPresent()) return null
@@ -562,12 +638,21 @@ class ViewerActivity : AppCompatActivity() {
     companion object {
         private const val Tag = "ViewerActivity"
         const val ExtraContentChanged = "content_changed"
+        const val ExtraItems = "items"
+        const val ExtraPosition = "position"
+        const val ExtraTransitionName = "transition_name"
     }
 
     override fun onDestroy() {
         autoHideHandler.removeCallbacks(autoHideRunnable)
-        if (isVideo) {
-            binding.videoView.stopPlayback()
+        binding.viewPager.unregisterOnPageChangeCallback(pageChangeCallback)
+        val recyclerView = binding.viewPager.getChildAt(0) as? RecyclerView
+        recyclerView?.let { rv ->
+            for (i in 0 until rv.childCount) {
+                val child = rv.getChildAt(i)
+                val holder = rv.getChildViewHolder(child) as? MediaPagerAdapter.PageViewHolder
+                holder?.stopPlayback()
+            }
         }
         super.onDestroy()
     }
