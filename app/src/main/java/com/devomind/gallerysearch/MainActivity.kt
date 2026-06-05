@@ -320,9 +320,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initializeCore() {
-        // -------------------- TRACK C (fire first) --------------------
-        enqueueBackgroundIndexingIfPossible(showToast = false)
-
         // -------------------- TRACK A (UI critical path) --------------
         lifecycleScope.launch {
             setBusy("Loading gallery…")
@@ -350,6 +347,11 @@ class MainActivity : AppCompatActivity() {
 
             // -------------------- TRACK B (model warm-up) -------------
             loadEncodersInBackground()
+
+            // -------------------- TRACK C (index after first render) ----
+            binding.root.post {
+                enqueueBackgroundIndexingIfPossible(showToast = false)
+            }
         }
     }
 
@@ -400,15 +402,27 @@ class MainActivity : AppCompatActivity() {
         repo: GalleryRepository,
         requestedSelection: Set<String>
     ): LibrarySnapshot {
-        val refreshedAlbums = repo.getAlbums()
+        val fullSnapshot = repo.loadSnapshot(emptySet())
+        val refreshedAlbums = fullSnapshot.albums
         val effectiveSelection = requestedSelection.intersect(refreshedAlbums.map { it.id }.toSet())
-        val refreshedSnapshot = repo.loadSnapshot(effectiveSelection)
-        repo.loadCachedIndexForUris(refreshedSnapshot.imageItems.map { it.uri })
+
+        val imageItems = if (effectiveSelection.isEmpty()) {
+            fullSnapshot.imageItems
+        } else {
+            fullSnapshot.imageItems.filter { it.bucketId in effectiveSelection }
+        }
+        val videoItems = if (effectiveSelection.isEmpty()) {
+            fullSnapshot.videoItems
+        } else {
+            fullSnapshot.videoItems.filter { it.bucketId in effectiveSelection }
+        }
+        val collectionItems = (imageItems + videoItems).sortedByDescending { it.dateMillis }
+
         return LibrarySnapshot(
             albums = refreshedAlbums,
-            imageItems = refreshedSnapshot.imageItems,
-            collectionItems = refreshedSnapshot.collectionItems,
-            videoItems = refreshedSnapshot.videoItems,
+            imageItems = imageItems,
+            collectionItems = collectionItems,
+            videoItems = videoItems,
             selectedAlbumIds = effectiveSelection
         )
     }
@@ -933,13 +947,11 @@ class MainActivity : AppCompatActivity() {
                 when (work.state) {
                     WorkInfo.State.ENQUEUED,
                     WorkInfo.State.BLOCKED -> {
-                        binding.progressBar.visibility = View.VISIBLE
                         binding.statusText.text = "Index job queued"
                     }
                     WorkInfo.State.RUNNING -> {
                         val current = work.progress.getInt(IndexWorker.ProgressCurrentKey, 0)
                         val total = work.progress.getInt(IndexWorker.ProgressTotalKey, 0)
-                        binding.progressBar.visibility = View.VISIBLE
                         binding.statusText.text = "Indexing: $current / $total"
                         maybeRefreshLiveIndex(current)
                     }
@@ -975,6 +987,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun maybeRefreshLiveIndex(current: Int) {
+        if (imageItems.isEmpty()) return
         val shouldRefresh = current > 0 && (current % DesignTokens.INDEX_LIVE_REFRESH_STEP == 0 || current == 1) && current != lastProgressRefresh
         if (!shouldRefresh) return
         lastProgressRefresh = current
