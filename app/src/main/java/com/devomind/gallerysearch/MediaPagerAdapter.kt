@@ -97,7 +97,7 @@ class MediaPagerAdapter(
                         override fun onLoadFailed(
                             e: GlideException?,
                             model: Any?,
-                            target: Target<Drawable>?,
+                            target: Target<Drawable>,
                             isFirstResource: Boolean
                         ): Boolean {
                             onInitialImageLoaded()
@@ -105,10 +105,10 @@ class MediaPagerAdapter(
                         }
 
                         override fun onResourceReady(
-                            resource: Drawable?,
+                            resource: Drawable,
                             model: Any?,
-                            target: Target<Drawable>?,
-                            dataSource: DataSource?,
+                            target: Target<Drawable>,
+                            dataSource: DataSource,
                             isFirstResource: Boolean
                         ): Boolean {
                             onInitialImageLoaded()
