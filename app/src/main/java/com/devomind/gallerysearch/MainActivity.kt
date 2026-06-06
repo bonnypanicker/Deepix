@@ -776,17 +776,19 @@ class MainActivity : AppCompatActivity() {
         val items = currentViewerItems()
         val position = items.indexOfFirst { it.uri == item.uri }
         if (position < 0 || items.isEmpty()) {
+            ViewerItemsHolder.store(listOf(item))
             val fallbackIntent = Intent(this, ViewerActivity::class.java).apply {
-                putParcelableArrayListExtra(ViewerActivity.ExtraItems, arrayListOf(item))
+                putExtra(ViewerActivity.ExtraMarker, item.uri.toString())
                 putExtra(ViewerActivity.ExtraPosition, 0)
             }
             viewerLauncher.launch(fallbackIntent)
             return
         }
 
+        ViewerItemsHolder.store(items)
         val transitionName = ViewCompat.getTransitionName(sharedView) ?: ""
         val intent = Intent(this, ViewerActivity::class.java).apply {
-            putParcelableArrayListExtra(ViewerActivity.ExtraItems, ArrayList(items))
+            putExtra(ViewerActivity.ExtraMarker, item.uri.toString())
             putExtra(ViewerActivity.ExtraPosition, position)
             putExtra(ViewerActivity.ExtraTransitionName, transitionName)
         }

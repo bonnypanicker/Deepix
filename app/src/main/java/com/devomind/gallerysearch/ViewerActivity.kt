@@ -97,9 +97,16 @@ class ViewerActivity : AppCompatActivity() {
         setContentView(binding.root)
         configureEdgeToEdge()
 
-        val parcelables = intent.getParcelableArrayListExtra<GalleryRepository.MediaItem>(ExtraItems)
-        if (parcelables != null) {
-            items.addAll(parcelables)
+        val markerUri = intent.getStringExtra(ExtraMarker)
+        if (markerUri != null) {
+            ViewerItemsHolder.retrieve(markerUri)?.let { items.addAll(it) }
+            ViewerItemsHolder.release()
+        }
+        if (items.isEmpty()) {
+            val parcelables = intent.getParcelableArrayListExtra<GalleryRepository.MediaItem>(ExtraItems)
+            if (parcelables != null) {
+                items.addAll(parcelables)
+            }
         }
         currentPosition = intent.getIntExtra(ExtraPosition, 0)
         val transitionName = intent.getStringExtra(ExtraTransitionName)
@@ -641,6 +648,7 @@ class ViewerActivity : AppCompatActivity() {
         const val ExtraItems = "items"
         const val ExtraPosition = "position"
         const val ExtraTransitionName = "transition_name"
+        const val ExtraMarker = "marker_uri"
     }
 
     override fun onDestroy() {
