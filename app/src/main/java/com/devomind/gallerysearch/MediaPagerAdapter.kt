@@ -85,19 +85,21 @@ class MediaPagerAdapter(
 
                 val request = Glide.with(binding.photoView)
                     .load(item.uri)
+                    .override(binding.photoView.resources.displayMetrics.widthPixels,
+                        binding.photoView.resources.displayMetrics.heightPixels)
                     .fitCenter()
 
                 request.into(binding.photoView)
 
                 if (isInitialSharedElement) {
-                    val vto = binding.photoView.viewTreeObserver
-                    vto.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
-                        override fun onPreDraw(): Boolean {
-                            vto.removeOnPreDrawListener(this)
-                            onInitialImageLoaded()
-                            return true
-                        }
-                    })
+                    binding.photoView.viewTreeObserver.addOnPreDrawListener(
+                        object : android.view.ViewTreeObserver.OnPreDrawListener {
+                            override fun onPreDraw(): Boolean {
+                                binding.photoView.viewTreeObserver.removeOnPreDrawListener(this)
+                                onInitialImageLoaded()
+                                return true
+                            }
+                        })
                 }
             }
         }
