@@ -56,18 +56,22 @@ class MediaPagerAdapter(
             if (isVideo) {
                 binding.photoView.visibility = View.GONE
                 binding.playerView.visibility = View.VISIBLE
+                binding.loadingSpinner.visibility = View.VISIBLE
 
                 player = ExoPlayer.Builder(binding.root.context).build().apply {
                     setMediaItem(Media3Item.fromUri(item.uri))
                     repeatMode = Player.REPEAT_MODE_OFF
                     addListener(object : Player.Listener {
                         override fun onPlaybackStateChanged(playbackState: Int) {
-                            if (playbackState == Player.STATE_ENDED) {
+                            if (playbackState == Player.STATE_READY) {
+                                binding.loadingSpinner.visibility = View.GONE
+                            } else if (playbackState == Player.STATE_ENDED) {
                                 onVideoCompleted()
                             }
                         }
                         
                         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                            binding.loadingSpinner.visibility = View.GONE
                             android.util.Log.w("MediaPagerAdapter", "Video playback failed for ${item.uri}", error)
                             android.widget.Toast.makeText(binding.root.context, "This video cannot be played.", android.widget.Toast.LENGTH_LONG).show()
                         }
@@ -89,6 +93,7 @@ class MediaPagerAdapter(
             } else {
                 binding.playerView.visibility = View.GONE
                 binding.photoView.visibility = View.VISIBLE
+                binding.loadingSpinner.visibility = View.VISIBLE
 
                 if (transitionName != null) {
                     ViewCompat.setTransitionName(binding.photoView, transitionName)
@@ -102,6 +107,28 @@ class MediaPagerAdapter(
                     .override(binding.photoView.resources.displayMetrics.widthPixels,
                         binding.photoView.resources.displayMetrics.heightPixels)
                     .fitCenter()
+                    .listener(object : com.bumptech.glide.request.RequestListener<android.graphics.drawable.Drawable> {
+                        override fun onLoadFailed(
+                            e: com.bumptech.glide.load.engine.GlideException?,
+                            model: Any?,
+                            target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>?,
+                            isFirstResource: Boolean
+                        ): Boolean {
+                            binding.loadingSpinner.visibility = View.GONE
+                            return false
+                        }
+
+                        override fun onResourceReady(
+                            resource: android.graphics.drawable.Drawable?,
+                            model: Any?,
+                            target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>?,
+                            dataSource: com.bumptech.glide.load.DataSource?,
+                            isFirstResource: Boolean
+                        ): Boolean {
+                            binding.loadingSpinner.visibility = View.GONE
+                            return false
+                        }
+                    })
 
                 request.into(binding.photoView)
 

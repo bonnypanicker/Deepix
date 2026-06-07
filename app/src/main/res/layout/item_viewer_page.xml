@@ -21,4 +21,11 @@
         app:resize_mode="fit"
         app:use_controller="false"
         app:show_buffering="when_playing" />
+
+    <ProgressBar
+        android:id="@+id/loadingSpinner"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:visibility="gone" />
 </FrameLayout>
