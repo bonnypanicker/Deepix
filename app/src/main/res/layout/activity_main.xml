@@ -56,9 +56,11 @@
                     android:paddingEnd="16dp"
                     android:paddingBottom="16dp"
                     android:text="collection"
+                    android:textAllCaps="true"
                     android:textColor="@color/metroTextPrimary"
-                    android:textSize="40sp"
-                    android:fontFamily="sans-serif-light"
+                    android:textSize="20sp"
+                    android:letterSpacing="0.05"
+                    android:fontFamily="sans-serif-black"
                     android:visibility="visible" />
 
                 <ImageButton
