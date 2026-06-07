@@ -646,9 +646,10 @@ class MainActivity : AppCompatActivity() {
 
         searchJob = lifecycleScope.launch {
             try {
+                // Get base items once for status calculation
+                val baseItems = currentSearchPhotoItems()
+                
                 val cells = withContext(Dispatchers.IO) {
-                    val baseItems = currentSearchPhotoItems()
-                    
                     // Get AI matches if text encoder available
                     val aiMatches = if (textEncoder != null) {
                         repo.searchAiMatches(query)

@@ -433,7 +433,7 @@ class GalleryRepository(
         val results = ranked
             .filter { it.second >= relativeCutoff }
             .filter { it.second >= SearchTuning.ScoreThreshold }
-            .map { uriString, score ->
+            .map { (uriString, score) ->
                 SearchMatch(
                     uri = Uri.parse(uriString),
                     aiScore = score,
