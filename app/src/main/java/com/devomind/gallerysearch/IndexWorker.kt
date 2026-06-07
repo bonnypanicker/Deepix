@@ -52,6 +52,9 @@ class IndexWorker(
                 setForegroundAsync(createForegroundInfo(bounded, total))
             }
 
+            val allImages = repository.getImageItemsForAlbumIds(emptySet())
+            repository.rebuildMetadataIndex(allImages)
+
             // Save timestamp so next run only processes new photos
             IndexPreferences.saveLastIndexedTime(applicationContext)
 

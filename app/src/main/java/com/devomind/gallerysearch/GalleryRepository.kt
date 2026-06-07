@@ -67,11 +67,18 @@ class GalleryRepository(
     }
 
     private val indexFile = File(context.filesDir, IndexFileName)
+    private val metadataIndexFile = File(context.filesDir, MetadataIndexFileName)
     private val indexLock = Any()
+    private val metadataLock = Any()
     private var embeddings = LinkedHashMap<String, FloatArray>()
+    private var metadataDocuments = LinkedHashMap<String, MetadataSearch.Document>()
+    @Volatile private var metadataSearchIndex: MetadataSearch.Index? = null
 
     val indexedCount: Int
         get() = synchronized(indexLock) { embeddings.size }
+
+    val metadataIndexedCount: Int
+        get() = synchronized(metadataLock) { metadataDocuments.size }
 
     fun getAllImageUris(): List<Uri> {
         return getImageUrisForAlbumIds(emptySet())
@@ -436,6 +443,29 @@ class GalleryRepository(
         return results
     }
 
+    fun searchMetadata(query: String, items: List<MediaItem>): List<MetadataSearch.Hit> {
+        if (items.isEmpty()) return emptyList()
+
+        var index = metadataSearchIndex
+        if (index == null) {
+            synchronized(metadataLock) {
+                if (metadataDocuments.isEmpty()) {
+                    setMetadataDocuments(loadMetadataIndex())
+                }
+                index = metadataSearchIndex
+            }
+        }
+
+        val allowedUris = items.mapTo(HashSet(items.size)) { it.uri.toString() }
+        val loadedIndex = index
+        if (loadedIndex != null) {
+            return loadedIndex.search(query, allowedUris)
+        }
+
+        // First run fallback before the persistent metadata index is ready.
+        return MetadataSearch.search(query, items)
+    }
+
     private fun containsEmbedding(uri: String): Boolean =
         synchronized(indexLock) { embeddings.containsKey(uri) }
 
@@ -447,8 +477,29 @@ class GalleryRepository(
         }
     }
 
+    fun loadCachedMetadataIndexForUris(uris: List<Uri>) {
+        val allowed = uris.mapTo(HashSet()) { it.toString() }
+        val loaded = loadMetadataIndex().filterKeys { it in allowed }
+        synchronized(metadataLock) {
+            setMetadataDocuments(loaded)
+        }
+    }
+
+    fun rebuildMetadataIndex(items: List<MediaItem>) {
+        val documents = MetadataSearch.buildDocuments(items).associateByTo(LinkedHashMap(items.size)) { it.uri }
+        synchronized(metadataLock) {
+            setMetadataDocuments(documents)
+        }
+        saveMetadataIndex(documents)
+    }
+
     private fun snapshotIndex(): LinkedHashMap<String, FloatArray> =
         synchronized(indexLock) { LinkedHashMap(embeddings) }
+
+    private fun setMetadataDocuments(documents: Map<String, MetadataSearch.Document>) {
+        metadataDocuments = LinkedHashMap(documents)
+        metadataSearchIndex = if (metadataDocuments.isEmpty()) null else MetadataSearch.indexFromDocuments(metadataDocuments.values)
+    }
 
     private fun buildAlbumsFrom(items: List<MediaItem>): List<Album> {
         val buckets = LinkedHashMap<String, Album>()
@@ -565,6 +616,105 @@ class GalleryRepository(
         }
     }
 
+    private fun loadMetadataIndex(): LinkedHashMap<String, MetadataSearch.Document> {
+        if (!metadataIndexFile.exists()) return LinkedHashMap()
+
+        return runCatching {
+            DataInputStream(BufferedInputStream(metadataIndexFile.inputStream())).use { input ->
+                val magic = input.readInt()
+                val version = input.readInt()
+                if (magic != MetadataIndexMagic || version != MetadataIndexVersion) {
+                    throw IllegalStateException("Unsupported metadata index file version.")
+                }
+
+                val count = input.readInt().coerceAtLeast(0)
+                val loaded = LinkedHashMap<String, MetadataSearch.Document>(count)
+                repeat(count) {
+                    val document = MetadataSearch.Document(
+                        uri = readIndexString(input),
+                        dateMillis = input.readLong(),
+                        width = input.readInt(),
+                        height = input.readInt(),
+                        displayName = readIndexString(input),
+                        displayNameWithoutExt = readIndexString(input),
+                        bucketName = readIndexString(input),
+                        mimeType = readIndexString(input),
+                        mimeSubtype = readIndexString(input),
+                        extension = readIndexString(input),
+                        orientation = readIndexString(input),
+                        year = input.readInt(),
+                        month = input.readInt(),
+                        day = input.readInt(),
+                        monthName = readIndexString(input),
+                        dayName = readIndexString(input),
+                        id = readIndexString(input),
+                        searchableText = readIndexString(input)
+                    )
+                    loaded[document.uri] = document
+                }
+                loaded
+            }
+        }.onFailure { error ->
+            Log.w(Tag, "Ignoring corrupt metadata index.", error)
+            metadataIndexFile.delete()
+        }.getOrDefault(LinkedHashMap())
+    }
+
+    private fun saveMetadataIndex(index: Map<String, MetadataSearch.Document>) {
+        val tmpFile = File(metadataIndexFile.parentFile, "$MetadataIndexFileName.tmp")
+        runCatching {
+            DataOutputStream(BufferedOutputStream(tmpFile.outputStream())).use { output ->
+                output.writeInt(MetadataIndexMagic)
+                output.writeInt(MetadataIndexVersion)
+                output.writeInt(index.size)
+                for (document in index.values) {
+                    writeIndexString(output, document.uri)
+                    output.writeLong(document.dateMillis)
+                    output.writeInt(document.width)
+                    output.writeInt(document.height)
+                    writeIndexString(output, document.displayName)
+                    writeIndexString(output, document.displayNameWithoutExt)
+                    writeIndexString(output, document.bucketName)
+                    writeIndexString(output, document.mimeType)
+                    writeIndexString(output, document.mimeSubtype)
+                    writeIndexString(output, document.extension)
+                    writeIndexString(output, document.orientation)
+                    output.writeInt(document.year)
+                    output.writeInt(document.month)
+                    output.writeInt(document.day)
+                    writeIndexString(output, document.monthName)
+                    writeIndexString(output, document.dayName)
+                    writeIndexString(output, document.id)
+                    writeIndexString(output, document.searchableText)
+                }
+            }
+            if (metadataIndexFile.exists()) {
+                metadataIndexFile.delete()
+            }
+            tmpFile.renameTo(metadataIndexFile)
+        }.onFailure { error ->
+            Log.w(Tag, "Failed to save metadata index.", error)
+            tmpFile.delete()
+        }
+    }
+
+    private fun readIndexString(input: DataInputStream): String {
+        val byteCount = input.readInt()
+        if (byteCount < 0 || byteCount > MaxTextBytes) {
+            throw EOFException("Invalid text length.")
+        }
+        if (byteCount == 0) return ""
+        val bytes = ByteArray(byteCount)
+        input.readFully(bytes)
+        return bytes.toString(Charsets.UTF_8)
+    }
+
+    private fun writeIndexString(output: DataOutputStream, value: String) {
+        val bytes = value.toByteArray(Charsets.UTF_8)
+        output.writeInt(bytes.size)
+        output.write(bytes)
+    }
+
     /** Holds a URI + its loaded bitmap for batch processing. */
     private data class BitmapEntry(val uri: Uri, val bitmap: Bitmap)
 
@@ -574,12 +724,16 @@ class GalleryRepository(
     companion object {
         private const val Tag = "GalleryRepository"
         private const val IndexFileName = "embedding_index.bin"
+        private const val MetadataIndexFileName = "metadata_index.bin"
         private const val IndexMagic = 0x47534958
         private const val IndexVersion = 2
+        private const val MetadataIndexMagic = 0x474d4458
+        private const val MetadataIndexVersion = 1
         private const val MaxBitmapEdge = 512
         private const val SaveEvery = 20
         private const val MaxUriBytes = 4096
         private const val MaxEmbeddingSize = 4096
+        private const val MaxTextBytes = 16_384
         private const val MinValidMillis = 631152000000L
         private const val OneDayMillis = 86_400_000L
 

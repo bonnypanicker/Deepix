@@ -81,8 +81,6 @@ class MainActivity : AppCompatActivity() {
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
     private var topInsetPx = 0
-    private var cachedMetadataIndex: MetadataSearch.Index? = null
-    private var cachedMetadataSignature: Int = 0
 
     private val monthFormat = object : ThreadLocal<SimpleDateFormat>() {
         override fun initialValue(): SimpleDateFormat = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
@@ -355,6 +353,7 @@ class MainActivity : AppCompatActivity() {
                 binding.statusText.text =
                     selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
                 renderCurrentState()
+                primeMetadataIndexAsync()
             } catch (error: Throwable) {
                 binding.progressBar.visibility = View.GONE
                 showFatalError(error)
@@ -392,6 +391,7 @@ class MainActivity : AppCompatActivity() {
             }
             withContext(Dispatchers.IO) {
                 repository?.loadCachedIndexForUris(allUris)
+                repository?.loadCachedMetadataIndexForUris(allUris)
             }
             maybeStartBackgroundIndexing()
         }
@@ -450,7 +450,6 @@ class MainActivity : AppCompatActivity() {
         videoItems = snapshot.videoItems
         selectedAlbumIds = snapshot.selectedAlbumIds
         allUris = snapshot.imageItems.map { it.uri }
-        invalidateSearchCaches()
         IndexPreferences.saveSelectedAlbums(this, snapshot.selectedAlbumIds)
     }
 
@@ -647,43 +646,48 @@ class MainActivity : AppCompatActivity() {
 
         searchJob = lifecycleScope.launch {
             try {
-                val results = withContext(Dispatchers.Default) {
-                    coroutineScope {
-                        val metadataIndexAsync = async { metadataIndexFor(baseItems) }
-                        val semanticResultsAsync = async {
-                            if (textEncoder == null) emptyList() else repo.search(query)
-                        }
-                        val metadataHitsAsync = async {
-                            metadataIndexAsync.await().search(query)
-                        }
-                        buildMergedPhotoSearchResults(
-                            baseItems = baseItems,
-                            metadataHits = metadataHitsAsync.await(),
-                            semanticResults = semanticResultsAsync.await()
-                        )
+                val metadataHits = withContext(Dispatchers.Default) {
+                    repo.searchMetadata(query, baseItems)
+                }
+
+                val metadataResults = withContext(Dispatchers.Default) {
+                    buildMergedPhotoSearchResults(
+                        baseItems = baseItems,
+                        metadataHits = metadataHits,
+                        semanticResults = emptyList()
+                    )
+                }
+
+                renderSearchResults(
+                    results = metadataResults,
+                    emptyText = "No matching results",
+                    statusText = when {
+                        textEncoder == null -> "Metadata ready - AI still warming up"
+                        metadataResults.isEmpty() -> "Searching AI..."
+                        else -> "Metadata ready - refining with AI..."
                     }
+                )
+
+                if (textEncoder == null) {
+                    return@launch
                 }
-                val cells = if (results.isEmpty()) {
-                    listOf(GalleryCell.Empty("No matching results"))
-                } else {
-                    results.map { result ->
-                        GalleryCell.Photo(
-                            item = result.item,
-                            featured = false,
-                            searchSources = result.sources
-                        )
-                    }
+
+                val semanticResults = withContext(Dispatchers.Default) {
+                    repo.search(query)
                 }
-                adapter.updateCells(cells)
-                binding.resultCount.text = when {
-                    results.isEmpty() -> "No results found"
-                    results.size == 1 -> "1 result"
-                    else -> "${results.size} results"
+                val mergedResults = withContext(Dispatchers.Default) {
+                    buildMergedPhotoSearchResults(
+                        baseItems = baseItems,
+                        metadataHits = metadataHits,
+                        semanticResults = semanticResults
+                    )
                 }
-                binding.statusText.text = when {
-                    textEncoder == null -> "Metadata ready - AI still warming up"
-                    else -> selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
-                }
+
+                renderSearchResults(
+                    results = mergedResults,
+                    emptyText = "No matching results",
+                    statusText = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+                )
             } catch (cancelled: CancellationException) {
                 Log.d(TAG, "Search job cancelled.", cancelled)
             } catch (error: Throwable) {
@@ -736,7 +740,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildMergedPhotoSearchResults(
         baseItems: List<GalleryRepository.MediaItem>,
-        metadataHits: List<Pair<GalleryRepository.MediaItem, Float>>,
+        metadataHits: List<MetadataSearch.Hit>,
         semanticResults: List<GalleryRepository.SemanticSearchHit>
     ): List<PhotoSearchResult> {
         if (baseItems.isEmpty()) return emptyList()
@@ -751,7 +755,8 @@ class MainActivity : AppCompatActivity() {
         val merged = LinkedHashMap<Uri, SearchAccumulator>()
         val scopedSemanticHits = semanticResults.filter { it.uri in byUri }
 
-        metadataHits.forEachIndexed { index, (item, _) ->
+        metadataHits.forEachIndexed { index, hit ->
+            val item = byUri[Uri.parse(hit.uri)] ?: return@forEachIndexed
             val entry = merged.getOrPut(item.uri) { SearchAccumulator(item) }
             entry.metadataScore = normalizedRank(index, metadataHits.size)
         }
@@ -786,30 +791,29 @@ class MainActivity : AppCompatActivity() {
             .toList()
     }
 
-    private fun metadataIndexFor(items: List<GalleryRepository.MediaItem>): MetadataSearch.Index {
-        val signature = metadataSignature(items)
-        val cached = cachedMetadataIndex
-        if (cached != null && cachedMetadataSignature == signature) return cached
-        return MetadataSearch.buildIndex(items).also { index ->
-            cachedMetadataIndex = index
-            cachedMetadataSignature = signature
+    private fun renderSearchResults(
+        results: List<PhotoSearchResult>,
+        emptyText: String,
+        statusText: String
+    ) {
+        val cells = if (results.isEmpty()) {
+            listOf(GalleryCell.Empty(emptyText))
+        } else {
+            results.map { result ->
+                GalleryCell.Photo(
+                    item = result.item,
+                    featured = false,
+                    searchSources = result.sources
+                )
+            }
         }
-    }
-
-    private fun invalidateSearchCaches() {
-        cachedMetadataIndex = null
-        cachedMetadataSignature = 0
-    }
-
-    private fun metadataSignature(items: List<GalleryRepository.MediaItem>): Int {
-        var hash = items.size
-        items.forEach { item ->
-            hash = 31 * hash + item.uri.hashCode()
-            hash = 31 * hash + item.dateMillis.hashCode()
-            hash = 31 * hash + (item.displayName?.hashCode() ?: 0)
-            hash = 31 * hash + (item.mimeType?.hashCode() ?: 0)
+        adapter.updateCells(cells)
+        binding.resultCount.text = when {
+            results.isEmpty() -> "No results found"
+            results.size == 1 -> "1 result"
+            else -> "${results.size} results"
         }
-        return hash
+        binding.statusText.text = statusText
     }
 
     private fun safeFormat(
@@ -986,6 +990,7 @@ class MainActivity : AppCompatActivity() {
                     else -> renderCurrentSection()
                 }
                 maybeStartBackgroundIndexing()
+                primeMetadataIndexAsync()
             }
         }
     }
@@ -1107,6 +1112,7 @@ class MainActivity : AppCompatActivity() {
         val repo = repository ?: return
         lifecycleScope.launch(Dispatchers.IO) {
             repo.loadCachedIndexForUris(allUris)
+            repo.loadCachedMetadataIndexForUris(allUris)
             withContext(Dispatchers.Main) {
                 binding.statusText.text = "Indexing: $current · live search ready"
                 if (query.isNotBlank() && currentMode == Mode.Search) {
@@ -1123,6 +1129,20 @@ class MainActivity : AppCompatActivity() {
         enqueueBackgroundIndexing(showToast = false)
         binding.statusText.text =
             "Background indexing queued · ${selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)}"
+    }
+
+    private fun primeMetadataIndexAsync() {
+        val repo = repository ?: return
+        val visibleUris = allUris
+        if (visibleUris.isEmpty()) return
+        lifecycleScope.launch(Dispatchers.IO) {
+            repo.loadCachedMetadataIndexForUris(visibleUris)
+            if (repo.metadataIndexedCount < visibleUris.size) {
+                val allImages = repo.getImageItemsForAlbumIds(emptySet())
+                repo.rebuildMetadataIndex(allImages)
+                repo.loadCachedMetadataIndexForUris(visibleUris)
+            }
+        }
     }
 
     private fun updateTopBarForMode(title: String?) {
