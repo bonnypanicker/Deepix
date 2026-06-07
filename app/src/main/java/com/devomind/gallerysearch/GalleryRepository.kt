@@ -29,6 +29,8 @@ class GalleryRepository(
     @Volatile private var imageEncoder: ImageEncoder? = null,
     @Volatile private var textEncoder: TextEncoder? = null
 ) {
+    data class SemanticSearchHit(val uri: Uri, val score: Float)
+
     /** Attaches the MobileCLIP encoders once they finish loading on a background thread. */
     fun attachEncoders(image: ImageEncoder, text: TextEncoder?) {
         this.imageEncoder = image
@@ -394,7 +396,7 @@ class GalleryRepository(
         saveIndex(snapshotIndex())
     }
 
-    fun search(query: String): List<Uri> {
+    fun search(query: String): List<SemanticSearchHit> {
         val textEncoder = textEncoder ?: return emptyList()
         var snapshot = snapshotIndex()
         if (snapshot.isEmpty()) {
@@ -429,7 +431,7 @@ class GalleryRepository(
         val results = ranked
             .filter { it.second >= relativeCutoff }
             .filter { it.second >= SearchTuning.ScoreThreshold }
-            .map { Uri.parse(it.first) }
+            .map { SemanticSearchHit(uri = Uri.parse(it.first), score = it.second) }
 
         return results
     }

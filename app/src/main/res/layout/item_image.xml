@@ -21,6 +21,52 @@
         android:background="@color/metroDimScrim"
         android:visibility="gone" />
 
+    <LinearLayout
+        android:id="@+id/searchBadgeRow"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/aiBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/search_ai_badge_bg"
+            android:fontFamily="sans-serif-medium"
+            android:includeFontPadding="false"
+            android:paddingStart="6dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="6dp"
+            android:paddingBottom="4dp"
+            android:text="AI"
+            android:textAllCaps="true"
+            android:textColor="@color/metroTextPrimary"
+            android:textSize="10sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/metadataBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/search_metadata_badge_bg"
+            android:fontFamily="sans-serif-medium"
+            android:includeFontPadding="false"
+            android:paddingStart="6dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="6dp"
+            android:paddingBottom="4dp"
+            android:text="APT"
+            android:textAllCaps="true"
+            android:textColor="@color/metroTextPrimary"
+            android:textSize="10sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/checkBadge"
         android:layout_width="24dp"

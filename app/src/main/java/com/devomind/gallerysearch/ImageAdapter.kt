@@ -23,7 +23,11 @@ import com.devomind.gallerysearch.databinding.ItemTimelineHeaderBinding
 
 sealed class GalleryCell {
     data class Header(val title: String, val subtitle: String) : GalleryCell()
-    data class Photo(val item: GalleryRepository.MediaItem, val featured: Boolean = false) : GalleryCell()
+    data class Photo(
+        val item: GalleryRepository.MediaItem,
+        val featured: Boolean = false,
+        val searchSources: SearchSources = SearchSources()
+    ) : GalleryCell()
     data class Collage(val items: List<GalleryRepository.MediaItem>) : GalleryCell()
     data class AlbumCell(val album: GalleryRepository.Album) : GalleryCell()
     data class Empty(val text: String) : GalleryCell()
@@ -279,6 +283,7 @@ class ImageAdapter(
                     .setInterpolator(OvershootInterpolator(1.2f))
                     .start()
             }
+            bindSearchBadges(cell.searchSources)
             binding.videoBadge.visibility = if (cell.item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
             binding.root.setOnClickListener {
                 if (selectionMode) onSelectionToggle(cell.item.uri) else onPhotoClick(cell.item, binding.thumbnail)
@@ -287,6 +292,12 @@ class ImageAdapter(
                 onSelectionToggle(cell.item.uri)
                 true
             }
+        }
+
+        private fun bindSearchBadges(sources: SearchSources) {
+            binding.searchBadgeRow.visibility = if (sources.hasAny) View.VISIBLE else View.GONE
+            binding.aiBadge.visibility = if (sources.ai) View.VISIBLE else View.GONE
+            binding.metadataBadge.visibility = if (sources.metadata) View.VISIBLE else View.GONE
         }
     }
 

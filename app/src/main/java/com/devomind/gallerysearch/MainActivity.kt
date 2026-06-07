@@ -450,13 +450,13 @@ class MainActivity : AppCompatActivity() {
     private val albumDetailItems: List<GalleryRepository.MediaItem>
         get() = currentAlbum?.let { album -> collectionItems.filter { it.bucketId == album.id } }.orEmpty()
 
-    private fun currentSearchItems(): List<GalleryRepository.MediaItem> {
+    private fun currentSearchPhotoItems(): List<GalleryRepository.MediaItem> {
         return when {
-            currentAlbum != null -> albumDetailItems
-            activeSection == Section.Collection -> collectionItems
-            activeSection == Section.Videos -> videoItems
-            activeSection == Section.Favorites -> favoriteItems
-            else -> collectionItems
+            currentAlbum != null -> albumDetailItems.filter { it.mediaType == GalleryRepository.MediaType.Image }
+            activeSection == Section.Collection -> imageItems
+            activeSection == Section.Favorites -> favoriteItems.filter { it.mediaType == GalleryRepository.MediaType.Image }
+            activeSection == Section.Albums -> imageItems
+            else -> emptyList()
         }
     }
 
@@ -598,33 +598,24 @@ class MainActivity : AppCompatActivity() {
         val locale = Locale.getDefault()
         val album = currentAlbum
         binding.searchMetaText.text = when {
-            album != null -> "Semantic + metadata search inside ${album.name.lowercase(locale)}"
-            activeSection == Section.Albums -> "Live album search in the current gallery scope"
-            activeSection == Section.Videos -> "Metadata search across videos in the current gallery scope"
-            activeSection == Section.Favorites -> "Semantic + metadata search across your favorites"
-            else -> "Semantic + metadata search across the current gallery scope"
+            album != null -> "Photo-only AI + APT search inside ${album.name.lowercase(locale)}"
+            activeSection == Section.Favorites -> "Photo-only AI + APT search across your favorites"
+            activeSection == Section.Videos -> "Search returns photos only. Switch sections to search images."
+            else -> "Photo-only AI + APT search across the current gallery scope"
         }
     }
 
     private fun searchPlaceholderText(): String {
         return when {
-            currentAlbum != null -> "Search this album"
-            activeSection == Section.Albums -> "Search albums"
-            activeSection == Section.Videos -> "Search videos"
-            activeSection == Section.Favorites -> "Search favorites"
-            else -> "Search your gallery"
+            currentAlbum != null -> "Search photos in this album"
+            activeSection == Section.Favorites -> "Search favorite photos"
+            else -> "Search photos"
         }
     }
 
     private fun submitSearch() {
         val query = binding.searchInput.text?.toString()?.trim().orEmpty()
         val repo = repository ?: return
-        if (textEncoder == null) {
-            adapter.updateCells(
-                listOf(GalleryCell.Empty("Models still warming up — try again in a moment."))
-            )
-            return
-        }
         searchJob?.cancel()
 
         if (query.isBlank()) {
@@ -636,26 +627,36 @@ class MainActivity : AppCompatActivity() {
 
         currentMode = Mode.Search
         binding.progressBar.visibility = View.VISIBLE
-        binding.statusText.text = "Searching..."
+        binding.statusText.text = if (textEncoder == null) "Searching metadata..." else "Searching..."
 
         searchJob = lifecycleScope.launch {
             try {
-                val cells = withContext(Dispatchers.IO) {
-                    if (currentAlbum == null && activeSection == Section.Albums) {
-                        buildAlbumSearchCells(query)
-                    } else {
-                        val baseItems = currentSearchItems()
-                        val semanticResults = if (activeSection == Section.Videos) emptyList() else repo.search(query)
-                        buildMediaSearchCells(query, baseItems, semanticResults)
+                val results = withContext(Dispatchers.IO) {
+                    val baseItems = currentSearchPhotoItems()
+                    val semanticResults = if (textEncoder == null) emptyList() else repo.search(query)
+                    buildMergedPhotoSearchResults(query, baseItems, semanticResults)
+                }
+                val cells = if (results.isEmpty()) {
+                    listOf(GalleryCell.Empty("No matching results"))
+                } else {
+                    results.map { result ->
+                        GalleryCell.Photo(
+                            item = result.item,
+                            featured = false,
+                            searchSources = result.sources
+                        )
                     }
                 }
-                adapter.updateCells(if (cells.isEmpty()) listOf(GalleryCell.Empty("No matching results")) else cells)
+                adapter.updateCells(cells)
                 binding.resultCount.text = when {
-                    cells.isEmpty() -> "No results found"
-                    cells.size == 1 -> "1 result"
-                    else -> "${cells.size} results"
+                    results.isEmpty() -> "No results found"
+                    results.size == 1 -> "1 result"
+                    else -> "${results.size} results"
                 }
-                binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+                binding.statusText.text = when {
+                    textEncoder == null -> "Metadata ready - AI still warming up"
+                    else -> selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+                }
             } catch (cancelled: CancellationException) {
                 Log.d(TAG, "Search job cancelled.", cancelled)
             } catch (error: Throwable) {
@@ -706,38 +707,57 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun buildAlbumSearchCells(query: String): List<GalleryCell> {
-        val normalized = query.trim().lowercase(Locale.getDefault())
-        return albums
-            .filter { album ->
-                album.name.lowercase(Locale.getDefault()).contains(normalized) ||
-                    album.count.toString().contains(normalized)
-            }
-            .map { GalleryCell.AlbumCell(it) }
-    }
-
-    private fun buildMediaSearchCells(
+    private fun buildMergedPhotoSearchResults(
         query: String,
         baseItems: List<GalleryRepository.MediaItem>,
-        semanticResults: List<Uri>
-    ): List<GalleryCell> {
+        semanticResults: List<GalleryRepository.SemanticSearchHit>
+    ): List<PhotoSearchResult> {
+        if (baseItems.isEmpty()) return emptyList()
+
+        data class SearchAccumulator(
+            val item: GalleryRepository.MediaItem,
+            var aiScore: Float = 0f,
+            var metadataScore: Float = 0f
+        )
+
         val byUri = baseItems.associateBy { it.uri }
-        val ordered = LinkedHashSet<Uri>()
-        semanticResults.forEach { uri ->
-            val item = byUri[uri] ?: return@forEach
-            if (item.mediaType == GalleryRepository.MediaType.Image) {
-                ordered += uri
-            }
+        val merged = LinkedHashMap<Uri, SearchAccumulator>()
+        val metadataHits = MetadataSearch.search(query, baseItems)
+        val scopedSemanticHits = semanticResults.filter { it.uri in byUri }
+
+        metadataHits.forEachIndexed { index, (item, _) ->
+            val entry = merged.getOrPut(item.uri) { SearchAccumulator(item) }
+            entry.metadataScore = normalizedRank(index, metadataHits.size)
+        }
+        scopedSemanticHits.forEachIndexed { index, hit ->
+            val item = byUri[hit.uri] ?: return@forEachIndexed
+            val entry = merged.getOrPut(hit.uri) { SearchAccumulator(item) }
+            entry.aiScore = normalizedRank(index, scopedSemanticHits.size)
         }
 
-        val locale = Locale.getDefault()
-        val normalized = query.trim().lowercase(locale)
-        baseItems.asSequence()
-            .filter { item -> matchesSearch(item, normalized, locale) }
-            .take(80)
-            .forEach { ordered += it.uri }
-
-        return ordered.mapNotNull { uri -> byUri[uri]?.let { GalleryCell.Photo(it, featured = false) } }
+        val now = System.currentTimeMillis().coerceAtLeast(1L).toDouble()
+        return merged.values.asSequence()
+            .map { entry ->
+                val hasAi = entry.aiScore > 0f
+                val hasMetadata = entry.metadataScore > 0f
+                val recencyBoost = (entry.item.dateMillis / now).coerceIn(0.0, 1.0).toFloat() * 0.05f
+                val combinedScore =
+                    (entry.aiScore * 1.1f) +
+                        entry.metadataScore +
+                        (if (hasAi && hasMetadata) 0.35f else 0f) +
+                        recencyBoost
+                PhotoSearchResult(
+                    item = entry.item,
+                    sources = SearchSources(ai = hasAi, metadata = hasMetadata),
+                    score = combinedScore
+                )
+            }
+            .sortedWith(
+                compareByDescending<PhotoSearchResult> { it.score }
+                    .thenByDescending { it.item.dateMillis }
+            )
+            .take(DesignTokens.SEARCH_METADATA_HARD_CAP)
+            .toList()
     }
 
     private fun safeFormat(
@@ -749,20 +769,10 @@ class MainActivity : AppCompatActivity() {
         return if (formatted.isNullOrBlank()) fallback else formatted
     }
 
-    private fun matchesSearch(
-        item: GalleryRepository.MediaItem,
-        normalized: String,
-        locale: Locale
-    ): Boolean {
-        if (item.displayName?.lowercase(locale)?.contains(normalized) == true) return true
-        if (item.bucketName?.lowercase(locale)?.contains(normalized) == true) return true
-        if (item.mimeType?.lowercase(locale)?.contains(normalized) == true) return true
-        val dateText = safeFormat(monthFormat, item.dateMillis, "")
-        if (dateText.isNotEmpty() && dateText.lowercase(locale).contains(normalized)) return true
-        val dayText = safeFormat(dayFormat, item.dateMillis, "")
-        if (dayText.isNotEmpty() && dayText.lowercase(locale).contains(normalized)) return true
-        val typeText = if (item.mediaType == GalleryRepository.MediaType.Video) "video" else "photo"
-        return typeText.contains(normalized)
+    private fun normalizedRank(index: Int, total: Int): Float {
+        if (total <= 0) return 0f
+        if (total == 1) return 1f
+        return 1f - (index.toFloat() / total.toFloat())
     }
 
     private fun setBusy(message: String) {
