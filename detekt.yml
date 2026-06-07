@@ -18,6 +18,9 @@ style:
     active: true
   MagicNumber:
     active: false
+  ReturnCount:
+    active: false
+    excludeGuardClauses: true
 
 complexity:
   active: true
@@ -41,9 +44,6 @@ complexity:
     active: true
     thresholdInClasses: 80
     thresholdInFiles: 90
-  ReturnCount:
-    active: false
-    excludeGuardClauses: true
 
 performance:
   active: true
