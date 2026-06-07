@@ -23,11 +23,7 @@ import com.devomind.gallerysearch.databinding.ItemTimelineHeaderBinding
 
 sealed class GalleryCell {
     data class Header(val title: String, val subtitle: String) : GalleryCell()
-    data class Photo(
-        val item: GalleryRepository.MediaItem,
-        val featured: Boolean = false,
-        val searchSources: Set<SearchMatchSource> = emptySet()
-    ) : GalleryCell()
+    data class Photo(val item: GalleryRepository.MediaItem, val featured: Boolean = false) : GalleryCell()
     data class Collage(val items: List<GalleryRepository.MediaItem>) : GalleryCell()
     data class AlbumCell(val album: GalleryRepository.Album) : GalleryCell()
     data class Empty(val text: String) : GalleryCell()
@@ -284,10 +280,6 @@ class ImageAdapter(
                     .start()
             }
             binding.videoBadge.visibility = if (cell.item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
-            
-            // Bind search badges
-            bindSearchBadges(cell.searchSources)
-            
             binding.root.setOnClickListener {
                 if (selectionMode) onSelectionToggle(cell.item.uri) else onPhotoClick(cell.item, binding.thumbnail)
             }
@@ -295,15 +287,6 @@ class ImageAdapter(
                 onSelectionToggle(cell.item.uri)
                 true
             }
-        }
-
-        private fun bindSearchBadges(sources: Set<SearchMatchSource>) {
-            val hasAi = SearchMatchSource.Ai in sources
-            val hasMetadata = SearchMatchSource.Metadata in sources
-            
-            binding.aiBadge.visibility = if (hasAi) View.VISIBLE else View.GONE
-            binding.metadataBadge.visibility = if (hasMetadata) View.VISIBLE else View.GONE
-            binding.searchBadgeRow.visibility = if (hasAi || hasMetadata) View.VISIBLE else View.GONE
         }
     }
 

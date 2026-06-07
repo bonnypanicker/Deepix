@@ -394,11 +394,7 @@ class GalleryRepository(
         saveIndex(snapshotIndex())
     }
 
-    /**
-     * Search AI matches with scores for merging with metadata results.
-     * Returns empty if text encoder unavailable or index empty.
-     */
-    fun searchAiMatches(query: String): List<SearchMatch> {
+    fun search(query: String): List<Uri> {
         val textEncoder = textEncoder ?: return emptyList()
         var snapshot = snapshotIndex()
         if (snapshot.isEmpty()) {
@@ -433,25 +429,9 @@ class GalleryRepository(
         val results = ranked
             .filter { it.second >= relativeCutoff }
             .filter { it.second >= SearchTuning.ScoreThreshold }
-            .map { (uriString, score) ->
-                SearchMatch(
-                    uri = Uri.parse(uriString),
-                    aiScore = score,
-                    metadataScore = 0,
-                    sources = setOf(SearchMatchSource.Ai),
-                    combinedScore = 0f
-                )
-            }
+            .map { Uri.parse(it.first) }
 
         return results
-    }
-
-    /**
-     * Legacy URI-only search for compatibility.
-     * Use searchAiMatches for new code.
-     */
-    fun search(query: String): List<Uri> {
-        return searchAiMatches(query).map { it.uri }
     }
 
     private fun containsEmbedding(uri: String): Boolean =

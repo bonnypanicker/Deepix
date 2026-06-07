@@ -54,48 +54,4 @@
         android:textColor="@color/metroTextPrimary"
         android:textSize="11sp"
         android:visibility="gone" />
-
-    <LinearLayout
-        android:id="@+id/searchBadgeRow"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|start"
-        android:layout_marginStart="8dp"
-        android:layout_marginBottom="8dp"
-        android:orientation="horizontal"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/aiBadge"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/search_badge_ai_bg"
-            android:fontFamily="sans-serif"
-            android:includeFontPadding="false"
-            android:paddingStart="7dp"
-            android:paddingTop="3dp"
-            android:paddingEnd="7dp"
-            android:paddingBottom="3dp"
-            android:text="AI"
-            android:textColor="@color/metroTextPrimary"
-            android:textSize="11sp"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/metadataBadge"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:background="@drawable/search_badge_metadata_bg"
-            android:fontFamily="sans-serif"
-            android:includeFontPadding="false"
-            android:paddingStart="6dp"
-            android:paddingTop="3dp"
-            android:paddingEnd="6dp"
-            android:paddingBottom="3dp"
-            android:text="META"
-            android:textColor="@color/metroMetadataBadgeText"
-            android:textSize="11sp"
-            android:visibility="gone" />
-    </LinearLayout>
 </FrameLayout>

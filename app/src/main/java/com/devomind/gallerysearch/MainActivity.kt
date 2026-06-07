@@ -460,18 +460,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Returns photo items only for search scope.
-     * Photos are always returned regardless of active section.
-     */
-    private fun currentSearchPhotoItems(): List<GalleryRepository.MediaItem> {
-        return when {
-            currentAlbum != null -> albumDetailItems.filter { it.mediaType == GalleryRepository.MediaType.Image }
-            activeSection == Section.Favorites -> favoriteItems.filter { it.mediaType == GalleryRepository.MediaType.Image }
-            else -> imageItems  // imageItems already contains images only
-        }
-    }
-
     private fun switchSection(section: Section) {
         activeSection = section
         currentAlbum = null
@@ -610,27 +598,33 @@ class MainActivity : AppCompatActivity() {
         val locale = Locale.getDefault()
         val album = currentAlbum
         binding.searchMetaText.text = when {
-            album != null -> "Photo results in ${album.name.lowercase(locale)} · AI + metadata"
-            activeSection == Section.Favorites -> "Photo results from favorites · AI and metadata badges show match source"
-            activeSection == Section.Videos -> "Photo search only · switch to videos for browsing videos"
-            else -> "Photo results only · AI and metadata badges show why each result matched"
+            album != null -> "Semantic + metadata search inside ${album.name.lowercase(locale)}"
+            activeSection == Section.Albums -> "Live album search in the current gallery scope"
+            activeSection == Section.Videos -> "Metadata search across videos in the current gallery scope"
+            activeSection == Section.Favorites -> "Semantic + metadata search across your favorites"
+            else -> "Semantic + metadata search across the current gallery scope"
         }
     }
 
     private fun searchPlaceholderText(): String {
         return when {
-            currentAlbum != null -> "Search photos in this album"
-            activeSection == Section.Albums -> "Search photos"
-            activeSection == Section.Videos -> "Search photos"
-            activeSection == Section.Favorites -> "Search favorite photos"
-            else -> "Search photos"
+            currentAlbum != null -> "Search this album"
+            activeSection == Section.Albums -> "Search albums"
+            activeSection == Section.Videos -> "Search videos"
+            activeSection == Section.Favorites -> "Search favorites"
+            else -> "Search your gallery"
         }
     }
 
     private fun submitSearch() {
         val query = binding.searchInput.text?.toString()?.trim().orEmpty()
         val repo = repository ?: return
-        
+        if (textEncoder == null) {
+            adapter.updateCells(
+                listOf(GalleryCell.Empty("Models still warming up — try again in a moment."))
+            )
+            return
+        }
         searchJob?.cancel()
 
         if (query.isBlank()) {
@@ -646,55 +640,22 @@ class MainActivity : AppCompatActivity() {
 
         searchJob = lifecycleScope.launch {
             try {
-                // Get base items once for status calculation
-                val baseItems = currentSearchPhotoItems()
-                
                 val cells = withContext(Dispatchers.IO) {
-                    // Get AI matches if text encoder available
-                    val aiMatches = if (textEncoder != null) {
-                        repo.searchAiMatches(query)
+                    if (currentAlbum == null && activeSection == Section.Albums) {
+                        buildAlbumSearchCells(query)
                     } else {
-                        emptyList()
-                    }
-                    
-                    // Merge AI and metadata results
-                    val matches = SearchCoordinator.mergeSearchResults(query, baseItems, aiMatches)
-                    
-                    // Map to cells with search sources
-                    val byUri = baseItems.associateBy { it.uri }
-                    matches.mapNotNull { match ->
-                        byUri[match.uri]?.let { item ->
-                            GalleryCell.Photo(
-                                item = item,
-                                featured = false,
-                                searchSources = match.sources
-                            )
-                        }
+                        val baseItems = currentSearchItems()
+                        val semanticResults = if (activeSection == Section.Videos) emptyList() else repo.search(query)
+                        buildMediaSearchCells(query, baseItems, semanticResults)
                     }
                 }
-                
-                adapter.updateCells(if (cells.isEmpty()) listOf(GalleryCell.Empty("No matching photos")) else cells)
-                
-                // Build result count and status text
-                val aiCount = cells.count { SearchMatchSource.Ai in it.searchSources }
-                val metadataCount = cells.count { SearchMatchSource.Metadata in it.searchSources }
-                val bothCount = cells.count { 
-                    SearchMatchSource.Ai in it.searchSources && SearchMatchSource.Metadata in it.searchSources 
-                }
-                
+                adapter.updateCells(if (cells.isEmpty()) listOf(GalleryCell.Empty("No matching results")) else cells)
                 binding.resultCount.text = when {
-                    cells.isEmpty() -> "No photo results"
-                    cells.size == 1 -> "1 photo result"
-                    else -> "${cells.size} photo results"
+                    cells.isEmpty() -> "No results found"
+                    cells.size == 1 -> "1 result"
+                    else -> "${cells.size} results"
                 }
-                
-                // Update status text based on AI availability
-                binding.statusText.text = when {
-                    textEncoder == null -> "Metadata results · AI warming up"
-                    repo.indexedCount == 0 -> "Metadata results · AI indexing not started"
-                    repo.indexedCount < baseItems.size -> "$aiCount AI · $metadataCount metadata · $bothCount both · indexing ${repo.indexedCount}/${imageItems.size}"
-                    else -> "$aiCount AI · $metadataCount metadata · $bothCount both"
-                }
+                binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
             } catch (cancelled: CancellationException) {
                 Log.d(TAG, "Search job cancelled.", cancelled)
             } catch (error: Throwable) {

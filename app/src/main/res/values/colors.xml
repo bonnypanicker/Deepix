@@ -26,11 +26,6 @@
     <color name="metroSelectionBackground">#CC5B4FE8</color>
     <color name="metroDimScrim">#66000000</color>
 
-    <!-- Search badges -->
-    <color name="metroAiBadge">#EE3B9EFF</color>
-    <color name="metroMetadataBadge">#E6EAEAEA</color>
-    <color name="metroMetadataBadgeText">#FF000000</color>
-
     <!-- Legacy alias kept for compatibility -->
     <color name="black">#FF000000</color>
 </resources>
