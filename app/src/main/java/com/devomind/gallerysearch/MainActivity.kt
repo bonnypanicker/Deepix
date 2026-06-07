@@ -18,6 +18,8 @@ import android.view.Window
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.IntentSenderRequest
@@ -52,6 +54,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.ZoneId
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -214,6 +218,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         binding.searchInput.doAfterTextChanged {
+            updateSearchPillState()
             if (currentMode == Mode.Search && binding.searchPanel.visibility == View.VISIBLE) {
                 searchDebounceJob?.cancel()
                 searchDebounceJob = lifecycleScope.launch {
@@ -588,6 +593,7 @@ class MainActivity : AppCompatActivity() {
         updateTopBarForMode("search")
         updateDrawerState()
         updateBottomPanelState()
+        updateSearchPillState()
         if (binding.searchInput.text.isNullOrBlank()) {
             adapter.updateCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
         } else {
@@ -611,11 +617,12 @@ class MainActivity : AppCompatActivity() {
         val locale = Locale.getDefault()
         val album = currentAlbum
         binding.searchMetaText.text = when {
-            album != null -> "Photo-only AI + APT search inside ${album.name.lowercase(locale)}"
-            activeSection == Section.Favorites -> "Photo-only AI + APT search across your favorites"
+            album != null -> "Photo-only AI + APT search inside ${album.name.lowercase(locale)}. Try date=2026-06, ext=jpg, fav=yes"
+            activeSection == Section.Favorites -> "Photo-only AI + APT search across your favorites. Try year=2026, album:\"camera roll\""
             activeSection == Section.Videos -> "Search returns photos only. Switch sections to search images."
-            else -> "Photo-only AI + APT search across the current gallery scope"
+            else -> "Photo-only AI + APT search across the current gallery scope. Try date=2026, ext=png, album:\"camera roll\", fav=yes"
         }
+        updateSearchPillState()
     }
 
     private fun searchPlaceholderText(): String {
@@ -631,8 +638,9 @@ class MainActivity : AppCompatActivity() {
         val repo = repository ?: return
         searchDebounceJob?.cancel()
         searchJob?.cancel()
+        val parsedQuery = StructuredSearch.parse(query)
 
-        if (query.isBlank()) {
+        if (!parsedQuery.hasAnyCriteria) {
             adapter.updateCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
             binding.resultCount.text = ""
             binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
@@ -641,18 +649,29 @@ class MainActivity : AppCompatActivity() {
 
         currentMode = Mode.Search
         binding.progressBar.visibility = View.VISIBLE
-        binding.statusText.text = if (textEncoder == null) "Searching metadata..." else "Searching..."
-        val baseItems = currentSearchPhotoItems()
+        binding.statusText.text = if (textEncoder == null) "Searching filters and metadata..." else "Searching..."
+        val favoriteKeys = favoritesStore.all()
+        val filteredItems = parsedQuery.filterItems(currentSearchPhotoItems(), favoriteKeys)
+
+        if (filteredItems.isEmpty()) {
+            renderSearchResults(
+                results = emptyList(),
+                emptyText = "No photos match the active filters",
+                statusText = "No filter matches"
+            )
+            binding.progressBar.visibility = View.GONE
+            return
+        }
 
         searchJob = lifecycleScope.launch {
             try {
                 val metadataHits = withContext(Dispatchers.Default) {
-                    repo.searchMetadata(query, baseItems)
+                    buildMetadataHits(repo, parsedQuery, filteredItems)
                 }
 
                 val metadataResults = withContext(Dispatchers.Default) {
                     buildMergedPhotoSearchResults(
-                        baseItems = baseItems,
+                        baseItems = filteredItems,
                         metadataHits = metadataHits,
                         semanticResults = emptyList()
                     )
@@ -663,21 +682,22 @@ class MainActivity : AppCompatActivity() {
                     emptyText = "No matching results",
                     statusText = when {
                         textEncoder == null -> "Metadata ready - AI still warming up"
+                        parsedQuery.textQuery.isBlank() -> filterSummaryText(parsedQuery, metadataResults.size)
                         metadataResults.isEmpty() -> "Searching AI..."
                         else -> "Metadata ready - refining with AI..."
                     }
                 )
 
-                if (textEncoder == null) {
+                if (textEncoder == null || parsedQuery.textQuery.isBlank()) {
                     return@launch
                 }
 
                 val semanticResults = withContext(Dispatchers.Default) {
-                    repo.search(query)
+                    repo.search(parsedQuery.textQuery)
                 }
                 val mergedResults = withContext(Dispatchers.Default) {
                     buildMergedPhotoSearchResults(
-                        baseItems = baseItems,
+                        baseItems = filteredItems,
                         metadataHits = metadataHits,
                         semanticResults = semanticResults
                     )
@@ -696,6 +716,24 @@ class MainActivity : AppCompatActivity() {
                 binding.progressBar.visibility = View.GONE
             }
         }
+    }
+
+    private fun buildMetadataHits(
+        repo: GalleryRepository,
+        parsedQuery: StructuredSearch.ParsedQuery,
+        items: List<GalleryRepository.MediaItem>
+    ): List<MetadataSearch.Hit> {
+        if (items.isEmpty()) return emptyList()
+        if (parsedQuery.textQuery.isBlank()) {
+            return items.sortedByDescending { it.dateMillis }
+                .mapIndexed { index, item ->
+                    MetadataSearch.Hit(
+                        uri = item.uri.toString(),
+                        score = (items.size - index).toFloat()
+                    )
+                }
+        }
+        return repo.searchMetadata(parsedQuery.textQuery, items)
     }
 
     private fun buildTimelineCells(
@@ -814,6 +852,164 @@ class MainActivity : AppCompatActivity() {
             else -> "${results.size} results"
         }
         binding.statusText.text = statusText
+    }
+
+    private fun updateSearchPillState() {
+        if (binding.searchPanel.visibility != View.VISIBLE) return
+        val parsed = StructuredSearch.parse(binding.searchInput.text?.toString().orEmpty())
+        renderActiveSearchPills(parsed)
+        renderQuickSearchPills(parsed)
+    }
+
+    private fun renderActiveSearchPills(parsed: StructuredSearch.ParsedQuery) {
+        binding.searchActivePills.removeAllViews()
+        binding.searchActivePillsScroll.visibility = if (parsed.filters.isEmpty()) View.GONE else View.VISIBLE
+        parsed.filters.forEach { filter ->
+            binding.searchActivePills.addView(
+                createSearchPillView(
+                    label = "${filter.chipLabel} x",
+                    selected = true,
+                    onClick = { removeSearchToken(filter.rawToken) }
+                )
+            )
+        }
+    }
+
+    private fun renderQuickSearchPills(parsed: StructuredSearch.ParsedQuery) {
+        binding.searchQuickPills.removeAllViews()
+        buildQuickSearchPills().forEach { pill ->
+            val selected = StructuredSearch.canonicalToken(pill.token) in parsed.normalizedTokens
+            binding.searchQuickPills.addView(
+                createSearchPillView(
+                    label = pill.label,
+                    selected = selected,
+                    onClick = { toggleSearchToken(pill.token) }
+                )
+            )
+        }
+    }
+
+    private fun buildQuickSearchPills(): List<StructuredSearch.Pill> {
+        val items = currentSearchPhotoItems()
+        if (items.isEmpty()) return emptyList()
+
+        val pills = LinkedHashMap<String, StructuredSearch.Pill>()
+
+        fun addPill(label: String, token: String) {
+            val canonical = StructuredSearch.canonicalToken(token)
+            pills.putIfAbsent(canonical, StructuredSearch.Pill(label = label, token = token))
+        }
+
+        if (activeSection != Section.Favorites && favoriteItems.isNotEmpty()) {
+            addPill("favorites", "fav=yes")
+        }
+
+        val latest = items.maxByOrNull { it.dateMillis }
+        if (latest != null) {
+            val date = Instant.ofEpochMilli(latest.dateMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+            addPill(date.year.toString(), "year=${date.year}")
+            addPill("${date.month.name.lowercase(Locale.getDefault()).replaceFirstChar { it.titlecase(Locale.getDefault()) }} ${date.year}",
+                "date=${date.year}-${date.monthValue.toString().padStart(2, '0')}")
+        }
+
+        items.asSequence()
+            .mapNotNull { item ->
+                item.displayName.orEmpty().substringAfterLast('.', "").lowercase(Locale.ROOT).takeIf { it.isNotBlank() }
+            }
+            .groupingBy { it }
+            .eachCount()
+            .entries
+            .sortedByDescending { it.value }
+            .take(3)
+            .forEach { entry ->
+                addPill(entry.key.uppercase(Locale.ROOT), "ext=${entry.key}")
+            }
+
+        if (currentAlbum == null) {
+            items.groupingBy { it.bucketName }
+                .eachCount()
+                .entries
+                .sortedByDescending { it.value }
+                .take(3)
+                .forEach { entry ->
+                    addPill(entry.key.lowercase(Locale.getDefault()), formatSearchToken("album", entry.key))
+                }
+        }
+
+        if (items.any { it.height > it.width }) addPill("portrait", "orientation=portrait")
+        if (items.any { it.width > it.height }) addPill("landscape", "orientation=landscape")
+
+        return pills.values.take(10).toList()
+    }
+
+    private fun createSearchPillView(
+        label: String,
+        selected: Boolean,
+        onClick: () -> Unit
+    ): TextView {
+        return TextView(this).apply {
+            text = label
+            textSize = 12f
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            background = ContextCompat.getDrawable(
+                this@MainActivity,
+                if (selected) R.drawable.search_filter_chip_active_bg else R.drawable.search_filter_chip_bg
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = dp(8)
+            }
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun toggleSearchToken(token: String) {
+        val parsed = StructuredSearch.parse(binding.searchInput.text?.toString().orEmpty())
+        val canonical = StructuredSearch.canonicalToken(token)
+        val tokens = parsed.rawTokens.toMutableList()
+        val existingIndex = tokens.indexOfFirst { StructuredSearch.canonicalToken(it) == canonical }
+        if (existingIndex >= 0) {
+            tokens.removeAt(existingIndex)
+        } else {
+            tokens += token
+        }
+        updateSearchQueryTokens(tokens)
+    }
+
+    private fun removeSearchToken(token: String) {
+        val canonical = StructuredSearch.canonicalToken(token)
+        val tokens = StructuredSearch.parse(binding.searchInput.text?.toString().orEmpty())
+            .rawTokens
+            .filterNot { StructuredSearch.canonicalToken(it) == canonical }
+        updateSearchQueryTokens(tokens)
+    }
+
+    private fun updateSearchQueryTokens(tokens: List<String>) {
+        val newQuery = tokens.joinToString(" ").trim()
+        if (binding.searchInput.text?.toString() == newQuery) return
+        binding.searchInput.setText(newQuery)
+        binding.searchInput.setSelection(newQuery.length)
+    }
+
+    private fun formatSearchToken(key: String, value: String): String {
+        return if (value.any { it.isWhitespace() }) {
+            "$key:\"$value\""
+        } else {
+            "$key=$value"
+        }
+    }
+
+    private fun filterSummaryText(parsedQuery: StructuredSearch.ParsedQuery, resultCount: Int): String {
+        val filterCount = parsedQuery.filters.size
+        return when {
+            filterCount <= 0 -> if (resultCount == 1) "1 result" else "$resultCount results"
+            resultCount == 1 -> "1 photo matches $filterCount filter"
+            else -> "$resultCount photos match $filterCount filters"
+        }
     }
 
     private fun safeFormat(
