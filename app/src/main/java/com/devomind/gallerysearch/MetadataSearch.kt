@@ -18,7 +18,7 @@ internal data class PhotoSearchResult(
 )
 
 internal object MetadataSearch {
-    class Index internal constructor(private val descriptors: List<MetadataDescriptor>) {
+    class Index private constructor(private val descriptors: List<MetadataDescriptor>) {
         fun search(query: String): List<Pair<GalleryRepository.MediaItem, Float>> {
             val parsed = ParsedMetadataQuery.from(query) ?: return emptyList()
             return descriptors.asSequence()
