@@ -3,7 +3,7 @@ package com.devomind.gallerysearch
 import java.util.Calendar
 import java.util.Locale
 
-internal data class SearchSources(
+data class SearchSources(
     val ai: Boolean = false,
     val metadata: Boolean = false
 ) {
