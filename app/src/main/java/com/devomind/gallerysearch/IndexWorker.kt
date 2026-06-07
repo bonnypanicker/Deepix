@@ -16,15 +16,18 @@ class IndexWorker(
     appContext: Context,
     params: WorkerParameters
 ) : CoroutineWorker(appContext, params) {
+    private var lastForegroundUpdateAt = -1
+    private var lastForegroundPercent = -1
 
     override suspend fun doWork(): Result {
         setForeground(createForegroundInfo(0, 1))
 
-        var imageEncoder: ImageEncoder? = null
-
         return try {
-            imageEncoder = ImageEncoder(applicationContext)
-            val repository = GalleryRepository(applicationContext, imageEncoder!!, null)
+            // #region debug-point E:index-start
+            Log.d(Tag, "[DEBUG][E] Index worker started attempt=$runAttemptCount")
+            // #endregion
+            val imageEncoder = (applicationContext as GallerySearchApp).sharedEncoders.getImageEncoder()
+            val repository = GalleryRepository(applicationContext, imageEncoder, null)
 
             val selected = inputData.getStringArray(SelectedAlbumIdsKey)?.toSet() ?: emptySet()
             val since = IndexPreferences.loadLastIndexedTime(applicationContext)
@@ -49,7 +52,9 @@ class IndexWorker(
                         .putInt(ProgressPercentKey, progressPercent)
                         .build()
                 )
-                setForegroundAsync(createForegroundInfo(bounded, total))
+                if (shouldRefreshForeground(bounded, progressPercent, total)) {
+                    setForegroundAsync(createForegroundInfo(bounded, total))
+                }
             }
 
             val allImages = repository.getImageItemsForAlbumIds(emptySet())
@@ -61,13 +66,28 @@ class IndexWorker(
             Result.success()
         } catch (oom: OutOfMemoryError) {
             Log.w(Tag, "Index worker ran out of memory on attempt $runAttemptCount.", oom)
-            if (runAttemptCount < MaxRetryCount) Result.retry() else Result.failure()
+            Result.failure()
         } catch (error: Throwable) {
             Log.w(Tag, "Index worker failed on attempt $runAttemptCount.", error)
             if (runAttemptCount < MaxRetryCount) Result.retry() else Result.failure()
-        } finally {
-            imageEncoder?.close()
         }
+    }
+
+    private fun shouldRefreshForeground(current: Int, progressPercent: Int, total: Int): Boolean {
+        if (current <= 1 || current >= total) {
+            lastForegroundUpdateAt = current
+            lastForegroundPercent = progressPercent
+            return true
+        }
+        val currentStep = current / ForegroundItemStep
+        val previousStep = lastForegroundUpdateAt / ForegroundItemStep
+        val percentDelta = progressPercent - lastForegroundPercent
+        val shouldUpdate = currentStep > previousStep || percentDelta >= ForegroundPercentStep
+        if (shouldUpdate) {
+            lastForegroundUpdateAt = current
+            lastForegroundPercent = progressPercent
+        }
+        return shouldUpdate
     }
 
     private fun createForegroundInfo(current: Int, total: Int): ForegroundInfo {
@@ -103,5 +123,7 @@ class IndexWorker(
         private const val MaxRetryCount = 3
         private const val ChannelId = "gallery_index_channel"
         private const val NotificationId = 1001
+        private const val ForegroundItemStep = 24
+        private const val ForegroundPercentStep = 5
     }
 }

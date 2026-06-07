@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
 import android.view.MotionEvent
@@ -133,6 +134,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         super.onCreate(savedInstanceState)
+        // #region debug-point A:activity-create
+        debugLog("A", "MainActivity created", mapOf("savedState" to (savedInstanceState != null)))
+        // #endregion
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
@@ -329,14 +333,11 @@ class MainActivity : AppCompatActivity() {
         return when {
             Build.VERSION.SDK_INT >= 34 -> arrayOf(
                 Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO,
-                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
-                Manifest.permission.POST_NOTIFICATIONS
+                Manifest.permission.READ_MEDIA_VIDEO
             )
             Build.VERSION.SDK_INT >= 33 -> arrayOf(
                 Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO,
-                Manifest.permission.POST_NOTIFICATIONS
+                Manifest.permission.READ_MEDIA_VIDEO
             )
             else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
@@ -381,9 +382,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadEncodersInBackground() {
         lifecycleScope.launch {
+            // #region debug-point B:encoder-load-start
+            debugLog("B", "Encoder warm-up started", mapOf("mode" to currentMode.name, "section" to activeSection.name))
+            // #endregion
+            val sharedEncoders = (application as GallerySearchApp).sharedEncoders
             val encoders = withContext(Dispatchers.IO) {
-                val imageAsync = async { runCatching { ImageEncoder(applicationContext) }.getOrNull() }
-                val textAsync = async { runCatching { TextEncoder(applicationContext) }.getOrNull() }
+                val imageAsync = async { runCatching { sharedEncoders.getImageEncoder() }.getOrNull() }
+                val textAsync = async { runCatching { sharedEncoders.getTextEncoder() }.getOrNull() }
                 imageAsync.await() to textAsync.await()
             }
             val image = encoders.first
@@ -392,6 +397,9 @@ class MainActivity : AppCompatActivity() {
                 Log.w(TAG, "Vision encoder failed to load; semantic search disabled.")
                 return@launch
             }
+            // #region debug-point B:encoder-load-finish
+            debugLog("B", "Encoder warm-up finished", mapOf("hasImage" to true, "hasText" to (text != null)))
+            // #endregion
             imageEncoder = image
             textEncoder = text
             repository?.attachEncoders(image, text)
@@ -482,6 +490,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun switchSection(section: Section) {
+        // #region debug-point C:section-switch
+        debugLog(
+            "C",
+            "Section switch requested",
+            mapOf(
+                "fromSection" to activeSection.name,
+                "toSection" to section.name,
+                "mode" to currentMode.name,
+                "albumId" to currentAlbum?.id
+            )
+        )
+        // #endregion
         searchJob?.cancel()
         searchDebounceJob?.cancel()
         renderJob?.cancel()
@@ -525,6 +545,7 @@ class MainActivity : AppCompatActivity() {
         items: List<GalleryRepository.MediaItem>,
         emptyText: String
     ) {
+        val renderStartMs = SystemClock.elapsedRealtime()
         renderJob?.cancel()
         currentMode = Mode.Browse
         binding.searchPanel.visibility = View.GONE
@@ -541,10 +562,22 @@ class MainActivity : AppCompatActivity() {
                 buildTimelineCells(cappedItems, emptyText)
             }
             if (currentMode == Mode.Browse && currentAlbum == null && activeSection == expectedSection) {
-                adapter.updateCells(cells)
+                adapter.replaceCells(cells)
                 resetGridToTop()
                 updateFastScrollVisibility()
                 binding.fastScrollIndicator.syncToRecyclerView()
+                // #region debug-point D:render-finish
+                debugLog(
+                    "D",
+                    "Media section rendered",
+                    mapOf(
+                        "section" to expectedSection.name,
+                        "items" to cappedItems.size,
+                        "cells" to cells.size,
+                        "durationMs" to (SystemClock.elapsedRealtime() - renderStartMs)
+                    )
+                )
+                // #endregion
             }
         }
     }
@@ -553,7 +586,7 @@ class MainActivity : AppCompatActivity() {
         currentMode = Mode.Browse
         binding.searchPanel.visibility = View.GONE
         binding.resultCount.text = ""
-        adapter.updateCells(
+        adapter.replaceCells(
             if (albums.isEmpty()) listOf(GalleryCell.Empty("No albums yet"))
             else albums.map { GalleryCell.AlbumCell(it) }
         )
@@ -584,7 +617,7 @@ class MainActivity : AppCompatActivity() {
                 buildTimelineCells(cappedItems, "No media in this album")
             }
             if (currentMode == Mode.AlbumDetail && currentAlbum?.id == expectedAlbumId) {
-                adapter.updateCells(cells)
+                adapter.replaceCells(cells)
                 resetGridToTop()
                 updateFastScrollVisibility()
                 binding.fastScrollIndicator.syncToRecyclerView()
@@ -612,7 +645,7 @@ class MainActivity : AppCompatActivity() {
         updateBottomPanelState()
         updateSearchPillState()
         if (binding.searchInput.text.isNullOrBlank()) {
-            adapter.updateCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
+            adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
             resetGridToTop()
         } else {
             submitSearch()
@@ -656,7 +689,7 @@ class MainActivity : AppCompatActivity() {
         val sessionSection = activeSection
 
         if (!parsedQuery.hasAnyCriteria) {
-            adapter.updateCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
+            adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
             resetGridToTop()
             binding.resultCount.text = ""
             binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
@@ -871,7 +904,7 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
-        adapter.updateCells(cells)
+        adapter.replaceCells(cells)
         resetGridToTop()
         binding.resultCount.text = when {
             results.isEmpty() -> "No results found"
@@ -1523,18 +1556,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        // #region debug-point A:activity-destroy
+        debugLog("A", "MainActivity destroyed", mapOf("changingConfigurations" to isChangingConfigurations))
+        // #endregion
         super.onDestroy()
         searchDebounceJob?.cancel()
         searchJob?.cancel()
         renderJob?.cancel()
-        imageEncoder?.close()
-        textEncoder?.close()
     }
 
     companion object {
         private const val TAG = "MainActivity"
         private const val INDEX_WORK_NAME = "gallery_background_index"
     }
+
+    // #region debug-point Z:logger
+    private fun debugLog(hypothesisId: String, message: String, data: Map<String, Any?> = emptyMap()) {
+        Log.d(TAG, "[DEBUG][$hypothesisId] $message ${data.entries.joinToString(prefix = "{", postfix = "}") { "${it.key}=${it.value}" }}")
+    }
+    // #endregion
 
     private enum class SearchMode {
         Hybrid,

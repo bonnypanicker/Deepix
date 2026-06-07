@@ -162,6 +162,23 @@ class ImageAdapter(
         onSelectionChanged(selected.size)
     }
 
+    fun replaceCells(newCells: List<GalleryCell>) {
+        val newUris = newCells.asSequence()
+            .flatMap { cell ->
+                when (cell) {
+                    is GalleryCell.Photo -> sequenceOf(cell.item.uri)
+                    is GalleryCell.Collage -> cell.items.asSequence().map { it.uri }
+                    else -> emptySequence()
+                }
+            }
+            .toSet()
+        selected.retainAll(newUris)
+        cells.clear()
+        cells.addAll(newCells)
+        notifyDataSetChanged()
+        onSelectionChanged(selected.size)
+    }
+
     fun clearSelection() {
         if (selected.isEmpty()) return
         val previous = selected.toSet()
