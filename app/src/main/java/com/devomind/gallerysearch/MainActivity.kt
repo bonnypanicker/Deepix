@@ -270,9 +270,18 @@ class MainActivity : AppCompatActivity() {
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
             topInsetPx = systemInsets.top
-            binding.topOverlay.updatePadding(top = systemInsets.top + dp(8))
+            binding.topOverlay.updatePadding(top = systemInsets.top)
             binding.drawerPanel.updatePadding(top = systemInsets.top + dp(28), bottom = systemInsets.bottom + dp(24))
-            binding.imageGrid.updatePadding(bottom = systemInsets.bottom + dp(84))
+            
+            // Wait for topOverlay to lay out to get its exact height, then apply it as top padding
+            // so the content starts below the transparent header rather than under it edge-to-edge
+            binding.topOverlay.post {
+                val overlayHeight = binding.topOverlay.height
+                binding.imageGrid.updatePadding(
+                    top = overlayHeight,
+                    bottom = systemInsets.bottom + dp(84)
+                )
+            }
             binding.bottomPanel.updatePadding(bottom = systemInsets.bottom)
 
             val selectionParams = binding.selectionPill.layoutParams as android.widget.FrameLayout.LayoutParams

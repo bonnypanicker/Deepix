@@ -26,13 +26,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@color/metroBgPrimary"
-            android:orientation="vertical"
-            android:paddingTop="8dp">
+            android:orientation="vertical">
 
             <FrameLayout
                 android:id="@+id/topChrome"
                 android:layout_width="match_parent"
-                android:layout_height="128dp">
+                android:layout_height="96dp">
 
                 <ImageButton
                     android:id="@+id/menuBtn"
