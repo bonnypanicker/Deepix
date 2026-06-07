@@ -658,7 +658,7 @@ class ViewerActivity : AppCompatActivity() {
             for (i in 0 until rv.childCount) {
                 val child = rv.getChildAt(i)
                 val holder = rv.getChildViewHolder(child) as? MediaPagerAdapter.PageViewHolder
-                holder?.stopPlayback()
+                holder?.cleanup()
             }
         }
         super.onDestroy()

@@ -42,7 +42,6 @@ class MediaPagerAdapter(
 
     inner class PageViewHolder(val binding: ItemViewerPageBinding) : RecyclerView.ViewHolder(binding.root) {
         var player: ExoPlayer? = null
-        private var isVideoReady = false
 
         fun bind(
             item: GalleryRepository.MediaItem,
@@ -63,10 +62,7 @@ class MediaPagerAdapter(
                     repeatMode = Player.REPEAT_MODE_OFF
                     addListener(object : Player.Listener {
                         override fun onPlaybackStateChanged(playbackState: Int) {
-                            if (playbackState == Player.STATE_READY) {
-                                isVideoReady = true
-                                play()
-                            } else if (playbackState == Player.STATE_ENDED) {
+                            if (playbackState == Player.STATE_ENDED) {
                                 onVideoCompleted()
                             }
                         }
@@ -117,7 +113,7 @@ class MediaPagerAdapter(
         }
 
         fun startPlayback() {
-            if (binding.playerView.visibility == View.VISIBLE && isVideoReady) {
+            if (binding.playerView.visibility == View.VISIBLE) {
                 player?.play()
             }
         }
@@ -146,7 +142,6 @@ class MediaPagerAdapter(
             stopPlayback()
             player?.release()
             player = null
-            isVideoReady = false
             binding.playerView.player = null
             Glide.with(binding.photoView).clear(binding.photoView)
         }
