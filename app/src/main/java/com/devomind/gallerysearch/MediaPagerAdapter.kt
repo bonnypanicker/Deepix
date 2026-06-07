@@ -115,6 +115,9 @@ class MediaPagerAdapter(
                             isFirstResource: Boolean
                         ): Boolean {
                             binding.loadingSpinner.visibility = View.GONE
+                            if (isInitialSharedElement) {
+                                onInitialImageLoaded()
+                            }
                             return false
                         }
 
@@ -126,22 +129,14 @@ class MediaPagerAdapter(
                             isFirstResource: Boolean
                         ): Boolean {
                             binding.loadingSpinner.visibility = View.GONE
+                            if (isInitialSharedElement) {
+                                onInitialImageLoaded()
+                            }
                             return false
                         }
                     })
 
                 request.into(binding.photoView)
-
-                if (isInitialSharedElement) {
-                    binding.photoView.viewTreeObserver.addOnPreDrawListener(
-                        object : android.view.ViewTreeObserver.OnPreDrawListener {
-                            override fun onPreDraw(): Boolean {
-                                binding.photoView.viewTreeObserver.removeOnPreDrawListener(this)
-                                onInitialImageLoaded()
-                                return true
-                            }
-                        })
-                }
             }
         }
 
