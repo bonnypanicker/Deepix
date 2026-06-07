@@ -99,7 +99,7 @@ class MediaPagerAdapter(
                     ViewCompat.setTransitionName(binding.photoView, transitionName)
                 }
 
-                val request = Glide.with(binding.photoView)
+                Glide.with(binding.photoView)
                     .load(item.uri)
                     .format(DecodeFormat.PREFER_ARGB_8888)
                     .error(R.drawable.ic_fluent_image_24_regular)
@@ -107,11 +107,11 @@ class MediaPagerAdapter(
                     .override(binding.photoView.resources.displayMetrics.widthPixels,
                         binding.photoView.resources.displayMetrics.heightPixels)
                     .fitCenter()
-                    .listener(object : com.bumptech.glide.request.RequestListener<android.graphics.drawable.Drawable> {
+                    .addListener(object : com.bumptech.glide.request.RequestListener<android.graphics.drawable.Drawable> {
                         override fun onLoadFailed(
                             e: com.bumptech.glide.load.engine.GlideException?,
                             model: Any?,
-                            target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>?,
+                            target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>,
                             isFirstResource: Boolean
                         ): Boolean {
                             binding.loadingSpinner.visibility = View.GONE
@@ -122,10 +122,10 @@ class MediaPagerAdapter(
                         }
 
                         override fun onResourceReady(
-                            resource: android.graphics.drawable.Drawable?,
-                            model: Any?,
-                            target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>?,
-                            dataSource: com.bumptech.glide.load.DataSource?,
+                            resource: android.graphics.drawable.Drawable,
+                            model: Any,
+                            target: com.bumptech.glide.request.target.Target<out android.graphics.drawable.Drawable>,
+                            dataSource: com.bumptech.glide.load.DataSource,
                             isFirstResource: Boolean
                         ): Boolean {
                             binding.loadingSpinner.visibility = View.GONE
@@ -135,8 +135,7 @@ class MediaPagerAdapter(
                             return false
                         }
                     })
-
-                request.into(binding.photoView)
+                    .into(binding.photoView)
             }
         }
 
