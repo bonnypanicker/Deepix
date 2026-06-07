@@ -443,7 +443,7 @@ class GalleryRepository(
         return results
     }
 
-    fun searchMetadata(query: String, items: List<MediaItem>): List<MetadataSearch.Hit> {
+    internal fun searchMetadata(query: String, items: List<MediaItem>): List<MetadataSearch.Hit> {
         if (items.isEmpty()) return emptyList()
 
         var index = metadataSearchIndex
