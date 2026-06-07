@@ -247,6 +247,32 @@ class ImageAdapter(
         private val onSelectionToggle: (Uri) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
 
+        private fun loadThumbnail(
+            context: android.content.Context,
+            item: GalleryRepository.MediaItem,
+            imageView: ImageView,
+            width: Int,
+            height: Int
+        ) {
+            val request = if (item.mediaType == GalleryRepository.MediaType.Video) {
+                Glide.with(context)
+                    .asBitmap()
+                    .load(item.uri)
+                    .apply(com.bumptech.glide.request.RequestOptions().frame(1_000_000L))
+                    .centerCrop()
+                    .override(width, height)
+                    .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
+            } else {
+                Glide.with(context)
+                    .load(item.uri)
+                    .format(DecodeFormat.PREFER_RGB_565)
+                    .centerCrop()
+                    .override(width, height)
+                    .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
+            }
+            request.into(imageView)
+        }
+
         fun bind(cell: GalleryCell.Photo, selectionMode: Boolean, isSelected: Boolean) {
             val metrics = binding.root.resources.displayMetrics
             val gutter = (DesignTokens.GRID_GUTTER * metrics.density).toInt()
@@ -261,26 +287,14 @@ class ImageAdapter(
                     binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
                         this.height = height
                     }
-                    Glide.with(binding.thumbnail.context)
-                        .load(cell.item.uri)
-                        .format(DecodeFormat.PREFER_RGB_565)
-                        .centerCrop()
-                        .override(spanWidth, height)
-                        .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
-                        .into(binding.thumbnail)
+                    loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, spanWidth, height)
                 }
                 else -> {
                     val height = regularSize
                     binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
                         this.height = height
                     }
-                    Glide.with(binding.thumbnail.context)
-                        .load(cell.item.uri)
-                        .format(DecodeFormat.PREFER_RGB_565)
-                        .centerCrop()
-                        .override(regularSize, height)
-                        .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
-                        .into(binding.thumbnail)
+                    loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, regularSize, height)
                 }
             }
 
@@ -450,13 +464,23 @@ class ImageAdapter(
                 if (item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
 
             if (loadImage) {
-                Glide.with(thumbnail.context)
-                    .load(item.uri)
-                    .format(DecodeFormat.PREFER_RGB_565)
-                    .centerCrop()
-                    .override(overrideWidth, overrideHeight)
-                    .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
-                    .into(thumbnail)
+                val request = if (item.mediaType == GalleryRepository.MediaType.Video) {
+                    Glide.with(thumbnail.context)
+                        .asBitmap()
+                        .load(item.uri)
+                        .apply(com.bumptech.glide.request.RequestOptions().frame(1_000_000L))
+                        .centerCrop()
+                        .override(overrideWidth, overrideHeight)
+                        .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
+                } else {
+                    Glide.with(thumbnail.context)
+                        .load(item.uri)
+                        .format(DecodeFormat.PREFER_RGB_565)
+                        .centerCrop()
+                        .override(overrideWidth, overrideHeight)
+                        .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
+                }
+                request.into(thumbnail)
             }
 
             container.setOnClickListener {

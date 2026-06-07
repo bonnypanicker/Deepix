@@ -80,6 +80,12 @@ class MediaPagerAdapter(
                 if (transitionName != null) {
                     ViewCompat.setTransitionName(binding.playerView, transitionName)
                 }
+                
+                if (isInitialSharedElement) {
+                    binding.playerView.post {
+                        onInitialImageLoaded()
+                    }
+                }
             } else {
                 binding.playerView.visibility = View.GONE
                 binding.photoView.visibility = View.VISIBLE
@@ -143,7 +149,8 @@ class MediaPagerAdapter(
             player?.release()
             player = null
             binding.playerView.player = null
-            Glide.with(binding.photoView).clear(binding.photoView)
+            val ctx = binding.photoView.context.applicationContext
+            Glide.with(ctx).clear(binding.photoView)
         }
     }
 }
