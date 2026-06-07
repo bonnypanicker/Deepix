@@ -42,6 +42,7 @@ object DesignTokens {
     const val MENU_NEAR_Y_DP: Float = 116f
     const val SCROLL_THRESHOLD_PX: Int = 32
     const val SEARCH_METADATA_HARD_CAP: Int = 80
+    const val SEARCH_INPUT_DEBOUNCE_MS: Long = 180L
     const val INDEX_BACKOFF_SECONDS: Long = 10L
     const val INDEX_LIVE_REFRESH_STEP: Int = 20
 }

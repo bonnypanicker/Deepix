@@ -18,20 +18,29 @@ internal data class PhotoSearchResult(
 )
 
 internal object MetadataSearch {
-    fun search(query: String, items: List<GalleryRepository.MediaItem>): List<Pair<GalleryRepository.MediaItem, Float>> {
-        val parsed = ParsedMetadataQuery.from(query) ?: return emptyList()
+    class Index internal constructor(private val descriptors: List<MetadataDescriptor>) {
+        fun search(query: String): List<Pair<GalleryRepository.MediaItem, Float>> {
+            val parsed = ParsedMetadataQuery.from(query) ?: return emptyList()
+            return descriptors.asSequence()
+                .mapNotNull { descriptor ->
+                    val score = parsed.score(descriptor) ?: return@mapNotNull null
+                    descriptor.item to score
+                }
+                .sortedWith(
+                    compareByDescending<Pair<GalleryRepository.MediaItem, Float>> { it.second }
+                        .thenByDescending { it.first.dateMillis }
+                )
+                .toList()
+        }
+    }
+
+    fun buildIndex(items: List<GalleryRepository.MediaItem>): Index {
         val locale = Locale.getDefault()
-        return items.asSequence()
-            .mapNotNull { item ->
-                val descriptor = MetadataDescriptor.from(item, locale)
-                val score = parsed.score(descriptor) ?: return@mapNotNull null
-                item to score
-            }
-            .sortedWith(
-                compareByDescending<Pair<GalleryRepository.MediaItem, Float>> { it.second }
-                    .thenByDescending { it.first.dateMillis }
-            )
-            .toList()
+        return Index(items.map { item -> MetadataDescriptor.from(item, locale) })
+    }
+
+    fun search(query: String, items: List<GalleryRepository.MediaItem>): List<Pair<GalleryRepository.MediaItem, Float>> {
+        return buildIndex(items).search(query)
     }
 
     private data class ParsedMetadataQuery(

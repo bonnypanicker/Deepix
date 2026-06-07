@@ -48,6 +48,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -73,11 +75,14 @@ class MainActivity : AppCompatActivity() {
     private var currentMode = Mode.Browse
     private var activeSection = Section.Collection
     private var searchJob: Job? = null
+    private var searchDebounceJob: Job? = null
     private var renderJob: Job? = null
     private var lastProgressRefresh = -1
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
     private var topInsetPx = 0
+    private var cachedMetadataIndex: MetadataSearch.Index? = null
+    private var cachedMetadataSignature: Int = 0
 
     private val monthFormat = object : ThreadLocal<SimpleDateFormat>() {
         override fun initialValue(): SimpleDateFormat = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
@@ -203,6 +208,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                searchDebounceJob?.cancel()
                 submitSearch()
                 true
             } else {
@@ -211,7 +217,13 @@ class MainActivity : AppCompatActivity() {
         }
         binding.searchInput.doAfterTextChanged {
             if (currentMode == Mode.Search && binding.searchPanel.visibility == View.VISIBLE) {
-                submitSearch()
+                searchDebounceJob?.cancel()
+                searchDebounceJob = lifecycleScope.launch {
+                    delay(DesignTokens.SEARCH_INPUT_DEBOUNCE_MS)
+                    if (currentMode == Mode.Search && binding.searchPanel.visibility == View.VISIBLE) {
+                        submitSearch()
+                    }
+                }
             }
         }
         binding.searchInput.setOnFocusChangeListener { _, hasFocus ->
@@ -438,6 +450,7 @@ class MainActivity : AppCompatActivity() {
         videoItems = snapshot.videoItems
         selectedAlbumIds = snapshot.selectedAlbumIds
         allUris = snapshot.imageItems.map { it.uri }
+        invalidateSearchCaches()
         IndexPreferences.saveSelectedAlbums(this, snapshot.selectedAlbumIds)
     }
 
@@ -585,6 +598,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun closeSearch(clearQuery: Boolean) {
         renderJob?.cancel()
+        searchDebounceJob?.cancel()
         binding.searchPanel.visibility = View.GONE
         if (clearQuery) {
             binding.searchInput.text?.clear()
@@ -616,6 +630,7 @@ class MainActivity : AppCompatActivity() {
     private fun submitSearch() {
         val query = binding.searchInput.text?.toString()?.trim().orEmpty()
         val repo = repository ?: return
+        searchDebounceJob?.cancel()
         searchJob?.cancel()
 
         if (query.isBlank()) {
@@ -628,13 +643,25 @@ class MainActivity : AppCompatActivity() {
         currentMode = Mode.Search
         binding.progressBar.visibility = View.VISIBLE
         binding.statusText.text = if (textEncoder == null) "Searching metadata..." else "Searching..."
+        val baseItems = currentSearchPhotoItems()
 
         searchJob = lifecycleScope.launch {
             try {
-                val results = withContext(Dispatchers.IO) {
-                    val baseItems = currentSearchPhotoItems()
-                    val semanticResults = if (textEncoder == null) emptyList() else repo.search(query)
-                    buildMergedPhotoSearchResults(query, baseItems, semanticResults)
+                val results = withContext(Dispatchers.Default) {
+                    coroutineScope {
+                        val metadataIndexAsync = async { metadataIndexFor(baseItems) }
+                        val semanticResultsAsync = async {
+                            if (textEncoder == null) emptyList() else repo.search(query)
+                        }
+                        val metadataHitsAsync = async {
+                            metadataIndexAsync.await().search(query)
+                        }
+                        buildMergedPhotoSearchResults(
+                            baseItems = baseItems,
+                            metadataHits = metadataHitsAsync.await(),
+                            semanticResults = semanticResultsAsync.await()
+                        )
+                    }
                 }
                 val cells = if (results.isEmpty()) {
                     listOf(GalleryCell.Empty("No matching results"))
@@ -708,8 +735,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildMergedPhotoSearchResults(
-        query: String,
         baseItems: List<GalleryRepository.MediaItem>,
+        metadataHits: List<Pair<GalleryRepository.MediaItem, Float>>,
         semanticResults: List<GalleryRepository.SemanticSearchHit>
     ): List<PhotoSearchResult> {
         if (baseItems.isEmpty()) return emptyList()
@@ -722,7 +749,6 @@ class MainActivity : AppCompatActivity() {
 
         val byUri = baseItems.associateBy { it.uri }
         val merged = LinkedHashMap<Uri, SearchAccumulator>()
-        val metadataHits = MetadataSearch.search(query, baseItems)
         val scopedSemanticHits = semanticResults.filter { it.uri in byUri }
 
         metadataHits.forEachIndexed { index, (item, _) ->
@@ -758,6 +784,32 @@ class MainActivity : AppCompatActivity() {
             )
             .take(DesignTokens.SEARCH_METADATA_HARD_CAP)
             .toList()
+    }
+
+    private fun metadataIndexFor(items: List<GalleryRepository.MediaItem>): MetadataSearch.Index {
+        val signature = metadataSignature(items)
+        val cached = cachedMetadataIndex
+        if (cached != null && cachedMetadataSignature == signature) return cached
+        return MetadataSearch.buildIndex(items).also { index ->
+            cachedMetadataIndex = index
+            cachedMetadataSignature = signature
+        }
+    }
+
+    private fun invalidateSearchCaches() {
+        cachedMetadataIndex = null
+        cachedMetadataSignature = 0
+    }
+
+    private fun metadataSignature(items: List<GalleryRepository.MediaItem>): Int {
+        var hash = items.size
+        items.forEach { item ->
+            hash = 31 * hash + item.uri.hashCode()
+            hash = 31 * hash + item.dateMillis.hashCode()
+            hash = 31 * hash + (item.displayName?.hashCode() ?: 0)
+            hash = 31 * hash + (item.mimeType?.hashCode() ?: 0)
+        }
+        return hash
     }
 
     private fun safeFormat(
@@ -1155,6 +1207,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        searchDebounceJob?.cancel()
         searchJob?.cancel()
         renderJob?.cancel()
         imageEncoder?.close()
