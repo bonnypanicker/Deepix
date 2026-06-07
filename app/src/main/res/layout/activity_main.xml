@@ -133,15 +133,61 @@
                         android:textSize="12sp" />
                 </LinearLayout>
 
-                <TextView
-                    android:id="@+id/searchMetaText"
+                <LinearLayout
+                    android:id="@+id/searchModeRow"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:includeFontPadding="false"
-                    android:paddingTop="10dp"
-                    android:text="Semantic + metadata search across the current section"
-                    android:textColor="@color/metroTextSecondary"
-                    android:textSize="12sp" />
+                    android:layout_marginTop="10dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/searchModeHybrid"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/search_filter_chip_active_bg"
+                        android:includeFontPadding="false"
+                        android:paddingStart="14dp"
+                        android:paddingTop="8dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="8dp"
+                        android:text="AI + META"
+                        android:textAllCaps="true"
+                        android:textColor="@color/metroTextPrimary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/searchModeAi"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:background="@drawable/search_filter_chip_bg"
+                        android:includeFontPadding="false"
+                        android:paddingStart="14dp"
+                        android:paddingTop="8dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="8dp"
+                        android:text="AI"
+                        android:textAllCaps="true"
+                        android:textColor="@color/metroTextPrimary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/searchModeMetadata"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:background="@drawable/search_filter_chip_bg"
+                        android:includeFontPadding="false"
+                        android:paddingStart="14dp"
+                        android:paddingTop="8dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="8dp"
+                        android:text="META"
+                        android:textAllCaps="true"
+                        android:textColor="@color/metroTextPrimary"
+                        android:textSize="12sp" />
+                </LinearLayout>
 
                 <HorizontalScrollView
                     android:id="@+id/searchActivePillsScroll"

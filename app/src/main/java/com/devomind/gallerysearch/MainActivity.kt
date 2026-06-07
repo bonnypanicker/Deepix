@@ -78,6 +78,7 @@ class MainActivity : AppCompatActivity() {
     private var currentAlbum: GalleryRepository.Album? = null
     private var currentMode = Mode.Browse
     private var activeSection = Section.Collection
+    private var searchMode = SearchMode.Hybrid
     private var searchJob: Job? = null
     private var searchDebounceJob: Job? = null
     private var renderJob: Job? = null
@@ -181,14 +182,17 @@ class MainActivity : AppCompatActivity() {
         binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
         binding.searchLaunchBtn.setOnClickListener { openSearch() }
         binding.searchDismissBtn.setOnClickListener { closeSearch(clearQuery = true) }
+        binding.searchModeHybrid.setOnClickListener { setSearchMode(SearchMode.Hybrid) }
+        binding.searchModeAi.setOnClickListener { setSearchMode(SearchMode.AiOnly) }
+        binding.searchModeMetadata.setOnClickListener { setSearchMode(SearchMode.MetadataOnly) }
 
         binding.drawerCollection.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
-            switchSection(Section.Collection)
+            navigateToSection(Section.Collection)
         }
         binding.drawerAlbums.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
-            switchSection(Section.Albums)
+            navigateToSection(Section.Albums)
         }
         binding.drawerSearch.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
@@ -203,10 +207,10 @@ class MainActivity : AppCompatActivity() {
             showAlbumSelector()
         }
 
-        binding.bottomCollections.setOnClickListener { switchSection(Section.Collection) }
-        binding.bottomAlbums.setOnClickListener { switchSection(Section.Albums) }
-        binding.bottomFavorites.setOnClickListener { switchSection(Section.Favorites) }
-        binding.bottomVideos.setOnClickListener { switchSection(Section.Videos) }
+        binding.bottomCollections.setOnClickListener { navigateToSection(Section.Collection) }
+        binding.bottomAlbums.setOnClickListener { navigateToSection(Section.Albums) }
+        binding.bottomFavorites.setOnClickListener { navigateToSection(Section.Favorites) }
+        binding.bottomVideos.setOnClickListener { navigateToSection(Section.Videos) }
 
         binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
@@ -304,7 +308,7 @@ class MainActivity : AppCompatActivity() {
                     currentMode == Mode.Search -> closeSearch(clearQuery = false)
                     currentMode == Mode.AlbumDetail -> {
                         currentAlbum = null
-                        switchSection(Section.Albums)
+                        navigateToSection(Section.Albums)
                     }
                     else -> finish()
                 }
@@ -478,6 +482,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun switchSection(section: Section) {
+        searchJob?.cancel()
+        searchDebounceJob?.cancel()
+        renderJob?.cancel()
         activeSection = section
         currentAlbum = null
         adapter.clearSelection()
@@ -487,6 +494,13 @@ class MainActivity : AppCompatActivity() {
         } else {
             renderCurrentSection()
         }
+    }
+
+    private fun navigateToSection(section: Section) {
+        if (currentMode == Mode.Search) {
+            closeSearch(clearQuery = false)
+        }
+        switchSection(section)
     }
 
     private fun renderCurrentState() {
@@ -528,6 +542,7 @@ class MainActivity : AppCompatActivity() {
             }
             if (currentMode == Mode.Browse && currentAlbum == null && activeSection == expectedSection) {
                 adapter.updateCells(cells)
+                resetGridToTop()
                 updateFastScrollVisibility()
                 binding.fastScrollIndicator.syncToRecyclerView()
             }
@@ -542,6 +557,7 @@ class MainActivity : AppCompatActivity() {
             if (albums.isEmpty()) listOf(GalleryCell.Empty("No albums yet"))
             else albums.map { GalleryCell.AlbumCell(it) }
         )
+        resetGridToTop()
         updateFastScrollVisibility()
         updateTopBarForMode("albums")
         updateDrawerState()
@@ -569,6 +585,7 @@ class MainActivity : AppCompatActivity() {
             }
             if (currentMode == Mode.AlbumDetail && currentAlbum?.id == expectedAlbumId) {
                 adapter.updateCells(cells)
+                resetGridToTop()
                 updateFastScrollVisibility()
                 binding.fastScrollIndicator.syncToRecyclerView()
             }
@@ -596,6 +613,7 @@ class MainActivity : AppCompatActivity() {
         updateSearchPillState()
         if (binding.searchInput.text.isNullOrBlank()) {
             adapter.updateCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
+            resetGridToTop()
         } else {
             submitSearch()
         }
@@ -603,6 +621,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun closeSearch(clearQuery: Boolean) {
         renderJob?.cancel()
+        searchJob?.cancel()
         searchDebounceJob?.cancel()
         binding.searchPanel.visibility = View.GONE
         if (clearQuery) {
@@ -614,14 +633,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSearchMetaText() {
-        val locale = Locale.getDefault()
-        val album = currentAlbum
-        binding.searchMetaText.text = when {
-            album != null -> "Photo-only AI + APT search inside ${album.name.lowercase(locale)}. Try date=2026-06, ext=jpg, fav=yes"
-            activeSection == Section.Favorites -> "Photo-only AI + APT search across your favorites. Try year=2026, album:\"camera roll\""
-            activeSection == Section.Videos -> "Search returns photos only. Switch sections to search images."
-            else -> "Photo-only AI + APT search across the current gallery scope. Try date=2026, ext=png, album:\"camera roll\", fav=yes"
-        }
+        updateSearchModeUi()
         updateSearchPillState()
     }
 
@@ -639,9 +651,13 @@ class MainActivity : AppCompatActivity() {
         searchDebounceJob?.cancel()
         searchJob?.cancel()
         val parsedQuery = StructuredSearch.parse(query)
+        val sessionMode = searchMode
+        val sessionAlbumId = currentAlbum?.id
+        val sessionSection = activeSection
 
         if (!parsedQuery.hasAnyCriteria) {
             adapter.updateCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
+            resetGridToTop()
             binding.resultCount.text = ""
             binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
             return
@@ -649,7 +665,7 @@ class MainActivity : AppCompatActivity() {
 
         currentMode = Mode.Search
         binding.progressBar.visibility = View.VISIBLE
-        binding.statusText.text = if (textEncoder == null) "Searching filters and metadata..." else "Searching..."
+        binding.statusText.text = "Searching..."
         val favoriteKeys = favoritesStore.all()
         val filteredItems = parsedQuery.filterItems(currentSearchPhotoItems(), favoriteKeys)
 
@@ -665,37 +681,46 @@ class MainActivity : AppCompatActivity() {
 
         searchJob = lifecycleScope.launch {
             try {
-                val metadataHits = withContext(Dispatchers.Default) {
-                    buildMetadataHits(repo, parsedQuery, filteredItems)
+                val shouldSearchMetadata = sessionMode != SearchMode.AiOnly
+                val shouldSearchAi = sessionMode != SearchMode.MetadataOnly && parsedQuery.textQuery.isNotBlank()
+                val metadataHits = if (shouldSearchMetadata) {
+                    withContext(Dispatchers.Default) {
+                        buildMetadataHits(repo, parsedQuery, filteredItems)
+                    }
+                } else {
+                    emptyList()
                 }
 
-                val metadataResults = withContext(Dispatchers.Default) {
-                    buildMergedPhotoSearchResults(
-                        baseItems = filteredItems,
-                        metadataHits = metadataHits,
-                        semanticResults = emptyList()
+                if (searchMode != SearchMode.AiOnly) {
+                    val metadataResults = withContext(Dispatchers.Default) {
+                        buildMergedPhotoSearchResults(
+                            baseItems = filteredItems,
+                            metadataHits = metadataHits,
+                            semanticResults = emptyList()
+                        )
+                    }
+
+                    if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
+                    renderSearchResults(
+                        results = metadataResults,
+                        emptyText = "No matching results",
+                        statusText = when {
+                            sessionMode == SearchMode.MetadataOnly -> selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+                            parsedQuery.textQuery.isBlank() -> filterSummaryText(parsedQuery, metadataResults.size)
+                            textEncoder == null -> selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+                            else -> selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+                        }
                     )
                 }
 
-                renderSearchResults(
-                    results = metadataResults,
-                    emptyText = "No matching results",
-                    statusText = when {
-                        textEncoder == null -> "Metadata ready - AI still warming up"
-                        parsedQuery.textQuery.isBlank() -> filterSummaryText(parsedQuery, metadataResults.size)
-                        metadataResults.isEmpty() -> "Searching AI..."
-                        else -> "Metadata ready - refining with AI..."
-                    }
-                )
-
-                if (textEncoder == null || parsedQuery.textQuery.isBlank()) {
+                if (!shouldSearchAi || textEncoder == null) {
                     return@launch
                 }
 
                 val semanticResults = withContext(Dispatchers.Default) {
                     repo.search(parsedQuery.textQuery)
                 }
-                val mergedResults = withContext(Dispatchers.Default) {
+                val finalResults = withContext(Dispatchers.Default) {
                     buildMergedPhotoSearchResults(
                         baseItems = filteredItems,
                         metadataHits = metadataHits,
@@ -703,8 +728,9 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
 
+                if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
                 renderSearchResults(
-                    results = mergedResults,
+                    results = finalResults,
                     emptyText = "No matching results",
                     statusText = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
                 )
@@ -846,6 +872,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         adapter.updateCells(cells)
+        resetGridToTop()
         binding.resultCount.text = when {
             results.isEmpty() -> "No results found"
             results.size == 1 -> "1 result"
@@ -854,16 +881,66 @@ class MainActivity : AppCompatActivity() {
         binding.statusText.text = statusText
     }
 
+    private fun isSearchSessionCurrent(
+        query: String,
+        mode: SearchMode,
+        section: Section,
+        albumId: String?
+    ): Boolean {
+        return currentMode == Mode.Search &&
+            binding.searchPanel.visibility == View.VISIBLE &&
+            binding.searchInput.text?.toString()?.trim().orEmpty() == query &&
+            searchMode == mode &&
+            activeSection == section &&
+            currentAlbum?.id == albumId
+    }
+
     private fun updateSearchPillState() {
         if (binding.searchPanel.visibility != View.VISIBLE) return
         val parsed = StructuredSearch.parse(binding.searchInput.text?.toString().orEmpty())
+        updateSearchModeUi()
         renderActiveSearchPills(parsed)
         renderQuickSearchPills(parsed)
     }
 
+    private fun updateSearchModeUi() {
+        bindSearchModeChip(binding.searchModeHybrid, searchMode == SearchMode.Hybrid)
+        bindSearchModeChip(binding.searchModeAi, searchMode == SearchMode.AiOnly)
+        bindSearchModeChip(binding.searchModeMetadata, searchMode == SearchMode.MetadataOnly)
+    }
+
+    private fun bindSearchModeChip(view: TextView, selected: Boolean) {
+        view.background = ContextCompat.getDrawable(
+            this,
+            if (selected) R.drawable.search_filter_chip_active_bg else R.drawable.search_filter_chip_bg
+        )
+        view.alpha = if (selected) 1f else 0.82f
+    }
+
+    private fun setSearchMode(mode: SearchMode) {
+        if (searchMode == mode) return
+        searchMode = mode
+        updateSearchModeUi()
+        if (currentMode == Mode.Search && binding.searchPanel.visibility == View.VISIBLE) {
+            submitSearch()
+        }
+    }
+
     private fun renderActiveSearchPills(parsed: StructuredSearch.ParsedQuery) {
         binding.searchActivePills.removeAllViews()
-        binding.searchActivePillsScroll.visibility = if (parsed.filters.isEmpty()) View.GONE else View.VISIBLE
+        val scopePill = currentSearchScopePill()
+        binding.searchActivePillsScroll.visibility =
+            if (parsed.filters.isEmpty() && scopePill == null) View.GONE else View.VISIBLE
+        scopePill?.let {
+            binding.searchActivePills.addView(
+                createSearchPillView(
+                    label = it,
+                    selected = true,
+                    clickable = false,
+                    onClick = {}
+                )
+            )
+        }
         parsed.filters.forEach { filter ->
             binding.searchActivePills.addView(
                 createSearchPillView(
@@ -942,9 +1019,18 @@ class MainActivity : AppCompatActivity() {
         return pills.values.take(10).toList()
     }
 
+    private fun currentSearchScopePill(): String? {
+        return when {
+            currentAlbum != null -> currentAlbum?.name
+            activeSection == Section.Favorites -> "favorites"
+            else -> null
+        }
+    }
+
     private fun createSearchPillView(
         label: String,
         selected: Boolean,
+        clickable: Boolean = true,
         onClick: () -> Unit
     ): TextView {
         return TextView(this).apply {
@@ -963,7 +1049,13 @@ class MainActivity : AppCompatActivity() {
             ).apply {
                 marginEnd = dp(8)
             }
-            setOnClickListener { onClick() }
+            isClickable = clickable
+            isFocusable = clickable
+            if (clickable) {
+                setOnClickListener { onClick() }
+            } else {
+                setOnClickListener(null)
+            }
         }
     }
 
@@ -1009,6 +1101,15 @@ class MainActivity : AppCompatActivity() {
             filterCount <= 0 -> if (resultCount == 1) "1 result" else "$resultCount results"
             resultCount == 1 -> "1 photo matches $filterCount filter"
             else -> "$resultCount photos match $filterCount filters"
+        }
+    }
+
+    private fun resetGridToTop() {
+        binding.imageGrid.stopScroll()
+        binding.imageGrid.post {
+            if (!binding.imageGrid.isAttachedToWindow) return@post
+            binding.imageGrid.scrollToPosition(0)
+            binding.fastScrollIndicator.syncToRecyclerView()
         }
     }
 
@@ -1433,5 +1534,11 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val INDEX_WORK_NAME = "gallery_background_index"
+    }
+
+    private enum class SearchMode {
+        Hybrid,
+        AiOnly,
+        MetadataOnly
     }
 }
