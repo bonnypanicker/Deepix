@@ -3,11 +3,14 @@ package com.devomind.gallerysearch
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.MediaController
-import com.bumptech.glide.load.DecodeFormat
 import androidx.core.view.ViewCompat
+import androidx.media3.common.MediaItem as Media3Item
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.DecodeFormat
+import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.devomind.gallerysearch.databinding.ItemViewerPageBinding
 
 class MediaPagerAdapter(
@@ -38,7 +41,8 @@ class MediaPagerAdapter(
     }
 
     inner class PageViewHolder(val binding: ItemViewerPageBinding) : RecyclerView.ViewHolder(binding.root) {
-        private var videoPrepared = false
+        var player: ExoPlayer? = null
+        private var isVideoReady = false
 
         fun bind(
             item: GalleryRepository.MediaItem,
@@ -48,36 +52,40 @@ class MediaPagerAdapter(
             val isVideo = item.mediaType == GalleryRepository.MediaType.Video
 
             binding.photoView.setOnClickListener { onMediaTap() }
-            binding.videoView.setOnClickListener { onMediaTap() }
+            binding.playerView.setOnClickListener { onMediaTap() }
 
             if (isVideo) {
                 binding.photoView.visibility = View.GONE
-                binding.videoView.visibility = View.VISIBLE
-                binding.videoView.setVideoURI(item.uri)
+                binding.playerView.visibility = View.VISIBLE
 
-                val controller = MediaController(binding.videoView.context)
-                controller.setAnchorView(binding.videoView)
-                binding.videoView.setMediaController(controller)
+                player = ExoPlayer.Builder(binding.root.context).build().apply {
+                    setMediaItem(Media3Item.fromUri(item.uri))
+                    repeatMode = Player.REPEAT_MODE_OFF
+                    addListener(object : Player.Listener {
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            if (playbackState == Player.STATE_READY) {
+                                isVideoReady = true
+                                play()
+                            } else if (playbackState == Player.STATE_ENDED) {
+                                onVideoCompleted()
+                            }
+                        }
+                        
+                        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                            android.util.Log.w("MediaPagerAdapter", "Video playback failed for ${item.uri}", error)
+                            android.widget.Toast.makeText(binding.root.context, "This video cannot be played.", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    })
+                    prepare()
+                }
 
-                binding.videoView.setOnPreparedListener { player ->
-                    videoPrepared = true
-                    player.isLooping = false
-                    binding.videoView.start()
-                }
-                binding.videoView.setOnCompletionListener {
-                    onVideoCompleted()
-                }
-                binding.videoView.setOnErrorListener { _, what, extra ->
-                    android.util.Log.w("MediaPagerAdapter", "Video playback failed for ${item.uri}. what=$what extra=$extra")
-                    android.widget.Toast.makeText(binding.videoView.context, "This video cannot be played.", android.widget.Toast.LENGTH_LONG).show()
-                    true
-                }
+                binding.playerView.player = player
 
                 if (transitionName != null) {
-                    ViewCompat.setTransitionName(binding.videoView, transitionName)
+                    ViewCompat.setTransitionName(binding.playerView, transitionName)
                 }
             } else {
-                binding.videoView.visibility = View.GONE
+                binding.playerView.visibility = View.GONE
                 binding.photoView.visibility = View.VISIBLE
 
                 if (transitionName != null) {
@@ -86,7 +94,9 @@ class MediaPagerAdapter(
 
                 val request = Glide.with(binding.photoView)
                     .load(item.uri)
-                    .format(DecodeFormat.PREFER_RGB_565)
+                    .format(DecodeFormat.PREFER_ARGB_8888)
+                    .error(R.drawable.ic_fluent_image_24_regular)
+                    .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                     .override(binding.photoView.resources.displayMetrics.widthPixels,
                         binding.photoView.resources.displayMetrics.heightPixels)
                     .fitCenter()
@@ -107,21 +117,25 @@ class MediaPagerAdapter(
         }
 
         fun startPlayback() {
-            if (binding.videoView.visibility == View.VISIBLE && videoPrepared) {
-                binding.videoView.start()
+            if (binding.playerView.visibility == View.VISIBLE && isVideoReady) {
+                player?.play()
             }
         }
 
         fun pausePlayback() {
-            if (binding.videoView.visibility == View.VISIBLE) {
-                binding.videoView.pause()
+            if (binding.playerView.visibility == View.VISIBLE) {
+                player?.pause()
             }
         }
 
         fun stopPlayback() {
-            if (binding.videoView.visibility == View.VISIBLE) {
-                binding.videoView.stopPlayback()
+            if (binding.playerView.visibility == View.VISIBLE) {
+                player?.stop()
             }
+        }
+        
+        fun isPlaying(): Boolean {
+            return player?.isPlaying == true
         }
 
         fun isZoomed(): Boolean {
@@ -130,8 +144,12 @@ class MediaPagerAdapter(
 
         fun cleanup() {
             stopPlayback()
-            videoPrepared = false
+            player?.release()
+            player = null
+            isVideoReady = false
+            binding.playerView.player = null
             Glide.with(binding.photoView).clear(binding.photoView)
         }
     }
 }
+

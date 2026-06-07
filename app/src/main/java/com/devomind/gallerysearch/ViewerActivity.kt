@@ -260,14 +260,13 @@ class ViewerActivity : AppCompatActivity() {
 
     private fun toggleVideoPlayback() {
         val holder = getCurrentPageViewHolder() ?: return
-        val videoView = holder.binding.videoView
-        if (videoView.isPlaying) {
-            videoView.pause()
+        if (holder.isPlaying()) {
+            holder.pausePlayback()
             binding.editBtn.setImageResource(R.drawable.ic_fluent_play_24_regular)
             binding.editBtn.contentDescription = "Play video"
             setControlsVisible(true)
         } else {
-            videoView.start()
+            holder.startPlayback()
             binding.editBtn.setImageResource(R.drawable.ic_fluent_pause_24_regular)
             binding.editBtn.contentDescription = "Pause video"
             scheduleAutoHide()
@@ -415,7 +414,7 @@ class ViewerActivity : AppCompatActivity() {
         val holder = getCurrentPageViewHolder() ?: return null
         val item = items.getOrNull(currentPosition) ?: return null
         return if (item.mediaType == GalleryRepository.MediaType.Video) {
-            holder.binding.videoView
+            holder.binding.playerView
         } else {
             holder.binding.photoView
         }
