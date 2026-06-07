@@ -11,7 +11,8 @@ data class SearchMatch(
     val uri: Uri,
     val aiScore: Float? = null,
     val metadataScore: Int = 0,
-    val sources: Set<SearchMatchSource>
+    val sources: Set<SearchMatchSource>,
+    val combinedScore: Float = 0f
 ) {
     val hasAi: Boolean get() = SearchMatchSource.Ai in sources
     val hasMetadata: Boolean get() = SearchMatchSource.Metadata in sources
