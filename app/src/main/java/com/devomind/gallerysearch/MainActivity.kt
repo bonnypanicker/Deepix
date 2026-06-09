@@ -1234,7 +1234,9 @@ class MainActivity : AppCompatActivity() {
         popup.menu.add(if (isPinned) "Unpin Album" else "Pin Album")
         popup.setOnMenuItemClickListener { _ ->
             if (isPinned) albumPinStore.unpin(album.id) else albumPinStore.pin(album.id)
-            refreshVisibleItems()
+            if (currentMode == Mode.Browse && currentAlbum == null) {
+                renderCurrentSection()
+            }
             true
         }
         popup.show()
