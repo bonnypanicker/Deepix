@@ -583,8 +583,8 @@ class MainActivity : AppCompatActivity() {
                 buildTimelineCells(cappedItems, emptyText)
             }
             if (currentMode == Mode.Browse && currentAlbum == null && activeSection == expectedSection) {
-                val pinnedIds = albumPinStore.getPinnedAlbumIds().toSet()
                 albumPinStore.cleanup(albums.map { it.id }.toSet())
+                val pinnedIds = albumPinStore.getPinnedAlbumIds()
                 val pinnedAlbums = albums.filter { it.id in pinnedIds }
                     .sortedBy { pinnedIds.indexOf(it.id) }
 
@@ -625,8 +625,8 @@ class MainActivity : AppCompatActivity() {
         binding.searchPanel.visibility = View.GONE
         binding.resultCount.text = ""
 
-        val pinnedIds = albumPinStore.getPinnedAlbumIds().toSet()
         albumPinStore.cleanup(albums.map { it.id }.toSet())
+        val pinnedIds = albumPinStore.getPinnedAlbumIds()
 
         val pinnedAlbums = albums
             .filter { it.id in pinnedIds }
