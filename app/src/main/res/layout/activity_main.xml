@@ -394,6 +394,11 @@
             android:text="album scope" />
 
         <TextView
+            android:id="@+id/drawerPinnedCollections"
+            style="@style/MetroDrawerItem"
+            android:text="pinned in collections" />
+
+        <TextView
             android:id="@+id/statusText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

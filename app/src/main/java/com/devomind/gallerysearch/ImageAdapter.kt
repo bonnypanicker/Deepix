@@ -12,6 +12,8 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.Glide
@@ -19,6 +21,8 @@ import com.devomind.gallerysearch.databinding.ItemAlbumBinding
 import com.devomind.gallerysearch.databinding.ItemCollageBinding
 import com.devomind.gallerysearch.databinding.ItemEmptyBinding
 import com.devomind.gallerysearch.databinding.ItemImageBinding
+import com.devomind.gallerysearch.databinding.ItemPinnedAlbumChipBinding
+import com.devomind.gallerysearch.databinding.ItemPinnedAlbumsHeaderBinding
 import com.devomind.gallerysearch.databinding.ItemTimelineHeaderBinding
 
 sealed class GalleryCell {
@@ -30,13 +34,17 @@ sealed class GalleryCell {
     ) : GalleryCell()
     data class Collage(val items: List<GalleryRepository.MediaItem>) : GalleryCell()
     data class AlbumCell(val album: GalleryRepository.Album) : GalleryCell()
+    data class PinnedAlbumsHeader(
+        val albums: List<GalleryRepository.Album>
+    ) : GalleryCell()
     data class Empty(val text: String) : GalleryCell()
 }
 
 class ImageAdapter(
     private val onPhotoClick: (GalleryRepository.MediaItem, android.widget.ImageView) -> Unit,
     private val onSelectionChanged: (Int) -> Unit,
-    private val onAlbumClick: (GalleryRepository.Album) -> Unit
+    private val onAlbumClick: (GalleryRepository.Album) -> Unit,
+    private val onAlbumLongClick: (GalleryRepository.Album, View) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     var cells = mutableListOf<GalleryCell>()
@@ -76,6 +84,7 @@ class ImageAdapter(
             is GalleryCell.Photo -> ViewTypePhoto
             is GalleryCell.Collage -> ViewTypeCollage
             is GalleryCell.AlbumCell -> ViewTypeAlbum
+            is GalleryCell.PinnedAlbumsHeader -> ViewTypePinnedAlbumsHeader
             is GalleryCell.Empty -> ViewTypeEmpty
         }
     }
@@ -87,7 +96,8 @@ class ImageAdapter(
         return when (viewType) {
             ViewTypeHeader -> HeaderViewHolder(ItemTimelineHeaderBinding.inflate(inflater, parent, false))
             ViewTypeCollage -> CollageViewHolder(ItemCollageBinding.inflate(inflater, parent, false), onPhotoClick, ::toggleSelection)
-            ViewTypeAlbum -> AlbumViewHolder(ItemAlbumBinding.inflate(inflater, parent, false), onAlbumClick)
+            ViewTypeAlbum -> AlbumViewHolder(ItemAlbumBinding.inflate(inflater, parent, false), onAlbumClick, onAlbumLongClick)
+            ViewTypePinnedAlbumsHeader -> PinnedAlbumsHeaderViewHolder(ItemPinnedAlbumsHeaderBinding.inflate(inflater, parent, false), onAlbumClick)
             ViewTypeEmpty -> EmptyViewHolder(ItemEmptyBinding.inflate(inflater, parent, false))
             else -> PhotoViewHolder(ItemImageBinding.inflate(inflater, parent, false), onPhotoClick, ::toggleSelection)
         }
@@ -99,6 +109,7 @@ class ImageAdapter(
             is GalleryCell.Photo -> (holder as PhotoViewHolder).bind(cell, selected.isNotEmpty(), cell.item.uri in selected)
             is GalleryCell.Collage -> (holder as CollageViewHolder).bind(cell, selected)
             is GalleryCell.AlbumCell -> (holder as AlbumViewHolder).bind(cell.album)
+            is GalleryCell.PinnedAlbumsHeader -> (holder as PinnedAlbumsHeaderViewHolder).bind(cell)
             is GalleryCell.Empty -> (holder as EmptyViewHolder).bind(cell)
         }
     }
@@ -120,7 +131,8 @@ class ImageAdapter(
     fun spanSizeAt(position: Int, totalSpanCount: Int): Int {
         return when (val cell = cells.getOrNull(position)) {
             is GalleryCell.Header,
-            is GalleryCell.Empty -> totalSpanCount
+            is GalleryCell.Empty,
+            is GalleryCell.PinnedAlbumsHeader -> totalSpanCount
             is GalleryCell.Collage -> totalSpanCount
             is GalleryCell.AlbumCell -> totalSpanCount / 2
             is GalleryCell.Photo -> {
@@ -229,6 +241,7 @@ class ImageAdapter(
             is GalleryCell.Photo -> "photo:${cell.item.uri}"
             is GalleryCell.Collage -> "collage:${cell.items.joinToString("|") { it.uri.toString() }}"
             is GalleryCell.AlbumCell -> "album:${cell.album.id}"
+            is GalleryCell.PinnedAlbumsHeader -> "pinned_albums_header"
             is GalleryCell.Empty -> "empty:${cell.text}"
         }
         return key.fold(1125899906842597L) { hash, char -> 31L * hash + char.code.toLong() }
@@ -495,7 +508,8 @@ class ImageAdapter(
 
     class AlbumViewHolder(
         private val binding: ItemAlbumBinding,
-        private val onAlbumClick: (GalleryRepository.Album) -> Unit
+        private val onAlbumClick: (GalleryRepository.Album) -> Unit,
+        private val onAlbumLongClick: (GalleryRepository.Album, View) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(album: GalleryRepository.Album) {
             val metrics = binding.root.resources.displayMetrics
@@ -511,6 +525,61 @@ class ImageAdapter(
                 .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
                 .into(binding.albumCover)
             binding.root.setOnClickListener { onAlbumClick(album) }
+            binding.root.setOnLongClickListener {
+                onAlbumLongClick(album, binding.root)
+                true
+            }
+        }
+    }
+
+    class PinnedAlbumsHeaderViewHolder(
+        private val binding: ItemPinnedAlbumsHeaderBinding,
+        private val onAlbumClick: (GalleryRepository.Album) -> Unit
+    ) : RecyclerView.ViewHolder(binding.root) {
+        private val chipAdapter = PinnedAlbumAdapter(onAlbumClick)
+
+        init {
+            binding.pinnedAlbumsList.layoutManager =
+                LinearLayoutManager(binding.root.context, LinearLayoutManager.HORIZONTAL, false)
+            binding.pinnedAlbumsList.adapter = chipAdapter
+            binding.pinnedAlbumsList.setHasFixedSize(true)
+        }
+
+        fun bind(cell: GalleryCell.PinnedAlbumsHeader) {
+            chipAdapter.submitList(cell.albums)
+        }
+    }
+
+    class PinnedAlbumAdapter(
+        private val onAlbumClick: (GalleryRepository.Album) -> Unit
+    ) : ListAdapter<GalleryRepository.Album, PinnedAlbumAdapter.ChipViewHolder>(
+        object : DiffUtil.ItemCallback<GalleryRepository.Album>() {
+            override fun areItemsTheSame(old: GalleryRepository.Album, new: GalleryRepository.Album) = old.id == new.id
+            override fun areContentsTheSame(old: GalleryRepository.Album, new: GalleryRepository.Album) = old == new
+        }
+    ) {
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ChipViewHolder {
+            val binding = ItemPinnedAlbumChipBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+            return ChipViewHolder(binding)
+        }
+
+        override fun onBindViewHolder(holder: ChipViewHolder, position: Int) {
+            holder.bind(getItem(position), onAlbumClick)
+        }
+
+        class ChipViewHolder(
+            private val binding: ItemPinnedAlbumChipBinding
+        ) : RecyclerView.ViewHolder(binding.root) {
+            fun bind(album: GalleryRepository.Album, onAlbumClick: (GalleryRepository.Album) -> Unit) {
+                binding.chipName.text = album.name
+                Glide.with(binding.chipCover.context)
+                    .load(album.coverUri)
+                    .format(DecodeFormat.PREFER_RGB_565)
+                    .centerCrop()
+                    .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
+                    .into(binding.chipCover)
+                binding.root.setOnClickListener { onAlbumClick(album) }
+            }
         }
     }
 
@@ -527,5 +596,6 @@ class ImageAdapter(
         const val ViewTypeCollage = 3
         const val ViewTypeAlbum = 4
         const val ViewTypeEmpty = 5
+        const val ViewTypePinnedAlbumsHeader = 6
     }
 }

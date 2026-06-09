@@ -67,6 +67,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var adapter: ImageAdapter
     private lateinit var favoritesStore: FavoritesStore
+    private lateinit var albumPinStore: AlbumPinStore
     private var imageEncoder: ImageEncoder? = null
     private var textEncoder: TextEncoder? = null
     private var repository: GalleryRepository? = null
@@ -146,11 +147,13 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         configureEdgeToEdge()
         favoritesStore = FavoritesStore(this)
+        albumPinStore = AlbumPinStore(this)
 
         adapter = ImageAdapter(
             onPhotoClick = { item, view -> openMedia(item, view) },
             onSelectionChanged = ::renderSelectionState,
-            onAlbumClick = ::openAlbum
+            onAlbumClick = ::openAlbum,
+            onAlbumLongClick = ::showAlbumPinMenu
         )
 
         val layoutManager = GridLayoutManager(this, DesignTokens.GRID_SPAN_COUNT)
@@ -209,6 +212,14 @@ class MainActivity : AppCompatActivity() {
         binding.drawerAlbumScope.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             showAlbumSelector()
+        }
+
+        binding.drawerPinnedCollections.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            val current = IndexPreferences.isShowPinnedInCollections(this)
+            IndexPreferences.setShowPinnedInCollections(this, !current)
+            updateDrawerState()
+            refreshVisibleItems()
         }
 
         binding.bottomCollections.setOnClickListener { navigateToSection(Section.Collection) }
@@ -571,7 +582,24 @@ class MainActivity : AppCompatActivity() {
                 buildTimelineCells(cappedItems, emptyText)
             }
             if (currentMode == Mode.Browse && currentAlbum == null && activeSection == expectedSection) {
-                adapter.replaceCells(cells)
+                val pinnedIds = albumPinStore.getPinnedAlbumIds().toSet()
+                albumPinStore.cleanup(albums.map { it.id }.toSet())
+                val pinnedAlbums = albums.filter { it.id in pinnedIds }
+                    .sortedBy { pinnedIds.indexOf(it.id) }
+
+                val finalCells = if (expectedSection == Section.Collection &&
+                    IndexPreferences.isShowPinnedInCollections(this@MainActivity) &&
+                    pinnedAlbums.isNotEmpty()
+                ) {
+                    val withHeader = mutableListOf<GalleryCell>()
+                    withHeader += GalleryCell.PinnedAlbumsHeader(pinnedAlbums)
+                    withHeader += cells
+                    withHeader.toList()
+                } else {
+                    cells
+                }
+
+                adapter.replaceCells(finalCells)
                 resetGridToTop()
                 updateFastScrollVisibility()
                 binding.fastScrollIndicator.syncToRecyclerView()
@@ -595,9 +623,19 @@ class MainActivity : AppCompatActivity() {
         currentMode = Mode.Browse
         binding.searchPanel.visibility = View.GONE
         binding.resultCount.text = ""
+
+        val pinnedIds = albumPinStore.getPinnedAlbumIds().toSet()
+        albumPinStore.cleanup(albums.map { it.id }.toSet())
+
+        val pinnedAlbums = albums
+            .filter { it.id in pinnedIds }
+            .sortedBy { pinnedIds.indexOf(it.id) }
+        val normalAlbums = albums.filter { it.id !in pinnedIds }
+        val sortedAlbums = pinnedAlbums + normalAlbums
+
         adapter.replaceCells(
-            if (albums.isEmpty()) listOf(GalleryCell.Empty("No albums yet"))
-            else albums.map { GalleryCell.AlbumCell(it) }
+            if (sortedAlbums.isEmpty()) listOf(GalleryCell.Empty("No albums yet"))
+            else sortedAlbums.map { GalleryCell.AlbumCell(it) }
         )
         resetGridToTop()
         updateFastScrollVisibility()
@@ -1179,6 +1217,18 @@ class MainActivity : AppCompatActivity() {
         renderAlbumDetail(album)
     }
 
+    private fun showAlbumPinMenu(album: GalleryRepository.Album, anchor: View) {
+        val isPinned = albumPinStore.isPinned(album.id)
+        val popup = android.widget.PopupMenu(this, anchor)
+        popup.menu.add(if (isPinned) "Unpin Album" else "Pin Album")
+        popup.setOnMenuItemClickListener { _ ->
+            if (isPinned) albumPinStore.unpin(album.id) else albumPinStore.pin(album.id)
+            refreshVisibleItems()
+            true
+        }
+        popup.show()
+    }
+
     private fun openMedia(item: GalleryRepository.MediaItem, sharedView: ImageView) {
         val items = currentViewerItems()
         val position = items.indexOfFirst { it.uri == item.uri }
@@ -1513,6 +1563,10 @@ class MainActivity : AppCompatActivity() {
             currentMode == Mode.AlbumDetail
         binding.drawerAlbums.setBackgroundColor(if (albumsHighlighted) active else inactive)
         binding.drawerSearch.setBackgroundColor(if (currentMode == Mode.Search) active else inactive)
+
+        val showPinned = IndexPreferences.isShowPinnedInCollections(this)
+        binding.drawerPinnedCollections.text =
+            if (showPinned) "pinned in collections \u2713" else "pinned in collections"
     }
 
     private fun updateBottomPanelState() {

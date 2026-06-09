@@ -7,6 +7,7 @@ object IndexPreferences {
     private const val KeyAlbums = "selected_album_ids"
     private const val KeyLastIndexed = "last_indexed_time"
     private const val KeyOptimalThreads = "optimal_thread_count"
+    private const val KeyShowPinnedCollections = "show_pinned_collections"
 
     fun saveSelectedAlbums(context: Context, albumIds: Set<String>) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
@@ -47,5 +48,17 @@ object IndexPreferences {
     fun getOptimalThreadCount(context: Context): Int {
         return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .getInt(KeyOptimalThreads, 0)
+    }
+
+    fun isShowPinnedInCollections(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyShowPinnedCollections, true)
+    }
+
+    fun setShowPinnedInCollections(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyShowPinnedCollections, enabled)
+            .apply()
     }
 }
