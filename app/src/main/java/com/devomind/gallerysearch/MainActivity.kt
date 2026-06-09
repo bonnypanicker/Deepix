@@ -79,6 +79,7 @@ class MainActivity : AppCompatActivity() {
     private var allUris: List<Uri> = emptyList()
     private var currentAlbum: GalleryRepository.Album? = null
     private var currentMode = Mode.Browse
+    private var preAlbumDetailSection = Section.Collection
     private var activeSection = Section.Collection
     private var searchMode = SearchMode.Hybrid
     private var searchJob: Job? = null
@@ -332,7 +333,7 @@ class MainActivity : AppCompatActivity() {
                     currentMode == Mode.Search -> closeSearch(clearQuery = false)
                     currentMode == Mode.AlbumDetail -> {
                         currentAlbum = null
-                        navigateToSection(Section.Albums)
+                        navigateToSection(preAlbumDetailSection)
                     }
                     else -> finish()
                 }
@@ -631,11 +632,20 @@ class MainActivity : AppCompatActivity() {
             .filter { it.id in pinnedIds }
             .sortedBy { pinnedIds.indexOf(it.id) }
         val normalAlbums = albums.filter { it.id !in pinnedIds }
-        val sortedAlbums = pinnedAlbums + normalAlbums
+
+        val cells = mutableListOf<GalleryCell>()
+        if (pinnedAlbums.isNotEmpty()) {
+            cells += GalleryCell.Header("PINNED", "")
+            pinnedAlbums.forEach { cells += GalleryCell.AlbumCell(it) }
+        }
+        if (normalAlbums.isNotEmpty()) {
+            cells += GalleryCell.Header("OTHERS", "")
+            normalAlbums.forEach { cells += GalleryCell.AlbumCell(it) }
+        }
 
         adapter.replaceCells(
-            if (sortedAlbums.isEmpty()) listOf(GalleryCell.Empty("No albums yet"))
-            else sortedAlbums.map { GalleryCell.AlbumCell(it) }
+            if (cells.isEmpty()) listOf(GalleryCell.Empty("No albums yet"))
+            else cells
         )
         resetGridToTop()
         updateFastScrollVisibility()
@@ -647,6 +657,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderAlbumDetail(album: GalleryRepository.Album) {
         renderJob?.cancel()
+        preAlbumDetailSection = activeSection
         currentMode = Mode.AlbumDetail
         currentAlbum = album
         binding.searchPanel.visibility = View.GONE
@@ -1540,7 +1551,7 @@ class MainActivity : AppCompatActivity() {
             binding.menuBtn.alpha = 1f
             binding.menuBtn.setOnClickListener {
                 currentAlbum = null
-                switchSection(Section.Albums)
+                switchSection(preAlbumDetailSection)
             }
         } else {
             binding.menuBtn.setImageResource(R.drawable.ic_fluent_navigation_24_regular)
