@@ -88,4 +88,16 @@ object IndexPreferences {
             .putBoolean(KeyCollageLayout, enabled)
             .apply()
     }
+
+    fun isIndexingPaused(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean("indexing_paused", false)
+    }
+
+    fun setIndexingPaused(context: Context, paused: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("indexing_paused", paused)
+            .apply()
+    }
 }

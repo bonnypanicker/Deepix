@@ -292,7 +292,7 @@ class GalleryRepository(
      * This overlaps IO (bitmap loading) with compute (inference), and
      * batching reduces per-image ONNX framework overhead.
      */
-    suspend fun buildIndex(uris: List<Uri>, onProgress: (current: Int, total: Int) -> Unit) {
+    suspend fun buildIndex(uris: List<Uri>, onProgress: suspend (current: Int, total: Int) -> Unit) {
         val uriKeys = uris.map { it.toString() }
         val uriSet = uriKeys.toSet()
         val loaded = loadIndex().filterKeys { it in uriSet }
