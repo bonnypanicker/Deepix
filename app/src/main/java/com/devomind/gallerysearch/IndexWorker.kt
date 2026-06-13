@@ -43,15 +43,6 @@ class IndexWorker(
             val total = max(1, uris.size)
 
             repository.buildIndex(uris) { current, _ ->
-                var wasPaused = false
-                while (IndexPreferences.isIndexingPaused(applicationContext)) {
-                    if (!wasPaused) {
-                        setForegroundAsync(createForegroundInfo(current, total, isPaused = true))
-                        wasPaused = true
-                    }
-                    kotlinx.coroutines.delay(1000)
-                }
-                
                 val bounded = current.coerceAtMost(total)
                 val progressPercent = (bounded * 100) / total
                 setProgressAsync(
@@ -99,43 +90,17 @@ class IndexWorker(
         return shouldUpdate
     }
 
-    private fun createForegroundInfo(current: Int, total: Int, isPaused: Boolean = false): ForegroundInfo {
+    private fun createForegroundInfo(current: Int, total: Int): ForegroundInfo {
         ensureChannel()
-        
-        val intentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
-        } else {
-            android.app.PendingIntent.FLAG_UPDATE_CURRENT
-        }
-
-        val pauseIntent = android.content.Intent(applicationContext, IndexControlReceiver::class.java).apply {
-            action = IndexControlReceiver.ACTION_PAUSE_INDEXING
-        }
-        val pausePendingIntent = android.app.PendingIntent.getBroadcast(applicationContext, 0, pauseIntent, intentFlags)
-
-        val resumeIntent = android.content.Intent(applicationContext, IndexControlReceiver::class.java).apply {
-            action = IndexControlReceiver.ACTION_RESUME_INDEXING
-        }
-        val resumePendingIntent = android.app.PendingIntent.getBroadcast(applicationContext, 1, resumeIntent, intentFlags)
-
-        val title = if (isPaused) "Indexing Paused" else "Indexing gallery photos"
-        val text = if (isPaused) "Paused at $current / $total. Tap Resume to continue." else "Processed $current / $total"
-        
-        val builder = NotificationCompat.Builder(applicationContext, ChannelId)
-            .setContentTitle(title)
-            .setContentText(text)
+        val notification: Notification = NotificationCompat.Builder(applicationContext, ChannelId)
+            .setContentTitle("Indexing gallery photos")
+            .setContentText("Processed $current / $total")
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setProgress(total, current, total <= 1 && !isPaused)
-            
-        if (isPaused) {
-            builder.addAction(0, "Resume", resumePendingIntent)
-        } else {
-            builder.addAction(0, "Pause", pausePendingIntent)
-        }
-
-        return ForegroundInfo(NotificationId, builder.build())
+            .setProgress(total, current, total <= 1)
+            .build()
+        return ForegroundInfo(NotificationId, notification)
     }
 
     private fun ensureChannel() {

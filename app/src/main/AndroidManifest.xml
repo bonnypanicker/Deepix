@@ -38,15 +38,6 @@
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
-
-        <receiver
-            android:name=".IndexControlReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.devomind.gallerysearch.ACTION_PAUSE_INDEXING" />
-                <action android:name="com.devomind.gallerysearch.ACTION_RESUME_INDEXING" />
-            </intent-filter>
-        </receiver>
     </application>
 
 </manifest>
