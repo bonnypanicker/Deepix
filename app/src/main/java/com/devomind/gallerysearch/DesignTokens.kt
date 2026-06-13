@@ -35,6 +35,10 @@ object DesignTokens {
 
     const val DISPLAY_CAP = 800
     const val GRID_SPAN_COUNT = 6
+    const val GRID_MIN_COLUMNS = 2
+    const val GRID_MAX_COLUMNS = 6
+    const val GRID_DEFAULT_COLUMNS = 4
+    const val GRID_THUMBNAIL_SPACING_DP = 2
 
     const val MENU_FADE_DURATION_MS: Long = 160L
     const val MENU_NEAR_FADE_DURATION_MS: Long = 120L

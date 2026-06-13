@@ -8,6 +8,8 @@ object IndexPreferences {
     private const val KeyLastIndexed = "last_indexed_time"
     private const val KeyOptimalThreads = "optimal_thread_count"
     private const val KeyShowPinnedCollections = "show_pinned_collections"
+    private const val KeyGridColumnCount = "grid_column_count"
+    private const val KeyCollageLayout = "use_collage_layout"
 
     fun saveSelectedAlbums(context: Context, albumIds: Set<String>) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
@@ -59,6 +61,31 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KeyShowPinnedCollections, enabled)
+            .apply()
+    }
+
+    fun getGridColumnCount(context: Context): Int {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getInt(KeyGridColumnCount, DesignTokens.GRID_DEFAULT_COLUMNS)
+    }
+
+    fun setGridColumnCount(context: Context, count: Int) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KeyGridColumnCount, count)
+            .apply()
+    }
+
+    fun isCollageLayout(context: Context): Boolean {
+        // Default to false to use the new grid mode by default
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyCollageLayout, false)
+    }
+
+    fun setCollageLayout(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyCollageLayout, enabled)
             .apply()
     }
 }

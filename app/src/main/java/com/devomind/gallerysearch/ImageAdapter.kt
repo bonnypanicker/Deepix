@@ -50,6 +50,9 @@ class ImageAdapter(
     var cells = mutableListOf<GalleryCell>()
         private set
 
+    var gridColumnCount: Int = DesignTokens.GRID_DEFAULT_COLUMNS
+    var useCollageLayout: Boolean = false
+
     private val selected = linkedSetOf<Uri>()
 
     init {
@@ -106,7 +109,7 @@ class ImageAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val cell = cells[position]) {
             is GalleryCell.Header -> (holder as HeaderViewHolder).bind(cell)
-            is GalleryCell.Photo -> (holder as PhotoViewHolder).bind(cell, selected.isNotEmpty(), cell.item.uri in selected)
+            is GalleryCell.Photo -> (holder as PhotoViewHolder).bind(cell, selected.isNotEmpty(), cell.item.uri in selected, gridColumnCount, useCollageLayout)
             is GalleryCell.Collage -> (holder as CollageViewHolder).bind(cell, selected)
             is GalleryCell.AlbumCell -> (holder as AlbumViewHolder).bind(cell.album)
             is GalleryCell.PinnedAlbumsHeader -> (holder as PinnedAlbumsHeaderViewHolder).bind(cell)
@@ -136,7 +139,11 @@ class ImageAdapter(
             is GalleryCell.Collage -> totalSpanCount
             is GalleryCell.AlbumCell -> totalSpanCount / 2
             is GalleryCell.Photo -> {
-                if (cell.featured) totalSpanCount else totalSpanCount / 3
+                if (useCollageLayout) {
+                    if (cell.featured) totalSpanCount else totalSpanCount / 3
+                } else {
+                    1
+                }
             }
             null -> 2
         }
@@ -286,28 +293,38 @@ class ImageAdapter(
             request.into(imageView)
         }
 
-        fun bind(cell: GalleryCell.Photo, selectionMode: Boolean, isSelected: Boolean) {
+        fun bind(cell: GalleryCell.Photo, selectionMode: Boolean, isSelected: Boolean, gridColumnCount: Int, useCollageLayout: Boolean) {
             val metrics = binding.root.resources.displayMetrics
             val gutter = (DesignTokens.GRID_GUTTER * metrics.density).toInt()
-            val regularSize = ((metrics.widthPixels - gutter * 6) / 3).coerceAtLeast(96)
 
             ViewCompat.setTransitionName(binding.thumbnail, "media_${cell.item.uri}")
 
-            when {
-                cell.featured -> {
-                    val spanWidth = metrics.widthPixels
-                    val height = (spanWidth * 0.56f).toInt()
-                    binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
-                        this.height = height
-                    }
-                    loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, spanWidth, height)
+            if (!useCollageLayout) {
+                val gridGutterSpacing = (DesignTokens.GRID_THUMBNAIL_SPACING_DP * metrics.density).toInt()
+                val cellSize = ((metrics.widthPixels - gridGutterSpacing * (gridColumnCount - 1)) / gridColumnCount).coerceAtLeast(1)
+                
+                binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
+                    this.height = cellSize
                 }
-                else -> {
-                    val height = regularSize
-                    binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
-                        this.height = height
+                loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, cellSize, cellSize)
+            } else {
+                val regularSize = ((metrics.widthPixels - gutter * 6) / 3).coerceAtLeast(96)
+                when {
+                    cell.featured -> {
+                        val spanWidth = metrics.widthPixels
+                        val height = (spanWidth * 0.56f).toInt()
+                        binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
+                            this.height = height
+                        }
+                        loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, spanWidth, height)
                     }
-                    loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, regularSize, height)
+                    else -> {
+                        val height = regularSize
+                        binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
+                            this.height = height
+                        }
+                        loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, regularSize, height)
+                    }
                 }
             }
 

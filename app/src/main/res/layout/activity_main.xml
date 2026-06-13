@@ -399,6 +399,11 @@
             android:text="pinned in collections" />
 
         <TextView
+            android:id="@+id/drawerLayoutToggle"
+            style="@style/MetroDrawerItem"
+            android:text="grid view" />
+
+        <TextView
             android:id="@+id/statusText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

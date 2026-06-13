@@ -156,13 +156,35 @@ class MainActivity : AppCompatActivity() {
             onAlbumClick = ::openAlbum,
             onAlbumLongClick = ::showAlbumPinMenu
         )
+        adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
+        adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
 
-        val layoutManager = GridLayoutManager(this, DesignTokens.GRID_SPAN_COUNT)
+        val initialSpanCount = if (adapter.useCollageLayout) DesignTokens.GRID_SPAN_COUNT else adapter.gridColumnCount
+        val layoutManager = GridLayoutManager(this, initialSpanCount)
         layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-            override fun getSpanSize(position: Int): Int = adapter.spanSizeAt(position, DesignTokens.GRID_SPAN_COUNT)
+            override fun getSpanSize(position: Int): Int = adapter.spanSizeAt(position, layoutManager.spanCount)
         }
 
         binding.imageGrid.layoutManager = layoutManager
+        
+        val scaleGestureListener = ThumbnailScaleGestureListener(adapter.gridColumnCount) { newColumns ->
+            if (adapter.useCollageLayout) return@ThumbnailScaleGestureListener
+            
+            adapter.gridColumnCount = newColumns
+            IndexPreferences.setGridColumnCount(this@MainActivity, newColumns)
+            layoutManager.spanCount = newColumns
+            layoutManager.spanSizeLookup.invalidateSpanIndexCache()
+            adapter.notifyItemRangeChanged(0, adapter.itemCount, "grid_change")
+        }
+        val scaleGestureDetector = android.view.ScaleGestureDetector(this, scaleGestureListener)
+        
+        @android.annotation.SuppressLint("ClickableViewAccessibility")
+        val touchListener = android.view.View.OnTouchListener { _, event ->
+            scaleGestureDetector.onTouchEvent(event)
+            false
+        }
+        binding.imageGrid.setOnTouchListener(touchListener)
+        
         binding.imageGrid.adapter = adapter
         binding.imageGrid.addItemDecoration(StickyHeaderDecoration(adapter))
         binding.fastScrollIndicator.attach(binding.imageGrid, adapter)
@@ -219,6 +241,21 @@ class MainActivity : AppCompatActivity() {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             val current = IndexPreferences.isShowPinnedInCollections(this)
             IndexPreferences.setShowPinnedInCollections(this, !current)
+            updateDrawerState()
+            refreshVisibleItems()
+        }
+
+        binding.drawerLayoutToggle.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            val current = IndexPreferences.isCollageLayout(this)
+            val newMode = !current
+            IndexPreferences.setCollageLayout(this, newMode)
+            adapter.useCollageLayout = newMode
+            
+            val layoutManager = binding.imageGrid.layoutManager as GridLayoutManager
+            layoutManager.spanCount = if (newMode) DesignTokens.GRID_SPAN_COUNT else adapter.gridColumnCount
+            layoutManager.spanSizeLookup.invalidateSpanIndexCache()
+            
             updateDrawerState()
             refreshVisibleItems()
         }
@@ -580,7 +617,7 @@ class MainActivity : AppCompatActivity() {
         val cappedItems = items.take(DesignTokens.DISPLAY_CAP)
         renderJob = lifecycleScope.launch {
             val cells = withContext(Dispatchers.Default) {
-                buildTimelineCells(cappedItems, emptyText)
+                buildTimelineCells(cappedItems, emptyText, adapter.useCollageLayout)
             }
             if (currentMode == Mode.Browse && currentAlbum == null && activeSection == expectedSection) {
                 albumPinStore.cleanup(albums.map { it.id }.toSet())
@@ -672,7 +709,7 @@ class MainActivity : AppCompatActivity() {
         val cappedItems = items.take(DesignTokens.DISPLAY_CAP)
         renderJob = lifecycleScope.launch {
             val cells = withContext(Dispatchers.Default) {
-                buildTimelineCells(cappedItems, "No media in this album")
+                buildTimelineCells(cappedItems, "No media in this album", adapter.useCollageLayout)
             }
             if (currentMode == Mode.AlbumDetail && currentAlbum?.id == expectedAlbumId) {
                 adapter.replaceCells(cells)
@@ -855,7 +892,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildTimelineCells(
         items: List<GalleryRepository.MediaItem>,
-        emptyText: String
+        emptyText: String,
+        useCollageLayout: Boolean
     ): List<GalleryCell> {
         if (items.isEmpty()) return listOf(GalleryCell.Empty(emptyText))
         val cells = ArrayList<GalleryCell>()
@@ -868,7 +906,7 @@ class MainActivity : AppCompatActivity() {
                 safeFormat(dayFormat, first.dateMillis, "").uppercase(Locale.getDefault())
             )
             monthItems.groupBy { safeFormat(dayFormat, it.dateMillis, "") }.values.forEach { dayItems ->
-                appendDayCells(cells, dayItems, isFirstGroup)
+                appendDayCells(cells, dayItems, isFirstGroup, useCollageLayout)
                 if (isFirstGroup && dayItems.isNotEmpty()) isFirstGroup = false
             }
         }
@@ -878,8 +916,14 @@ class MainActivity : AppCompatActivity() {
     private fun appendDayCells(
         cells: MutableList<GalleryCell>,
         dayItems: List<GalleryRepository.MediaItem>,
-        isFirstGroup: Boolean
+        isFirstGroup: Boolean,
+        useCollageLayout: Boolean
     ) {
+        if (!useCollageLayout) {
+            dayItems.forEach { cells += GalleryCell.Photo(it, featured = false) }
+            return
+        }
+
         when {
             isFirstGroup && dayItems.isNotEmpty() -> {
                 cells += GalleryCell.Photo(dayItems[0], featured = true)
@@ -1577,9 +1621,11 @@ class MainActivity : AppCompatActivity() {
         binding.drawerAlbums.setBackgroundColor(if (albumsHighlighted) active else inactive)
         binding.drawerSearch.setBackgroundColor(if (currentMode == Mode.Search) active else inactive)
 
-        val showPinned = IndexPreferences.isShowPinnedInCollections(this)
-        binding.drawerPinnedCollections.text =
-            if (showPinned) "pinned in collections \u2713" else "pinned in collections"
+        val isPinned = IndexPreferences.isShowPinnedInCollections(this)
+        binding.drawerPinnedCollections.text = if (isPinned) "pinned in collections ✓" else "pinned in collections"
+
+        val isCollage = IndexPreferences.isCollageLayout(this)
+        binding.drawerLayoutToggle.text = if (isCollage) "collage view ✓" else "grid view ✓"
     }
 
     private fun updateBottomPanelState() {
