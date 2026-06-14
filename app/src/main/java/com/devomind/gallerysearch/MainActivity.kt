@@ -88,6 +88,10 @@ class MainActivity : AppCompatActivity() {
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
     private var topInsetPx = 0
+    
+    // Infinite scroll state for search results
+    private var fullSearchResults: List<PhotoSearchResult> = emptyList()
+    private var currentDisplayedSearchResultCount = 0
 
     private val monthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
         .withZone(ZoneId.systemDefault())
@@ -192,6 +196,18 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (adapter.selectionCount == 0) {
                     binding.menuBtn.animate().alpha(alpha).setDuration(160).start()
+                }
+                
+                // Infinite scroll pagination for search results
+                if (currentMode == Mode.Search && fullSearchResults.isNotEmpty()) {
+                    val layoutManager = rv.layoutManager as GridLayoutManager
+                    val lastVisible = layoutManager.findLastVisibleItemPosition()
+                    val total = adapter.itemCount
+                    
+                    // Load more when within 6 items from the bottom
+                    if (currentDisplayedSearchResultCount < fullSearchResults.size && lastVisible >= total - 6) {
+                        paginateSearchResults()
+                    }
                 }
             }
         })
@@ -543,6 +559,11 @@ class MainActivity : AppCompatActivity() {
         searchJob?.cancel()
         searchDebounceJob?.cancel()
         renderJob?.cancel()
+        
+        // Reset search pagination state
+        fullSearchResults = emptyList()
+        currentDisplayedSearchResultCount = 0
+        
         activeSection = section
         currentAlbum = null
         adapter.clearSelection()
@@ -970,8 +991,7 @@ class MainActivity : AppCompatActivity() {
                 compareByDescending<PhotoSearchResult> { it.score }
                     .thenByDescending { it.item.dateMillis }
             )
-            .take(DesignTokens.SEARCH_METADATA_HARD_CAP)
-            .toList()
+            .toList()  // Return full list without hard cap
     }
 
     private fun renderSearchResults(
@@ -979,25 +999,69 @@ class MainActivity : AppCompatActivity() {
         emptyText: String,
         statusText: String
     ) {
-        val cells = if (results.isEmpty()) {
-            listOf(GalleryCell.Empty(emptyText))
-        } else {
-            results.map { result ->
-                GalleryCell.Photo(
-                    item = result.item,
-                    featured = false,
-                    searchSources = result.sources
-                )
-            }
+        // Store full results for pagination
+        fullSearchResults = results.take(DesignTokens.SEARCH_METADATA_HARD_CAP)
+        currentDisplayedSearchResultCount = 0
+        
+        if (fullSearchResults.isEmpty()) {
+            adapter.replaceCells(listOf(GalleryCell.Empty(emptyText)))
+            resetGridToTop()
+            binding.resultCount.text = "No results found"
+            binding.statusText.text = statusText
+            return
         }
+        
+        // Display first page (20 results)
+        val pageSize = 20
+        val firstPage = fullSearchResults.take(pageSize)
+        currentDisplayedSearchResultCount = firstPage.size
+        
+        val cells = firstPage.map { result ->
+            GalleryCell.Photo(
+                item = result.item,
+                featured = false,
+                searchSources = result.sources
+            )
+        }
+        
         adapter.replaceCells(cells)
         resetGridToTop()
+        
         binding.resultCount.text = when {
-            results.isEmpty() -> "No results found"
-            results.size == 1 -> "1 result"
-            else -> "${results.size} results"
+            fullSearchResults.size == 1 -> "1 result"
+            currentDisplayedSearchResultCount < fullSearchResults.size -> 
+                "Showing ${currentDisplayedSearchResultCount} of ${fullSearchResults.size} results"
+            else -> "${fullSearchResults.size} results"
         }
         binding.statusText.text = statusText
+    }
+    
+    private fun paginateSearchResults() {
+        if (currentDisplayedSearchResultCount >= fullSearchResults.size) return
+        
+        val pageSize = 20
+        val nextBatch = fullSearchResults
+            .drop(currentDisplayedSearchResultCount)
+            .take(pageSize)
+        
+        if (nextBatch.isEmpty()) return
+        
+        val newCells = nextBatch.map { result ->
+            GalleryCell.Photo(
+                item = result.item,
+                featured = false,
+                searchSources = result.sources
+            )
+        }
+        
+        currentDisplayedSearchResultCount += newCells.size
+        adapter.updateCells(adapter.cells + newCells)
+        
+        binding.resultCount.text = when {
+            currentDisplayedSearchResultCount < fullSearchResults.size -> 
+                "Showing ${currentDisplayedSearchResultCount} of ${fullSearchResults.size} results"
+            else -> "${fullSearchResults.size} results"
+        }
     }
 
     private fun isSearchSessionCurrent(
