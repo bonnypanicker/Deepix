@@ -29,9 +29,6 @@ class IndexWorker(
         setForeground(createForegroundInfo(0, 1))
 
         return try {
-            // #region debug-point E:index-start
-            Log.d(Tag, "[DEBUG][E] Index worker started attempt=$runAttemptCount")
-            // #endregion
             val imageEncoder = (applicationContext as GallerySearchApp).sharedEncoders.getImageEncoder()
             val repository = GalleryRepository(applicationContext, imageEncoder, null)
 
@@ -151,8 +148,8 @@ class IndexWorker(
         private const val ChannelId = "gallery_index_channel"
         private const val NotificationId = 1001
         private const val PausedNotificationId = 1002
-        private const val ForegroundItemStep = 24
-        private const val ForegroundPercentStep = 5
+        private const val ForegroundItemStep = 4
+        private const val ForegroundPercentStep = 1
 
         fun showPausedNotification(context: Context) {
             ensureChannel(context)

@@ -190,8 +190,8 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
     companion object {
         private const val Tag = "CLIP"
         private val PreferredVisionModels = listOf(
-            "vision_model_android_int8.onnx",
             "vision_model_fp16.onnx",
+            "vision_model_android_int8.onnx",
             "vision_model.onnx",
             "vision_model_int8.onnx"
         )

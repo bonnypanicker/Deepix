@@ -57,8 +57,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
@@ -90,12 +89,10 @@ class MainActivity : AppCompatActivity() {
     private var pendingDeleteNeedsRetry = false
     private var topInsetPx = 0
 
-    private val monthFormat = object : ThreadLocal<SimpleDateFormat>() {
-        override fun initialValue(): SimpleDateFormat = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
-    }
-    private val dayFormat = object : ThreadLocal<SimpleDateFormat>() {
-        override fun initialValue(): SimpleDateFormat = SimpleDateFormat("EEE, d", Locale.getDefault())
-    }
+    private val monthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
+        .withZone(ZoneId.systemDefault())
+    private val dayFormatter = DateTimeFormatter.ofPattern("EEE, d", Locale.getDefault())
+        .withZone(ZoneId.systemDefault())
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -136,9 +133,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         super.onCreate(savedInstanceState)
-        // #region debug-point A:activity-create
-        debugLog("A", "MainActivity created", mapOf("savedState" to (savedInstanceState != null)))
-        // #endregion
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
@@ -166,10 +160,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.imageGrid.layoutManager = layoutManager
-        
+
         val scaleGestureListener = ThumbnailScaleGestureListener(adapter.gridColumnCount) { newColumns ->
             if (adapter.useCollageLayout) return@ThumbnailScaleGestureListener
-            
+
             adapter.gridColumnCount = newColumns
             IndexPreferences.setGridColumnCount(this@MainActivity, newColumns)
             layoutManager.spanCount = newColumns
@@ -177,14 +171,14 @@ class MainActivity : AppCompatActivity() {
             adapter.notifyItemRangeChanged(0, adapter.itemCount, "grid_change")
         }
         val scaleGestureDetector = android.view.ScaleGestureDetector(this, scaleGestureListener)
-        
+
         @android.annotation.SuppressLint("ClickableViewAccessibility")
         val touchListener = android.view.View.OnTouchListener { _, event ->
             scaleGestureDetector.onTouchEvent(event)
             false
         }
         binding.imageGrid.setOnTouchListener(touchListener)
-        
+
         binding.imageGrid.adapter = adapter
         binding.imageGrid.addItemDecoration(StickyHeaderDecoration(adapter))
         binding.fastScrollIndicator.attach(binding.imageGrid, adapter)
@@ -251,11 +245,11 @@ class MainActivity : AppCompatActivity() {
             val newMode = !current
             IndexPreferences.setCollageLayout(this, newMode)
             adapter.useCollageLayout = newMode
-            
+
             val layoutManager = binding.imageGrid.layoutManager as GridLayoutManager
             layoutManager.spanCount = if (newMode) DesignTokens.GRID_SPAN_COUNT else adapter.gridColumnCount
             layoutManager.spanSizeLookup.invalidateSpanIndexCache()
-            
+
             updateDrawerState()
             refreshVisibleItems()
         }
@@ -321,7 +315,7 @@ class MainActivity : AppCompatActivity() {
             topInsetPx = systemInsets.top
             binding.topOverlay.updatePadding(top = systemInsets.top)
             binding.drawerPanel.updatePadding(top = systemInsets.top + dp(28), bottom = systemInsets.bottom + dp(24))
-            
+
             // Wait for topOverlay to lay out to get its exact height, then apply it as top padding
             // so the content starts below the transparent header rather than under it edge-to-edge
             binding.topOverlay.post {
@@ -440,9 +434,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadEncodersInBackground() {
         lifecycleScope.launch {
-            // #region debug-point B:encoder-load-start
-            debugLog("B", "Encoder warm-up started", mapOf("mode" to currentMode.name, "section" to activeSection.name))
-            // #endregion
             val sharedEncoders = (application as GallerySearchApp).sharedEncoders
             val encoders = withContext(Dispatchers.IO) {
                 val imageAsync = async { runCatching { sharedEncoders.getImageEncoder() }.getOrNull() }
@@ -455,9 +446,6 @@ class MainActivity : AppCompatActivity() {
                 Log.w(TAG, "Vision encoder failed to load; semantic search disabled.")
                 return@launch
             }
-            // #region debug-point B:encoder-load-finish
-            debugLog("B", "Encoder warm-up finished", mapOf("hasImage" to true, "hasText" to (text != null)))
-            // #endregion
             imageEncoder = image
             textEncoder = text
             repository?.attachEncoders(image, text)
@@ -552,18 +540,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun switchSection(section: Section) {
-        // #region debug-point C:section-switch
-        debugLog(
-            "C",
-            "Section switch requested",
-            mapOf(
-                "fromSection" to activeSection.name,
-                "toSection" to section.name,
-                "mode" to currentMode.name,
-                "albumId" to currentAlbum?.id
-            )
-        )
-        // #endregion
         searchJob?.cancel()
         searchDebounceJob?.cancel()
         renderJob?.cancel()
@@ -645,18 +621,6 @@ class MainActivity : AppCompatActivity() {
                 resetGridToTop()
                 updateFastScrollVisibility()
                 binding.fastScrollIndicator.syncToRecyclerView()
-                // #region debug-point D:render-finish
-                debugLog(
-                    "D",
-                    "Media section rendered",
-                    mapOf(
-                        "section" to expectedSection.name,
-                        "items" to cappedItems.size,
-                        "cells" to cells.size,
-                        "durationMs" to (SystemClock.elapsedRealtime() - renderStartMs)
-                    )
-                )
-                // #endregion
             }
         }
     }
@@ -901,19 +865,35 @@ class MainActivity : AppCompatActivity() {
     ): List<GalleryCell> {
         if (items.isEmpty()) return listOf(GalleryCell.Empty(emptyText))
         val cells = ArrayList<GalleryCell>()
+        var lastMonth: String? = null
+        var lastDay: String? = null
+        var currentDayItems = ArrayList<GalleryRepository.MediaItem>()
         var isFirstGroup = true
 
-        items.groupBy { safeFormat(monthFormat, it.dateMillis, "Unknown date") }.forEach { (month, monthItems) ->
-            val first = monthItems.first()
-            cells += GalleryCell.Header(
-                month,
-                safeFormat(dayFormat, first.dateMillis, "").uppercase(Locale.getDefault())
-            )
-            monthItems.groupBy { safeFormat(dayFormat, it.dateMillis, "") }.values.forEach { dayItems ->
-                appendDayCells(cells, dayItems, isFirstGroup, useCollageLayout)
-                if (isFirstGroup && dayItems.isNotEmpty()) isFirstGroup = false
+        for (item in items) {
+            val month = safeFormat(monthFormatter, item.dateMillis, "Unknown date")
+            val day = safeFormat(dayFormatter, item.dateMillis, "")
+
+            if (month != lastMonth || day != lastDay) {
+                if (currentDayItems.isNotEmpty()) {
+                    appendDayCells(cells, currentDayItems, isFirstGroup, useCollageLayout)
+                    isFirstGroup = false
+                    currentDayItems = ArrayList()
+                }
+
+                if (month != lastMonth) {
+                    cells += GalleryCell.Header(month, day.uppercase(Locale.getDefault()))
+                    lastMonth = month
+                }
+                lastDay = day
             }
+            currentDayItems.add(item)
         }
+
+        if (currentDayItems.isNotEmpty()) {
+            appendDayCells(cells, currentDayItems, isFirstGroup, useCollageLayout)
+        }
+
         return cells
     }
 
@@ -1253,12 +1233,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun safeFormat(
-        formatter: ThreadLocal<SimpleDateFormat>,
+        formatter: DateTimeFormatter,
         millis: Long,
         fallback: String
     ): String {
-        val formatted = runCatching { formatter.get()?.format(Date(millis)) }.getOrNull()
-        return if (formatted.isNullOrBlank()) fallback else formatted
+        return runCatching { formatter.format(Instant.ofEpochMilli(millis)) }.getOrDefault(fallback)
     }
 
     private fun normalizedRank(index: Int, total: Int): Float {
@@ -1587,6 +1566,11 @@ class MainActivity : AppCompatActivity() {
         val repo = repository ?: return
         if (allUris.isEmpty()) return
         if (repo.indexedCount >= allUris.size) return
+        if (IndexPreferences.isIndexPaused(applicationContext)) {
+            binding.statusText.text =
+                "Indexing paused · ${selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)}"
+            return
+        }
         enqueueBackgroundIndexing(showToast = false)
         binding.statusText.text =
             "Background indexing queued · ${selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)}"
@@ -1693,9 +1677,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        // #region debug-point A:activity-destroy
-        debugLog("A", "MainActivity destroyed", mapOf("changingConfigurations" to isChangingConfigurations))
-        // #endregion
         super.onDestroy()
         searchDebounceJob?.cancel()
         searchJob?.cancel()
@@ -1706,12 +1687,6 @@ class MainActivity : AppCompatActivity() {
         private const val TAG = "MainActivity"
         private const val INDEX_WORK_NAME = "gallery_background_index"
     }
-
-    // #region debug-point Z:logger
-    private fun debugLog(hypothesisId: String, message: String, data: Map<String, Any?> = emptyMap()) {
-        Log.d(TAG, "[DEBUG][$hypothesisId] $message ${data.entries.joinToString(prefix = "{", postfix = "}") { "${it.key}=${it.value}" }}")
-    }
-    // #endregion
 
     private enum class SearchMode {
         Hybrid,
