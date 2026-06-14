@@ -10,6 +10,7 @@ object IndexPreferences {
     private const val KeyShowPinnedCollections = "show_pinned_collections"
     private const val KeyGridColumnCount = "grid_column_count"
     private const val KeyCollageLayout = "use_collage_layout"
+    private const val KeyIndexPaused = "index_paused"
 
     fun saveSelectedAlbums(context: Context, albumIds: Set<String>) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
@@ -38,6 +39,18 @@ object IndexPreferences {
     }
 
     fun loadLastIndexedTime(context: Context): Long = getLastIndexedTime(context)
+
+    fun isIndexPaused(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyIndexPaused, false)
+    }
+
+    fun setIndexPaused(context: Context, paused: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyIndexPaused, paused)
+            .apply()
+    }
 
     fun saveOptimalThreadCount(context: Context, count: Int) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)

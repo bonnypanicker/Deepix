@@ -473,6 +473,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun enqueueBackgroundIndexingIfPossible(showToast: Boolean) {
+        if (IndexPreferences.isIndexPaused(applicationContext)) {
+            binding.statusText.text = "Indexing paused"
+            return
+        }
         val savedSelection = IndexPreferences.loadSelectedAlbums(applicationContext)
         val payload = Data.Builder()
             .putStringArray(IndexWorker.SelectedAlbumIdsKey, savedSelection.toTypedArray())
@@ -1482,6 +1486,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun enqueueBackgroundIndexing(showToast: Boolean = true) {
+        IndexPreferences.setIndexPaused(this, false)
+        IndexWorker.cancelStatusNotification(this)
+
         val payload = Data.Builder()
             .putStringArray(IndexWorker.SelectedAlbumIdsKey, selectedAlbumIds.toTypedArray())
             .build()
@@ -1519,6 +1526,10 @@ class MainActivity : AppCompatActivity() {
                     }
                     WorkInfo.State.SUCCEEDED -> {
                         binding.progressBar.visibility = View.GONE
+                        if (IndexPreferences.isIndexPaused(this)) {
+                            binding.statusText.text = "Indexing paused"
+                            return@observe
+                        }
                         refreshVisibleItems()
                         Toast.makeText(this, "Indexing complete.", Toast.LENGTH_SHORT).show()
                     }
@@ -1528,7 +1539,11 @@ class MainActivity : AppCompatActivity() {
                     }
                     WorkInfo.State.CANCELLED -> {
                         binding.progressBar.visibility = View.GONE
-                        binding.statusText.text = "Indexing cancelled"
+                        binding.statusText.text = if (IndexPreferences.isIndexPaused(this)) {
+                            "Indexing paused"
+                        } else {
+                            "Indexing cancelled"
+                        }
                     }
                 }
             }
