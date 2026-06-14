@@ -69,6 +69,9 @@ class IndexWorker(
             val allImages = repository.getImageItemsForAlbumIds(emptySet())
             repository.rebuildMetadataIndex(allImages)
 
+            val dbRepository = DbRepository(applicationContext)
+            dbRepository.upsertMedia(allImages)
+
             // Save timestamp so next run only processes new photos
             IndexPreferences.saveLastIndexedTime(applicationContext)
 

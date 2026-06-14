@@ -15,8 +15,14 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
 import android.view.MotionEvent
+import android.view.VelocityTracker
 import android.view.View
 import android.view.WindowManager
+import androidx.dynamicanimation.animation.DynamicAnimation
+import androidx.dynamicanimation.animation.SpringAnimation
+import androidx.dynamicanimation.animation.SpringForce
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,6 +49,7 @@ class ViewerActivity : AppCompatActivity() {
     private lateinit var binding: ActivityViewerBinding
     private lateinit var adapter: MediaPagerAdapter
     private lateinit var favoritesStore: FavoritesStore
+    private lateinit var dbRepository: DbRepository
     private var items = mutableListOf<GalleryRepository.MediaItem>()
     private var currentPosition = 0
     private var controlsVisible = true
@@ -54,8 +61,11 @@ class ViewerActivity : AppCompatActivity() {
     private var downY = 0f
     private var dragDistance = 0f
     private var draggingToDismiss = false
+    private var velocityTracker: VelocityTracker? = null
     private var pendingDeleteUri: Uri? = null
     private var pendingDeleteNeedsRetry = false
+    private var currentExif: ExifData? = null
+    private var currentTags: List<com.devomind.gallerysearch.db.TagEntity> = emptyList()
 
     private val deleteRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -117,6 +127,7 @@ class ViewerActivity : AppCompatActivity() {
         }
 
         favoritesStore = FavoritesStore(this)
+        dbRepository = DbRepository(this)
 
         if (transitionName != null) {
             postponeEnterTransition()
@@ -132,6 +143,23 @@ class ViewerActivity : AppCompatActivity() {
             onMediaTap = {
                 if (!draggingToDismiss) toggleControls()
             },
+            onMediaLongClick = {
+                val item = items.getOrNull(currentPosition) ?: return@MediaPagerAdapter
+                TagPickerDialog(
+                    context = this,
+                    lifecycleOwner = this,
+                    dbRepository = dbRepository,
+                    mediaUri = item.uri.toString()
+                ) {
+                    lifecycleScope.launch {
+                        val tags = withContext(Dispatchers.IO) {
+                            dbRepository.getTagsForMedia(item.uri.toString())
+                        }
+                        currentTags = tags
+                        bindMetadataTags(tags)
+                    }
+                }.show()
+            },
             onVideoCompleted = {
                 binding.editBtn.setImageResource(R.drawable.ic_fluent_play_24_regular)
                 binding.editBtn.contentDescription = "Play video"
@@ -144,6 +172,7 @@ class ViewerActivity : AppCompatActivity() {
 
         bindPage(currentPosition)
         bindGlobalActions()
+        attachInfoPanelDrag()
 
         binding.infoPanel.post {
             binding.infoPanel.translationY = binding.infoPanel.height.toFloat()
@@ -159,7 +188,7 @@ class ViewerActivity : AppCompatActivity() {
             val systemInsets = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
-            binding.topBar.updatePadding(top = systemInsets.top + dp(8))
+            binding.topBar.updatePadding(top = systemInsets.top)
 
             val pillParams = binding.viewerPill.layoutParams as android.widget.FrameLayout.LayoutParams
             pillParams.bottomMargin = systemInsets.bottom + dp(24)
@@ -210,7 +239,22 @@ class ViewerActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             val metadata = withContext(Dispatchers.IO) { loadMetadata(uri, isVideo) }
-            bindMetadata(metadata)
+            val exif = withContext(Dispatchers.IO) {
+                val cached = dbRepository.getExif(uri.toString())
+                if (cached != null || isVideo) {
+                    cached
+                } else {
+                    val extracted = ExifExtractor.extract(this@ViewerActivity, uri)
+                    dbRepository.upsertExif(uri.toString(), extracted)
+                    extracted
+                }
+            }
+            val tags = withContext(Dispatchers.IO) {
+                dbRepository.getTagsForMedia(uri.toString())
+            }
+            currentExif = exif
+            currentTags = tags
+            bindMetadata(metadata, exif, tags)
         }
 
         setControlsVisible(true)
@@ -293,7 +337,7 @@ class ViewerActivity : AppCompatActivity() {
         return getCurrentPageViewHolder()?.isZoomed() == true
     }
 
-    private fun bindMetadata(metadata: PhotoMetadata) {
+    private fun bindMetadata(metadata: PhotoMetadata, exif: ExifData?, tags: List<com.devomind.gallerysearch.db.TagEntity>) {
         binding.fileNameText.text = metadata.displayName ?: "Photo"
         binding.infoDate.text = if (metadata.dateMillis > 0L) {
             dateFormat.format(Date(metadata.dateMillis))
@@ -311,12 +355,89 @@ class ViewerActivity : AppCompatActivity() {
             append("  ·  ")
             append(metadata.mimeType?.substringAfter("/")?.uppercase(Locale.getDefault()) ?: "IMAGE")
         }
+
+        if (exif?.hasCameraInfo == true) {
+            binding.infoCamera.visibility = View.VISIBLE
+            binding.infoCamera.text = formatCameraLine(exif)
+        } else {
+            binding.infoCamera.visibility = View.GONE
+            binding.infoCamera.text = ""
+        }
+
         if (metadata.locationName.isNullOrBlank()) {
-            binding.infoLocation.visibility = View.GONE
+            binding.infoLocationRow.visibility = View.GONE
             binding.infoLocation.text = ""
         } else {
-            binding.infoLocation.visibility = View.VISIBLE
+            binding.infoLocationRow.visibility = View.VISIBLE
             binding.infoLocation.text = metadata.locationName
+        }
+
+        bindMetadataTags(tags)
+    }
+
+    private fun bindMetadataTags(tags: List<com.devomind.gallerysearch.db.TagEntity>) {
+        binding.infoTags.removeAllViews()
+        if (tags.isEmpty()) {
+            binding.infoTags.visibility = View.GONE
+        } else {
+            binding.infoTags.visibility = View.VISIBLE
+            tags.take(6).forEach { tag ->
+                binding.infoTags.addView(createTagChip(tag.name, tag.color))
+            }
+        }
+    }
+
+    private fun createTagChip(name: String, color: Int): TextView {
+        return TextView(this).apply {
+            text = name
+            textSize = 12f
+            setTextColor(color)
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            background = android.content.res.ColorStateList.valueOf(color).let { _ ->
+                android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    setStroke(dp(1), color)
+                    setColor(android.graphics.Color.parseColor("#0A0A0A"))
+                }
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = dp(8)
+            }
+        }
+    }
+
+    private fun formatCameraLine(exif: ExifData): String {
+        return buildString {
+            val camera = listOfNotNull(exif.make, exif.model).joinToString(" ")
+            if (camera.isNotBlank()) append(camera)
+            exif.focalLength?.let {
+                if (isNotEmpty()) append("  ·  ")
+                append("${it.roundToInt()} mm")
+            }
+            exif.fNumber?.let {
+                if (isNotEmpty()) append("  ·  ")
+                append("f/${it}")
+            }
+            exif.exposureTime?.let {
+                if (isNotEmpty()) append("  ·  ")
+                append(formatExposureTime(it))
+            }
+            exif.iso?.let {
+                if (isNotEmpty()) append("  ·  ")
+                append("ISO $it")
+            }
+        }
+    }
+
+    private fun formatExposureTime(seconds: Double): String {
+        return if (seconds >= 1.0) {
+            String.format(Locale.getDefault(), "%.1fs", seconds)
+        } else {
+            val denominator = (1.0 / seconds).roundToInt()
+            "1/$denominator s"
         }
     }
 
@@ -348,16 +469,70 @@ class ViewerActivity : AppCompatActivity() {
     private fun toggleInfoPanel() {
         infoVisible = !infoVisible
         val target = if (infoVisible) 0f else binding.infoPanel.height.toFloat()
-        binding.infoPanel.animate()
-            .translationY(target)
-            .setDuration(220)
-            .start()
+        SpringAnimation(binding.infoPanel, DynamicAnimation.TRANSLATION_Y, target).apply {
+            spring.dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
+            spring.stiffness = SpringForce.STIFFNESS_MEDIUM
+            start()
+        }
         scheduleAutoHide()
+    }
+
+    private var infoPanelDownY = 0f
+    private var infoPanelDragging = false
+
+    @Suppress("ClickableViewAccessibility")
+    private fun attachInfoPanelDrag() {
+        binding.infoPanel.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    infoPanelDownY = event.rawY
+                    infoPanelDragging = false
+                    autoHideHandler.removeCallbacks(autoHideRunnable)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val deltaY = event.rawY - infoPanelDownY
+                    if (deltaY > dp(4) || infoPanelDragging) {
+                        infoPanelDragging = true
+                        val offset = deltaY.coerceAtLeast(0f)
+                        binding.infoPanel.translationY = offset
+                        val progress = (offset / binding.infoPanel.height.toFloat()).coerceIn(0f, 1f)
+                        binding.infoPanel.alpha = 1f - progress * 0.5f
+                    }
+                }
+                MotionEvent.ACTION_CANCEL,
+                MotionEvent.ACTION_UP -> {
+                    val deltaY = event.rawY - infoPanelDownY
+                    if (infoPanelDragging && deltaY > binding.infoPanel.height * 0.25f) {
+                        infoVisible = false
+                        animateInfoPanelClosed()
+                    } else if (infoPanelDragging) {
+                        SpringAnimation(binding.infoPanel, DynamicAnimation.TRANSLATION_Y, 0f).apply {
+                            spring.dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
+                            spring.stiffness = SpringForce.STIFFNESS_MEDIUM
+                            start()
+                        }
+                        binding.infoPanel.alpha = 1f
+                    }
+                    infoPanelDragging = false
+                }
+            }
+            infoPanelDragging
+        }
+    }
+
+    private fun animateInfoPanelClosed() {
+        SpringAnimation(binding.infoPanel, DynamicAnimation.TRANSLATION_Y, binding.infoPanel.height.toFloat()).apply {
+            spring.dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
+            spring.stiffness = SpringForce.STIFFNESS_MEDIUM
+            start()
+        }
+        binding.infoPanel.animate().alpha(1f).setDuration(200).start()
     }
 
     private fun scheduleAutoHide() {
         autoHideHandler.removeCallbacks(autoHideRunnable)
-        if (controlsVisible && !infoVisible) {
+        val isVideoPlaying = getCurrentPageViewHolder()?.isPlaying() == true
+        if (controlsVisible && !infoVisible && !isVideoPlaying) {
             autoHideHandler.postDelayed(autoHideRunnable, 3000)
         }
     }
@@ -368,10 +543,16 @@ class ViewerActivity : AppCompatActivity() {
                 downY = event.rawY
                 dragDistance = 0f
                 draggingToDismiss = false
+                velocityTracker?.recycle()
+                velocityTracker = VelocityTracker.obtain()
+                velocityTracker?.addMovement(event)
             }
             MotionEvent.ACTION_MOVE -> {
-                dragDistance = (event.rawY - downY).coerceAtLeast(0f)
-                if (!infoVisible && dragDistance > 8f && !isCurrentPageZoomed()) {
+                velocityTracker?.addMovement(event)
+                val deltaY = event.rawY - downY
+                dragDistance = deltaY.coerceAtLeast(0f)
+
+                if (!infoVisible && dragDistance > dp(4) && deltaY > 0 && !isCurrentPageZoomed()) {
                     draggingToDismiss = true
                     val progress = (dragDistance / binding.viewerRoot.height).coerceIn(0f, 1f)
                     val mediaView = getCurrentMediaView()
@@ -379,6 +560,12 @@ class ViewerActivity : AppCompatActivity() {
                     val scale = 1f - (progress * 0.08f)
                     mediaView?.scaleX = scale
                     mediaView?.scaleY = scale
+                    binding.viewerRoot.setBackgroundColor(
+                        android.graphics.Color.argb(
+                            (progress * 180).toInt().coerceIn(0, 180),
+                            0, 0, 0
+                        )
+                    )
                     val chromeAlpha = (1f - (progress * 0.8f)).coerceIn(0f, 1f)
                     binding.topBar.alpha = chromeAlpha
                     binding.viewerPill.alpha = chromeAlpha
@@ -386,28 +573,63 @@ class ViewerActivity : AppCompatActivity() {
             }
             MotionEvent.ACTION_CANCEL,
             MotionEvent.ACTION_UP -> {
-                val dismissThreshold = binding.viewerRoot.height * 0.22f
+                velocityTracker?.addMovement(event)
+                velocityTracker?.computeCurrentVelocity(1000)
+                val velocityY = velocityTracker?.yVelocity ?: 0f
+                velocityTracker?.recycle()
+                velocityTracker = null
+
+                val dismissThreshold = binding.viewerRoot.height * 0.40f
+                val shouldDismiss = draggingToDismiss &&
+                    (dragDistance > dismissThreshold || velocityY > DISMISS_VELOCITY_PX_PER_SEC)
+
                 if (draggingToDismiss) {
-                    if (dragDistance > dismissThreshold) {
+                    if (shouldDismiss) {
                         finish()
                     } else {
-                        val mediaView = getCurrentMediaView()
-                        mediaView?.animate()?.translationY(0f)?.scaleX(1f)?.scaleY(1f)?.setDuration(220)?.start()
-                        binding.topBar.animate().alpha(if (controlsVisible) 1f else 0f).setDuration(220).start()
-                        binding.viewerPill.animate().alpha(if (controlsVisible) 1f else 0f).setDuration(220).start()
+                        animateDismissReset()
                     }
                     dragDistance = 0f
                     draggingToDismiss = false
                     return true
                 }
-                if (event.y > binding.viewerRoot.height * 0.72f) {
-                    toggleInfoPanel()
+
+                val upY = event.rawY
+                val isUpwardSwipe = downY - upY > dp(24) && velocityY < -INFO_PANEL_VELOCITY_PX_PER_SEC
+                if (isUpwardSwipe && event.y > binding.viewerRoot.height * 0.72f) {
+                    if (!infoVisible) toggleInfoPanel()
                     return true
                 }
                 scheduleAutoHide()
             }
         }
         return false
+    }
+
+    private fun animateDismissReset() {
+        val mediaView = getCurrentMediaView() ?: return
+        SpringAnimation(mediaView, DynamicAnimation.TRANSLATION_Y, 0f).apply {
+            spring.dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
+            spring.stiffness = SpringForce.STIFFNESS_MEDIUM
+            start()
+        }
+        SpringAnimation(mediaView, DynamicAnimation.SCALE_X, 1f).apply {
+            spring.dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
+            spring.stiffness = SpringForce.STIFFNESS_MEDIUM
+            start()
+        }
+        SpringAnimation(mediaView, DynamicAnimation.SCALE_Y, 1f).apply {
+            spring.dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
+            spring.stiffness = SpringForce.STIFFNESS_MEDIUM
+            start()
+        }
+        binding.viewerRoot.animate()
+            .setDuration(220)
+            .withEndAction { binding.viewerRoot.setBackgroundColor(android.graphics.Color.BLACK) }
+            .start()
+        val targetAlpha = if (controlsVisible) 1f else 0f
+        binding.topBar.animate().alpha(targetAlpha).setDuration(220).start()
+        binding.viewerPill.animate().alpha(targetAlpha).setDuration(220).start()
     }
 
     private fun getCurrentMediaView(): View? {
@@ -643,6 +865,8 @@ class ViewerActivity : AppCompatActivity() {
 
     companion object {
         private const val Tag = "ViewerActivity"
+        private const val DISMISS_VELOCITY_PX_PER_SEC = 1200f
+        private const val INFO_PANEL_VELOCITY_PX_PER_SEC = 600f
         const val ExtraContentChanged = "content_changed"
         const val ExtraItems = "items"
         const val ExtraPosition = "position"

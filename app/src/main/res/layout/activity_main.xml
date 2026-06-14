@@ -58,9 +58,9 @@
                     android:text="collection"
                     android:textAllCaps="true"
                     android:textColor="@color/metroTextPrimary"
-                    android:textSize="20sp"
-                    android:letterSpacing="0.05"
-                    android:fontFamily="sans-serif-black"
+                    android:textSize="26sp"
+                    android:letterSpacing="0.02"
+                    android:fontFamily="sans-serif-light"
                     android:visibility="visible" />
 
                 <ImageButton
@@ -356,6 +356,24 @@
                     android:src="@drawable/ic_fluent_video_24_regular"
                     android:tint="@color/metroTextSecondary" />
             </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/bottomFolders"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingTop="2dp">
+
+                <ImageView
+                    android:id="@+id/bottomFoldersIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_fluent_folder_24_regular"
+                    android:tint="@color/metroTextSecondary" />
+            </LinearLayout>
         </LinearLayout>
     </FrameLayout>
 
@@ -382,6 +400,11 @@
             android:id="@+id/drawerSearch"
             style="@style/MetroDrawerItem"
             android:text="search" />
+
+        <TextView
+            android:id="@+id/drawerFolders"
+            style="@style/MetroDrawerItem"
+            android:text="folders" />
 
         <TextView
             android:id="@+id/drawerIndex"

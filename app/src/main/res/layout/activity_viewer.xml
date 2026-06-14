@@ -8,8 +8,7 @@
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/viewPager"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_marginTop="96dp" />
+        android:layout_height="match_parent" />
 
     <FrameLayout
         android:id="@+id/topBar"
@@ -119,7 +118,7 @@
         android:paddingTop="24dp"
         android:paddingEnd="24dp"
         android:paddingBottom="36dp"
-        android:translationY="280dp">
+        android:translationY="320dp">
 
         <TextView
             android:id="@+id/infoDate"
@@ -140,13 +139,45 @@
             android:textSize="13sp" />
 
         <TextView
-            android:id="@+id/infoLocation"
+            android:id="@+id/infoCamera"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:includeFontPadding="false"
-            android:paddingTop="14dp"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:paddingTop="10dp"
+            android:textColor="#8A8A8A"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/infoLocationRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <View
+                android:layout_width="8dp"
+                android:layout_height="8dp"
+                android:layout_marginEnd="8dp"
+                android:background="#3B9EFF" />
+
+            <TextView
+                android:id="@+id/infoLocation"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:includeFontPadding="false"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/infoTags"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="horizontal"
             android:visibility="gone" />
     </LinearLayout>
 </FrameLayout>

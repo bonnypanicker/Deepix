@@ -7,7 +7,7 @@
     <color name="metroBgSurface">#FF1C1C1C</color>
 
     <!-- Accent colors -->
-    <color name="metroAccent">#FF5B4FE8</color>
+    <color name="metroAccent">#FF3B9EFF</color>
     <color name="metroAccentLight">#FF6DB8FF</color>
     <color name="metroAccentMuted">#FF3B9EFF</color>
 

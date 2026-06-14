@@ -10,7 +10,6 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
 import android.view.MotionEvent
@@ -51,7 +50,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -70,13 +69,18 @@ class MainActivity : AppCompatActivity() {
     private var imageEncoder: ImageEncoder? = null
     private var textEncoder: TextEncoder? = null
     private var repository: GalleryRepository? = null
+    private var dbRepository: DbRepository? = null
     private var albums: List<GalleryRepository.Album> = emptyList()
     private var imageItems: List<GalleryRepository.MediaItem> = emptyList()
     private var collectionItems: List<GalleryRepository.MediaItem> = emptyList()
     private var videoItems: List<GalleryRepository.MediaItem> = emptyList()
     private var selectedAlbumIds: Set<String> = emptySet()
     private var allUris: List<Uri> = emptyList()
+    private var allTags: List<com.devomind.gallerysearch.db.TagEntity> = emptyList()
+    private var tagUriMap: Map<Long, Set<String>> = emptyMap()
     private var currentAlbum: GalleryRepository.Album? = null
+    private var currentFolder: FolderNode? = null
+    private var folderTreeRoots = listOf<FolderNode>()
     private var currentMode = Mode.Browse
     private var preAlbumDetailSection = Section.Collection
     private var activeSection = Section.Collection
@@ -152,7 +156,9 @@ class MainActivity : AppCompatActivity() {
             onPhotoClick = { item, view -> openMedia(item, view) },
             onSelectionChanged = ::renderSelectionState,
             onAlbumClick = ::openAlbum,
-            onAlbumLongClick = ::showAlbumPinMenu
+            onAlbumLongClick = ::showAlbumPinMenu,
+            onFolderClick = ::openFolder,
+            onFolderExpandClick = ::toggleFolderExpanded
         )
         adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
         adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
@@ -238,6 +244,10 @@ class MainActivity : AppCompatActivity() {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             openSearch()
         }
+        binding.drawerFolders.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            navigateToSection(Section.Folders)
+        }
         binding.drawerIndex.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             enqueueBackgroundIndexing()
@@ -274,6 +284,7 @@ class MainActivity : AppCompatActivity() {
         binding.bottomAlbums.setOnClickListener { navigateToSection(Section.Albums) }
         binding.bottomFavorites.setOnClickListener { navigateToSection(Section.Favorites) }
         binding.bottomVideos.setOnClickListener { navigateToSection(Section.Videos) }
+        binding.bottomFolders.setOnClickListener { navigateToSection(Section.Folders) }
 
         binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
@@ -382,6 +393,10 @@ class MainActivity : AppCompatActivity() {
                         currentAlbum = null
                         navigateToSection(preAlbumDetailSection)
                     }
+                    currentMode == Mode.FolderDetail -> {
+                        currentFolder = null
+                        navigateToSection(preAlbumDetailSection)
+                    }
                     else -> finish()
                 }
             }
@@ -421,6 +436,13 @@ class MainActivity : AppCompatActivity() {
                 }
                 val repo = GalleryRepository(applicationContext)
                 repository = repo
+                dbRepository = DbRepository(applicationContext)
+                allTags = withContext(Dispatchers.IO) { dbRepository?.getAllTags().orEmpty() }
+                tagUriMap = withContext(Dispatchers.IO) {
+                    allTags.associate { tag ->
+                        tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
+                    }
+                }
                 val snapshot = withContext(Dispatchers.IO) {
                     loadLibrarySnapshot(repo, selectedIds)
                 }
@@ -545,12 +567,22 @@ class MainActivity : AppCompatActivity() {
     private val albumDetailItems: List<GalleryRepository.MediaItem>
         get() = currentAlbum?.let { album -> collectionItems.filter { it.bucketId == album.id } }.orEmpty()
 
+    private fun folderDetailItems(folder: FolderNode? = currentFolder): List<GalleryRepository.MediaItem> {
+        return folder?.let { flattenFolderItems(it) }.orEmpty()
+    }
+
+    private fun flattenFolderItems(node: FolderNode): List<GalleryRepository.MediaItem> {
+        return node.directItems + node.children.flatMap { flattenFolderItems(it) }
+    }
+
     private fun currentSearchPhotoItems(): List<GalleryRepository.MediaItem> {
         return when {
             currentAlbum != null -> albumDetailItems.filter { it.mediaType == GalleryRepository.MediaType.Image }
+            currentFolder != null -> folderDetailItems().filter { it.mediaType == GalleryRepository.MediaType.Image }
             activeSection == Section.Collection -> imageItems
             activeSection == Section.Favorites -> favoriteItems.filter { it.mediaType == GalleryRepository.MediaType.Image }
             activeSection == Section.Albums -> imageItems
+            activeSection == Section.Folders -> imageItems
             else -> emptyList()
         }
     }
@@ -566,6 +598,7 @@ class MainActivity : AppCompatActivity() {
         
         activeSection = section
         currentAlbum = null
+        currentFolder = null
         adapter.clearSelection()
         if (currentMode == Mode.Search) {
             updateSearchMetaText()
@@ -586,6 +619,7 @@ class MainActivity : AppCompatActivity() {
         when (currentMode) {
             Mode.Browse -> renderCurrentSection()
             Mode.AlbumDetail -> currentAlbum?.let(::renderAlbumDetail) ?: renderCurrentSection()
+            Mode.FolderDetail -> currentFolder?.let(::renderFolderDetail) ?: renderCurrentSection()
             Mode.Search -> openSearch()
         }
     }
@@ -596,6 +630,148 @@ class MainActivity : AppCompatActivity() {
             Section.Videos -> renderMediaSection(title = "videos", items = videoItems, emptyText = "No videos yet")
             Section.Albums -> renderAlbums()
             Section.Favorites -> renderMediaSection(title = "favorites", items = favoriteItems, emptyText = "No favorites yet")
+            Section.Folders -> renderFolders()
+        }
+    }
+
+    private fun renderFolders() {
+        currentMode = Mode.Browse
+        binding.searchPanel.visibility = View.GONE
+        binding.resultCount.text = ""
+        updateTopBarForMode("folders")
+        updateDrawerState()
+        updateBottomPanelState()
+        showBottomPanel()
+
+        val previousExpanded = collectExpandedStates(folderTreeRoots)
+        val roots = buildFolderTree(collectionItems, previousExpanded)
+        folderTreeRoots = roots
+        val cells = flattenFolderNodes(roots)
+        adapter.replaceCells(
+            if (cells.isEmpty()) listOf(GalleryCell.Empty("No folders yet")) else cells
+        )
+        resetGridToTop()
+        updateFastScrollVisibility()
+    }
+
+    private fun buildFolderTree(
+        items: List<GalleryRepository.MediaItem>,
+        expandedStates: Map<String, Boolean> = emptyMap()
+    ): List<FolderNode> {
+        data class MutableNode(
+            val name: String,
+            val path: String,
+            val depth: Int,
+            val directItems: MutableList<GalleryRepository.MediaItem> = mutableListOf(),
+            val children: MutableMap<String, MutableNode> = mutableMapOf()
+        )
+
+        val roots = mutableMapOf<String, MutableNode>()
+        items.forEach { item ->
+            val rawPath = item.path.takeIf { it.isNotBlank() } ?: item.bucketName
+            val segments = rawPath.split('/').filter { it.isNotBlank() }
+            if (segments.isEmpty()) return@forEach
+
+            val rootName = segments.first()
+            val root = roots.getOrPut(rootName) { MutableNode(rootName, rootName, 0) }
+            var current = root
+            for (i in 1 until segments.size) {
+                val segment = segments[i]
+                val childPath = segments.take(i + 1).joinToString("/")
+                current = current.children.getOrPut(segment) { MutableNode(segment, childPath, i) }
+            }
+            current.directItems += item
+        }
+
+        fun toFolderNode(node: MutableNode): FolderNode {
+            val childNodes = node.children.values.map { toFolderNode(it) }.sortedBy { it.name }
+            val count = node.directItems.size + childNodes.sumOf { it.itemCount }
+            val cover = node.directItems.firstOrNull()?.uri
+                ?: childNodes.firstOrNull { it.coverUri != null }?.coverUri
+            return FolderNode(
+                path = node.path,
+                name = node.name,
+                depth = node.depth,
+                coverUri = cover,
+                itemCount = count,
+                directItems = node.directItems,
+                expanded = expandedStates[node.path] ?: true,
+                children = childNodes
+            )
+        }
+
+        return roots.values.map { toFolderNode(it) }.sortedBy { it.name }
+    }
+
+    private fun collectExpandedStates(nodes: List<FolderNode>): Map<String, Boolean> {
+        val map = mutableMapOf<String, Boolean>()
+        nodes.forEach { node ->
+            map[node.path] = node.expanded
+            map.putAll(collectExpandedStates(node.children))
+        }
+        return map
+    }
+
+    private fun flattenFolderNodes(nodes: List<FolderNode>): List<GalleryCell> {
+        val cells = mutableListOf<GalleryCell>()
+        nodes.forEach { node ->
+            cells += GalleryCell.FolderCell(node)
+            if (node.expanded) {
+                cells += flattenFolderNodes(node.children)
+            }
+        }
+        return cells
+    }
+
+    private fun openFolder(node: FolderNode) {
+        if (node.isLeaf && node.directItems.isEmpty()) return
+        renderFolderDetail(node)
+    }
+
+    private fun toggleFolderExpanded(node: FolderNode) {
+        folderTreeRoots = updateNodeExpanded(folderTreeRoots, node.path, !node.expanded)
+        renderFolders()
+    }
+
+    private fun updateNodeExpanded(nodes: List<FolderNode>, path: String, expanded: Boolean): List<FolderNode> {
+        return nodes.map { node ->
+            if (node.path == path) {
+                node.copy(expanded = expanded)
+            } else {
+                node.copy(children = updateNodeExpanded(node.children, path, expanded))
+            }
+        }
+    }
+
+    private fun renderFolderDetail(folder: FolderNode) {
+        renderJob?.cancel()
+        preAlbumDetailSection = activeSection
+        currentMode = Mode.FolderDetail
+        currentFolder = folder
+        binding.searchPanel.visibility = View.GONE
+        val items = folderDetailItems(folder)
+        binding.resultCount.text = when (items.size) {
+            0 -> ""
+            1 -> "1 item"
+            else -> "${items.size} items"
+        }
+        updateTopBarForMode(folder.name)
+        updateDrawerState()
+        updateBottomPanelState()
+        showBottomPanel()
+
+        val expectedPath = folder.path
+        val cappedItems = items.sortedByDescending { it.dateMillis }.take(DesignTokens.DISPLAY_CAP)
+        renderJob = lifecycleScope.launch {
+            val cells = withContext(Dispatchers.Default) {
+                buildTimelineCells(cappedItems, "No media in this folder", adapter.useCollageLayout)
+            }
+            if (currentMode == Mode.FolderDetail && currentFolder?.path == expectedPath) {
+                adapter.replaceCells(cells)
+                resetGridToTop()
+                updateFastScrollVisibility()
+                binding.fastScrollIndicator.syncToRecyclerView()
+            }
         }
     }
 
@@ -604,7 +780,6 @@ class MainActivity : AppCompatActivity() {
         items: List<GalleryRepository.MediaItem>,
         emptyText: String
     ) {
-        val renderStartMs = SystemClock.elapsedRealtime()
         renderJob?.cancel()
         currentMode = Mode.Browse
         binding.searchPanel.visibility = View.GONE
@@ -784,20 +959,28 @@ class MainActivity : AppCompatActivity() {
         binding.progressBar.visibility = View.VISIBLE
         binding.statusText.text = "Searching..."
         val favoriteKeys = favoritesStore.all()
-        val filteredItems = parsedQuery.filterItems(currentSearchPhotoItems(), favoriteKeys)
-
-        if (filteredItems.isEmpty()) {
-            renderSearchResults(
-                results = emptyList(),
-                emptyText = "No photos match the active filters",
-                statusText = "No filter matches"
-            )
-            binding.progressBar.visibility = View.GONE
-            return
-        }
 
         searchJob = lifecycleScope.launch {
             try {
+                val filterLookup = if (parsedQuery.needsFilterLookup) {
+                    withContext(Dispatchers.IO) { buildFilterLookup(parsedQuery, currentSearchPhotoItems()) }
+                } else {
+                    StructuredSearch.FilterLookup()
+                }
+                val filteredItems = parsedQuery.filterItems(currentSearchPhotoItems(), favoriteKeys, filterLookup)
+
+                if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
+
+                if (filteredItems.isEmpty()) {
+                    renderSearchResults(
+                        results = emptyList(),
+                        emptyText = "No photos match the active filters",
+                        statusText = "No filter matches"
+                    )
+                    binding.progressBar.visibility = View.GONE
+                    return@launch
+                }
+
                 val shouldSearchMetadata = sessionMode != SearchMode.AiOnly
                 val shouldSearchAi = sessionMode != SearchMode.MetadataOnly && parsedQuery.textQuery.isNotBlank()
                 val metadataHits = if (shouldSearchMetadata) {
@@ -859,6 +1042,39 @@ class MainActivity : AppCompatActivity() {
                 binding.progressBar.visibility = View.GONE
             }
         }
+    }
+
+    private suspend fun buildFilterLookup(
+        parsedQuery: StructuredSearch.ParsedQuery,
+        items: List<GalleryRepository.MediaItem>
+    ): StructuredSearch.FilterLookup {
+        val db = dbRepository ?: return StructuredSearch.FilterLookup()
+        val tagFilters = parsedQuery.filters.filterIsInstance<StructuredSearch.TagFilter>()
+        val exifFilters = parsedQuery.filters.filter {
+            it is StructuredSearch.MakeFilter || it is StructuredSearch.ModelFilter ||
+                it is StructuredSearch.IsoFilter || it is StructuredSearch.FocalLengthFilter
+        }
+
+        val tagNameToUris = if (tagFilters.isNotEmpty()) {
+            val allTags = db.getAllTags()
+            val tagNameMap = allTags.associateBy { it.name.lowercase(java.util.Locale.getDefault()) }
+            tagFilters.mapNotNull { filter ->
+                val tag = tagNameMap[filter.value.lowercase(java.util.Locale.getDefault())]
+                    ?: return@mapNotNull null
+                val uris = db.getMediaUrisForTag(tag.id)
+                tag.name.lowercase(java.util.Locale.getDefault()) to uris.toSet()
+            }.toMap()
+        } else {
+            emptyMap()
+        }
+
+        val exifByUri = if (exifFilters.isNotEmpty()) {
+            db.getExifForUris(items.map { it.uri.toString() })
+        } else {
+            emptyMap()
+        }
+
+        return StructuredSearch.FilterLookup(tagNameToUris, exifByUri)
     }
 
     private fun buildMetadataHits(
@@ -1199,7 +1415,14 @@ class MainActivity : AppCompatActivity() {
         if (items.any { it.height > it.width }) addPill("portrait", "orientation=portrait")
         if (items.any { it.width > it.height }) addPill("landscape", "orientation=landscape")
 
-        return pills.values.take(10).toList()
+        allTags
+            .sortedByDescending { tag -> items.count { it.uri.toString() in tagUriMap[tag.id].orEmpty() } }
+            .take(3)
+            .forEach { tag ->
+                addPill(tag.name.lowercase(Locale.getDefault()), "tag=${tag.name}")
+            }
+
+        return pills.values.take(12).toList()
     }
 
     private fun currentSearchScopePill(): String? {
@@ -1361,6 +1584,7 @@ class MainActivity : AppCompatActivity() {
     private fun currentViewerItems(): List<GalleryRepository.MediaItem> {
         return when {
             currentAlbum != null -> albumDetailItems
+            currentFolder != null -> folderDetailItems()
             currentMode == Mode.Search -> {
                 adapter.cells.asSequence()
                     .flatMap { cell ->
@@ -1400,11 +1624,13 @@ class MainActivity : AppCompatActivity() {
         return when (currentMode) {
             Mode.Search -> "search"
             Mode.AlbumDetail -> currentAlbum?.name
+            Mode.FolderDetail -> currentFolder?.name
             Mode.Browse -> when (activeSection) {
                 Section.Collection -> "collections"
                 Section.Videos -> "videos"
                 Section.Albums -> "albums"
                 Section.Favorites -> "favorites"
+                Section.Folders -> "folders"
             }
         }
     }
@@ -1468,7 +1694,15 @@ class MainActivity : AppCompatActivity() {
         val repo = repository ?: return
         lifecycleScope.launch(Dispatchers.IO) {
             val snapshot = loadLibrarySnapshot(repo, selectedAlbumIds)
+            val refreshedTags = withContext(Dispatchers.IO) { dbRepository?.getAllTags().orEmpty() }
+            val refreshedTagUriMap = withContext(Dispatchers.IO) {
+                refreshedTags.associate { tag ->
+                    tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
+                }
+            }
             withContext(Dispatchers.Main) {
+                allTags = refreshedTags
+                tagUriMap = refreshedTagUriMap
                 applyLibrarySnapshot(snapshot)
                 currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
                 binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
@@ -1488,6 +1722,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    @Suppress("InstanceOfCheckForException")
     private fun deleteUris(uris: List<Uri>, afterApproval: Boolean = false) {
         if (uris.isEmpty()) return
         if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q && uris.size > 1 && !afterApproval) {
@@ -1507,7 +1742,9 @@ class MainActivity : AppCompatActivity() {
             uris.forEach { contentResolver.delete(it, null, null) }
             onDeleteCompleted(uris.size)
         } catch (error: Throwable) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && error is RecoverableSecurityException && !afterApproval) {
+            val isRecoverable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                error is RecoverableSecurityException && !afterApproval
+            if (isRecoverable) {
                 pendingDeleteUris = uris
                 pendingDeleteNeedsRetry = true
                 launchDeleteConsent(error.userAction.actionIntent.intentSender)
@@ -1608,7 +1845,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun maybeRefreshLiveIndex(current: Int) {
         if (imageItems.isEmpty()) return
-        val shouldRefresh = current > 0 && (current % DesignTokens.INDEX_LIVE_REFRESH_STEP == 0 || current == 1) && current != lastProgressRefresh
+        val isStep = current > 0 && (current % DesignTokens.INDEX_LIVE_REFRESH_STEP == 0 || current == 1)
+        val shouldRefresh = isStep && current != lastProgressRefresh
         if (!shouldRefresh) return
         lastProgressRefresh = current
 
@@ -1662,6 +1900,13 @@ class MainActivity : AppCompatActivity() {
                 currentAlbum = null
                 switchSection(preAlbumDetailSection)
             }
+        } else if (currentMode == Mode.FolderDetail) {
+            binding.menuBtn.setImageResource(R.drawable.ic_fluent_back_24_regular)
+            binding.menuBtn.alpha = 1f
+            binding.menuBtn.setOnClickListener {
+                currentFolder = null
+                switchSection(preAlbumDetailSection)
+            }
         } else {
             binding.menuBtn.setImageResource(R.drawable.ic_fluent_navigation_24_regular)
             binding.menuBtn.alpha = 1f
@@ -1683,6 +1928,9 @@ class MainActivity : AppCompatActivity() {
             currentMode == Mode.AlbumDetail
         binding.drawerAlbums.setBackgroundColor(if (albumsHighlighted) active else inactive)
         binding.drawerSearch.setBackgroundColor(if (currentMode == Mode.Search) active else inactive)
+        binding.drawerFolders.setBackgroundColor(
+            if (currentMode != Mode.Search && activeSection == Section.Folders) active else inactive
+        )
 
         val isPinned = IndexPreferences.isShowPinnedInCollections(this)
         binding.drawerPinnedCollections.text = if (isPinned) "pinned in collections ✓" else "pinned in collections"
@@ -1711,6 +1959,11 @@ class MainActivity : AppCompatActivity() {
             tab = binding.bottomVideos,
             icon = binding.bottomVideosIcon,
             active = currentMode != Mode.Search && activeSection == Section.Videos
+        )
+        updateBottomTab(
+            tab = binding.bottomFolders,
+            icon = binding.bottomFoldersIcon,
+            active = currentMode != Mode.Search && activeSection == Section.Folders
         )
     }
 

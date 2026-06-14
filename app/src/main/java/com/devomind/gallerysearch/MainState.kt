@@ -15,6 +15,6 @@ internal data class LibrarySnapshot(
     val selectedAlbumIds: Set<String>
 )
 
-internal enum class Mode { Browse, Search, AlbumDetail }
+internal enum class Mode { Browse, Search, AlbumDetail, FolderDetail }
 
-internal enum class Section { Collection, Videos, Albums, Favorites }
+internal enum class Section { Collection, Videos, Albums, Favorites, Folders }

@@ -13,12 +13,12 @@
         android:id="@+id/headerTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:fontFamily="sans-serif-black"
-        android:letterSpacing="0.05"
-        android:textAllCaps="true"
+        android:fontFamily="sans-serif-light"
+        android:letterSpacing="-0.02"
+        android:textAllCaps="false"
         android:includeFontPadding="false"
         android:textColor="@color/metroTextPrimary"
-        android:textSize="18sp" />
+        android:textSize="40sp" />
 
     <TextView
         android:id="@+id/headerSubtitle"

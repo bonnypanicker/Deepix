@@ -20,6 +20,7 @@ import com.bumptech.glide.Glide
 import com.devomind.gallerysearch.databinding.ItemAlbumBinding
 import com.devomind.gallerysearch.databinding.ItemCollageBinding
 import com.devomind.gallerysearch.databinding.ItemEmptyBinding
+import com.devomind.gallerysearch.databinding.ItemFolderBinding
 import com.devomind.gallerysearch.databinding.ItemImageBinding
 import com.devomind.gallerysearch.databinding.ItemPinnedAlbumChipBinding
 import com.devomind.gallerysearch.databinding.ItemPinnedAlbumsHeaderBinding
@@ -34,6 +35,7 @@ sealed class GalleryCell {
     ) : GalleryCell()
     data class Collage(val items: List<GalleryRepository.MediaItem>) : GalleryCell()
     data class AlbumCell(val album: GalleryRepository.Album) : GalleryCell()
+    data class FolderCell(val node: FolderNode) : GalleryCell()
     data class PinnedAlbumsHeader(
         val albums: List<GalleryRepository.Album>
     ) : GalleryCell()
@@ -44,7 +46,9 @@ class ImageAdapter(
     private val onPhotoClick: (GalleryRepository.MediaItem, android.widget.ImageView) -> Unit,
     private val onSelectionChanged: (Int) -> Unit,
     private val onAlbumClick: (GalleryRepository.Album) -> Unit,
-    private val onAlbumLongClick: (GalleryRepository.Album, View) -> Unit
+    private val onAlbumLongClick: (GalleryRepository.Album, View) -> Unit,
+    private val onFolderClick: (FolderNode) -> Unit = {},
+    private val onFolderExpandClick: (FolderNode) -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     var cells = mutableListOf<GalleryCell>()
@@ -87,6 +91,7 @@ class ImageAdapter(
             is GalleryCell.Photo -> ViewTypePhoto
             is GalleryCell.Collage -> ViewTypeCollage
             is GalleryCell.AlbumCell -> ViewTypeAlbum
+            is GalleryCell.FolderCell -> ViewTypeFolder
             is GalleryCell.PinnedAlbumsHeader -> ViewTypePinnedAlbumsHeader
             is GalleryCell.Empty -> ViewTypeEmpty
         }
@@ -100,7 +105,11 @@ class ImageAdapter(
             ViewTypeHeader -> HeaderViewHolder(ItemTimelineHeaderBinding.inflate(inflater, parent, false))
             ViewTypeCollage -> CollageViewHolder(ItemCollageBinding.inflate(inflater, parent, false), onPhotoClick, ::toggleSelection)
             ViewTypeAlbum -> AlbumViewHolder(ItemAlbumBinding.inflate(inflater, parent, false), onAlbumClick, onAlbumLongClick)
-            ViewTypePinnedAlbumsHeader -> PinnedAlbumsHeaderViewHolder(ItemPinnedAlbumsHeaderBinding.inflate(inflater, parent, false), onAlbumClick)
+            ViewTypeFolder -> FolderViewHolder(ItemFolderBinding.inflate(inflater, parent, false), onFolderClick, onFolderExpandClick)
+            ViewTypePinnedAlbumsHeader -> PinnedAlbumsHeaderViewHolder(
+                ItemPinnedAlbumsHeaderBinding.inflate(inflater, parent, false),
+                onAlbumClick
+            )
             ViewTypeEmpty -> EmptyViewHolder(ItemEmptyBinding.inflate(inflater, parent, false))
             else -> PhotoViewHolder(ItemImageBinding.inflate(inflater, parent, false), onPhotoClick, ::toggleSelection)
         }
@@ -109,9 +118,16 @@ class ImageAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val cell = cells[position]) {
             is GalleryCell.Header -> (holder as HeaderViewHolder).bind(cell)
-            is GalleryCell.Photo -> (holder as PhotoViewHolder).bind(cell, selected.isNotEmpty(), cell.item.uri in selected, gridColumnCount, useCollageLayout)
+            is GalleryCell.Photo -> (holder as PhotoViewHolder).bind(
+                cell,
+                selected.isNotEmpty(),
+                cell.item.uri in selected,
+                gridColumnCount,
+                useCollageLayout
+            )
             is GalleryCell.Collage -> (holder as CollageViewHolder).bind(cell, selected)
             is GalleryCell.AlbumCell -> (holder as AlbumViewHolder).bind(cell.album)
+            is GalleryCell.FolderCell -> (holder as FolderViewHolder).bind(cell.node)
             is GalleryCell.PinnedAlbumsHeader -> (holder as PinnedAlbumsHeaderViewHolder).bind(cell)
             is GalleryCell.Empty -> (holder as EmptyViewHolder).bind(cell)
         }
@@ -138,6 +154,7 @@ class ImageAdapter(
             is GalleryCell.PinnedAlbumsHeader -> totalSpanCount
             is GalleryCell.Collage -> totalSpanCount
             is GalleryCell.AlbumCell -> totalSpanCount / 2
+            is GalleryCell.FolderCell -> totalSpanCount
             is GalleryCell.Photo -> {
                 if (useCollageLayout) {
                     if (cell.featured) totalSpanCount else totalSpanCount / 3
@@ -248,6 +265,7 @@ class ImageAdapter(
             is GalleryCell.Photo -> "photo:${cell.item.uri}"
             is GalleryCell.Collage -> "collage:${cell.items.joinToString("|") { it.uri.toString() }}"
             is GalleryCell.AlbumCell -> "album:${cell.album.id}"
+            is GalleryCell.FolderCell -> "folder:${cell.node.path}"
             is GalleryCell.PinnedAlbumsHeader -> "pinned_albums_header"
             is GalleryCell.Empty -> "empty:${cell.text}"
         }
@@ -532,6 +550,9 @@ class ImageAdapter(
             val metrics = binding.root.resources.displayMetrics
             val coverWidth = (metrics.widthPixels / 2).coerceAtLeast(160)
             val coverHeight = (coverWidth * 3) / 4
+            binding.albumCover.layoutParams = binding.albumCover.layoutParams.apply {
+                height = coverHeight
+            }
             binding.albumName.text = album.name
             binding.albumCount.text = if (album.count == 1) "1 item" else "${album.count} items"
             Glide.with(binding.albumCover.context)
@@ -606,6 +627,47 @@ class ImageAdapter(
         }
     }
 
+    class FolderViewHolder(
+        private val binding: ItemFolderBinding,
+        private val onFolderClick: (FolderNode) -> Unit,
+        private val onFolderExpandClick: (FolderNode) -> Unit
+    ) : RecyclerView.ViewHolder(binding.root) {
+        fun bind(node: FolderNode) {
+            binding.folderName.text = node.name
+            binding.folderCount.text = when (node.itemCount) {
+                1 -> "1 item"
+                else -> "${node.itemCount} items"
+            }
+            val indentPx = (node.depth * 24 * binding.root.resources.displayMetrics.density).toInt()
+            binding.folderIndent.layoutParams = binding.folderIndent.layoutParams.apply {
+                width = indentPx
+            }
+
+            if (node.coverUri != null) {
+                Glide.with(binding.folderThumbnail)
+                    .load(node.coverUri)
+                    .format(DecodeFormat.PREFER_RGB_565)
+                    .centerCrop()
+                    .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
+                    .into(binding.folderThumbnail)
+            } else {
+                binding.folderThumbnail.setImageDrawable(ColorDrawable(Color.rgb(17, 17, 17)))
+            }
+
+            if (node.isLeaf) {
+                binding.folderExpandIcon.visibility = View.GONE
+                binding.root.setOnClickListener { onFolderClick(node) }
+            } else {
+                binding.folderExpandIcon.visibility = View.VISIBLE
+                binding.folderExpandIcon.setImageResource(
+                    if (node.expanded) R.drawable.ic_fluent_chevron_down_24_regular else R.drawable.ic_fluent_chevron_right_24_regular
+                )
+                binding.root.setOnClickListener { onFolderClick(node) }
+                binding.folderExpandIcon.setOnClickListener { onFolderExpandClick(node) }
+            }
+        }
+    }
+
     companion object {
         private const val PayloadSelection = "payload_selection"
         const val ViewTypeHeader = 1
@@ -614,5 +676,6 @@ class ImageAdapter(
         const val ViewTypeAlbum = 4
         const val ViewTypeEmpty = 5
         const val ViewTypePinnedAlbumsHeader = 6
+        const val ViewTypeFolder = 7
     }
 }

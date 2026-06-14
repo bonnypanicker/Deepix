@@ -48,7 +48,8 @@ class GalleryRepository(
         val mimeType: String?,
         val displayName: String?,
         val mediaType: MediaType,
-        val durationMillis: Long = 0L
+        val durationMillis: Long = 0L,
+        val path: String = ""
     ) : Parcelable
 
     data class Album(val id: String, val name: String, val count: Int, val coverUri: Uri?)
@@ -125,7 +126,9 @@ class GalleryRepository(
             MediaStore.Images.Media.WIDTH,
             MediaStore.Images.Media.HEIGHT,
             MediaStore.Images.Media.MIME_TYPE,
-            MediaStore.Images.Media.DISPLAY_NAME
+            MediaStore.Images.Media.DISPLAY_NAME,
+            MediaStore.Images.Media.RELATIVE_PATH,
+            MediaStore.Images.Media.DATA
         )
         val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
         val items = ArrayList<MediaItem>()
@@ -140,6 +143,8 @@ class GalleryRepository(
             val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
             val mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
             val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+            val relativePathColumn = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
+            val dataPathColumn = cursor.getColumnIndex(MediaStore.Images.Media.DATA)
             while (cursor.moveToNext()) {
                 val bucketId = cursor.getString(bucketIdColumn) ?: continue
                 if (albumIds.isNotEmpty() && bucketId !in albumIds) continue
@@ -155,7 +160,10 @@ class GalleryRepository(
                     height = cursor.getInt(heightColumn),
                     mimeType = cursor.getString(mimeColumn),
                     displayName = cursor.getString(nameColumn),
-                    mediaType = MediaType.Image
+                    mediaType = MediaType.Image,
+                    path = cursor.getString(relativePathColumn).orEmpty().ifBlank {
+                        cursor.getString(dataPathColumn).orEmpty()
+                    }
                 )
             }
         }
@@ -179,7 +187,9 @@ class GalleryRepository(
             MediaStore.Video.Media.HEIGHT,
             MediaStore.Video.Media.MIME_TYPE,
             MediaStore.Video.Media.DISPLAY_NAME,
-            MediaStore.Video.Media.DURATION
+            MediaStore.Video.Media.DURATION,
+            MediaStore.Video.Media.RELATIVE_PATH,
+            MediaStore.Video.Media.DATA
         )
         val sortOrder = "${MediaStore.Video.Media.DATE_ADDED} DESC"
         val items = ArrayList<MediaItem>()
@@ -195,6 +205,8 @@ class GalleryRepository(
             val mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
             val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
             val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
+            val relativePathColumn = cursor.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH)
+            val dataPathColumn = cursor.getColumnIndex(MediaStore.Video.Media.DATA)
             while (cursor.moveToNext()) {
                 val bucketId = cursor.getString(bucketIdColumn) ?: continue
                 if (albumIds.isNotEmpty() && bucketId !in albumIds) continue
@@ -211,7 +223,10 @@ class GalleryRepository(
                     mimeType = cursor.getString(mimeColumn),
                     displayName = cursor.getString(nameColumn),
                     mediaType = MediaType.Video,
-                    durationMillis = cursor.getLong(durationColumn)
+                    durationMillis = cursor.getLong(durationColumn),
+                    path = cursor.getString(relativePathColumn).orEmpty().ifBlank {
+                        cursor.getString(dataPathColumn).orEmpty()
+                    }
                 )
             }
         }

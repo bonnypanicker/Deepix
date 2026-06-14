@@ -19,6 +19,7 @@ class MediaPagerAdapter(
     private val initialTransitionName: String?,
     private val onInitialImageLoaded: () -> Unit,
     private val onMediaTap: () -> Unit,
+    private val onMediaLongClick: () -> Unit = {},
     private val onVideoCompleted: () -> Unit = {}
 ) : RecyclerView.Adapter<MediaPagerAdapter.PageViewHolder>() {
 
@@ -51,7 +52,15 @@ class MediaPagerAdapter(
             val isVideo = item.mediaType == GalleryRepository.MediaType.Video
 
             binding.photoView.setOnClickListener { onMediaTap() }
+            binding.photoView.setOnLongClickListener {
+                onMediaLongClick()
+                true
+            }
             binding.playerView.setOnClickListener { onMediaTap() }
+            binding.playerView.setOnLongClickListener {
+                onMediaLongClick()
+                true
+            }
 
             if (isVideo) {
                 binding.photoView.visibility = View.GONE

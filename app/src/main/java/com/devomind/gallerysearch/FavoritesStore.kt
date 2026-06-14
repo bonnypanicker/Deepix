@@ -2,30 +2,48 @@ package com.devomind.gallerysearch
 
 import android.content.Context
 import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 
 class FavoritesStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PrefsName, Context.MODE_PRIVATE)
+    private val dbRepository = DbRepository(context.applicationContext)
+
+    init {
+        runBlocking(Dispatchers.IO) {
+            migrateLegacyIfNeeded()
+        }
+    }
 
     fun all(): Set<String> {
-        return prefs.getStringSet(FavoritesKey, emptySet()).orEmpty()
+        return runBlocking(Dispatchers.IO) {
+            dbRepository.getFavorites()
+        }
     }
 
     fun isFavorite(uri: Uri): Boolean {
-        return all().contains(uri.toString())
+        return runBlocking(Dispatchers.IO) {
+            dbRepository.isFavorite(uri.toString())
+        }
     }
 
     fun toggle(uri: Uri): Boolean {
-        val key = uri.toString()
-        val favorites = prefs.getStringSet(FavoritesKey, emptySet()).orEmpty().toMutableSet()
-        val isFavorite = if (favorites.contains(key)) {
-            favorites.remove(key)
-            false
-        } else {
-            favorites.add(key)
-            true
+        return runBlocking(Dispatchers.IO) {
+            dbRepository.toggleFavorite(uri.toString())
         }
-        prefs.edit().putStringSet(FavoritesKey, favorites).apply()
-        return isFavorite
+    }
+
+    private suspend fun migrateLegacyIfNeeded() {
+        val legacy = prefs.getStringSet(FavoritesKey, emptySet()).orEmpty()
+        if (legacy.isEmpty()) return
+
+        val current = dbRepository.getFavorites()
+        legacy.forEach { uri ->
+            if (uri.isNotBlank() && uri !in current) {
+                runCatching { dbRepository.insertFavorite(uri) }
+            }
+        }
+        prefs.edit().remove(FavoritesKey).apply()
     }
 
     companion object {

@@ -11,6 +11,11 @@ internal object StructuredSearch {
         val token: String
     )
 
+    data class FilterLookup(
+        val tagNameToUris: Map<String, Set<String>> = emptyMap(),
+        val exifByUri: Map<String, ExifData> = emptyMap()
+    )
+
     data class ParsedQuery(
         val rawTokens: List<String>,
         val normalizedTokens: Set<String>,
@@ -21,69 +26,73 @@ internal object StructuredSearch {
         val hasAnyCriteria: Boolean
             get() = textTokens.isNotEmpty() || filters.isNotEmpty()
 
+        val needsFilterLookup: Boolean
+            get() = filters.any { it is TagFilter || it is MakeFilter || it is ModelFilter || it is IsoFilter || it is FocalLengthFilter }
+
         fun filterItems(
             items: List<GalleryRepository.MediaItem>,
-            favoriteKeys: Set<String>
+            favoriteKeys: Set<String>,
+            lookup: FilterLookup = FilterLookup()
         ): List<GalleryRepository.MediaItem> {
             if (filters.isEmpty()) return items
-            return items.filter { item -> filters.all { it.matches(item, favoriteKeys) } }
+            return items.filter { item -> filters.all { it.matches(item, favoriteKeys, lookup) } }
         }
     }
 
     sealed interface Filter {
         val rawToken: String
         val chipLabel: String
-        fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>): Boolean
+        fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean
     }
 
-    private data class FavoriteFilter(
+    internal data class FavoriteFilter(
         override val rawToken: String,
         val expected: Boolean
     ) : Filter {
         override val chipLabel: String = if (expected) "favorites" else "not favorite"
-        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>): Boolean {
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
             val isFavorite = item.uri.toString() in favoriteKeys
             return isFavorite == expected
         }
     }
 
-    private data class AlbumFilter(
+    internal data class AlbumFilter(
         override val rawToken: String,
         val value: String
     ) : Filter {
         override val chipLabel: String = "album ${value.lowercase(Locale.getDefault())}"
-        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>): Boolean {
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
             return item.bucketName.contains(value, ignoreCase = true)
         }
     }
 
-    private data class ExtensionFilter(
+    internal data class ExtensionFilter(
         override val rawToken: String,
         val value: String
     ) : Filter {
         override val chipLabel: String = value.uppercase(Locale.ROOT)
-        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>): Boolean {
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
             val extension = item.displayName.orEmpty().substringAfterLast('.', "").lowercase(Locale.ROOT)
             return extension == value
         }
     }
 
-    private data class MimeFilter(
+    internal data class MimeFilter(
         override val rawToken: String,
         val value: String
     ) : Filter {
         override val chipLabel: String = value
-        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>): Boolean {
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
             return item.mimeType.orEmpty().lowercase(Locale.ROOT).contains(value)
         }
     }
 
-    private data class OrientationFilter(
+    internal data class OrientationFilter(
         override val rawToken: String,
         val value: String
     ) : Filter {
         override val chipLabel: String = value
-        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>): Boolean {
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
             val orientation = when {
                 item.width > item.height -> "landscape"
                 item.height > item.width -> "portrait"
@@ -94,12 +103,12 @@ internal object StructuredSearch {
         }
     }
 
-    private data class TypeFilter(
+    internal data class TypeFilter(
         override val rawToken: String,
         val value: String
     ) : Filter {
         override val chipLabel: String = value
-        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>): Boolean {
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
             return when (value) {
                 "image", "photo", "photos" -> item.mediaType == GalleryRepository.MediaType.Image
                 "video", "videos" -> item.mediaType == GalleryRepository.MediaType.Video
@@ -108,14 +117,68 @@ internal object StructuredSearch {
         }
     }
 
-    private data class ComparisonFilter(
+    internal data class TagFilter(
+        override val rawToken: String,
+        val value: String
+    ) : Filter {
+        override val chipLabel: String = "tag ${value.lowercase(Locale.getDefault())}"
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
+            return lookup.tagNameToUris[value.lowercase(Locale.getDefault())]?.contains(item.uri.toString()) == true
+        }
+    }
+
+    internal data class MakeFilter(
+        override val rawToken: String,
+        val value: String
+    ) : Filter {
+        override val chipLabel: String = "make ${value.lowercase(Locale.getDefault())}"
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
+            return lookup.exifByUri[item.uri.toString()]?.make?.contains(value, ignoreCase = true) == true
+        }
+    }
+
+    internal data class ModelFilter(
+        override val rawToken: String,
+        val value: String
+    ) : Filter {
+        override val chipLabel: String = "model ${value.lowercase(Locale.getDefault())}"
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
+            return lookup.exifByUri[item.uri.toString()]?.model?.contains(value, ignoreCase = true) == true
+        }
+    }
+
+    internal data class IsoFilter(
+        override val rawToken: String,
+        val operator: Operator,
+        val value: Int
+    ) : Filter {
+        override val chipLabel: String = "iso${operator.symbol}$value"
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
+            val actual = lookup.exifByUri[item.uri.toString()]?.iso ?: return false
+            return operator.compare(actual, value)
+        }
+    }
+
+    internal data class FocalLengthFilter(
+        override val rawToken: String,
+        val operator: Operator,
+        val value: Int
+    ) : Filter {
+        override val chipLabel: String = "focal${operator.symbol}$value"
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
+            val actual = lookup.exifByUri[item.uri.toString()]?.focalLength?.toInt() ?: return false
+            return operator.compare(actual, value)
+        }
+    }
+
+    internal data class ComparisonFilter(
         override val rawToken: String,
         val field: String,
         val operator: Operator,
         val value: Int
     ) : Filter {
         override val chipLabel: String = "$field${operator.symbol}$value"
-        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>): Boolean {
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
             val actual = when (field) {
                 "id" -> item.uri.lastPathSegment?.toIntOrNull()
                 "year" -> item.dateMillis.toLocalDate().year
@@ -129,43 +192,37 @@ internal object StructuredSearch {
         }
     }
 
-    private data class DateFilter(
+    internal data class DateFilter(
         override val rawToken: String,
         val range: DateRange
     ) : Filter {
         override val chipLabel: String = range.label
-        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>): Boolean {
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
             return item.dateMillis in range.startMillis until range.endExclusiveMillis
         }
     }
 
-    private data class BeforeFilter(
+    internal data class BeforeFilter(
         override val rawToken: String,
         val range: DateRange
     ) : Filter {
         override val chipLabel: String = "before ${range.label.lowercase(Locale.getDefault())}"
-        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>): Boolean {
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
             return item.dateMillis < range.startMillis
         }
     }
 
-    private data class AfterFilter(
+    internal data class AfterFilter(
         override val rawToken: String,
         val range: DateRange
     ) : Filter {
         override val chipLabel: String = "after ${range.label.lowercase(Locale.getDefault())}"
-        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>): Boolean {
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
             return item.dateMillis >= range.startMillis
         }
     }
 
-    private data class DateRange(
-        val startMillis: Long,
-        val endExclusiveMillis: Long,
-        val label: String
-    )
-
-    private enum class Operator(val symbol: String) {
+    internal enum class Operator(val symbol: String) {
         Equals("="),
         LessThan("<"),
         GreaterThan(">");
@@ -230,13 +287,36 @@ internal object StructuredSearch {
             "mime" -> MimeFilter(token, value.lowercase(Locale.ROOT))
             "orientation" -> OrientationFilter(token, value.lowercase(Locale.ROOT))
             "type" -> TypeFilter(token, value.lowercase(Locale.ROOT))
+            "tag" -> TagFilter(token, value)
+            "make" -> MakeFilter(token, value)
+            "model" -> ModelFilter(token, value)
+            "iso" -> parseNumericFilter(token, value, operator, ::IsoFilter)
+            "focal" -> parseNumericFilter(token, value, operator, ::FocalLengthFilter)
             "year", "month", "day", "width", "height", "id" -> {
                 val numericValue = value.toIntOrNull() ?: return null
                 ComparisonFilter(token, key, operator, numericValue)
             }
-            "date" -> parseDateRange(value)?.let { DateFilter(token, it) }
-            "before" -> parseDateRange(value)?.let { BeforeFilter(token, it) }
-            "after" -> parseDateRange(value)?.let { AfterFilter(token, it) }
+            "date", "before", "after" -> parseDateFilter(token, key, value)
+            else -> null
+        }
+    }
+
+    private inline fun parseNumericFilter(
+        token: String,
+        value: String,
+        operator: Operator,
+        factory: (String, Operator, Int) -> Filter
+    ): Filter? {
+        val numericValue = value.toIntOrNull() ?: return null
+        return factory(token, operator, numericValue)
+    }
+
+    private fun parseDateFilter(token: String, key: String, value: String): Filter? {
+        val range = parseDateRange(value) ?: return null
+        return when (key) {
+            "date" -> DateFilter(token, range)
+            "before" -> BeforeFilter(token, range)
+            "after" -> AfterFilter(token, range)
             else -> null
         }
     }
@@ -248,37 +328,6 @@ internal object StructuredSearch {
             else -> return null
         }
         return FavoriteFilter(rawToken, expected)
-    }
-
-    private fun parseDateRange(value: String): DateRange? {
-        val zone = ZoneId.systemDefault()
-        return when {
-            value.matches(Regex("""\d{4}""")) -> {
-                val year = value.toInt()
-                val start = LocalDate.of(year, 1, 1).atStartOfDay(zone).toInstant().toEpochMilli()
-                val end = LocalDate.of(year + 1, 1, 1).atStartOfDay(zone).toInstant().toEpochMilli()
-                DateRange(start, end, value)
-            }
-            value.matches(Regex("""\d{4}-\d{2}""")) -> {
-                val month = YearMonth.parse(value)
-                val start = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
-                val end = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
-                DateRange(start, end, monthLabel(month))
-            }
-            value.matches(Regex("""\d{4}-\d{2}-\d{2}""")) -> {
-                val date = LocalDate.parse(value)
-                val start = date.atStartOfDay(zone).toInstant().toEpochMilli()
-                val end = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
-                DateRange(start, end, value)
-            }
-            else -> null
-        }
-    }
-
-    private fun monthLabel(month: YearMonth): String {
-        val name = month.month.name.lowercase(Locale.getDefault())
-            .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
-        return "$name ${month.year}"
     }
 
     private fun Long.toLocalDate(): LocalDate =
@@ -316,4 +365,41 @@ internal object StructuredSearch {
             value
         }
     }
+}
+
+internal data class DateRange(
+    val startMillis: Long,
+    val endExclusiveMillis: Long,
+    val label: String
+)
+
+private fun parseDateRange(value: String): DateRange? {
+    val zone = ZoneId.systemDefault()
+    return when {
+        value.matches(Regex("""\d{4}""")) -> {
+            val year = value.toInt()
+            val start = LocalDate.of(year, 1, 1).atStartOfDay(zone).toInstant().toEpochMilli()
+            val end = LocalDate.of(year + 1, 1, 1).atStartOfDay(zone).toInstant().toEpochMilli()
+            DateRange(start, end, value)
+        }
+        value.matches(Regex("""\d{4}-\d{2}""")) -> {
+            val month = YearMonth.parse(value)
+            val start = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
+            val end = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
+            DateRange(start, end, monthLabel(month))
+        }
+        value.matches(Regex("""\d{4}-\d{2}-\d{2}""")) -> {
+            val date = LocalDate.parse(value)
+            val start = date.atStartOfDay(zone).toInstant().toEpochMilli()
+            val end = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+            DateRange(start, end, value)
+        }
+        else -> null
+    }
+}
+
+private fun monthLabel(month: YearMonth): String {
+    val name = month.month.name.lowercase(Locale.getDefault())
+        .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+    return "$name ${month.year}"
 }
