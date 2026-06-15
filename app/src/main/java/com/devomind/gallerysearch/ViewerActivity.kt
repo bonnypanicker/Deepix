@@ -43,6 +43,7 @@ class ViewerActivity : AppCompatActivity() {
     private lateinit var binding: ActivityViewerBinding
     private lateinit var adapter: MediaPagerAdapter
     private lateinit var favoritesStore: FavoritesStore
+    private lateinit var dbRepository: DbRepository
     private var items = mutableListOf<GalleryRepository.MediaItem>()
     private var currentPosition = 0
     private var controlsVisible = true
@@ -117,6 +118,7 @@ class ViewerActivity : AppCompatActivity() {
         }
 
         favoritesStore = FavoritesStore(this)
+        dbRepository = DbRepository(this)
 
         if (transitionName != null) {
             postponeEnterTransition()
@@ -236,8 +238,12 @@ class ViewerActivity : AppCompatActivity() {
             if (item.mediaType == GalleryRepository.MediaType.Video) {
                 toggleVideoPlayback()
             } else {
-                edit(item.uri)
+                editItem(item.uri)
             }
+        }
+        binding.tagBtn.setOnClickListener {
+            val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
+            TagPickerDialog(this, dbRepository, item.uri.toString(), lifecycleScope).show()
         }
         binding.deleteBtn.setOnClickListener {
             val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
@@ -471,7 +477,7 @@ class ViewerActivity : AppCompatActivity() {
         }
     }
 
-    private fun edit(uri: Uri) {
+    private fun editItem(uri: Uri) {
         val mimeType = contentResolver.getType(uri) ?: "image/*"
         val editIntent = Intent(Intent.ACTION_EDIT).apply {
             setDataAndType(uri, mimeType)

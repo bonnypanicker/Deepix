@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/drawerLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -44,7 +45,7 @@
                     android:contentDescription="Menu"
                     android:padding="12dp"
                     android:src="@drawable/ic_fluent_navigation_24_regular"
-                    android:tint="@color/metroTextPrimary" />
+                    app:tint="@color/metroTextPrimary" />
 
                 <TextView
                     android:id="@+id/screenTitle"
@@ -73,7 +74,7 @@
                     android:contentDescription="Search"
                     android:padding="12dp"
                     android:src="@drawable/ic_fluent_search_24_regular"
-                    android:tint="@color/metroTextPrimary" />
+                    app:tint="@color/metroTextPrimary" />
             </FrameLayout>
 
             <LinearLayout
@@ -102,7 +103,7 @@
                         android:layout_height="20dp"
                         android:contentDescription="@null"
                         android:src="@drawable/ic_fluent_search_24_regular"
-                        android:tint="@color/metroTextSecondary" />
+                        app:tint="@color/metroTextSecondary" />
 
                     <EditText
                         android:id="@+id/searchInput"
@@ -246,7 +247,7 @@
                 android:contentDescription="Select all"
                 android:padding="15dp"
                 android:src="@drawable/ic_fluent_select_all_24_regular"
-                android:tint="@color/metroTextPrimary"
+                app:tint="@color/metroTextPrimary"
                 android:visibility="gone" />
 
             <ImageButton
@@ -257,7 +258,7 @@
                 android:contentDescription="Share selected"
                 android:padding="15dp"
                 android:src="@drawable/ic_fluent_share_24_regular"
-                android:tint="@color/metroTextPrimary" />
+                app:tint="@color/metroTextPrimary" />
 
             <ImageButton
                 android:id="@+id/deleteSelectionBtn"
@@ -267,7 +268,7 @@
                 android:contentDescription="Delete selected"
                 android:padding="15dp"
                 android:src="@drawable/ic_fluent_delete_24_regular"
-                android:tint="@color/metroTextPrimary" />
+                app:tint="@color/metroTextPrimary" />
         </LinearLayout>
 
         <com.devomind.gallerysearch.FastScrollIndicator
@@ -300,7 +301,7 @@
                     android:layout_height="24dp"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_fluent_image_24_regular"
-                    android:tint="@color/metroTextPrimary" />
+                    app:tint="@color/metroTextPrimary" />
             </LinearLayout>
 
             <LinearLayout
@@ -318,7 +319,7 @@
                     android:layout_height="24dp"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_fluent_album_24_regular"
-                    android:tint="@color/metroTextSecondary" />
+                    app:tint="@color/metroTextSecondary" />
             </LinearLayout>
 
             <LinearLayout
@@ -336,7 +337,7 @@
                     android:layout_height="24dp"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_fluent_heart_24_regular"
-                    android:tint="@color/metroTextSecondary" />
+                    app:tint="@color/metroTextSecondary" />
             </LinearLayout>
 
             <LinearLayout
@@ -354,7 +355,7 @@
                     android:layout_height="24dp"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_fluent_video_24_regular"
-                    android:tint="@color/metroTextSecondary" />
+                    app:tint="@color/metroTextSecondary" />
             </LinearLayout>
         </LinearLayout>
     </FrameLayout>

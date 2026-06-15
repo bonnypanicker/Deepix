@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/viewerRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -28,7 +29,7 @@
             android:contentDescription="Back"
             android:padding="12dp"
             android:src="@drawable/ic_fluent_back_24_regular"
-            android:tint="#FFFFFF" />
+            app:tint="#FFFFFF" />
 
         <TextView
             android:id="@+id/fileNameText"
@@ -54,12 +55,12 @@
             android:contentDescription="Info"
             android:padding="12dp"
             android:src="@drawable/ic_fluent_more_24_regular"
-            android:tint="#FFFFFF" />
+            app:tint="#FFFFFF" />
     </FrameLayout>
 
     <LinearLayout
         android:id="@+id/viewerPill"
-        android:layout_width="220dp"
+        android:layout_width="270dp"
         android:layout_height="52dp"
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginBottom="24dp"
@@ -75,7 +76,7 @@
             android:contentDescription="Share"
             android:padding="15dp"
             android:src="@drawable/ic_fluent_share_24_regular"
-            android:tint="#FFFFFF" />
+            app:tint="#FFFFFF" />
 
         <ImageButton
             android:id="@+id/favoriteBtn"
@@ -85,7 +86,7 @@
             android:contentDescription="Favorite"
             android:padding="15dp"
             android:src="@drawable/ic_fluent_heart_24_regular"
-            android:tint="#FFFFFF" />
+            app:tint="#FFFFFF" />
 
         <ImageButton
             android:id="@+id/editBtn"
@@ -95,7 +96,17 @@
             android:contentDescription="Edit"
             android:padding="15dp"
             android:src="@drawable/ic_fluent_edit_24_regular"
-            android:tint="#FFFFFF" />
+            app:tint="#FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/tagBtn"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Tag"
+            android:padding="15dp"
+            android:src="@drawable/ic_fluent_tag_24_regular"
+            app:tint="#FFFFFF" />
 
         <ImageButton
             android:id="@+id/deleteBtn"
@@ -105,7 +116,7 @@
             android:contentDescription="Delete"
             android:padding="15dp"
             android:src="@drawable/ic_fluent_delete_24_regular"
-            android:tint="#FFFFFF" />
+            app:tint="#FFFFFF" />
     </LinearLayout>
 
     <LinearLayout
