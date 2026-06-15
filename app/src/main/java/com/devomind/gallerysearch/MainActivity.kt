@@ -94,6 +94,7 @@ class MainActivity : AppCompatActivity() {
     private var topInsetPx = 0
     
     // Infinite scroll state for search results
+    // Supports lazy loading with 20 results per page, capped at 80 total
     private var fullSearchResults: List<PhotoSearchResult> = emptyList()
     private var currentDisplayedSearchResultCount = 0
 
