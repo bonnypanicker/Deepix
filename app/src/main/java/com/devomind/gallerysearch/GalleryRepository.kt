@@ -52,7 +52,7 @@ class GalleryRepository(
         val path: String = ""
     ) : Parcelable
 
-    data class Album(val id: String, val name: String, val count: Int, val coverUri: Uri?)
+    data class Album(val id: String, val name: String, val count: Int, val coverUri: Uri?, val isSmart: Boolean = false)
 
     data class Snapshot(
         val albums: List<Album>,

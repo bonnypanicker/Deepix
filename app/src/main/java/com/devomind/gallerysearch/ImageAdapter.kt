@@ -550,11 +550,16 @@ class ImageAdapter(
             val metrics = binding.root.resources.displayMetrics
             val coverWidth = (metrics.widthPixels / 2).coerceAtLeast(160)
             val coverHeight = (coverWidth * 3) / 4
-            binding.albumCover.layoutParams = binding.albumCover.layoutParams.apply {
+            binding.albumCoverContainer.layoutParams = binding.albumCoverContainer.layoutParams.apply {
                 height = coverHeight
             }
             binding.albumName.text = album.name
-            binding.albumCount.text = if (album.count == 1) "1 item" else "${album.count} items"
+            binding.albumCount.text = when {
+                album.isSmart -> "CLIP search"
+                album.count == 1 -> "1 item"
+                else -> "${album.count} items"
+            }
+            binding.smartBadge.visibility = if (album.isSmart) View.VISIBLE else View.GONE
             Glide.with(binding.albumCover.context)
                 .load(album.coverUri)
                 .format(DecodeFormat.PREFER_RGB_565)

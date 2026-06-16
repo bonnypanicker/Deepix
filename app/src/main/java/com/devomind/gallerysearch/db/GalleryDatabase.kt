@@ -13,7 +13,7 @@ import androidx.room.RoomDatabase
         TagEntity::class,
         MediaTagCrossRef::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class GalleryDatabase : RoomDatabase() {

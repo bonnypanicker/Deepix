@@ -17,6 +17,7 @@ import android.view.View
 import android.view.Window
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -66,6 +67,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: ImageAdapter
     private lateinit var favoritesStore: FavoritesStore
     private lateinit var albumPinStore: AlbumPinStore
+    private lateinit var smartAlbumStore: SmartAlbumStore
     private var imageEncoder: ImageEncoder? = null
     private var textEncoder: TextEncoder? = null
     private var repository: GalleryRepository? = null
@@ -80,6 +82,8 @@ class MainActivity : AppCompatActivity() {
     private var tagUriMap: Map<Long, Set<String>> = emptyMap()
     private var currentAlbum: GalleryRepository.Album? = null
     private var currentFolder: FolderNode? = null
+    private var currentSmartAlbum: SmartAlbum? = null
+    private var smartAlbums: List<SmartAlbum> = emptyList()
     private var folderTreeRoots = listOf<FolderNode>()
     private var currentMode = Mode.Browse
     private var preAlbumDetailSection = Section.Collection
@@ -152,6 +156,7 @@ class MainActivity : AppCompatActivity() {
         configureEdgeToEdge()
         favoritesStore = FavoritesStore(this)
         albumPinStore = AlbumPinStore(this)
+        smartAlbumStore = SmartAlbumStore(this)
 
         adapter = ImageAdapter(
             onPhotoClick = { item, view -> openMedia(item, view) },
@@ -228,6 +233,7 @@ class MainActivity : AppCompatActivity() {
     private fun bindChrome() {
         binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
         binding.searchLaunchBtn.setOnClickListener { openSearch() }
+        binding.addAlbumBtn.setOnClickListener { showCreateSmartAlbumDialog() }
         binding.searchDismissBtn.setOnClickListener { closeSearch(clearQuery = true) }
         binding.searchModeHybrid.setOnClickListener { setSearchMode(SearchMode.Hybrid) }
         binding.searchModeAi.setOnClickListener { setSearchMode(SearchMode.AiOnly) }
@@ -398,6 +404,10 @@ class MainActivity : AppCompatActivity() {
                         currentFolder = null
                         navigateToSection(preAlbumDetailSection)
                     }
+                    currentMode == Mode.SmartAlbumDetail -> {
+                        currentSmartAlbum = null
+                        navigateToSection(preAlbumDetailSection)
+                    }
                     else -> finish()
                 }
             }
@@ -448,6 +458,7 @@ class MainActivity : AppCompatActivity() {
                     loadLibrarySnapshot(repo, selectedIds)
                 }
                 applyLibrarySnapshot(snapshot)
+                smartAlbums = withContext(Dispatchers.IO) { smartAlbumStore.getAll() }
                 currentAlbum = null
                 lastProgressRefresh = -1
                 binding.progressBar.visibility = View.GONE
@@ -566,7 +577,18 @@ class MainActivity : AppCompatActivity() {
         }
 
     private val albumDetailItems: List<GalleryRepository.MediaItem>
-        get() = currentAlbum?.let { album -> collectionItems.filter { it.bucketId == album.id } }.orEmpty()
+        get() {
+            val album = currentAlbum ?: return emptyList()
+            return if (smartAlbumStore.isSmartId(album.id)) {
+                val sa = smartAlbumStore.get(album.id) ?: return emptyList()
+                val order = sa.memberUris.withIndex().associate { (i, u) -> u to i }
+                collectionItems
+                    .filter { it.uri.toString() in order.keys }
+                    .sortedBy { order[it.uri.toString()] ?: Int.MAX_VALUE }
+            } else {
+                collectionItems.filter { it.bucketId == album.id }
+            }
+        }
 
     private fun folderDetailItems(folder: FolderNode? = currentFolder): List<GalleryRepository.MediaItem> {
         return folder?.let { flattenFolderItems(it) }.orEmpty()
@@ -600,6 +622,7 @@ class MainActivity : AppCompatActivity() {
         activeSection = section
         currentAlbum = null
         currentFolder = null
+        currentSmartAlbum = null
         adapter.clearSelection()
         if (currentMode == Mode.Search) {
             updateSearchMetaText()
@@ -621,6 +644,7 @@ class MainActivity : AppCompatActivity() {
             Mode.Browse -> renderCurrentSection()
             Mode.AlbumDetail -> currentAlbum?.let(::renderAlbumDetail) ?: renderCurrentSection()
             Mode.FolderDetail -> currentFolder?.let(::renderFolderDetail) ?: renderCurrentSection()
+            Mode.SmartAlbumDetail -> currentSmartAlbum?.let(::renderSmartAlbumDetail) ?: renderCurrentSection()
             Mode.Search -> openSearch()
         }
     }
@@ -797,7 +821,7 @@ class MainActivity : AppCompatActivity() {
                 buildTimelineCells(cappedItems, emptyText, adapter.useCollageLayout)
             }
             if (currentMode == Mode.Browse && currentAlbum == null && activeSection == expectedSection) {
-                albumPinStore.cleanup(albums.map { it.id }.toSet())
+                albumPinStore.cleanup(albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet())
                 val pinnedIds = albumPinStore.getPinnedAlbumIds()
                 val pinnedAlbums = albums.filter { it.id in pinnedIds }
                     .sortedBy { pinnedIds.indexOf(it.id) }
@@ -827,12 +851,14 @@ class MainActivity : AppCompatActivity() {
         binding.searchPanel.visibility = View.GONE
         binding.resultCount.text = ""
 
-        albumPinStore.cleanup(albums.map { it.id }.toSet())
+        val validIds = albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet()
+        albumPinStore.cleanup(validIds)
         val pinnedIds = albumPinStore.getPinnedAlbumIds()
 
-        val pinnedAlbums = albums
-            .filter { it.id in pinnedIds }
-            .sortedBy { pinnedIds.indexOf(it.id) }
+        val smartById = smartAlbums.associate { it.id to it.toAlbum() }
+        val albumById = (albums + smartById.values).associateBy { it.id }
+
+        val pinnedAlbums = pinnedIds.mapNotNull { albumById[it] }
         val normalAlbums = albums.filter { it.id !in pinnedIds }
 
         val cells = mutableListOf<GalleryCell>()
@@ -1540,10 +1566,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openAlbum(album: GalleryRepository.Album) {
-        renderAlbumDetail(album)
+        if (album.isSmart) {
+            val smart = smartAlbums.find { it.id == album.id }
+            if (smart != null) {
+                renderSmartAlbumDetail(smart)
+            }
+        } else {
+            renderAlbumDetail(album)
+        }
     }
 
     private fun showAlbumPinMenu(album: GalleryRepository.Album, anchor: View) {
+        if (album.isSmart) {
+            showSmartAlbumMenu(album, anchor)
+            return
+        }
         val isPinned = albumPinStore.isPinned(album.id)
         val popup = android.widget.PopupMenu(this, anchor)
         popup.menu.add(if (isPinned) "Unpin Album" else "Pin Album")
@@ -1555,6 +1592,262 @@ class MainActivity : AppCompatActivity() {
             true
         }
         popup.show()
+    }
+
+    private fun showSmartAlbumMenu(album: GalleryRepository.Album, anchor: View) {
+        val smart = smartAlbums.find { it.id == album.id } ?: return
+        val popup = android.widget.PopupMenu(this, anchor)
+        popup.menu.add("Refresh")
+        popup.menu.add("Rename")
+        popup.menu.add("Edit Prompt")
+        popup.menu.add("Delete")
+        popup.menu.add("Unpin")
+        popup.setOnMenuItemClickListener { item ->
+            when (item.title.toString()) {
+                "Refresh" -> handleSmartAlbumRefresh(smart)
+                "Rename" -> showRenameSmartAlbumDialog(smart)
+                "Edit Prompt" -> showEditPromptDialog(smart)
+                "Delete" -> confirmDeleteSmartAlbum(smart)
+                "Unpin" -> { albumPinStore.unpin(album.id); renderCurrentSection() }
+            }
+            true
+        }
+        popup.show()
+    }
+
+    private fun handleSmartAlbumRefresh(smart: SmartAlbum) {
+        binding.progressBar.visibility = View.VISIBLE
+        binding.statusText.text = "Refreshing…"
+        lifecycleScope.launch {
+            refreshSmartAlbum(smart)
+            binding.progressBar.visibility = View.GONE
+            val repo = repository
+            val summary = if (repo != null)
+                selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount) else ""
+            binding.statusText.text = summary
+            if (currentMode == Mode.SmartAlbumDetail && currentSmartAlbum?.id == smart.id) {
+                val refreshed = smartAlbumStore.get(smart.id)
+                if (refreshed != null) renderSmartAlbumDetail(refreshed)
+            } else {
+                renderCurrentSection()
+            }
+        }
+    }
+
+    private fun showRenameSmartAlbumDialog(smart: SmartAlbum) {
+        val editText = EditText(this).apply {
+            setText(smart.name)
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.parseColor("#FF484848"))
+            background = android.graphics.drawable.ColorDrawable(Color.parseColor("#FF1A1A1A"))
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        val container = android.widget.FrameLayout(this).apply {
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+            addView(editText, android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Rename Album")
+            .setView(container)
+            .setPositiveButton("Rename") { _, _ ->
+                val newName = editText.text.toString().trim()
+                if (newName.isNotEmpty()) {
+                    smartAlbumStore.upsert(smart.copy(name = newName, updatedAt = System.currentTimeMillis()))
+                    smartAlbums = smartAlbumStore.getAll()
+                    if (currentMode == Mode.SmartAlbumDetail && currentSmartAlbum?.id == smart.id) {
+                        currentSmartAlbum = smartAlbumStore.get(smart.id)
+                    }
+                    renderCurrentSection()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showEditPromptDialog(smart: SmartAlbum) {
+        val editText = EditText(this).apply {
+            setText(smart.prompt)
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.parseColor("#FF484848"))
+            background = android.graphics.drawable.ColorDrawable(Color.parseColor("#FF1A1A1A"))
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        val container = android.widget.FrameLayout(this).apply {
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+            addView(editText, android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Edit Prompt")
+            .setView(container)
+            .setPositiveButton("Save & Refresh") { _, _ ->
+                val newPrompt = editText.text.toString().trim()
+                if (newPrompt.isNotEmpty()) {
+                    val updated = smart.copy(prompt = newPrompt, updatedAt = System.currentTimeMillis())
+                    smartAlbumStore.upsert(updated)
+                    smartAlbums = smartAlbumStore.getAll()
+                    handleSmartAlbumRefresh(updated)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun confirmDeleteSmartAlbum(smart: SmartAlbum) {
+        AlertDialog.Builder(this)
+            .setTitle("Delete Smart Album?")
+            .setMessage("Delete \"${smart.name}\"? This won't delete any actual photos.")
+            .setPositiveButton("Delete") { _, _ ->
+                smartAlbumStore.delete(smart.id)
+                albumPinStore.unpin(smart.id)
+                smartAlbums = smartAlbumStore.getAll()
+                if (currentMode == Mode.SmartAlbumDetail && currentSmartAlbum?.id == smart.id) {
+                    currentSmartAlbum = null
+                    navigateToSection(activeSection)
+                } else {
+                    renderCurrentSection()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun renderSmartAlbumDetail(smart: SmartAlbum) {
+        renderJob?.cancel()
+        preAlbumDetailSection = activeSection
+        currentMode = Mode.SmartAlbumDetail
+        currentSmartAlbum = smart
+        binding.searchPanel.visibility = View.GONE
+        updateTopBarForMode(smart.name)
+        updateDrawerState()
+        updateBottomPanelState()
+        showBottomPanel()
+
+        val uriOrder = smart.memberUris.withIndex().associate { (i, u) -> u to i }
+        val items = collectionItems
+            .filter { it.uri.toString() in uriOrder.keys }
+            .sortedBy { uriOrder[it.uri.toString()] ?: Int.MAX_VALUE }
+
+        val expectedAlbumId = smart.id
+        val cappedItems = items.take(DesignTokens.DISPLAY_CAP)
+        renderJob = lifecycleScope.launch {
+            val cells = withContext(Dispatchers.Default) {
+                buildTimelineCells(cappedItems, "No results for this prompt yet", adapter.useCollageLayout)
+            }
+            if (currentMode == Mode.SmartAlbumDetail && currentSmartAlbum?.id == expectedAlbumId) {
+                adapter.replaceCells(cells)
+                resetGridToTop()
+                updateFastScrollVisibility()
+                binding.fastScrollIndicator.syncToRecyclerView()
+                binding.resultCount.text = when {
+                    items.isEmpty() -> ""
+                    items.size == 1 -> "1 result"
+                    else -> "${items.size} results"
+                }
+                binding.progressBar.visibility = View.GONE
+                binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repository?.indexedCount ?: 0)
+            }
+        }
+    }
+
+    private fun showCreateSmartAlbumDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_smart_album, null)
+        val nameInput = dialogView.findViewById<EditText>(R.id.smartAlbumName)
+        val promptInput = dialogView.findViewById<EditText>(R.id.smartAlbumPrompt)
+
+        AlertDialog.Builder(this)
+            .setTitle("New Smart Album")
+            .setView(dialogView)
+            .setPositiveButton("Create") { _, _ ->
+                val name = nameInput.text.toString().trim()
+                val prompt = promptInput.text.toString().trim()
+                if (name.isEmpty() || prompt.isEmpty()) {
+                    Toast.makeText(this, "Album name and prompt are required", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                createSmartAlbum(name, prompt)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun createSmartAlbum(name: String, prompt: String) {
+        val repo = repository ?: return
+        binding.progressBar.visibility = View.VISIBLE
+        binding.statusText.text = "Creating smart album…"
+        lifecycleScope.launch {
+            val resultUris = runSearchPipeline(
+                query = prompt,
+                mode = searchMode,
+                candidateItems = currentSearchPhotoItems()
+            ).take(SmartAlbumStore.MAX_SMART_MEMBERS)
+
+            val album = SmartAlbum(
+                id = SmartAlbumStore.SMART_PREFIX + java.util.UUID.randomUUID().toString(),
+                name = name,
+                prompt = prompt,
+                searchMode = searchMode.name,
+                memberUris = resultUris.map { it.toString() },
+                coverUri = resultUris.firstOrNull()?.toString(),
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+            smartAlbumStore.upsert(album)
+            smartAlbums = smartAlbumStore.getAll()
+            albumPinStore.pin(album.id)
+            binding.progressBar.visibility = View.GONE
+            binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+            if (resultUris.isEmpty()) {
+                Toast.makeText(this@MainActivity, "No matches yet — you can refresh later", Toast.LENGTH_LONG).show()
+            }
+            renderCurrentSection()
+        }
+    }
+
+    private suspend fun runSearchPipeline(
+        query: String,
+        mode: SearchMode,
+        candidateItems: List<GalleryRepository.MediaItem>
+    ): List<Uri> {
+        val repo = repository ?: return emptyList()
+        if (candidateItems.isEmpty()) return emptyList()
+
+        val shouldSearchAi = mode != SearchMode.MetadataOnly
+        val shouldSearchMetadata = mode != SearchMode.AiOnly
+
+        val metadataHits = if (shouldSearchMetadata) {
+            withContext(Dispatchers.Default) { repo.searchMetadata(query, candidateItems) }
+        } else emptyList()
+
+        val semanticResults = if (shouldSearchAi) {
+            withContext(Dispatchers.Default) { repo.search(query) }
+        } else emptyList()
+
+        val merged = withContext(Dispatchers.Default) {
+            buildMergedPhotoSearchResults(candidateItems, metadataHits, semanticResults)
+        }
+        return merged.map { it.item.uri }
+    }
+
+    private suspend fun refreshSmartAlbum(smart: SmartAlbum): SmartAlbum? {
+        val repo = repository ?: return null
+        val resultUris = runSearchPipeline(
+            query = smart.prompt,
+            mode = try { SearchMode.valueOf(smart.searchMode) } catch (_: Exception) { SearchMode.Hybrid },
+            candidateItems = currentSearchPhotoItems()
+        ).take(SmartAlbumStore.MAX_SMART_MEMBERS)
+
+        val updated = smart.copy(
+            memberUris = resultUris.map { it.toString() },
+            coverUri = resultUris.firstOrNull()?.toString(),
+            updatedAt = System.currentTimeMillis()
+        )
+        smartAlbumStore.upsert(updated)
+        smartAlbums = smartAlbumStore.getAll()
+        return updated
     }
 
     private fun openMedia(item: GalleryRepository.MediaItem, sharedView: ImageView) {
@@ -1586,7 +1879,7 @@ class MainActivity : AppCompatActivity() {
         return when {
             currentAlbum != null -> albumDetailItems
             currentFolder != null -> folderDetailItems()
-            currentMode == Mode.Search -> {
+            currentMode == Mode.Search || currentMode == Mode.SmartAlbumDetail -> {
                 adapter.cells.asSequence()
                     .flatMap { cell ->
                         when (cell) {
@@ -1626,6 +1919,7 @@ class MainActivity : AppCompatActivity() {
             Mode.Search -> "search"
             Mode.AlbumDetail -> currentAlbum?.name
             Mode.FolderDetail -> currentFolder?.name
+            Mode.SmartAlbumDetail -> currentSmartAlbum?.name
             Mode.Browse -> when (activeSection) {
                 Section.Collection -> "collections"
                 Section.Videos -> "videos"
@@ -1908,6 +2202,13 @@ class MainActivity : AppCompatActivity() {
                 currentFolder = null
                 switchSection(preAlbumDetailSection)
             }
+        } else if (currentMode == Mode.SmartAlbumDetail) {
+            binding.menuBtn.setImageResource(R.drawable.ic_fluent_back_24_regular)
+            binding.menuBtn.alpha = 1f
+            binding.menuBtn.setOnClickListener {
+                currentSmartAlbum = null
+                switchSection(preAlbumDetailSection)
+            }
         } else {
             binding.menuBtn.setImageResource(R.drawable.ic_fluent_navigation_24_regular)
             binding.menuBtn.alpha = 1f
@@ -1917,6 +2218,10 @@ class MainActivity : AppCompatActivity() {
         binding.screenTitle.visibility = if (title == null) View.GONE else View.VISIBLE
         binding.screenTitle.text = title.orEmpty()
         binding.searchLaunchBtn.visibility = if (adapter.selectionCount > 0) View.GONE else View.VISIBLE
+        val isAlbumsSection = activeSection == Section.Albums &&
+            currentMode == Mode.Browse &&
+            adapter.selectionCount == 0
+        binding.addAlbumBtn.visibility = if (isAlbumsSection) View.VISIBLE else View.GONE
     }
 
     private fun updateDrawerState() {
@@ -1926,7 +2231,7 @@ class MainActivity : AppCompatActivity() {
             if (currentMode != Mode.Search && activeSection == Section.Collection) active else inactive
         )
         val albumsHighlighted = (currentMode != Mode.Search && activeSection == Section.Albums) ||
-            currentMode == Mode.AlbumDetail
+            currentMode == Mode.AlbumDetail || currentMode == Mode.SmartAlbumDetail
         binding.drawerAlbums.setBackgroundColor(if (albumsHighlighted) active else inactive)
         binding.drawerSearch.setBackgroundColor(if (currentMode == Mode.Search) active else inactive)
         binding.drawerFolders.setBackgroundColor(
@@ -1949,7 +2254,9 @@ class MainActivity : AppCompatActivity() {
         updateBottomTab(
             tab = binding.bottomAlbums,
             icon = binding.bottomAlbumsIcon,
-            active = (currentMode != Mode.Search && activeSection == Section.Albums) || currentMode == Mode.AlbumDetail
+            active = (currentMode != Mode.Search && activeSection == Section.Albums) ||
+                currentMode == Mode.AlbumDetail ||
+                currentMode == Mode.SmartAlbumDetail
         )
         updateBottomTab(
             tab = binding.bottomFavorites,

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/metroBgPrimary"
+    android:orientation="vertical"
+    android:paddingStart="20dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="24dp">
+
+    <EditText
+        android:id="@+id/smartAlbumName"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:background="@drawable/search_bg"
+        android:hint="Album name"
+        android:inputType="text"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:singleLine="true"
+        android:textColor="@color/metroTextPrimary"
+        android:textColorHint="@color/metroTextDisabled"
+        android:textSize="16sp" />
+
+    <EditText
+        android:id="@+id/smartAlbumPrompt"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/search_bg"
+        android:hint="Describe what to find (e.g. sunset at the beach)"
+        android:imeOptions="actionDone"
+        android:inputType="text"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:singleLine="true"
+        android:textColor="@color/metroTextPrimary"
+        android:textColorHint="@color/metroTextDisabled"
+        android:textSize="16sp" />
+
+</LinearLayout>
