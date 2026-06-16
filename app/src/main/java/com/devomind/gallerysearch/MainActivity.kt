@@ -821,10 +821,12 @@ class MainActivity : AppCompatActivity() {
                 buildTimelineCells(cappedItems, emptyText, adapter.useCollageLayout)
             }
             if (currentMode == Mode.Browse && currentAlbum == null && activeSection == expectedSection) {
-                albumPinStore.cleanup(albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet())
+                val validIds = albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet()
+                albumPinStore.cleanup(validIds)
                 val pinnedIds = albumPinStore.getPinnedAlbumIds()
-                val pinnedAlbums = albums.filter { it.id in pinnedIds }
-                    .sortedBy { pinnedIds.indexOf(it.id) }
+                val smartById = smartAlbums.associate { it.id to it.toAlbum() }
+                val albumById = (albums + smartById.values).associateBy { it.id }
+                val pinnedAlbums = pinnedIds.mapNotNull { albumById[it] }
 
                 val finalCells = if (expectedSection == Section.Collection &&
                     IndexPreferences.isShowPinnedInCollections(this@MainActivity) &&
