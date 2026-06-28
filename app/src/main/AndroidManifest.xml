@@ -26,6 +26,10 @@
             android:theme="@style/Theme.GallerySearch.Viewer" />
 
         <activity
+            android:name=".SmartCleanupActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>

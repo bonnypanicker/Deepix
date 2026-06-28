@@ -225,6 +225,9 @@ class ImageAdapter(
 
     fun selectedUris(): List<Uri> = selected.toList()
 
+    /** Public toggle so screens like Smart cleanup can make a plain tap select/deselect. */
+    fun toggle(uri: Uri) = toggleSelection(uri)
+
     /** Replaces the current selection with [uris] that exist in the visible cells. */
     fun setSelection(uris: Collection<Uri>) {
         val present = cells.asSequence()

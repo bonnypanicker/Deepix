@@ -2,15 +2,11 @@ package com.devomind.gallerysearch
 
 import android.Manifest
 import android.app.RecoverableSecurityException
-import android.content.ContentUris
 import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -93,12 +89,6 @@ class MainActivity : AppCompatActivity() {
     private var preAlbumDetailSection = Section.Collection
     private var activeSection = Section.Collection
     private var searchMode = SearchMode.Hybrid
-
-    // Smart cleanup state (analysis is cached until a delete invalidates it).
-    private var cleanupReport: CleanupAnalyzer.Report? = null
-    private var cleanupCategory: CleanupAnalyzer.Category? = null
-    private var cleanupItems: List<GalleryRepository.MediaItem> = emptyList()
-    private var preCleanupSection = Section.Collection
     private var searchJob: Job? = null
     private var searchDebounceJob: Job? = null
     private var renderJob: Job? = null
@@ -136,6 +126,13 @@ class MainActivity : AppCompatActivity() {
         if (result.resultCode == RESULT_OK && changed) {
             refreshVisibleItems()
         }
+    }
+
+    private val cleanupLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val changed = result.data?.getBooleanExtra(SmartCleanupActivity.ExtraContentChanged, false) == true
+        if (changed) refreshVisibleItems()
     }
 
     private val deleteRequestLauncher = registerForActivityResult(
@@ -423,10 +420,6 @@ class MainActivity : AppCompatActivity() {
                         currentSmartAlbum = null
                         navigateToSection(preAlbumDetailSection)
                     }
-                    currentMode == Mode.CleanupDetail -> {
-                        // Go "up" to the cleanup overview rather than straight out.
-                        cleanupReport?.let { showCleanupOverview(it) } ?: switchSection(preCleanupSection)
-                    }
                     else -> finish()
                 }
             }
@@ -664,7 +657,6 @@ class MainActivity : AppCompatActivity() {
             Mode.AlbumDetail -> currentAlbum?.let(::renderAlbumDetail) ?: renderCurrentSection()
             Mode.FolderDetail -> currentFolder?.let(::renderFolderDetail) ?: renderCurrentSection()
             Mode.SmartAlbumDetail -> currentSmartAlbum?.let(::renderSmartAlbumDetail) ?: renderCurrentSection()
-            Mode.CleanupDetail -> renderCleanupDetail()
             Mode.Search -> openSearch()
         }
     }
@@ -1873,7 +1865,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Smart cleanup
+    // Smart cleanup — opens a dedicated, interactive screen.
     // ---------------------------------------------------------------------------------------------
 
     private fun startSmartCleanup() {
@@ -1881,226 +1873,14 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Still loading — try again in a moment.", Toast.LENGTH_SHORT).show()
             return
         }
-        preCleanupSection = activeSection
-
-        cleanupReport?.let { showCleanupOverview(it); return }
-
-        binding.progressBar.visibility = View.VISIBLE
-        binding.statusText.text = "Analyzing your library…"
-        lifecycleScope.launch {
-            val images = collectionItems
-                .filter { it.mediaType == GalleryRepository.MediaType.Image }
-                .take(CLEANUP_ANALYZE_CAP)
-            if (images.isEmpty()) {
-                binding.progressBar.visibility = View.GONE
-                binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
-                Toast.makeText(this@MainActivity, "No photos to analyze yet.", Toast.LENGTH_SHORT).show()
-                return@launch
-            }
-
-            val report = withContext(Dispatchers.Default) {
-                val embeddings = repo.allEmbeddings()
-                val sizes = loadImageSizes()
-                CleanupAnalyzer.analyze(
-                    items = images,
-                    embeddings = embeddings,
-                    sizeByUri = sizes,
-                    encodeText = { runCatching { repo.encodeText(it) }.getOrNull() },
-                    blurVariance = { blurVariance(it) },
-                    onProgress = { done, total ->
-                        runOnUiThread {
-                            binding.statusText.text = if (total > 0) "Scanning for blur… $done/$total" else "Analyzing…"
-                        }
-                    }
-                )
-            }
-
-            cleanupReport = report
-            binding.progressBar.visibility = View.GONE
-            binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
-            showCleanupOverview(report)
-        }
-    }
-
-    private fun showCleanupOverview(report: CleanupAnalyzer.Report) {
-        if (report.isEmpty()) {
-            Toast.makeText(this, "Your library looks clean — nothing to remove.", Toast.LENGTH_LONG).show()
-            if (currentMode == Mode.CleanupDetail) switchSection(preCleanupSection)
+        val images = collectionItems.filter { it.mediaType == GalleryRepository.MediaType.Image }
+        if (images.isEmpty()) {
+            Toast.makeText(this, "No photos to clean up yet.", Toast.LENGTH_SHORT).show()
             return
         }
-
-        val dialogView = layoutInflater.inflate(R.layout.dialog_smart_cleanup, null)
-        val container = dialogView.findViewById<LinearLayout>(R.id.cleanupCategoryContainer)
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(dialogView)
-            .setNegativeButton("Close") { d, _ ->
-                d.dismiss()
-                if (currentMode == Mode.CleanupDetail) switchSection(preCleanupSection)
-            }
-            .create()
-
-        for (category in CleanupAnalyzer.Category.entries) {
-            val count = report.count(category)
-            if (count == 0) continue
-            val row = layoutInflater.inflate(R.layout.item_cleanup_category, container, false)
-            row.findViewById<TextView>(R.id.cleanupCategoryTitle).text = categoryTitle(category)
-            val bytes = report.reclaimableBytes(category)
-            row.findViewById<TextView>(R.id.cleanupCategorySubtitle).text = buildString {
-                append("$count item")
-                if (count != 1) append("s")
-                if (bytes > 0L) append("  ·  frees up to ${formatBytes(bytes)}")
-            }
-            row.setOnClickListener {
-                dialog.dismiss()
-                openCleanupCategory(category)
-            }
-            container.addView(row)
-        }
-
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(
-            GradientDrawable().apply {
-                cornerRadius = resources.displayMetrics.density * 16f
-                setColor(Color.parseColor("#0A0A0A"))
-                setStroke((resources.displayMetrics.density).toInt(), Color.parseColor("#2A2A2A"))
-            }
-        )
-    }
-
-    private fun openCleanupCategory(category: CleanupAnalyzer.Category) {
-        cleanupCategory = category
-        currentMode = Mode.CleanupDetail
-        renderCleanupDetail()
-    }
-
-    private fun renderCleanupDetail() {
-        val category = cleanupCategory ?: return
-        val report = cleanupReport ?: return
-        renderJob?.cancel()
-        currentMode = Mode.CleanupDetail
-        binding.searchPanel.visibility = View.GONE
-
-        val items = report.categoryItems[category].orEmpty()
-        cleanupItems = items
-        updateTopBarForMode(categoryTitle(category))
-        updateDrawerState()
-        updateBottomPanelState()
-        showBottomPanel()
-
-        // Flat grid (no date headers) so duplicate groups stay adjacent and ordering is preserved.
-        val cells: List<GalleryCell> = if (items.isEmpty()) {
-            listOf(GalleryCell.Empty("Nothing here"))
-        } else {
-            items.map { GalleryCell.Photo(it) }
-        }
-        adapter.replaceCells(cells)
-        resetGridToTop()
-        updateFastScrollVisibility()
-        binding.fastScrollIndicator.syncToRecyclerView()
-        binding.resultCount.text = if (items.isEmpty()) "" else "${items.size} item" + if (items.size == 1) "" else "s"
-
-        val suggested = report.suggestedDeleteUris[category].orEmpty()
-        if (suggested.isNotEmpty()) {
-            adapter.setSelection(suggested)
-        } else {
-            Toast.makeText(this, "Tap items to select what to delete.", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun categoryTitle(category: CleanupAnalyzer.Category): String = when (category) {
-        CleanupAnalyzer.Category.DUPLICATES -> "Duplicates"
-        CleanupAnalyzer.Category.BLURRY -> "Blurry"
-        CleanupAnalyzer.Category.SCREENSHOTS -> "Screenshots"
-        CleanupAnalyzer.Category.MEMES_STICKERS -> "Memes & stickers"
-    }
-
-    /** One MediaStore query mapping every image's content-uri string to its byte size. */
-    private fun loadImageSizes(): Map<String, Long> {
-        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-        } else {
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        }
-        val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.SIZE)
-        val map = HashMap<String, Long>()
-        runCatching {
-            contentResolver.query(collection, projection, null, null, null)?.use { cursor ->
-                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
-                while (cursor.moveToNext()) {
-                    val id = cursor.getLong(idCol)
-                    val size = cursor.getLong(sizeCol)
-                    map[ContentUris.withAppendedId(collection, id).toString()] = size
-                }
-            }
-        }.onFailure { Log.w(TAG, "Unable to read image sizes for cleanup.", it) }
-        return map
-    }
-
-    /** Variance of the Laplacian on a downscaled grayscale bitmap; lower = blurrier. Null if undecodable. */
-    private fun blurVariance(uri: Uri): Float? {
-        return runCatching {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            val srcW = bounds.outWidth
-            val srcH = bounds.outHeight
-            if (srcW <= 0 || srcH <= 0) return null
-
-            val target = 128
-            var sample = 1
-            while (srcW / (sample * 2) >= target && srcH / (sample * 2) >= target) sample *= 2
-            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-            val bmp = contentResolver.openInputStream(uri)?.use {
-                BitmapFactory.decodeStream(it, null, opts)
-            } ?: return null
-            val variance = laplacianVariance(bmp)
-            bmp.recycle()
-            variance
-        }.getOrNull()
-    }
-
-    private fun laplacianVariance(bmp: Bitmap): Float {
-        val w = bmp.width
-        val h = bmp.height
-        if (w < 3 || h < 3) return Float.MAX_VALUE
-        val pixels = IntArray(w * h)
-        bmp.getPixels(pixels, 0, w, 0, 0, w, h)
-        val gray = IntArray(w * h)
-        for (i in pixels.indices) {
-            val p = pixels[i]
-            val r = (p shr 16) and 0xFF
-            val g = (p shr 8) and 0xFF
-            val b = p and 0xFF
-            gray[i] = (r * 299 + g * 587 + b * 114) / 1000
-        }
-        var sum = 0.0
-        var sumSq = 0.0
-        var n = 0
-        for (y in 1 until h - 1) {
-            for (x in 1 until w - 1) {
-                val idx = y * w + x
-                val lap = 4 * gray[idx] - gray[idx - 1] - gray[idx + 1] - gray[idx - w] - gray[idx + w]
-                sum += lap
-                sumSq += lap.toDouble() * lap
-                n++
-            }
-        }
-        if (n == 0) return Float.MAX_VALUE
-        val mean = sum / n
-        return (sumSq / n - mean * mean).toFloat()
-    }
-
-    private fun formatBytes(bytes: Long): String {
-        if (bytes <= 0L) return "0 MB"
-        val mb = bytes / (1024.0 * 1024.0)
-        return if (mb >= 1024.0) {
-            String.format(Locale.getDefault(), "%.1f GB", mb / 1024.0)
-        } else if (mb >= 1.0) {
-            String.format(Locale.getDefault(), "%.0f MB", mb)
-        } else {
-            "${bytes / 1024L} KB"
-        }
+        CleanupHandoff.items = images
+        CleanupHandoff.indexedCount = repo.indexedCount
+        cleanupLauncher.launch(Intent(this, SmartCleanupActivity::class.java))
     }
 
     private fun openMedia(item: GalleryRepository.MediaItem, sharedView: ImageView) {
@@ -2130,7 +1910,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun currentViewerItems(): List<GalleryRepository.MediaItem> {
         return when {
-            currentMode == Mode.CleanupDetail -> cleanupItems
             currentAlbum != null -> albumDetailItems
             currentFolder != null -> folderDetailItems()
             currentMode == Mode.Search || currentMode == Mode.SmartAlbumDetail -> {
@@ -2174,7 +1953,6 @@ class MainActivity : AppCompatActivity() {
             Mode.AlbumDetail -> currentAlbum?.name
             Mode.FolderDetail -> currentFolder?.name
             Mode.SmartAlbumDetail -> currentSmartAlbum?.name
-            Mode.CleanupDetail -> cleanupCategory?.let { categoryTitle(it) }
             Mode.Browse -> when (activeSection) {
                 Section.Collection -> "collections"
                 Section.Videos -> "videos"
@@ -2310,7 +2088,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun onDeleteCompleted(requestedCount: Int) {
         adapter.clearSelection()
-        cleanupReport = null
         refreshVisibleItems()
         val label = if (requestedCount == 1) "Item deleted." else "$requestedCount items deleted."
         Toast.makeText(this, label, Toast.LENGTH_SHORT).show()
@@ -2465,12 +2242,6 @@ class MainActivity : AppCompatActivity() {
                 currentSmartAlbum = null
                 switchSection(preAlbumDetailSection)
             }
-        } else if (currentMode == Mode.CleanupDetail) {
-            binding.menuBtn.setImageResource(R.drawable.ic_fluent_back_24_regular)
-            binding.menuBtn.alpha = 1f
-            binding.menuBtn.setOnClickListener {
-                cleanupReport?.let { showCleanupOverview(it) } ?: switchSection(preCleanupSection)
-            }
         } else {
             binding.menuBtn.setImageResource(R.drawable.ic_fluent_navigation_24_regular)
             binding.menuBtn.alpha = 1f
@@ -2573,7 +2344,6 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val INDEX_WORK_NAME = "gallery_background_index"
-        private const val CLEANUP_ANALYZE_CAP = 2000
     }
 
     private enum class SearchMode {
