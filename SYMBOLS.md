@@ -81,6 +81,7 @@ MediaType     GalleryRepository.kt  Image | Video  (@Parcelize)
 TokenizedText ClipTokenizer.kt  data class: inputIds: LongArray, attentionMask: LongArray
 InitResult    MainState.kt   imageEncoder, textEncoder, repository, snapshot
 LibrarySnapshot MainState.kt albums, imageItems, collectionItems, videoItems, selectedAlbumIds
+GestureDirection ViewerActivity.kt  UNDETERMINED | HORIZONTAL_PAGE | VERTICAL_DISMISS | VERTICAL_INFO | TAP  (gesture classification)
 ```
 
 ---

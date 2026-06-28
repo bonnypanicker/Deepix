@@ -64,6 +64,7 @@ class ViewerActivity : AppCompatActivity() {
     private val autoHideHandler = Handler(Looper.getMainLooper())
     private val autoHideRunnable = Runnable { setControlsVisible(false) }
     private var downY = 0f
+    private var downX = 0f
     private var dragDistance = 0f
     private var draggingToDismiss = false
     private var isScrubbing = false
@@ -72,6 +73,12 @@ class ViewerActivity : AppCompatActivity() {
     private var pendingDeleteNeedsRetry = false
     private var currentExif: ExifData? = null
     private var currentTags: List<com.devomind.gallerysearch.db.TagEntity> = emptyList()
+    private var gestureDirection = GestureDirection.UNDETERMINED
+    private var metadataJob: kotlinx.coroutines.Job? = null
+
+    private enum class GestureDirection {
+        UNDETERMINED, HORIZONTAL_PAGE, VERTICAL_DISMISS, VERTICAL_INFO, TAP
+    }
 
     private val deleteRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -111,7 +118,12 @@ class ViewerActivity : AppCompatActivity() {
             touchIntercepted = false
         }
 
-        handleViewerTouch(ev)
+        // Skip the global gesture state machine entirely while the info panel
+        // is visible — attachInfoPanelDrag already owns all touches in that state,
+        // and ViewPager2 paging is disabled, so there is nothing for this to do.
+        if (!infoVisible) {
+            handleViewerTouch(ev)
+        }
 
         if (draggingToDismiss) {
             if (!touchIntercepted) {
@@ -169,7 +181,14 @@ class ViewerActivity : AppCompatActivity() {
                 startPostponedEnterTransition()
             },
             onMediaTap = {
-                if (!draggingToDismiss) toggleControls()
+                if (gestureDirection == GestureDirection.HORIZONTAL_PAGE) {
+                    // A completed page-swipe can still fire a click on some devices;
+                    // ignore taps that were actually part of a paging gesture.
+                } else if (infoVisible) {
+                    toggleInfoPanel()
+                } else if (!draggingToDismiss) {
+                    toggleControls()
+                }
             },
             onMediaLongClick = {
                 val item = items.getOrNull(currentPosition) ?: return@MediaPagerAdapter
@@ -274,7 +293,9 @@ class ViewerActivity : AppCompatActivity() {
         )
         binding.editBtn.contentDescription = if (isVideo) "Play video" else "Edit photo"
 
-        lifecycleScope.launch {
+        // Cancel any in-flight metadata load from a previous page before starting a new one.
+        metadataJob?.cancel()
+        metadataJob = lifecycleScope.launch {
             val metadata = withContext(Dispatchers.IO) { loadMetadata(uri, isVideo) }
             val exif = withContext(Dispatchers.IO) {
                 val cached = dbRepository.getExif(uri.toString())
@@ -289,6 +310,11 @@ class ViewerActivity : AppCompatActivity() {
             val tags = withContext(Dispatchers.IO) {
                 dbRepository.getTagsForMedia(uri.toString())
             }
+
+            // Guard against a final race: if this job wasn't cancelled in time but the
+            // page has already moved on by the time we reach here, drop the stale result.
+            if (position != currentPosition) return@launch
+
             currentExif = exif
             currentTags = tags
             bindMetadata(metadata, exif, tags)
@@ -296,6 +322,7 @@ class ViewerActivity : AppCompatActivity() {
 
         // Force-close the info panel without animation so it never carries over between pages.
         infoVisible = false
+        binding.viewPager.isUserInputEnabled = true
         binding.infoPanel.translationY = binding.infoPanel.height.toFloat()
         binding.infoPanel.alpha = 1f
 
@@ -552,6 +579,7 @@ class ViewerActivity : AppCompatActivity() {
 
     private fun toggleInfoPanel() {
         infoVisible = !infoVisible
+        binding.viewPager.isUserInputEnabled = !infoVisible
         val target = if (infoVisible) 0f else binding.infoPanel.height.toFloat()
         SpringAnimation(binding.infoPanel, DynamicAnimation.TRANSLATION_Y, target).apply {
             spring.dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
@@ -572,6 +600,9 @@ class ViewerActivity : AppCompatActivity() {
                     infoPanelDownY = event.rawY
                     infoPanelDragging = false
                     autoHideHandler.removeCallbacks(autoHideRunnable)
+                    // Consume immediately — this view should own its own touch stream
+                    // from the first frame, not just once a threshold is crossed.
+                    true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val deltaY = event.rawY - infoPanelDownY
@@ -582,12 +613,14 @@ class ViewerActivity : AppCompatActivity() {
                         val progress = (offset / binding.infoPanel.height.toFloat()).coerceIn(0f, 1f)
                         binding.infoPanel.alpha = 1f - progress * 0.5f
                     }
+                    true
                 }
                 MotionEvent.ACTION_CANCEL,
                 MotionEvent.ACTION_UP -> {
                     val deltaY = event.rawY - infoPanelDownY
                     if (infoPanelDragging && deltaY > binding.infoPanel.height * 0.25f) {
                         infoVisible = false
+                        binding.viewPager.isUserInputEnabled = true
                         animateInfoPanelClosed()
                     } else if (infoPanelDragging) {
                         SpringAnimation(binding.infoPanel, DynamicAnimation.TRANSLATION_Y, 0f).apply {
@@ -596,11 +629,18 @@ class ViewerActivity : AppCompatActivity() {
                             start()
                         }
                         binding.infoPanel.alpha = 1f
+                    } else {
+                        // A tap that landed on the info panel but wasn't a drag —
+                        // treat it the same as tapping the photo: close the panel.
+                        infoVisible = false
+                        binding.viewPager.isUserInputEnabled = true
+                        animateInfoPanelClosed()
                     }
                     infoPanelDragging = false
+                    true
                 }
+                else -> false
             }
-            infoPanelDragging
         }
     }
 
@@ -625,8 +665,10 @@ class ViewerActivity : AppCompatActivity() {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downY = event.rawY
+                downX = event.rawX
                 dragDistance = 0f
                 draggingToDismiss = false
+                gestureDirection = GestureDirection.UNDETERMINED
                 velocityTracker?.recycle()
                 velocityTracker = VelocityTracker.obtain()
                 velocityTracker?.addMovement(event)
@@ -643,10 +685,39 @@ class ViewerActivity : AppCompatActivity() {
             MotionEvent.ACTION_MOVE -> {
                 velocityTracker?.addMovement(event)
                 val deltaY = event.rawY - downY
-                dragDistance = deltaY.coerceAtLeast(0f)
+                val deltaX = event.rawX - downX
+                val absDeltaY = kotlin.math.abs(deltaY)
+                val absDeltaX = kotlin.math.abs(deltaX)
 
-                if (event.pointerCount == 1 && !infoVisible && dragDistance > dp(4) && deltaY > 0 && !isCurrentPageZoomed()) {
+                // Lock the gesture direction once movement is past the slop threshold.
+                // Until locked, do nothing — let the ambiguity resolve itself.
+                if (gestureDirection == GestureDirection.UNDETERMINED) {
+                    val slop = dp(10)
+                    if (absDeltaX > slop || absDeltaY > slop) {
+                        gestureDirection = when {
+                            // Horizontal movement dominates — this is a page swipe.
+                            // ViewPager2 owns this gesture; we do nothing further.
+                            absDeltaX > absDeltaY * 1.2f -> GestureDirection.HORIZONTAL_PAGE
+
+                            // Vertical movement dominates downward, panel closed, not zoomed
+                            deltaY > 0 && !infoVisible && !isCurrentPageZoomed() ->
+                                GestureDirection.VERTICAL_DISMISS
+
+                            // Vertical movement dominates upward, panel closed
+                            deltaY < 0 && !infoVisible ->
+                                GestureDirection.VERTICAL_INFO
+
+                            else -> GestureDirection.HORIZONTAL_PAGE // safe default: don't hijack
+                        }
+                    }
+                }
+
+                // Only the dismiss path animates the photo live; info-open is decided at ACTION_UP.
+                if (gestureDirection == GestureDirection.VERTICAL_DISMISS &&
+                    event.pointerCount == 1 && deltaY > 0
+                ) {
                     draggingToDismiss = true
+                    dragDistance = deltaY.coerceAtLeast(0f)
                     val progress = (dragDistance / binding.viewerRoot.height).coerceIn(0f, 1f)
                     val mediaView = getCurrentMediaView()
                     mediaView?.translationY = dragDistance
@@ -684,15 +755,23 @@ class ViewerActivity : AppCompatActivity() {
                     }
                     dragDistance = 0f
                     draggingToDismiss = false
+                    gestureDirection = GestureDirection.UNDETERMINED
                     return true
                 }
 
-                val upY = event.rawY
-                val isUpwardSwipe = downY - upY > dp(24) && velocityY < -INFO_PANEL_VELOCITY_PX_PER_SEC
-                if (isUpwardSwipe) {
-                    if (!infoVisible) toggleInfoPanel()
-                    return true
+                // Only treat as "open info" if the gesture was LOCKED as vertical-info,
+                // not just because the final velocity happened to be upward.
+                if (gestureDirection == GestureDirection.VERTICAL_INFO) {
+                    val upY = event.rawY
+                    val isUpwardSwipe = downY - upY > dp(24) && velocityY < -INFO_PANEL_VELOCITY_PX_PER_SEC
+                    if (isUpwardSwipe && !infoVisible) {
+                        toggleInfoPanel()
+                        gestureDirection = GestureDirection.UNDETERMINED
+                        return true
+                    }
                 }
+
+                gestureDirection = GestureDirection.UNDETERMINED
                 scheduleAutoHide()
             }
         }

@@ -178,15 +178,24 @@ READ_EXTERNAL_STORAGE (maxSdkVersion=32)
 10. **ExoPlayer leak on off-screen pages** — players are tracked in a `SparseArray` in `MediaPagerAdapter`; `onDestroy` calls `adapter.releaseAll()` instead of iterating only attached RecyclerView children. Double-bind during prefetch is guarded by `boundUri` check.
 11. **`ViewerItemsHolder` GC under memory pressure** — switched from `WeakReference` to a strong reference cleared via `release()` (called in `onCreate` after copy and again in `onDestroy`).
 12. **Video duration overloaded `locationName`** — `PhotoMetadata` now has a dedicated `durationMillis` field shown in its own info-panel duration row.
+13. **Gesture conflicts in viewer** — diagonal swipes misread as dismiss (only checked `deltaY`, never angle); info panel tap didn't close; stale captions during fast swiping (uncancelled metadata coroutines); info panel drag freeze at start. Fixed via: angle-aware gesture classification with `GestureDirection` enum locked at 10dp slop threshold (1.2x horizontal-to-vertical ratio); `onMediaTap` checks `infoVisible` first; `viewPager.isUserInputEnabled` toggled with panel state; cancellable `metadataJob` with position guard; info panel touch listener always returns `true` to consume from first frame.
 
 ---
 
 ## Active Roadmap Phase (as of last commit)
 **Phase 4 complete — Smart Albums (prompt-backed persistent albums).** Smart albums appear in the PINNED section of both the Albums page and the Collections page (when "pinned in collections" is enabled). Created via a two-field popup dialog (name + prompt), persisted in SharedPreferences, with Refresh/Rename/Edit Prompt/Delete/Unpin long-press menu. Members resolved from stored URIs in engine-rank order.
 
-**Viewer overhaul complete (uncommitted) — production-grade `ViewerActivity`.** All three phases of `implementation_plan.md` implemented:
+**Viewer overhaul complete — production-grade `ViewerActivity`.** All three phases of `implementation_plan.md` implemented:
 - *Phase 1 (bugs/stability):* single-finger dismiss gate, Glide-listener spinner, forced info-panel reset on page change, `supportFinishAfterTransition()`, geocoder `withTimeoutOrNull(3000)`, dedicated video duration field, strong-ref `ViewerItemsHolder`, `SparseArray` player tracking + `releaseAll()`, double-bind guard.
 - *Phase 2 (Metro polish):* position counter ("12 / 147"), top-bar date subtitle, bottom gradient, 260dp pill with set-as-wallpaper button (images only), info-panel drag handle + duration row, `translationY` control slide animation, AMOLED custom delete dialog.
 - *Phase 3 (video scrubber):* minimal `SeekBar` overlay with elapsed/total labels, 250ms progress poll, seek-on-drag, shown/hidden with controls, auto-hide suppressed while scrubbing.
 
-**Last commit:** fix: smart albums now visible in Collections page pinned header
+**Gesture conflict fixes complete — production-grade touch handling.** All 6 bugs from frame-by-frame analysis fixed:
+- Angle-aware gesture classification with `GestureDirection` enum (10dp slop, 1.2x ratio) eliminates diagonal swipe conflicts
+- Info panel tap-to-close via `onMediaTap` awareness
+- ViewPager2 paging disabled while info panel open (`isUserInputEnabled` toggle)
+- Cancellable metadata jobs prevent stale caption flashing during fast swiping
+- Info panel touch consumption from first frame eliminates drag freeze
+- Scoped `handleViewerTouch()` gated on `!infoVisible` reduces overhead
+
+**Last commit:** fix: viewer gesture conflicts — angle-aware classification, metadata job cancellation, info panel coordination

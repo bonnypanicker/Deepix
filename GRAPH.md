@@ -89,6 +89,10 @@ MainActivity
   │     │     ├── Glide (image, RequestListener → spinner + shared-element start)
   │     │     ├── ExoPlayer (per holder, SparseArray-tracked, releaseAll in onDestroy)
   │     │     └── scrubber: videoSeekBar + videoElapsed/videoTotal (onScrubbingChanged → activity auto-hide)
+  │     ├── Gesture handling (angle-aware classification)
+  │     │     ├── GestureDirection enum (UNDETERMINED → HORIZONTAL_PAGE | VERTICAL_DISMISS | VERTICAL_INFO)
+  │     │     ├── downX/downY tracking, 10dp slop threshold, 1.2x ratio lock
+  │     │     └── metadataJob cancellation (prevents stale captions)
   │     ├── WallpaperManager  (set-as-wallpaper, images only)
   │     ├── FavoritesStore → DbRepository
   │     └── ExifExtractor → ExifData
@@ -132,6 +136,8 @@ IndexPreferences  (SharedPreferences)
 | `IndexMagic` / `IndexVersion` in GalleryRepository | Will invalidate all existing embedding indexes on user devices |
 | `MetadataIndexMagic` / `MetadataIndexVersion` | Will invalidate metadata indexes |
 | `OnnxSessionOptions.DefaultThreadCount` (4) | Benchmark in `ThreadBenchmark.kt` determines optimal count |
+| `ViewerActivity` gesture logic | Test all 6 gesture scenarios: diagonal swipes, info panel tap-close, fast swiping captions, panel drag smoothness, paging disabled while panel open |
+| `GestureDirection` enum values | Update `handleViewerTouch()` classification logic and `onMediaTap` callback |
 
 ---
 
