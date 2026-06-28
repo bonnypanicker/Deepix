@@ -28,6 +28,18 @@
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
                 android:tint="#FFFFFF" />
+
+            <ImageButton
+                android:id="@+id/refreshBtn"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginEnd="6dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Refresh"
+                android:padding="12dp"
+                android:src="@drawable/ic_fluent_replay_24_regular"
+                android:tint="#FFFFFF" />
         </FrameLayout>
 
         <FrameLayout

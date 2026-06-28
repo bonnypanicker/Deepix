@@ -25,8 +25,11 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.devomind.gallerysearch.databinding.ActivitySmartCleanupBinding
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -48,6 +51,12 @@ class SmartCleanupActivity : AppCompatActivity() {
     private var currentCategory: CleanupAnalyzer.Category? = null
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
+
+    private var analysisJob: Job? = null
+    private var analyzing = false
+    private var indexingRunning = false
+    private var indexProgressCurrent = 0
+    private var indexProgressTotal = 0
 
     private val deleteRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -101,6 +110,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         binding.cleanupGrid.adapter = adapter
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
+        binding.refreshBtn.setOnClickListener { runAnalysis() }
         binding.selectAllBtn.setOnClickListener { toggleSelectAll() }
         binding.deleteBar.setOnClickListener { confirmDeleteSelected() }
 
@@ -114,8 +124,35 @@ class SmartCleanupActivity : AppCompatActivity() {
             }
         })
 
-        showIndexingBannerIfNeeded()
+        observeIndexing()
         runAnalysis()
+    }
+
+    /**
+     * Smart cleanup is live: it analyzes whatever is indexed right now, and refreshes
+     * automatically when background indexing finishes (or when the user taps refresh).
+     */
+    private fun observeIndexing() {
+        WorkManager.getInstance(this)
+            .getWorkInfosForUniqueWorkLiveData(IndexWorker.WorkName)
+            .observe(this) { infos ->
+                val work = infos.firstOrNull()
+                val wasRunning = indexingRunning
+                indexingRunning = work?.state == WorkInfo.State.RUNNING ||
+                    work?.state == WorkInfo.State.ENQUEUED
+                if (work?.state == WorkInfo.State.RUNNING) {
+                    indexProgressCurrent = work.progress.getInt(IndexWorker.ProgressCurrentKey, indexProgressCurrent)
+                    indexProgressTotal = work.progress.getInt(IndexWorker.ProgressTotalKey, indexProgressTotal)
+                }
+                // Auto-refresh once indexing completes, if the user is still on the overview.
+                if (wasRunning && work?.state == WorkInfo.State.SUCCEEDED &&
+                    binding.detailView.visibility != View.VISIBLE
+                ) {
+                    runAnalysis()
+                } else if (binding.detailView.visibility != View.VISIBLE) {
+                    showIndexingBannerIfNeeded()
+                }
+            }
     }
 
     private fun applyInsets() {
@@ -129,17 +166,27 @@ class SmartCleanupActivity : AppCompatActivity() {
 
     private fun showIndexingBannerIfNeeded() {
         val total = items.size
-        if (indexedCount >= total) {
-            binding.indexingBanner.visibility = View.GONE
-            return
-        }
-        binding.indexingBanner.visibility = View.VISIBLE
-        binding.indexingBannerText.text = if (indexedCount == 0) {
-            "The AI index hasn't been built yet, so duplicate and category detection won't work. " +
-                "Finish indexing first for the best results — blur detection still works now."
-        } else {
-            "Only $indexedCount of $total photos are indexed. Duplicate and category detection " +
-                "cover indexed photos only. Run this again after indexing completes for full results."
+        when {
+            indexingRunning -> {
+                binding.indexingBanner.visibility = View.VISIBLE
+                val progress = if (indexProgressTotal > 0) " ($indexProgressCurrent/$indexProgressTotal)" else ""
+                binding.indexingBannerText.text =
+                    "Indexing is still running$progress. These results cover what's indexed so far — " +
+                        "they'll refresh automatically when it finishes, or tap ↻ to update now."
+            }
+            indexedCount in 1 until total -> {
+                binding.indexingBanner.visibility = View.VISIBLE
+                binding.indexingBannerText.text =
+                    "$indexedCount of $total photos are indexed. Duplicate and category detection cover " +
+                        "indexed photos only — tap ↻ after indexing to update."
+            }
+            indexedCount == 0 -> {
+                binding.indexingBanner.visibility = View.VISIBLE
+                binding.indexingBannerText.text =
+                    "The AI index isn't built yet, so duplicate and category detection are limited. " +
+                        "Blur and quality checks still work. Tap ↻ as indexing progresses."
+            }
+            else -> binding.indexingBanner.visibility = View.GONE
         }
     }
 
@@ -148,17 +195,21 @@ class SmartCleanupActivity : AppCompatActivity() {
     // ---------------------------------------------------------------------------------------------
 
     private fun runAnalysis() {
+        if (analyzing) return
+        analyzing = true
+        binding.refreshBtn.isEnabled = false
         binding.progressRow.visibility = View.VISIBLE
-        binding.tilesContainer.removeAllViews()
-        binding.emptyText.visibility = View.GONE
+        showIndexingBannerIfNeeded()
 
-        lifecycleScope.launch {
+        analysisJob = lifecycleScope.launch {
+            var loadedEmbeddings = 0
             val report = withContext(Dispatchers.Default) {
                 val textEncoder = runCatching {
                     (application as GallerySearchApp).sharedEncoders.getTextEncoder()
                 }.getOrNull()
                 val repo = GalleryRepository(applicationContext, null, textEncoder)
                 val embeddings = repo.allEmbeddings()
+                loadedEmbeddings = embeddings.size
                 val sizes = loadImageSizes()
                 CleanupAnalyzer.analyze(
                     items = items,
@@ -175,6 +226,8 @@ class SmartCleanupActivity : AppCompatActivity() {
                 )
             }
 
+            // Live indexed count from the latest on-disk index (grows as indexing continues).
+            indexedCount = maxOf(indexedCount, loadedEmbeddings)
             sizeByUri = report.sizeByUri
             for (category in CleanupAnalyzer.Category.entries) {
                 categoryItems[category]!!.apply {
@@ -188,6 +241,9 @@ class SmartCleanupActivity : AppCompatActivity() {
             }
 
             binding.progressRow.visibility = View.GONE
+            binding.refreshBtn.isEnabled = true
+            analyzing = false
+            showIndexingBannerIfNeeded()
             renderTiles()
         }
     }
