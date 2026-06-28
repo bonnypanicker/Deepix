@@ -13,239 +13,385 @@
     <View
         android:id="@+id/bottomGradient"
         android:layout_width="match_parent"
-        android:layout_height="160dp"
+        android:layout_height="240dp"
         android:layout_gravity="bottom"
         android:background="@drawable/viewer_bottom_gradient" />
 
+    <!-- Top chrome: back + title (name/date) + favorite / info / overflow -->
     <FrameLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
-        android:layout_height="96dp"
+        android:layout_height="wrap_content"
         android:background="@drawable/viewer_top_gradient"
-        android:paddingTop="20dp">
-
-        <ImageButton
-            android:id="@+id/backBtn"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_gravity="start|top"
-            android:layout_marginStart="4dp"
-            android:background="@android:color/transparent"
-            android:contentDescription="Back"
-            android:padding="12dp"
-            android:src="@drawable/ic_fluent_back_24_regular"
-            android:tint="#FFFFFF" />
-
-        <LinearLayout
-            android:id="@+id/dotIndicator"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal|top"
-            android:layout_marginTop="20dp"
-            android:orientation="horizontal" />
+        android:paddingTop="20dp"
+        android:paddingBottom="12dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="bottom"
-            android:orientation="vertical"
-            android:paddingStart="64dp"
-            android:paddingEnd="64dp"
-            android:paddingBottom="10dp">
+            android:baselineAligned="false"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp">
 
-            <TextView
-                android:id="@+id/fileNameText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="middle"
-                android:includeFontPadding="false"
-                android:singleLine="true"
-                android:textColor="#FFFFFF"
-                android:textSize="13sp" />
+            <ImageButton
+                android:id="@+id/backBtn"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Back"
+                android:padding="12dp"
+                android:src="@drawable/ic_fluent_back_24_regular"
+                android:tint="#FFFFFF" />
 
-            <TextView
-                android:id="@+id/topBarDate"
-                android:layout_width="match_parent"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:includeFontPadding="false"
-                android:paddingTop="2dp"
-                android:singleLine="true"
-                android:textColor="#6F6F6F"
-                android:textSize="12sp"
-                android:visibility="gone" />
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/fileNameText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="middle"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/mediaDate"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:includeFontPadding="false"
+                    android:paddingTop="2dp"
+                    android:singleLine="true"
+                    android:textColor="#9A9A9A"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/favoriteBtn"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Favorite"
+                android:padding="12dp"
+                android:src="@drawable/ic_fluent_heart_24_regular"
+                android:tint="#FFFFFF" />
+
+            <ImageButton
+                android:id="@+id/infoBtn"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Info"
+                android:padding="12dp"
+                android:src="@drawable/ic_fluent_info_24_regular"
+                android:tint="#FFFFFF" />
+
+            <ImageButton
+                android:id="@+id/moreBtn"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="More options"
+                android:padding="12dp"
+                android:src="@drawable/ic_fluent_more_24_regular"
+                android:tint="#FFFFFF" />
         </LinearLayout>
-
     </FrameLayout>
 
+    <!-- Bottom chrome: flat action row -->
     <LinearLayout
-        android:id="@+id/viewerPill"
-        android:layout_width="260dp"
-        android:layout_height="52dp"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="24dp"
-        android:background="@drawable/pill_bg"
-        android:gravity="center"
-        android:orientation="horizontal">
+        android:id="@+id/bottomControls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="16dp">
 
-        <ImageButton
-            android:id="@+id/shareBtn"
+        <LinearLayout
+            android:id="@+id/actionShare"
             android:layout_width="0dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_height="52dp"
-            android:background="@android:color/transparent"
-            android:contentDescription="Share"
-            android:padding="15dp"
-            android:src="@drawable/ic_fluent_share_24_regular"
-            android:tint="#FFFFFF" />
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp">
 
-        <ImageButton
-            android:id="@+id/favoriteBtn"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="52dp"
-            android:background="@android:color/transparent"
-            android:contentDescription="Favorite"
-            android:padding="15dp"
-            android:src="@drawable/ic_fluent_heart_24_regular"
-            android:tint="#FFFFFF" />
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="Share"
+                android:src="@drawable/ic_fluent_share_24_regular"
+                android:tint="#FFFFFF" />
 
-        <ImageButton
-            android:id="@+id/wallpaperBtn"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="52dp"
-            android:background="@android:color/transparent"
-            android:contentDescription="Set as wallpaper"
-            android:padding="15dp"
-            android:src="@drawable/ic_fluent_image_24_regular"
-            android:tint="#FFFFFF" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:includeFontPadding="false"
+                android:text="Share"
+                android:textColor="#D6D6D6"
+                android:textSize="11sp" />
+        </LinearLayout>
 
-        <ImageButton
-            android:id="@+id/editBtn"
+        <LinearLayout
+            android:id="@+id/actionEdit"
             android:layout_width="0dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_height="52dp"
-            android:background="@android:color/transparent"
-            android:contentDescription="Edit"
-            android:padding="15dp"
-            android:src="@drawable/ic_fluent_edit_24_regular"
-            android:tint="#FFFFFF" />
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp">
 
-        <ImageButton
-            android:id="@+id/deleteBtn"
+            <ImageView
+                android:id="@+id/editIcon"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="Edit"
+                android:src="@drawable/ic_fluent_edit_24_regular"
+                android:tint="#FFFFFF" />
+
+            <TextView
+                android:id="@+id/editLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:includeFontPadding="false"
+                android:text="Edit"
+                android:textColor="#D6D6D6"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/actionWallpaper"
             android:layout_width="0dp"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_height="52dp"
-            android:background="@android:color/transparent"
-            android:contentDescription="Delete"
-            android:padding="15dp"
-            android:src="@drawable/ic_fluent_delete_24_regular"
-            android:tint="#FFFFFF" />
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="Set as wallpaper"
+                android:src="@drawable/ic_fluent_image_24_regular"
+                android:tint="#FFFFFF" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:includeFontPadding="false"
+                android:text="Wallpaper"
+                android:textColor="#D6D6D6"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/actionDelete"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="Delete"
+                android:src="@drawable/ic_fluent_delete_24_regular"
+                android:tint="#FFFFFF" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:includeFontPadding="false"
+                android:text="Delete"
+                android:textColor="#D6D6D6"
+                android:textSize="11sp" />
+        </LinearLayout>
     </LinearLayout>
 
+    <!-- Dim scrim behind the info sheet -->
+    <View
+        android:id="@+id/infoScrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0"
+        android:background="#000000"
+        android:visibility="gone" />
+
+    <!-- Info bottom sheet -->
     <LinearLayout
         android:id="@+id/infoPanel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:background="#0A0A0A"
+        android:background="@drawable/info_sheet_bg"
+        android:clickable="true"
+        android:focusable="true"
         android:orientation="vertical"
-        android:paddingStart="24dp"
-        android:paddingTop="14dp"
-        android:paddingEnd="24dp"
-        android:paddingBottom="36dp"
-        android:translationY="320dp">
-
-        <View
-            android:layout_width="28dp"
-            android:layout_height="4dp"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="18dp"
-            android:background="@drawable/info_drag_handle" />
-
-        <TextView
-            android:id="@+id/infoDate"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:fontFamily="sans-serif-light"
-            android:includeFontPadding="false"
-            android:textColor="#FFFFFF"
-            android:textSize="22sp" />
-
-        <TextView
-            android:id="@+id/infoSummary"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:includeFontPadding="false"
-            android:paddingTop="14dp"
-            android:textColor="#8A8A8A"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/infoCamera"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:includeFontPadding="false"
-            android:paddingTop="10dp"
-            android:textColor="#8A8A8A"
-            android:textSize="13sp"
-            android:visibility="gone" />
+        android:translationY="2000dp">
 
         <LinearLayout
-            android:id="@+id/infoDurationRow"
+            android:id="@+id/infoHandleArea"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:visibility="gone">
+            android:orientation="vertical"
+            android:paddingStart="24dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="24dp">
 
             <View
-                android:layout_width="8dp"
-                android:layout_height="8dp"
-                android:layout_marginEnd="8dp"
-                android:background="#3B9EFF" />
+                android:layout_width="32dp"
+                android:layout_height="4dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginBottom="18dp"
+                android:background="@drawable/info_drag_handle" />
 
             <TextView
-                android:id="@+id/infoDuration"
+                android:id="@+id/infoTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-light"
                 android:includeFontPadding="false"
+                android:paddingBottom="8dp"
+                android:text="Info"
                 android:textColor="#FFFFFF"
-                android:textSize="14sp" />
+                android:textSize="30sp" />
         </LinearLayout>
 
-        <LinearLayout
-            android:id="@+id/infoLocationRow"
+        <ScrollView
+            android:id="@+id/infoScroll"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:visibility="gone">
+            android:scrollbars="none">
 
-            <View
-                android:layout_width="8dp"
-                android:layout_height="8dp"
-                android:layout_marginEnd="8dp"
-                android:background="#3B9EFF" />
-
-            <TextView
-                android:id="@+id/infoLocation"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:includeFontPadding="false"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp" />
-        </LinearLayout>
+                android:orientation="vertical"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
+                android:paddingBottom="8dp">
 
-        <LinearLayout
-            android:id="@+id/infoTags"
+                <include
+                    android:id="@+id/rowFilename"
+                    layout="@layout/item_info_row" />
+
+                <include
+                    android:id="@+id/rowDate"
+                    layout="@layout/item_info_row" />
+
+                <include
+                    android:id="@+id/rowSize"
+                    layout="@layout/item_info_row" />
+
+                <include
+                    android:id="@+id/rowDimensions"
+                    layout="@layout/item_info_row" />
+
+                <include
+                    android:id="@+id/rowDuration"
+                    layout="@layout/item_info_row" />
+
+                <include
+                    android:id="@+id/rowLocation"
+                    layout="@layout/item_info_row" />
+
+                <include
+                    android:id="@+id/rowDevice"
+                    layout="@layout/item_info_row" />
+
+                <include
+                    android:id="@+id/rowLens"
+                    layout="@layout/item_info_row" />
+
+                <include
+                    android:id="@+id/rowSettings"
+                    layout="@layout/item_info_row" />
+
+                <include
+                    android:id="@+id/rowPath"
+                    layout="@layout/item_info_row" />
+
+                <LinearLayout
+                    android:id="@+id/rowTags"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingTop="14dp"
+                    android:paddingBottom="14dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:includeFontPadding="false"
+                        android:text="Tags"
+                        android:textColor="#8A8A8A"
+                        android:textSize="15sp" />
+
+                    <HorizontalScrollView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:scrollbars="none">
+
+                        <LinearLayout
+                            android:id="@+id/infoTags"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal" />
+                    </HorizontalScrollView>
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <TextView
+            android:id="@+id/infoCloseBtn"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:orientation="horizontal"
-            android:visibility="gone" />
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:paddingTop="20dp"
+            android:paddingBottom="20dp"
+            android:text="CLOSE"
+            android:textColor="#3B9EFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
     </LinearLayout>
 </FrameLayout>
