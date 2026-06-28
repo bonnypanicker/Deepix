@@ -1,23 +1,24 @@
 package com.devomind.gallerysearch
 
-import java.lang.ref.WeakReference
-
+/**
+ * Hands the (potentially large) media list to [ViewerActivity] without putting it through an
+ * Intent's Binder transaction. A strong reference is held intentionally — a [java.lang.ref.WeakReference]
+ * could be collected under memory pressure during the shared-element transition, leaving the viewer
+ * empty. [ViewerActivity] clears it via [release] as soon as it has copied the list.
+ */
 object ViewerItemsHolder {
-    private var ref: WeakReference<List<GalleryRepository.MediaItem>>? = null
+    private var items: List<GalleryRepository.MediaItem>? = null
 
     fun store(items: List<GalleryRepository.MediaItem>) {
-        ref = WeakReference(items)
+        this.items = items
     }
 
     fun retrieve(stringUri: String): List<GalleryRepository.MediaItem>? {
-        val items = ref?.get()
-        if (items != null && items.any { it.uri.toString() == stringUri }) {
-            return items
-        }
-        return null
+        val current = items ?: return null
+        return if (current.any { it.uri.toString() == stringUri }) current else null
     }
 
     fun release() {
-        ref = null
+        items = null
     }
 }

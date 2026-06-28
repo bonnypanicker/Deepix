@@ -22,6 +22,60 @@
         app:use_controller="false"
         app:show_buffering="when_playing" />
 
+    <!-- Minimal video scrubber overlay; shown only with controls for videos -->
+    <LinearLayout
+        android:id="@+id/videoControls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="92dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/videoElapsed"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-light"
+            android:includeFontPadding="false"
+            android:minWidth="36dp"
+            android:text="0:00"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp" />
+
+        <SeekBar
+            android:id="@+id/videoSeekBar"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_marginEnd="10dp"
+            android:layout_weight="1"
+            android:max="1000"
+            android:maxHeight="2dp"
+            android:minHeight="2dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:progressDrawable="@drawable/scrubber_progress"
+            android:splitTrack="false"
+            android:thumb="@drawable/scrubber_thumb"
+            android:thumbOffset="0dp" />
+
+        <TextView
+            android:id="@+id/videoTotal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-light"
+            android:includeFontPadding="false"
+            android:minWidth="36dp"
+            android:text="0:00"
+            android:textColor="#8A8A8A"
+            android:textSize="12sp"
+            android:gravity="end" />
+    </LinearLayout>
+
     <ProgressBar
         android:id="@+id/loadingSpinner"
         android:layout_width="48dp"

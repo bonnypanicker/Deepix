@@ -1,11 +1,14 @@
 package com.devomind.gallerysearch
 
 import android.app.RecoverableSecurityException
+import android.app.WallpaperManager
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ContentUris
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.location.Geocoder
 import android.net.Uri
 import android.os.Build
@@ -40,6 +43,7 @@ import com.devomind.gallerysearch.databinding.ActivityViewerBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -56,11 +60,13 @@ class ViewerActivity : AppCompatActivity() {
     private var infoVisible = false
     private var contentChanged = false
     private val dateFormat = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault())
+    private val topBarDateFormat = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
     private val autoHideHandler = Handler(Looper.getMainLooper())
     private val autoHideRunnable = Runnable { setControlsVisible(false) }
     private var downY = 0f
     private var dragDistance = 0f
     private var draggingToDismiss = false
+    private var isScrubbing = false
     private var velocityTracker: VelocityTracker? = null
     private var pendingDeleteUri: Uri? = null
     private var pendingDeleteNeedsRetry = false
@@ -164,6 +170,14 @@ class ViewerActivity : AppCompatActivity() {
                 binding.editBtn.setImageResource(R.drawable.ic_fluent_play_24_regular)
                 binding.editBtn.contentDescription = "Play video"
                 setControlsVisible(true)
+            },
+            onScrubbingChanged = { scrubbing ->
+                isScrubbing = scrubbing
+                if (scrubbing) {
+                    autoHideHandler.removeCallbacks(autoHideRunnable)
+                } else {
+                    scheduleAutoHide()
+                }
             }
         )
         binding.viewPager.adapter = adapter
@@ -230,6 +244,7 @@ class ViewerActivity : AppCompatActivity() {
         val isVideo = item.mediaType == GalleryRepository.MediaType.Video
 
         binding.fileNameText.text = item.displayName ?: "Photo"
+        binding.positionCounter.text = "${position + 1} / ${items.size}"
         renderFavoriteState(favoritesStore.isFavorite(uri))
 
         binding.editBtn.setImageResource(
@@ -257,18 +272,23 @@ class ViewerActivity : AppCompatActivity() {
             bindMetadata(metadata, exif, tags)
         }
 
+        // Force-close the info panel without animation so it never carries over between pages.
+        infoVisible = false
+        binding.infoPanel.translationY = binding.infoPanel.height.toFloat()
+        binding.infoPanel.alpha = 1f
+
         setControlsVisible(true)
-        if (infoVisible) {
-            infoVisible = false
-            binding.infoPanel.translationY = binding.infoPanel.height.toFloat()
-        }
         scheduleAutoHide()
     }
 
     private fun bindGlobalActions() {
-        binding.backBtn.setOnClickListener { finish() }
+        binding.backBtn.setOnClickListener { supportFinishAfterTransition() }
         binding.infoBtn.setOnClickListener { toggleInfoPanel() }
         binding.shareBtn.setOnClickListener { shareCurrent() }
+        binding.wallpaperBtn.setOnClickListener {
+            val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
+            setAsWallpaper(item)
+        }
         binding.favoriteBtn.setOnClickListener {
             val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
             val isFavorite = favoritesStore.toggle(item.uri)
@@ -339,10 +359,23 @@ class ViewerActivity : AppCompatActivity() {
 
     private fun bindMetadata(metadata: PhotoMetadata, exif: ExifData?, tags: List<com.devomind.gallerysearch.db.TagEntity>) {
         binding.fileNameText.text = metadata.displayName ?: "Photo"
+        if (metadata.dateMillis > 0L) {
+            binding.topBarDate.visibility = View.VISIBLE
+            binding.topBarDate.text = topBarDateFormat.format(Date(metadata.dateMillis))
+        } else {
+            binding.topBarDate.visibility = View.GONE
+        }
         binding.infoDate.text = if (metadata.dateMillis > 0L) {
             dateFormat.format(Date(metadata.dateMillis))
         } else {
             "Date unknown"
+        }
+
+        if (metadata.durationMillis > 0L) {
+            binding.infoDurationRow.visibility = View.VISIBLE
+            binding.infoDuration.text = "Duration  ·  ${formatDuration(metadata.durationMillis) ?: "—"}"
+        } else {
+            binding.infoDurationRow.visibility = View.GONE
         }
         binding.infoSummary.text = buildString {
             if (metadata.width > 0 && metadata.height > 0) {
@@ -457,13 +490,24 @@ class ViewerActivity : AppCompatActivity() {
     private fun setControlsVisible(visible: Boolean) {
         controlsVisible = visible
         val targetAlpha = if (visible) 1f else 0f
-        binding.topBar.animate().alpha(targetAlpha).setDuration(200).start()
-        binding.viewerPill.animate().alpha(targetAlpha).setDuration(200).start()
+        val topTranslation = if (visible) 0f else -dp(20).toFloat()
+        val pillTranslation = if (visible) 0f else dp(20).toFloat()
+        binding.topBar.animate().alpha(targetAlpha).translationY(topTranslation).setDuration(220).start()
+        binding.viewerPill.animate().alpha(targetAlpha).translationY(pillTranslation).setDuration(220).start()
+        binding.bottomGradient.animate().alpha(targetAlpha).setDuration(220).start()
+        syncScrubber()
         if (visible) {
             scheduleAutoHide()
         } else {
             autoHideHandler.removeCallbacks(autoHideRunnable)
         }
+    }
+
+    private fun currentIsVideo(): Boolean =
+        items.getOrNull(currentPosition)?.mediaType == GalleryRepository.MediaType.Video
+
+    private fun syncScrubber() {
+        getCurrentPageViewHolder()?.setScrubberVisible(controlsVisible && currentIsVideo())
     }
 
     private fun toggleInfoPanel() {
@@ -532,7 +576,7 @@ class ViewerActivity : AppCompatActivity() {
     private fun scheduleAutoHide() {
         autoHideHandler.removeCallbacks(autoHideRunnable)
         val isVideoPlaying = getCurrentPageViewHolder()?.isPlaying() == true
-        if (controlsVisible && !infoVisible && !isVideoPlaying) {
+        if (controlsVisible && !infoVisible && !isScrubbing && !isVideoPlaying) {
             autoHideHandler.postDelayed(autoHideRunnable, 3000)
         }
     }
@@ -547,12 +591,21 @@ class ViewerActivity : AppCompatActivity() {
                 velocityTracker = VelocityTracker.obtain()
                 velocityTracker?.addMovement(event)
             }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                // A second finger landed (pinch-to-zoom) — abandon any in-progress dismiss drag
+                // and snap the media back so zoom and dismiss never fight each other.
+                if (draggingToDismiss) {
+                    animateDismissReset()
+                    draggingToDismiss = false
+                    dragDistance = 0f
+                }
+            }
             MotionEvent.ACTION_MOVE -> {
                 velocityTracker?.addMovement(event)
                 val deltaY = event.rawY - downY
                 dragDistance = deltaY.coerceAtLeast(0f)
 
-                if (!infoVisible && dragDistance > dp(4) && deltaY > 0 && !isCurrentPageZoomed()) {
+                if (event.pointerCount == 1 && !infoVisible && dragDistance > dp(4) && deltaY > 0 && !isCurrentPageZoomed()) {
                     draggingToDismiss = true
                     val progress = (dragDistance / binding.viewerRoot.height).coerceIn(0f, 1f)
                     val mediaView = getCurrentMediaView()
@@ -643,12 +696,93 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     private fun confirmDelete(uri: Uri) {
-        AlertDialog.Builder(this)
-            .setTitle("Delete photo?")
-            .setMessage("This removes the photo from the device.")
-            .setPositiveButton("Delete") { _, _ -> deletePhoto(uri) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        val isVideo = items.getOrNull(currentPosition)?.mediaType == GalleryRepository.MediaType.Video
+        val noun = if (isVideo) "video" else "photo"
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(28), dp(28), dp(28), dp(16))
+        }
+        val title = TextView(this).apply {
+            text = "Delete $noun?"
+            setTextColor(Color.WHITE)
+            textSize = 21f
+            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+        }
+        val message = TextView(this).apply {
+            text = "This removes the $noun from your device."
+            setTextColor(Color.parseColor("#8A8A8A"))
+            textSize = 14f
+            setPadding(0, dp(12), 0, dp(22))
+        }
+        val buttonRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.END
+        }
+        container.addView(title)
+        container.addView(message)
+        container.addView(buttonRow)
+
+        val dialog = AlertDialog.Builder(this).setView(container).create()
+        dialog.window?.setBackgroundDrawable(
+            GradientDrawable().apply {
+                cornerRadius = dp(16).toFloat()
+                setColor(Color.parseColor("#0A0A0A"))
+                setStroke(dp(1), Color.parseColor("#2A2A2A"))
+            }
+        )
+
+        fun dialogButton(label: String, color: Int, onClick: () -> Unit): TextView =
+            TextView(this).apply {
+                text = label
+                setTextColor(color)
+                textSize = 14f
+                isAllCaps = true
+                typeface = Typeface.DEFAULT_BOLD
+                setPadding(dp(18), dp(10), dp(18), dp(10))
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { onClick() }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { marginStart = dp(8) }
+            }
+
+        buttonRow.addView(dialogButton("Cancel", Color.parseColor("#8A8A8A")) { dialog.dismiss() })
+        buttonRow.addView(dialogButton("Delete", Color.parseColor("#FF6B8A")) {
+            dialog.dismiss()
+            deletePhoto(uri)
+        })
+
+        dialog.show()
+    }
+
+    private fun setAsWallpaper(item: GalleryRepository.MediaItem) {
+        if (item.mediaType == GalleryRepository.MediaType.Video) {
+            Toast.makeText(this, "Wallpaper isn't available for videos.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val mimeType = contentResolver.getType(item.uri) ?: "image/*"
+        try {
+            val wallpaperManager = WallpaperManager.getInstance(this)
+            val intent = wallpaperManager.getCropAndSetWallpaperIntent(item.uri)
+            startActivity(intent)
+        } catch (error: Exception) {
+            Log.d(Tag, "Crop-and-set wallpaper unavailable; falling back to ATTACH_DATA.", error)
+            val fallback = Intent(Intent.ACTION_ATTACH_DATA).apply {
+                addCategory(Intent.CATEGORY_DEFAULT)
+                setDataAndType(item.uri, mimeType)
+                putExtra("mimeType", mimeType)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            try {
+                startActivity(Intent.createChooser(fallback, "Set as"))
+            } catch (notFound: ActivityNotFoundException) {
+                Log.w(Tag, "No app available to set wallpaper.", notFound)
+                Toast.makeText(this, "No app available to set wallpaper.", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun deletePhoto(uri: Uri, afterApproval: Boolean = false) {
@@ -690,6 +824,7 @@ class ViewerActivity : AppCompatActivity() {
             }
             binding.viewPager.setCurrentItem(currentPosition, false)
             bindPage(currentPosition)
+            binding.positionCounter.text = "${currentPosition + 1} / ${items.size}"
         }
     }
 
@@ -718,7 +853,7 @@ class ViewerActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadMetadata(uri: Uri, isVideo: Boolean): PhotoMetadata {
+    private suspend fun loadMetadata(uri: Uri, isVideo: Boolean): PhotoMetadata {
         if (isVideo) return loadVideoMetadata(uri)
 
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -796,31 +931,36 @@ class ViewerActivity : AppCompatActivity() {
                     height = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)),
                     sizeBytes = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)),
                     mimeType = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)),
-                    locationName = formatDuration(duration)
+                    durationMillis = duration
                 )
             }
         }
         return PhotoMetadata(mimeType = "video/*")
     }
 
-    private fun resolveLocationName(uri: Uri): String? {
+    private suspend fun resolveLocationName(uri: Uri): String? {
         val latLong = readLatLong(uri) ?: return null
         if (!Geocoder.isPresent()) return null
 
-        return runCatching {
-            val geocoder = Geocoder(this, Locale.getDefault())
-            @Suppress("DEPRECATION")
-            val addresses = geocoder.getFromLocation(latLong.first, latLong.second, 1).orEmpty()
-            val address = addresses.firstOrNull() ?: return@runCatching null
-            listOfNotNull(
-                address.locality,
-                address.subAdminArea,
-                address.adminArea,
-                address.countryName
-            ).distinct().take(2).joinToString(", ").ifBlank { null }
-        }.onFailure { error ->
-            Log.d(Tag, "Unable to resolve location for $uri.", error)
-        }.getOrNull()
+        // Geocoder does network I/O; bound it so a slow/offline lookup never stalls the panel.
+        return withTimeoutOrNull(GEOCODER_TIMEOUT_MS) {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    val geocoder = Geocoder(this@ViewerActivity, Locale.getDefault())
+                    @Suppress("DEPRECATION")
+                    val addresses = geocoder.getFromLocation(latLong.first, latLong.second, 1).orEmpty()
+                    val address = addresses.firstOrNull() ?: return@runCatching null
+                    listOfNotNull(
+                        address.locality,
+                        address.subAdminArea,
+                        address.adminArea,
+                        address.countryName
+                    ).distinct().take(2).joinToString(", ").ifBlank { null }
+                }.onFailure { error ->
+                    Log.d(Tag, "Unable to resolve location for $uri.", error)
+                }.getOrNull()
+            }
+        }
     }
 
     private fun readLatLong(uri: Uri): Pair<Double, Double>? {
@@ -860,13 +1000,15 @@ class ViewerActivity : AppCompatActivity() {
         val height: Int = 0,
         val sizeBytes: Long = 0L,
         val mimeType: String? = null,
-        val locationName: String? = null
+        val locationName: String? = null,
+        val durationMillis: Long = 0L
     )
 
     companion object {
         private const val Tag = "ViewerActivity"
         private const val DISMISS_VELOCITY_PX_PER_SEC = 1200f
         private const val INFO_PANEL_VELOCITY_PX_PER_SEC = 600f
+        private const val GEOCODER_TIMEOUT_MS = 3000L
         const val ExtraContentChanged = "content_changed"
         const val ExtraItems = "items"
         const val ExtraPosition = "position"
@@ -877,14 +1019,9 @@ class ViewerActivity : AppCompatActivity() {
     override fun onDestroy() {
         autoHideHandler.removeCallbacks(autoHideRunnable)
         binding.viewPager.unregisterOnPageChangeCallback(pageChangeCallback)
-        val recyclerView = binding.viewPager.getChildAt(0) as? RecyclerView
-        recyclerView?.let { rv ->
-            for (i in 0 until rv.childCount) {
-                val child = rv.getChildAt(i)
-                val holder = rv.getChildViewHolder(child) as? MediaPagerAdapter.PageViewHolder
-                holder?.cleanup()
-            }
-        }
+        // Releases every tracked player, including off-screen holders RecyclerView is caching.
+        if (::adapter.isInitialized) adapter.releaseAll()
+        ViewerItemsHolder.release()
         super.onDestroy()
     }
 

@@ -42,7 +42,9 @@ FastScrollIndicator       FastScrollIndicator.kt   attach(RecyclerView, ImageAda
 StickyHeaderDecoration    StickyHeaderDecoration.kt  RecyclerView.ItemDecoration
 ThumbnailScaleGestureListener  ThumbnailScaleGestureListener.kt  pinch-to-resize grid columns
 ImageAdapter              ImageAdapter.kt          RecyclerView.Adapter; useCollageLayout; gridColumnCount; spanSizeAt(); replaceCells()
-MediaPagerAdapter         MediaPagerAdapter.kt     RecyclerView.Adapter for ViewPager2
+MediaPagerAdapter         MediaPagerAdapter.kt     RecyclerView.Adapter for ViewPager2; ctor cb: onInitialImageLoaded/onMediaTap/onMediaLongClick/onVideoCompleted/onScrubbingChanged; releaseAll()
+  PageViewHolder          MediaPagerAdapter.kt     bind(); start/pause/stopPlayback(); isPlaying(); isZoomed(); setScrubberVisible(); cleanup(); player tracked in SparseArray
+ViewerItemsHolder         ViewerItemsHolder.kt     object; store()/retrieve(uri)/release(); strong ref (was WeakReference)
 FolderNode                FolderNode.kt            data class: name, path, children, mediaCount
 ExifData                  ExifData.kt              data class; hasCameraInfo: Boolean; hasGps: Boolean
 ExifExtractor             ExifExtractor.kt         extract(context, uri): ExifData

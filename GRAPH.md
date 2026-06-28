@@ -84,8 +84,12 @@ MainActivity
   │     ├── FastScrollIndicator
   │     └── ThumbnailScaleGestureListener
   ├── ViewerActivity  (via viewerLauncher)
+  │     ├── ViewerItemsHolder  (strong-ref hand-off of media list; release()d in onCreate + onDestroy)
   │     ├── MediaPagerAdapter  (ViewPager2)
-  │     │     └── ViewerItemsHolder
+  │     │     ├── Glide (image, RequestListener → spinner + shared-element start)
+  │     │     ├── ExoPlayer (per holder, SparseArray-tracked, releaseAll in onDestroy)
+  │     │     └── scrubber: videoSeekBar + videoElapsed/videoTotal (onScrubbingChanged → activity auto-hide)
+  │     ├── WallpaperManager  (set-as-wallpaper, images only)
   │     ├── FavoritesStore → DbRepository
   │     └── ExifExtractor → ExifData
   ├── TagPickerDialog → DbRepository (TagDao)
@@ -154,7 +158,10 @@ item_folder.xml         → ImageAdapter (folder row)
 item_timeline_header.xml → ImageAdapter (sticky date header)
 item_pinned_album_chip.xml  → ImageAdapter (pinned album chip)
 item_pinned_albums_header.xml → ImageAdapter (pinned section header)
-item_viewer_page.xml    → MediaPagerAdapter
+item_viewer_page.xml    → MediaPagerAdapter (photoView, playerView, videoControls scrubber: scrubber_thumb/scrubber_progress)
+viewer_bottom_gradient.xml → activity_viewer.xml (bottomGradient)
+info_drag_handle.xml    → activity_viewer.xml (info panel handle)
+scrubber_thumb.xml / scrubber_progress.xml → item_viewer_page.xml (video SeekBar)
 dialog_tag_picker.xml   → TagPickerDialog
 dialog_smart_album.xml  → MainActivity (smart album create dialog)
 item_empty.xml          → ImageAdapter (empty state)

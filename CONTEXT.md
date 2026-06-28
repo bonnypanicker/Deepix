@@ -14,7 +14,7 @@
 |---|---|
 | `GallerySearchApp` | Application class. Owns `SharedEncoders` (lazy singleton for ONNX sessions) |
 | `MainActivity` | God activity: browse/search/album/smart-album/folder modes, WorkManager orchestration, all UI state |
-| `ViewerActivity` | Full-screen pager: spring-physics swipe-to-dismiss, EXIF panel, in-app ExoPlayer video |
+| `ViewerActivity` | Full-screen pager: spring-physics swipe-to-dismiss (single-finger gated), EXIF/info panel, position counter, top-bar date, set-as-wallpaper, Metro delete dialog, video scrubber sync |
 | `GalleryRepository` | Data + AI core: MediaStore queries, embedding index (binary file), metadata index, search |
 | `DbRepository` | Room facade: media metadata, EXIF, favorites, tags, tag-media cross-refs |
 | `ImageEncoder` | MobileCLIP S2 FP16 vision ONNX. Input: `[N,3,256,256]` CHW float. Output: L2-norm embedding |
@@ -35,6 +35,8 @@
 | `EmbeddingUtils` | `l2Normalize()` + `cosineSimilarity()` (dot product on pre-normalized vectors) |
 | `FastScrollIndicator` | Custom View: animated thumb, track line, 64dp touch target from right edge |
 | `StickyHeaderDecoration` | RecyclerView `ItemDecoration` for floating date headers |
+| `MediaPagerAdapter` | ViewPager2 adapter for viewer pages: Glide image load (spinner via `RequestListener`), pooled ExoPlayer per holder tracked in `SparseArray`, video scrubber (250ms poll + seek) |
+| `ViewerItemsHolder` | Strong-ref hand-off of the media list to `ViewerActivity` (avoids Binder size limit); cleared via `release()` |
 
 ---
 
@@ -171,10 +173,20 @@ READ_EXTERNAL_STORAGE (maxSdkVersion=32)
 5. **Batch OOM fallback** — `IndexWorker` catches `OutOfMemoryError`, returns `Result.failure()`
 6. **FavoritesStore migration** — legacy SharedPrefs → Room migration runs in `init` block on IO dispatcher
 7. **Smart albums not visible in Collections page pinned header** — `renderMediaSection` was building `pinnedAlbums` from `albums` only (MediaStore), missing smart albums. Fixed by using `albumById` merge (real + smart) same as `renderAlbums()`.
+8. **Viewer image spinner timing** — `photoView.post {}` hid the spinner before Glide finished decoding. Now driven by a Glide `RequestListener` (`onResourceReady`/`onLoadFailed`), which also fires `startPostponedEnterTransition()`.
+9. **Pinch-to-zoom vs swipe-to-dismiss** — dismiss drag is gated on `event.pointerCount == 1`; a second finger (`ACTION_POINTER_DOWN`) aborts an in-progress drag and snaps the media back.
+10. **ExoPlayer leak on off-screen pages** — players are tracked in a `SparseArray` in `MediaPagerAdapter`; `onDestroy` calls `adapter.releaseAll()` instead of iterating only attached RecyclerView children. Double-bind during prefetch is guarded by `boundUri` check.
+11. **`ViewerItemsHolder` GC under memory pressure** — switched from `WeakReference` to a strong reference cleared via `release()` (called in `onCreate` after copy and again in `onDestroy`).
+12. **Video duration overloaded `locationName`** — `PhotoMetadata` now has a dedicated `durationMillis` field shown in its own info-panel duration row.
 
 ---
 
 ## Active Roadmap Phase (as of last commit)
 **Phase 4 complete — Smart Albums (prompt-backed persistent albums).** Smart albums appear in the PINNED section of both the Albums page and the Collections page (when "pinned in collections" is enabled). Created via a two-field popup dialog (name + prompt), persisted in SharedPreferences, with Refresh/Rename/Edit Prompt/Delete/Unpin long-press menu. Members resolved from stored URIs in engine-rank order.
+
+**Viewer overhaul complete (uncommitted) — production-grade `ViewerActivity`.** All three phases of `implementation_plan.md` implemented:
+- *Phase 1 (bugs/stability):* single-finger dismiss gate, Glide-listener spinner, forced info-panel reset on page change, `supportFinishAfterTransition()`, geocoder `withTimeoutOrNull(3000)`, dedicated video duration field, strong-ref `ViewerItemsHolder`, `SparseArray` player tracking + `releaseAll()`, double-bind guard.
+- *Phase 2 (Metro polish):* position counter ("12 / 147"), top-bar date subtitle, bottom gradient, 260dp pill with set-as-wallpaper button (images only), info-panel drag handle + duration row, `translationY` control slide animation, AMOLED custom delete dialog.
+- *Phase 3 (video scrubber):* minimal `SeekBar` overlay with elapsed/total labels, 250ms progress poll, seek-on-drag, shown/hidden with controls, auto-hide suppressed while scrubbing.
 
 **Last commit:** fix: smart albums now visible in Collections page pinned header
