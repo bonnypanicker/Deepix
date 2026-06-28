@@ -864,7 +864,6 @@ class ViewerActivity : AppCompatActivity() {
             }
             binding.viewPager.setCurrentItem(currentPosition, false)
             bindPage(currentPosition)
-            binding.positionCounter.text = "${currentPosition + 1} / ${items.size}"
         }
     }
 
