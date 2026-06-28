@@ -106,6 +106,7 @@ class MainActivity : AppCompatActivity() {
     private var lastSearchStatusText = ""
     private var imageSearchActive = false
     private var suppressSearchInput = false
+    private val activeFilters = LinkedHashSet<String>()
 
     private val monthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
         .withZone(ZoneId.systemDefault())
@@ -122,6 +123,10 @@ class MainActivity : AppCompatActivity() {
             finish()
         }
     }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* Optional: indexing/cleanup still run; this just enables their progress notifications. */ }
 
     private val viewerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -242,7 +247,17 @@ class MainActivity : AppCompatActivity() {
         bindChrome()
         bindBackNavigation()
         requestGalleryPermission()
+        ensureNotificationPermission()
         observeIndexWorker()
+    }
+
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT < 33) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     private fun bindChrome() {
@@ -324,7 +339,10 @@ class MainActivity : AppCompatActivity() {
         }
         binding.searchInput.doAfterTextChanged {
             if (suppressSearchInput) return@doAfterTextChanged
-            imageSearchActive = false
+            if (imageSearchActive) {
+                imageSearchActive = false
+                clearImageSearchThumb()
+            }
             updateSearchPillState()
             if (currentMode == Mode.Search && binding.searchPanel.visibility == View.VISIBLE) {
                 searchDebounceJob?.cancel()
@@ -954,7 +972,7 @@ class MainActivity : AppCompatActivity() {
         updateDrawerState()
         updateBottomPanelState()
         updateSearchPillState()
-        if (binding.searchInput.text.isNullOrBlank()) {
+        if (effectiveQuery().isBlank()) {
             adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
             resetGridToTop()
         } else {
@@ -969,7 +987,10 @@ class MainActivity : AppCompatActivity() {
         binding.searchPanel.visibility = View.GONE
         if (clearQuery) {
             binding.searchInput.text?.clear()
+            activeFilters.clear()
         }
+        imageSearchActive = false
+        clearImageSearchThumb()
         binding.searchInput.clearFocus()
         currentMode = if (currentAlbum != null) Mode.AlbumDetail else Mode.Browse
         renderCurrentState()
@@ -989,7 +1010,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun submitSearch() {
-        val query = binding.searchInput.text?.toString()?.trim().orEmpty()
+        val query = effectiveQuery()
         val repo = repository ?: return
         searchDebounceJob?.cancel()
         searchJob?.cancel()
@@ -1363,6 +1384,7 @@ class MainActivity : AppCompatActivity() {
         suppressSearchInput = true
         binding.searchInput.setText("")
         suppressSearchInput = false
+        showImageSearchThumb(uri)
         binding.fastScrollIndicator.visibility = View.GONE
         updateTopBarForMode("search")
         updateDrawerState()
@@ -1406,7 +1428,7 @@ class MainActivity : AppCompatActivity() {
     ): Boolean {
         return currentMode == Mode.Search &&
             binding.searchPanel.visibility == View.VISIBLE &&
-            binding.searchInput.text?.toString()?.trim().orEmpty() == query &&
+            effectiveQuery() == query &&
             searchMode == mode &&
             activeSection == section &&
             currentAlbum?.id == albumId
@@ -1414,10 +1436,48 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateSearchPillState() {
         if (binding.searchPanel.visibility != View.VISIBLE) return
-        val parsed = StructuredSearch.parse(binding.searchInput.text?.toString().orEmpty())
         updateSearchModeUi()
-        renderActiveSearchPills(parsed)
-        renderQuickSearchPills(parsed)
+        if (imageSearchActive) {
+            binding.searchActivePillsScroll.visibility = View.GONE
+            binding.searchQuickPillsScroll.visibility = View.GONE
+            return
+        }
+        renderActiveSearchPills()
+        renderQuickSearchPills()
+    }
+
+    /** Composes free-text + active filter chips into the query the engine actually runs. */
+    private fun effectiveQuery(): String {
+        val text = binding.searchInput.text?.toString()?.trim().orEmpty()
+        return (listOf(text) + activeFilters).filter { it.isNotBlank() }.joinToString(" ").trim()
+    }
+
+    private fun addFilter(token: String) {
+        val canonical = StructuredSearch.canonicalToken(token)
+        if (activeFilters.any { StructuredSearch.canonicalToken(it) == canonical }) return
+        activeFilters.add(token)
+        onFiltersChanged()
+    }
+
+    private fun removeFilter(token: String) {
+        val canonical = StructuredSearch.canonicalToken(token)
+        activeFilters.removeAll { StructuredSearch.canonicalToken(it) == canonical }
+        onFiltersChanged()
+    }
+
+    private fun onFiltersChanged() {
+        if (imageSearchActive) {
+            imageSearchActive = false
+            clearImageSearchThumb()
+        }
+        updateSearchPillState()
+        if (effectiveQuery().isBlank()) {
+            adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
+            resetGridToTop()
+            binding.resultCount.text = ""
+        } else {
+            submitSearch()
+        }
     }
 
     private fun updateSearchModeUi() {
@@ -1443,11 +1503,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun renderActiveSearchPills(parsed: StructuredSearch.ParsedQuery) {
+    private fun renderActiveSearchPills() {
         binding.searchActivePills.removeAllViews()
         val scopePill = currentSearchScopePill()
+        val parsedFilters = StructuredSearch.parse(activeFilters.joinToString(" ")).filters
         binding.searchActivePillsScroll.visibility =
-            if (parsed.filters.isEmpty() && scopePill == null) View.GONE else View.VISIBLE
+            if (parsedFilters.isEmpty() && scopePill == null) View.GONE else View.VISIBLE
         scopePill?.let {
             binding.searchActivePills.addView(
                 createSearchPillView(
@@ -1458,26 +1519,25 @@ class MainActivity : AppCompatActivity() {
                 )
             )
         }
-        parsed.filters.forEach { filter ->
+        parsedFilters.forEach { filter ->
             binding.searchActivePills.addView(
-                createSearchPillView(
-                    label = "${filter.chipLabel} x",
-                    selected = true,
-                    onClick = { removeSearchToken(filter.rawToken) }
-                )
+                createActiveFilterChip(filter.chipLabel) { removeFilter(filter.rawToken) }
             )
         }
     }
 
-    private fun renderQuickSearchPills(parsed: StructuredSearch.ParsedQuery) {
+    private fun renderQuickSearchPills() {
         binding.searchQuickPills.removeAllViews()
-        buildQuickSearchPills().forEach { pill ->
-            val selected = StructuredSearch.canonicalToken(pill.token) in parsed.normalizedTokens
+        val activeCanonical = activeFilters.mapTo(HashSet()) { StructuredSearch.canonicalToken(it) }
+        val suggestions = buildQuickSearchPills()
+            .filter { StructuredSearch.canonicalToken(it.token) !in activeCanonical }
+        binding.searchQuickPillsScroll.visibility = if (suggestions.isEmpty()) View.GONE else View.VISIBLE
+        suggestions.forEach { pill ->
             binding.searchQuickPills.addView(
                 createSearchPillView(
                     label = pill.label,
-                    selected = selected,
-                    onClick = { toggleSearchToken(pill.token) }
+                    selected = false,
+                    onClick = { addFilter(pill.token) }
                 )
             )
         }
@@ -1583,32 +1643,66 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun toggleSearchToken(token: String) {
-        val parsed = StructuredSearch.parse(binding.searchInput.text?.toString().orEmpty())
-        val canonical = StructuredSearch.canonicalToken(token)
-        val tokens = parsed.rawTokens.toMutableList()
-        val existingIndex = tokens.indexOfFirst { StructuredSearch.canonicalToken(it) == canonical }
-        if (existingIndex >= 0) {
-            tokens.removeAt(existingIndex)
-        } else {
-            tokens += token
+    private fun createActiveFilterChip(label: String, onRemove: () -> Unit): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            background = ContextCompat.getDrawable(this@MainActivity, R.drawable.search_filter_chip_active_bg)
+            setPadding(dp(14), dp(8), dp(10), dp(8))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginEnd = dp(8) }
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onRemove() }
         }
-        updateSearchQueryTokens(tokens)
+        val text = TextView(this).apply {
+            this.text = label
+            textSize = 12f
+            includeFontPadding = false
+            setTextColor(Color.WHITE)
+        }
+        val close = ImageView(this).apply {
+            setImageResource(R.drawable.ic_fluent_dismiss_24_regular)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(dp(13), dp(13)).apply { marginStart = dp(7) }
+        }
+        row.addView(text)
+        row.addView(close)
+        return row
     }
 
-    private fun removeSearchToken(token: String) {
-        val canonical = StructuredSearch.canonicalToken(token)
-        val tokens = StructuredSearch.parse(binding.searchInput.text?.toString().orEmpty())
-            .rawTokens
-            .filterNot { StructuredSearch.canonicalToken(it) == canonical }
-        updateSearchQueryTokens(tokens)
+    private fun showImageSearchThumb(uri: Uri) {
+        binding.searchLeadingIcon.visibility = View.GONE
+        binding.searchImageThumb.visibility = View.VISIBLE
+        com.bumptech.glide.Glide.with(this)
+            .load(uri)
+            .centerCrop()
+            .into(binding.searchImageThumb)
+        binding.searchImageThumb.setOnClickListener { clearImageSearch() }
+        binding.searchInput.hint = "Photos similar to this image"
     }
 
-    private fun updateSearchQueryTokens(tokens: List<String>) {
-        val newQuery = tokens.joinToString(" ").trim()
-        if (binding.searchInput.text?.toString() == newQuery) return
-        binding.searchInput.setText(newQuery)
-        binding.searchInput.setSelection(newQuery.length)
+    private fun clearImageSearchThumb() {
+        binding.searchImageThumb.visibility = View.GONE
+        binding.searchImageThumb.setOnClickListener(null)
+        com.bumptech.glide.Glide.with(this).clear(binding.searchImageThumb)
+        binding.searchLeadingIcon.visibility = View.VISIBLE
+        binding.searchInput.hint = "Search this section"
+    }
+
+    private fun clearImageSearch() {
+        imageSearchActive = false
+        clearImageSearchThumb()
+        updateSearchPillState()
+        if (effectiveQuery().isBlank()) {
+            adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
+            resetGridToTop()
+            binding.resultCount.text = ""
+        } else {
+            submitSearch()
+        }
     }
 
     private fun formatSearchToken(key: String, value: String): String {

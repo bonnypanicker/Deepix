@@ -112,11 +112,20 @@
                     android:paddingEnd="8dp">
 
                     <ImageView
+                        android:id="@+id/searchLeadingIcon"
                         android:layout_width="20dp"
                         android:layout_height="20dp"
                         android:contentDescription="@null"
                         android:src="@drawable/ic_fluent_search_24_regular"
                         android:tint="@color/metroTextSecondary" />
+
+                    <ImageView
+                        android:id="@+id/searchImageThumb"
+                        android:layout_width="30dp"
+                        android:layout_height="30dp"
+                        android:contentDescription="Similar image"
+                        android:scaleType="centerCrop"
+                        android:visibility="gone" />
 
                     <EditText
                         android:id="@+id/searchInput"
