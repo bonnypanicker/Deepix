@@ -195,7 +195,6 @@ class ViewerActivity : AppCompatActivity() {
                 openTagPicker(item)
             },
             onVideoCompleted = {
-                setEditAction(isVideo = true, playing = false)
                 setControlsVisible(true)
             },
             onScrubbingChanged = { scrubbing ->
@@ -204,6 +203,19 @@ class ViewerActivity : AppCompatActivity() {
                     autoHideHandler.removeCallbacks(autoHideRunnable)
                 } else {
                     scheduleAutoHide()
+                }
+            },
+            onPlayStateChanged = { position, isPlaying ->
+                // Ignore state changes from off-screen / previous pages so they can't mutate
+                // the chrome for the page the user is actually looking at.
+                if (position == currentPosition) {
+                    setEditAction(isVideo = true, playing = isPlaying)
+                    if (isPlaying) {
+                        scheduleAutoHide()
+                    } else {
+                        // Paused or ended — keep the controls up so play/replay stays reachable.
+                        setControlsVisible(true)
+                    }
                 }
             }
         )
@@ -403,16 +415,8 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     private fun toggleVideoPlayback() {
-        val holder = getCurrentPageViewHolder() ?: return
-        if (holder.isPlaying()) {
-            holder.pausePlayback()
-            setEditAction(isVideo = true, playing = false)
-            setControlsVisible(true)
-        } else {
-            holder.startPlayback()
-            setEditAction(isVideo = true, playing = true)
-            scheduleAutoHide()
-        }
+        // Delegate to the holder; the player's listener syncs the icons, controls and auto-hide.
+        getCurrentPageViewHolder()?.togglePlayback()
     }
 
     private fun getPageViewHolder(position: Int): MediaPagerAdapter.PageViewHolder? {
@@ -594,7 +598,7 @@ class ViewerActivity : AppCompatActivity() {
         items.getOrNull(currentPosition)?.mediaType == GalleryRepository.MediaType.Video
 
     private fun syncScrubber() {
-        getCurrentPageViewHolder()?.setScrubberVisible(controlsVisible && currentIsVideo())
+        getCurrentPageViewHolder()?.setVideoControlsVisible(controlsVisible && currentIsVideo())
     }
 
     private fun toggleInfoPanel() {
@@ -715,8 +719,10 @@ class ViewerActivity : AppCompatActivity() {
 
     private fun scheduleAutoHide() {
         autoHideHandler.removeCallbacks(autoHideRunnable)
-        val isVideoPlaying = getCurrentPageViewHolder()?.isPlaying() == true
-        if (controlsVisible && !infoVisible && !isScrubbing && !isVideoPlaying) {
+        // Keep controls up while a video is paused/ended (so play/replay stays reachable);
+        // otherwise (images, or a playing video) fade them out after a short delay.
+        val isPausedVideo = currentIsVideo() && getCurrentPageViewHolder()?.isPlaying() != true
+        if (controlsVisible && !infoVisible && !isScrubbing && !isPausedVideo) {
             autoHideHandler.postDelayed(autoHideRunnable, 3000)
         }
     }

@@ -32,12 +32,16 @@ class MediaPagerAdapter(
     private val onMediaTap: () -> Unit,
     private val onMediaLongClick: () -> Unit = {},
     private val onVideoCompleted: () -> Unit = {},
-    private val onScrubbingChanged: (Boolean) -> Unit = {}
+    private val onScrubbingChanged: (Boolean) -> Unit = {},
+    private val onPlayStateChanged: (Int, Boolean) -> Unit = { _, _ -> }
 ) : RecyclerView.Adapter<MediaPagerAdapter.PageViewHolder>() {
 
     // All live players, keyed by adapter position. Lets onDestroy release off-screen holders
     // that RecyclerView is caching but never handed back via onViewRecycled.
     private val activePlayers = SparseArray<ExoPlayer>()
+
+    // Mute is a session-wide preference: muting one video keeps subsequent videos muted too.
+    private var sessionMuted = false
 
     override fun getItemCount(): Int = items.size
 
@@ -126,6 +130,7 @@ class MediaPagerAdapter(
         ) {
             binding.playerView.visibility = View.GONE
             binding.videoControls.visibility = View.GONE
+            binding.playPauseButton.visibility = View.GONE
             binding.photoView.visibility = View.VISIBLE
             binding.loadingSpinner.visibility = View.VISIBLE
 
@@ -180,30 +185,52 @@ class MediaPagerAdapter(
             binding.playerView.visibility = View.VISIBLE
             binding.loadingSpinner.visibility = View.VISIBLE
             binding.videoControls.visibility = View.GONE
+            binding.playPauseButton.visibility = View.GONE
             binding.videoSeekBar.progress = 0
             binding.videoElapsed.text = "0:00"
             binding.videoTotal.text = "0:00"
             setupSeekBar()
 
+            binding.playPauseButton.setOnClickListener { togglePlayback() }
+            binding.muteButton.setOnClickListener {
+                sessionMuted = !sessionMuted
+                applyMute()
+            }
+
             val newPlayer = ExoPlayer.Builder(binding.root.context).build().apply {
                 setMediaItem(Media3Item.fromUri(item.uri))
                 repeatMode = Player.REPEAT_MODE_OFF
+                // Autoplay only the page the viewer opened on; swiped-to pages are started by
+                // the activity's page-change callback so off-screen prefetched pages stay paused.
+                playWhenReady = position == initialPosition
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         when (playbackState) {
                             Player.STATE_READY -> {
                                 binding.loadingSpinner.visibility = View.GONE
                                 updateDurationLabel()
+                                updateCenterButton()
+                            }
+                            Player.STATE_BUFFERING -> {
+                                binding.loadingSpinner.visibility = View.VISIBLE
                             }
                             Player.STATE_ENDED -> {
                                 stopProgressUpdates()
+                                updateCenterButton()
                                 onVideoCompleted()
                             }
                         }
                     }
 
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        if (isPlaying) startProgressUpdates() else stopProgressUpdates()
+                        if (isPlaying) {
+                            binding.loadingSpinner.visibility = View.GONE
+                            startProgressUpdates()
+                        } else {
+                            stopProgressUpdates()
+                        }
+                        updateCenterButton()
+                        onPlayStateChanged(boundPosition, isPlaying)
                     }
 
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
@@ -222,6 +249,8 @@ class MediaPagerAdapter(
             player = newPlayer
             activePlayers.put(position, newPlayer)
             binding.playerView.player = newPlayer
+            applyMute()
+            updateCenterButton()
 
             if (transitionName != null) {
                 ViewCompat.setTransitionName(binding.playerView, transitionName)
@@ -237,7 +266,10 @@ class MediaPagerAdapter(
                     if (fromUser) {
                         val duration = player?.duration ?: 0L
                         if (duration > 0L) {
-                            binding.videoElapsed.text = formatTime(progress * duration / 1000L)
+                            val pos = progress * duration / 1000L
+                            binding.videoElapsed.text = formatTime(pos)
+                            // Live-scrub so the frame tracks the thumb instead of jumping on release.
+                            player?.seekTo(pos)
                         }
                     }
                 }
@@ -274,9 +306,52 @@ class MediaPagerAdapter(
             progressHandler.removeCallbacks(progressRunnable)
         }
 
-        /** Shows the scrubber only for video pages. No-op for images. */
-        fun setScrubberVisible(visible: Boolean) {
-            binding.videoControls.visibility = if (visible && player != null) View.VISIBLE else View.GONE
+        /** Shows the scrubber + center button only for video pages. No-op for images. */
+        fun setVideoControlsVisible(visible: Boolean) {
+            if (player == null) {
+                binding.videoControls.visibility = View.GONE
+                binding.playPauseButton.visibility = View.GONE
+                return
+            }
+            binding.videoControls.visibility = if (visible) View.VISIBLE else View.GONE
+            binding.playPauseButton.visibility = if (visible) View.VISIBLE else View.GONE
+        }
+
+        /** Play / pause, restarting from the beginning if the video had finished. */
+        fun togglePlayback() {
+            val p = player ?: return
+            when {
+                p.playbackState == Player.STATE_ENDED -> {
+                    p.seekTo(0)
+                    p.play()
+                }
+                p.isPlaying -> p.pause()
+                else -> p.play()
+            }
+        }
+
+        private fun updateCenterButton() {
+            val p = player ?: return
+            val icon = when {
+                p.playbackState == Player.STATE_ENDED -> R.drawable.ic_fluent_replay_24_regular
+                p.isPlaying -> R.drawable.ic_fluent_pause_24_regular
+                else -> R.drawable.ic_fluent_play_24_regular
+            }
+            binding.playPauseButton.setImageResource(icon)
+            binding.playPauseButton.contentDescription = when {
+                p.playbackState == Player.STATE_ENDED -> "Replay"
+                p.isPlaying -> "Pause"
+                else -> "Play"
+            }
+        }
+
+        private fun applyMute() {
+            player?.volume = if (sessionMuted) 0f else 1f
+            binding.muteButton.setImageResource(
+                if (sessionMuted) R.drawable.ic_fluent_speaker_mute_24_regular
+                else R.drawable.ic_fluent_speaker_2_24_regular
+            )
+            binding.muteButton.contentDescription = if (sessionMuted) "Unmute" else "Mute"
         }
 
         fun startPlayback() {
@@ -315,6 +390,7 @@ class MediaPagerAdapter(
             boundUri = null
             binding.playerView.player = null
             binding.videoControls.visibility = View.GONE
+            binding.playPauseButton.visibility = View.GONE
             val ctx = binding.photoView.context.applicationContext
             Glide.with(ctx).clear(binding.photoView)
         }

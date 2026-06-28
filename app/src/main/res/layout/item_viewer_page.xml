@@ -20,9 +20,23 @@
         app:surface_type="texture_view"
         app:resize_mode="fit"
         app:use_controller="false"
-        app:show_buffering="when_playing" />
+        app:show_buffering="never" />
 
-    <!-- Minimal video scrubber overlay; shown only with controls for videos -->
+    <!-- Primary play / pause / replay control -->
+    <ImageButton
+        android:id="@+id/playPauseButton"
+        android:layout_width="68dp"
+        android:layout_height="68dp"
+        android:layout_gravity="center"
+        android:background="@drawable/video_center_button_bg"
+        android:contentDescription="Play"
+        android:padding="16dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_fluent_play_24_regular"
+        android:tint="#FFFFFF"
+        android:visibility="gone" />
+
+    <!-- Video scrubber overlay; shown with controls for videos -->
     <LinearLayout
         android:id="@+id/videoControls"
         android:layout_width="match_parent"
@@ -31,9 +45,19 @@
         android:layout_marginBottom="92dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="16dp"
         android:visibility="gone">
+
+        <ImageButton
+            android:id="@+id/muteButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Mute"
+            android:padding="8dp"
+            android:src="@drawable/ic_fluent_speaker_2_24_regular"
+            android:tint="#FFFFFF" />
 
         <TextView
             android:id="@+id/videoElapsed"
@@ -41,7 +65,7 @@
             android:layout_height="wrap_content"
             android:fontFamily="sans-serif-light"
             android:includeFontPadding="false"
-            android:minWidth="36dp"
+            android:minWidth="40dp"
             android:text="0:00"
             android:textColor="#FFFFFF"
             android:textSize="12sp" />
@@ -50,8 +74,8 @@
             android:id="@+id/videoSeekBar"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:layout_marginEnd="10dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
             android:layout_weight="1"
             android:max="1000"
             android:maxHeight="2dp"
@@ -68,12 +92,12 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:fontFamily="sans-serif-light"
+            android:gravity="end"
             android:includeFontPadding="false"
-            android:minWidth="36dp"
+            android:minWidth="40dp"
             android:text="0:00"
             android:textColor="#8A8A8A"
-            android:textSize="12sp"
-            android:gravity="end" />
+            android:textSize="12sp" />
     </LinearLayout>
 
     <ProgressBar
