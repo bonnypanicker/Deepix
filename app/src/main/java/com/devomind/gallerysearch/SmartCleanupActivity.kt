@@ -3,8 +3,6 @@ package com.devomind.gallerysearch
 import android.app.RecoverableSecurityException
 import android.content.Intent
 import android.content.IntentSender
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
@@ -29,7 +27,6 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.devomind.gallerysearch.databinding.ActivitySmartCleanupBinding
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -52,11 +49,12 @@ class SmartCleanupActivity : AppCompatActivity() {
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
 
-    private var analysisJob: Job? = null
-    private var analyzing = false
+    private var scanRunning = false
     private var indexingRunning = false
     private var indexProgressCurrent = 0
     private var indexProgressTotal = 0
+    private var itemsByUri: Map<String, GalleryRepository.MediaItem> = emptyMap()
+    private val cleanupStore by lazy { CleanupResultStore(this) }
 
     private val deleteRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -110,7 +108,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         binding.cleanupGrid.adapter = adapter
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
-        binding.refreshBtn.setOnClickListener { runAnalysis() }
+        binding.refreshBtn.setOnClickListener { startScan(replace = true) }
         binding.selectAllBtn.setOnClickListener { toggleSelectAll() }
         binding.deleteBar.setOnClickListener { confirmDeleteSelected() }
 
@@ -124,8 +122,12 @@ class SmartCleanupActivity : AppCompatActivity() {
             }
         })
 
+        itemsByUri = items.associateBy { it.uri.toString() }
+        loadSizesAsync()
+        loadStoredResults()
         observeIndexing()
-        runAnalysis()
+        observeCleanup()
+        startScan(replace = false)
     }
 
     /**
@@ -144,12 +146,11 @@ class SmartCleanupActivity : AppCompatActivity() {
                     indexProgressCurrent = work.progress.getInt(IndexWorker.ProgressCurrentKey, indexProgressCurrent)
                     indexProgressTotal = work.progress.getInt(IndexWorker.ProgressTotalKey, indexProgressTotal)
                 }
-                // Auto-refresh once indexing completes, if the user is still on the overview.
-                if (wasRunning && work?.state == WorkInfo.State.SUCCEEDED &&
-                    binding.detailView.visibility != View.VISIBLE
-                ) {
-                    runAnalysis()
-                } else if (binding.detailView.visibility != View.VISIBLE) {
+                // Re-scan once indexing completes so new embeddings feed the categories.
+                if (wasRunning && work?.state == WorkInfo.State.SUCCEEDED) {
+                    startScan(replace = true)
+                }
+                if (binding.detailView.visibility != View.VISIBLE) {
                     showIndexingBannerIfNeeded()
                 }
             }
@@ -191,61 +192,100 @@ class SmartCleanupActivity : AppCompatActivity() {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Analysis
+    // Background analysis (CleanupWorker) + live store loading
     // ---------------------------------------------------------------------------------------------
 
-    private fun runAnalysis() {
-        if (analyzing) return
-        analyzing = true
-        binding.refreshBtn.isEnabled = false
-        binding.progressRow.visibility = View.VISIBLE
-        showIndexingBannerIfNeeded()
+    /** Enqueues the background scan. KEEP reuses an in-flight scan; REPLACE forces a fresh one. */
+    private fun startScan(replace: Boolean) {
+        val request = androidx.work.OneTimeWorkRequestBuilder<CleanupWorker>().build()
+        WorkManager.getInstance(this).enqueueUniqueWork(
+            CleanupWorker.WorkName,
+            if (replace) androidx.work.ExistingWorkPolicy.REPLACE else androidx.work.ExistingWorkPolicy.KEEP,
+            request
+        )
+    }
 
-        analysisJob = lifecycleScope.launch {
-            var loadedEmbeddings = 0
-            val report = withContext(Dispatchers.Default) {
-                val textEncoder = runCatching {
-                    (application as GallerySearchApp).sharedEncoders.getTextEncoder()
-                }.getOrNull()
-                val repo = GalleryRepository(applicationContext, null, textEncoder)
-                val embeddings = repo.allEmbeddings()
-                loadedEmbeddings = embeddings.size
-                val sizes = loadImageSizes()
-                CleanupAnalyzer.analyze(
-                    items = items,
-                    embeddings = embeddings,
-                    sizeByUri = sizes,
-                    encodeText = { runCatching { repo.encodeText(it) }.getOrNull() },
-                    imageStats = { computeImageStats(it) },
-                    onProgress = { done, total ->
-                        runOnUiThread {
-                            binding.progressText.text =
-                                if (total > 0) "Scanning photos… $done / $total" else "Analyzing your library…"
-                        }
-                    }
-                )
-            }
+    /** Streams results from the worker: reloads the persisted store on every progress update. */
+    private fun observeCleanup() {
+        WorkManager.getInstance(this)
+            .getWorkInfosForUniqueWorkLiveData(CleanupWorker.WorkName)
+            .observe(this) { infos ->
+                val work = infos.firstOrNull()
+                scanRunning = work?.state == WorkInfo.State.RUNNING || work?.state == WorkInfo.State.ENQUEUED
+                binding.refreshBtn.isEnabled = !scanRunning
 
-            // Live indexed count from the latest on-disk index (grows as indexing continues).
-            indexedCount = maxOf(indexedCount, loadedEmbeddings)
-            sizeByUri = report.sizeByUri
-            for (category in CleanupAnalyzer.Category.entries) {
-                categoryItems[category]!!.apply {
-                    clear()
-                    addAll(report.categoryItems[category].orEmpty())
+                if (work?.state == WorkInfo.State.RUNNING) {
+                    val done = work.progress.getInt(CleanupWorker.ProgressCurrentKey, 0)
+                    val total = work.progress.getInt(CleanupWorker.ProgressTotalKey, 0)
+                    binding.progressRow.visibility = View.VISIBLE
+                    binding.progressText.text =
+                        if (total > 0) "Scanning photos for quality… $done / $total" else "Analyzing your library…"
+                } else if (scanRunning) {
+                    binding.progressRow.visibility = View.VISIBLE
+                    binding.progressText.text = "Analyzing your library…"
+                } else {
+                    binding.progressRow.visibility = View.GONE
                 }
-                suggested[category]!!.apply {
-                    clear()
-                    addAll(report.suggestedDeleteUris[category].orEmpty())
+
+                // Pull the latest persisted results (live growth) unless the user is in a category.
+                if (binding.detailView.visibility != View.VISIBLE) {
+                    loadStoredResults()
                 }
             }
+    }
 
-            binding.progressRow.visibility = View.GONE
-            binding.refreshBtn.isEnabled = true
-            analyzing = false
-            showIndexingBannerIfNeeded()
-            renderTiles()
+    private fun loadStoredResults() {
+        val result = cleanupStore.load() ?: return
+        applyStored(result)
+        if (binding.detailView.visibility != View.VISIBLE) renderTiles()
+    }
+
+    private fun applyStored(result: CleanupResultStore.Result) {
+        for (category in CleanupAnalyzer.Category.entries) {
+            categoryItems[category]!!.apply {
+                clear()
+                addAll(result.categoryUris[category].orEmpty().map { itemFor(it) })
+            }
+            suggested[category]!!.apply {
+                clear()
+                result.suggestedUris[category].orEmpty().forEach { add(Uri.parse(it)) }
+            }
         }
+    }
+
+    /** Resolves a stored uri to its media item, or a minimal stand-in for thumbnail display. */
+    private fun itemFor(uriString: String): GalleryRepository.MediaItem {
+        return itemsByUri[uriString] ?: GalleryRepository.MediaItem(
+            uri = Uri.parse(uriString),
+            bucketId = "",
+            bucketName = "",
+            dateMillis = 0L,
+            width = 0,
+            height = 0,
+            mimeType = null,
+            displayName = null,
+            mediaType = GalleryRepository.MediaType.Image
+        )
+    }
+
+    private fun loadSizesAsync() {
+        lifecycleScope.launch {
+            val sizes = withContext(Dispatchers.IO) { loadImageSizes() }
+            sizeByUri = sizes
+            if (binding.detailView.visibility != View.VISIBLE) renderTiles()
+        }
+    }
+
+    private fun saveCurrentToStore() {
+        val result = CleanupResultStore.Result(
+            categoryUris = categoryItems.mapValues { entry -> entry.value.map { it.uri.toString() } },
+            suggestedUris = suggested.mapValues { entry -> entry.value.map { it.toString() } },
+            done = 0,
+            total = 0,
+            complete = true,
+            updatedAt = System.currentTimeMillis()
+        )
+        cleanupStore.save(result)
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -271,7 +311,7 @@ class SmartCleanupActivity : AppCompatActivity() {
             binding.tilesContainer.addView(tile)
         }
 
-        binding.emptyText.visibility = if (nonEmpty.isEmpty()) View.VISIBLE else View.GONE
+        binding.emptyText.visibility = if (nonEmpty.isEmpty() && !scanRunning) View.VISIBLE else View.GONE
         updateSummary()
     }
 
@@ -428,6 +468,7 @@ class SmartCleanupActivity : AppCompatActivity() {
             suggested[category]!!.removeAll(removed)
         }
         Toast.makeText(this, "${uris.size} item${if (uris.size == 1) "" else "s"} deleted.", Toast.LENGTH_SHORT).show()
+        saveCurrentToStore()
 
         val category = currentCategory
         if (category != null && categoryItems[category]!!.isNotEmpty()) {
@@ -500,67 +541,6 @@ class SmartCleanupActivity : AppCompatActivity() {
             }
         }.onFailure { Log.w(TAG, "Unable to read image sizes for cleanup.", it) }
         return map
-    }
-
-    private fun computeImageStats(uri: Uri): CleanupAnalyzer.ImageStats? {
-        return runCatching {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            val srcW = bounds.outWidth
-            val srcH = bounds.outHeight
-            if (srcW <= 0 || srcH <= 0) return null
-            val target = 128
-            var sample = 1
-            while (srcW / (sample * 2) >= target && srcH / (sample * 2) >= target) sample *= 2
-            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-            val bmp = contentResolver.openInputStream(uri)?.use {
-                BitmapFactory.decodeStream(it, null, opts)
-            } ?: return null
-            val stats = imageStatsOf(bmp)
-            bmp.recycle()
-            stats
-        }.getOrNull()
-    }
-
-    /** Laplacian variance (blur) + mean luminance (dark) + near-white fraction (overexposed). */
-    private fun imageStatsOf(bmp: Bitmap): CleanupAnalyzer.ImageStats {
-        val w = bmp.width
-        val h = bmp.height
-        if (w < 3 || h < 3) return CleanupAnalyzer.ImageStats(Float.MAX_VALUE, 128f, 0f)
-        val pixels = IntArray(w * h)
-        bmp.getPixels(pixels, 0, w, 0, 0, w, h)
-        val gray = IntArray(w * h)
-        var lumaSum = 0L
-        var nearWhite = 0
-        for (i in pixels.indices) {
-            val p = pixels[i]
-            val r = (p shr 16) and 0xFF
-            val g = (p shr 8) and 0xFF
-            val b = p and 0xFF
-            val lum = (r * 299 + g * 587 + b * 114) / 1000
-            gray[i] = lum
-            lumaSum += lum
-            if (lum >= 245) nearWhite++
-        }
-        var sum = 0.0
-        var sumSq = 0.0
-        var n = 0
-        for (y in 1 until h - 1) {
-            for (x in 1 until w - 1) {
-                val idx = y * w + x
-                val lap = 4 * gray[idx] - gray[idx - 1] - gray[idx + 1] - gray[idx - w] - gray[idx + w]
-                sum += lap
-                sumSq += lap.toDouble() * lap
-                n++
-            }
-        }
-        val variance = if (n == 0) Float.MAX_VALUE else {
-            val mean = sum / n
-            (sumSq / n - mean * mean).toFloat()
-        }
-        val meanLuma = lumaSum.toFloat() / pixels.size
-        val fracNearWhite = nearWhite.toFloat() / pixels.size
-        return CleanupAnalyzer.ImageStats(variance, meanLuma, fracNearWhite)
     }
 
     private fun formatBytes(bytes: Long): String {

@@ -101,7 +101,8 @@ object CleanupAnalyzer {
         sizeByUri: Map<String, Long>,
         encodeText: (String) -> FloatArray?,
         imageStats: (Uri) -> ImageStats?,
-        onProgress: (done: Int, total: Int) -> Unit
+        onProgress: (done: Int, total: Int) -> Unit,
+        onPartial: (Report) -> Unit = {}
     ): Report {
         val categoryItems = linkedMapOf<Category, MutableList<GalleryRepository.MediaItem>>()
         val suggested = linkedMapOf<Category, MutableSet<Uri>>()
@@ -162,10 +163,22 @@ object CleanupAnalyzer {
         }
 
         // 3) Single decode pass over real photos → blur / dark / bright; low-res from metadata.
-        val total = photoCandidates.size
+        fun snapshot() = Report(
+            categoryItems = categoryItems.mapValues { it.value.toList() },
+            suggestedDeleteUris = suggested.mapValues { it.value.toSet() },
+            sizeByUri = sizeByUri
+        )
+
+        // Show the fast (embedding + metadata) categories immediately so the screen is live.
+        onPartial(snapshot())
+
+        // Bounded-free: scan every real photo (worker runs this in the background). Most-recent
+        // first so streamed/partial results surface the freshest photos earliest.
+        val scanList = photoCandidates.sortedByDescending { it.dateMillis }
+        val total = scanList.size
         var done = 0
         onProgress(0, total)
-        for (item in photoCandidates) {
+        for (item in scanList) {
             val stats = imageStats(item.uri)
             when {
                 stats != null && stats.variance < BLUR_VARIANCE_THRESHOLD -> {
@@ -180,17 +193,14 @@ object CleanupAnalyzer {
                     categoryItems[Category.LOW_RESOLUTION]!!.add(item)
             }
             done++
-            if (done % 8 == 0 || done == total) {
+            if (done % 40 == 0 || done == total) {
                 onProgress(done, total)
+                onPartial(snapshot())
                 yield()
             }
         }
 
-        return Report(
-            categoryItems = categoryItems.mapValues { it.value.toList() },
-            suggestedDeleteUris = suggested.mapValues { it.value.toSet() },
-            sizeByUri = sizeByUri
-        )
+        return snapshot()
     }
 
     private fun classifyByClip(
