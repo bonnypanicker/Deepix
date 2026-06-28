@@ -526,6 +526,34 @@ class GalleryRepository(
     /** Encode arbitrary text to a normalized CLIP embedding, or null if the text encoder isn't ready. */
     fun encodeText(text: String): FloatArray? = textEncoder?.encode(text)
 
+    /** The stored image embedding for a uri, or encode it on demand if the encoder is available. */
+    fun imageEmbedding(uri: Uri): FloatArray? {
+        allEmbeddings()[uri.toString()]?.let { return it }
+        val encoder = imageEncoder ?: return null
+        val bitmap = loadBitmap(uri) ?: return null
+        val embedding = runCatching { encoder.encode(bitmap) }.getOrNull() ?: return null
+        return if (isEmbeddingValid(embedding)) embedding else null
+    }
+
+    /** Image-to-image search: cosine of [query] against every indexed embedding, ranked desc. */
+    fun searchByEmbedding(
+        query: FloatArray,
+        excludeUri: String? = null,
+        floor: Float = 0.5f,
+        limit: Int = 500
+    ): List<SemanticSearchHit> {
+        val snapshot = allEmbeddings()
+        if (snapshot.isEmpty()) return emptyList()
+        val scored = ArrayList<SemanticSearchHit>(snapshot.size)
+        for ((uri, embedding) in snapshot) {
+            if (uri == excludeUri) continue
+            val score = EmbeddingUtils.cosineSimilarity(query, embedding)
+            if (score >= floor) scored.add(SemanticSearchHit(Uri.parse(uri), score))
+        }
+        scored.sortByDescending { it.score }
+        return if (limit > 0) scored.take(limit) else scored
+    }
+
     private fun setMetadataDocuments(documents: Map<String, MetadataSearch.Document>) {
         metadataDocuments = LinkedHashMap(documents)
         metadataSearchIndex = if (metadataDocuments.isEmpty()) null else MetadataSearch.indexFromDocuments(metadataDocuments.values)

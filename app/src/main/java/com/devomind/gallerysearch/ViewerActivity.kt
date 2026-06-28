@@ -75,6 +75,7 @@ class ViewerActivity : AppCompatActivity() {
     private var currentTags: List<com.devomind.gallerysearch.db.TagEntity> = emptyList()
     private var gestureDirection = GestureDirection.UNDETERMINED
     private var metadataJob: kotlinx.coroutines.Job? = null
+    private var findSimilarUri: String? = null
 
     private enum class GestureDirection {
         UNDETERMINED, HORIZONTAL_PAGE, VERTICAL_DISMISS, VERTICAL_INFO
@@ -371,6 +372,9 @@ class ViewerActivity : AppCompatActivity() {
         val menu = androidx.appcompat.widget.PopupMenu(this, anchor)
         menu.menu.add(0, MENU_TAGS, 0, "Add tags")
         menu.menu.add(0, MENU_INFO, 1, "Info")
+        if (item.mediaType != GalleryRepository.MediaType.Video) {
+            menu.menu.add(0, MENU_SIMILAR, 2, "Find similar")
+        }
         menu.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
                 MENU_TAGS -> {
@@ -379,6 +383,11 @@ class ViewerActivity : AppCompatActivity() {
                 }
                 MENU_INFO -> {
                     if (!infoVisible) toggleInfoPanel()
+                    true
+                }
+                MENU_SIMILAR -> {
+                    findSimilarUri = item.uri.toString()
+                    supportFinishAfterTransition()
                     true
                 }
                 else -> false
@@ -1196,11 +1205,13 @@ class ViewerActivity : AppCompatActivity() {
         private const val SCRIM_MAX_ALPHA = 0.72f
         private const val MENU_TAGS = 1
         private const val MENU_INFO = 2
+        private const val MENU_SIMILAR = 3
         const val ExtraContentChanged = "content_changed"
         const val ExtraItems = "items"
         const val ExtraPosition = "position"
         const val ExtraTransitionName = "transition_name"
         const val ExtraMarker = "marker_uri"
+        const val ExtraFindSimilarUri = "find_similar_uri"
     }
 
     override fun onDestroy() {
@@ -1218,8 +1229,10 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     override fun finish() {
-        if (contentChanged) {
-            setResult(RESULT_OK, Intent().putExtra(ExtraContentChanged, true))
+        if (contentChanged || findSimilarUri != null) {
+            val data = Intent().putExtra(ExtraContentChanged, contentChanged)
+            findSimilarUri?.let { data.putExtra(ExtraFindSimilarUri, it) }
+            setResult(RESULT_OK, data)
         }
         super.finish()
     }

@@ -101,6 +101,11 @@ class MainActivity : AppCompatActivity() {
     // Supports lazy loading with 20 results per page, capped at 80 total
     private var fullSearchResults: List<PhotoSearchResult> = emptyList()
     private var currentDisplayedSearchResultCount = 0
+    private var searchResultsMaster: List<PhotoSearchResult> = emptyList()
+    private var currentSortMode = SortMode.Relevance
+    private var lastSearchStatusText = ""
+    private var imageSearchActive = false
+    private var suppressSearchInput = false
 
     private val monthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
         .withZone(ZoneId.systemDefault())
@@ -123,8 +128,10 @@ class MainActivity : AppCompatActivity() {
     ) { result ->
         binding.imageGrid.cancelPendingInputEvents()
         val changed = result.data?.getBooleanExtra(ViewerActivity.ExtraContentChanged, false) == true
-        if (result.resultCode == RESULT_OK && changed) {
-            refreshVisibleItems()
+        if (changed) refreshVisibleItems()
+        val similarUri = result.data?.getStringExtra(ViewerActivity.ExtraFindSimilarUri)
+        if (similarUri != null) {
+            searchSimilarImage(Uri.parse(similarUri))
         }
     }
 
@@ -246,6 +253,7 @@ class MainActivity : AppCompatActivity() {
         binding.searchModeHybrid.setOnClickListener { setSearchMode(SearchMode.Hybrid) }
         binding.searchModeAi.setOnClickListener { setSearchMode(SearchMode.AiOnly) }
         binding.searchModeMetadata.setOnClickListener { setSearchMode(SearchMode.MetadataOnly) }
+        binding.sortBtn.setOnClickListener { showSortMenu() }
 
         binding.drawerCollection.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
@@ -315,6 +323,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         binding.searchInput.doAfterTextChanged {
+            if (suppressSearchInput) return@doAfterTextChanged
+            imageSearchActive = false
             updateSearchPillState()
             if (currentMode == Mode.Search && binding.searchPanel.visibility == View.VISIBLE) {
                 searchDebounceJob?.cancel()
@@ -1256,68 +1266,135 @@ class MainActivity : AppCompatActivity() {
         emptyText: String,
         statusText: String
     ) {
-        // Store full results for pagination
-        fullSearchResults = results.take(DesignTokens.SEARCH_METADATA_HARD_CAP)
+        searchResultsMaster = results
+        lastSearchStatusText = statusText
         currentDisplayedSearchResultCount = 0
-        
-        if (fullSearchResults.isEmpty()) {
+
+        if (results.isEmpty()) {
+            fullSearchResults = emptyList()
             adapter.replaceCells(listOf(GalleryCell.Empty(emptyText)))
             resetGridToTop()
             binding.resultCount.text = "No results found"
             binding.statusText.text = statusText
             return
         }
-        
-        // Display first page (20 results)
-        val pageSize = 20
+        applySortAndShow()
+    }
+
+    /** Applies the active sort to the master result list and renders the first page (no cap). */
+    private fun applySortAndShow() {
+        fullSearchResults = sortResults(searchResultsMaster, currentSortMode)
+        currentDisplayedSearchResultCount = 0
+
+        val pageSize = SEARCH_PAGE_SIZE
         val firstPage = fullSearchResults.take(pageSize)
         currentDisplayedSearchResultCount = firstPage.size
-        
+
         val cells = firstPage.map { result ->
-            GalleryCell.Photo(
-                item = result.item,
-                featured = false,
-                searchSources = result.sources
-            )
+            GalleryCell.Photo(item = result.item, featured = false, searchSources = result.sources)
         }
-        
         adapter.replaceCells(cells)
         resetGridToTop()
-        
+        updateSearchResultCount()
+        binding.statusText.text = lastSearchStatusText
+    }
+
+    private fun sortResults(results: List<PhotoSearchResult>, mode: SortMode): List<PhotoSearchResult> {
+        return when (mode) {
+            SortMode.Relevance -> results // already ranked by score
+            SortMode.Newest -> results.sortedByDescending { it.item.dateMillis }
+            SortMode.Oldest -> results.sortedBy { it.item.dateMillis }
+            SortMode.Name -> results.sortedBy { it.item.displayName?.lowercase(Locale.getDefault()).orEmpty() }
+        }
+    }
+
+    private fun updateSearchResultCount() {
         binding.resultCount.text = when {
             fullSearchResults.size == 1 -> "1 result"
-            currentDisplayedSearchResultCount < fullSearchResults.size -> 
-                "Showing ${currentDisplayedSearchResultCount} of ${fullSearchResults.size} results"
+            currentDisplayedSearchResultCount < fullSearchResults.size ->
+                "Showing $currentDisplayedSearchResultCount of ${fullSearchResults.size} results"
             else -> "${fullSearchResults.size} results"
         }
-        binding.statusText.text = statusText
     }
-    
+
+    private fun showSortMenu() {
+        val menu = androidx.appcompat.widget.PopupMenu(this, binding.sortBtn)
+        SortMode.entries.forEachIndexed { index, mode ->
+            menu.menu.add(0, index, index, mode.label)
+        }
+        menu.setOnMenuItemClickListener { item ->
+            val mode = SortMode.entries[item.itemId]
+            if (mode != currentSortMode) {
+                currentSortMode = mode
+                binding.sortLabel.text = mode.label
+                if (searchResultsMaster.isNotEmpty()) applySortAndShow()
+            }
+            true
+        }
+        menu.show()
+    }
+
     private fun paginateSearchResults() {
         if (currentDisplayedSearchResultCount >= fullSearchResults.size) return
-        
-        val pageSize = 20
+
         val nextBatch = fullSearchResults
             .drop(currentDisplayedSearchResultCount)
-            .take(pageSize)
-        
+            .take(SEARCH_PAGE_SIZE)
+
         if (nextBatch.isEmpty()) return
-        
+
         val newCells = nextBatch.map { result ->
-            GalleryCell.Photo(
-                item = result.item,
-                featured = false,
-                searchSources = result.sources
-            )
+            GalleryCell.Photo(item = result.item, featured = false, searchSources = result.sources)
         }
-        
+
         currentDisplayedSearchResultCount += newCells.size
         adapter.updateCells(adapter.cells + newCells)
-        
-        binding.resultCount.text = when {
-            currentDisplayedSearchResultCount < fullSearchResults.size -> 
-                "Showing ${currentDisplayedSearchResultCount} of ${fullSearchResults.size} results"
-            else -> "${fullSearchResults.size} results"
+        updateSearchResultCount()
+    }
+
+    /** Image-to-image search across the whole library using the CLIP image embedding. */
+    private fun searchSimilarImage(uri: Uri) {
+        val repo = repository ?: return
+        val name = imageItems.firstOrNull { it.uri == uri }?.displayName ?: "image"
+
+        currentMode = Mode.Search
+        imageSearchActive = true
+        binding.searchPanel.visibility = View.VISIBLE
+        suppressSearchInput = true
+        binding.searchInput.setText("")
+        suppressSearchInput = false
+        binding.fastScrollIndicator.visibility = View.GONE
+        updateTopBarForMode("search")
+        updateDrawerState()
+        updateBottomPanelState()
+        updateSearchPillState()
+        binding.progressBar.visibility = View.VISIBLE
+        binding.statusText.text = "Finding similar photos…"
+        binding.resultCount.text = ""
+
+        searchJob?.cancel()
+        searchJob = lifecycleScope.launch {
+            val pool = imageItems
+            val byUri = pool.associateBy { it.uri }
+            val hits = withContext(Dispatchers.Default) {
+                val embedding = repo.imageEmbedding(uri) ?: return@withContext null
+                repo.searchByEmbedding(embedding, excludeUri = uri.toString(), floor = SIMILAR_IMAGE_FLOOR, limit = 500)
+            }
+            binding.progressBar.visibility = View.GONE
+            if (!imageSearchActive || currentMode != Mode.Search) return@launch
+            if (hits == null) {
+                Toast.makeText(this@MainActivity, "Couldn't analyze this image yet — try after indexing.", Toast.LENGTH_LONG).show()
+                renderSearchResults(emptyList(), "No similar photos", "Similar photos")
+                return@launch
+            }
+            val results = hits.mapNotNull { hit ->
+                byUri[hit.uri]?.let { item ->
+                    PhotoSearchResult(item, SearchSources(ai = true, metadata = false), hit.score)
+                }
+            }
+            currentSortMode = SortMode.Relevance
+            binding.sortLabel.text = currentSortMode.label
+            renderSearchResults(results, "No similar photos found", "Similar to $name")
         }
     }
 
@@ -2344,11 +2421,20 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val INDEX_WORK_NAME = "gallery_background_index"
+        private const val SEARCH_PAGE_SIZE = 30
+        private const val SIMILAR_IMAGE_FLOOR = 0.55f
     }
 
     private enum class SearchMode {
         Hybrid,
         AiOnly,
         MetadataOnly
+    }
+
+    private enum class SortMode(val label: String) {
+        Relevance("Relevance"),
+        Newest("Newest"),
+        Oldest("Oldest"),
+        Name("Name")
     }
 }
