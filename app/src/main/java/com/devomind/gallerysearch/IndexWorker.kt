@@ -19,6 +19,7 @@ class IndexWorker(
 ) : CoroutineWorker(appContext, params) {
     private var lastForegroundUpdateAt = -1
     private var lastForegroundPercent = -1
+    private var foregroundActive = false
 
     override suspend fun doWork(): Result {
         if (IndexPreferences.isIndexPaused(applicationContext)) {
@@ -26,7 +27,14 @@ class IndexWorker(
             return Result.success()
         }
 
-        setForeground(createForegroundInfo(0, 1))
+        try {
+            setForeground(createForegroundInfo(0, 1))
+            foregroundActive = true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            Log.w(Tag, "Foreground service start not allowed; indexing in background.", e)
+        }
 
         return try {
             val imageEncoder = (applicationContext as GallerySearchApp).sharedEncoders.getImageEncoder()
@@ -58,7 +66,7 @@ class IndexWorker(
                         .putInt(ProgressPercentKey, progressPercent)
                         .build()
                 )
-                if (shouldRefreshForeground(bounded, progressPercent, total)) {
+                if (foregroundActive && shouldRefreshForeground(bounded, progressPercent, total)) {
                     setForegroundAsync(createForegroundInfo(bounded, total))
                 }
             }
@@ -151,8 +159,8 @@ class IndexWorker(
         private const val ChannelId = "gallery_index_channel"
         private const val NotificationId = 1001
         private const val PausedNotificationId = 1002
-        private const val ForegroundItemStep = 4
-        private const val ForegroundPercentStep = 1
+        private const val ForegroundItemStep = 20
+        private const val ForegroundPercentStep = 2
 
         fun showPausedNotification(context: Context) {
             ensureChannel(context)

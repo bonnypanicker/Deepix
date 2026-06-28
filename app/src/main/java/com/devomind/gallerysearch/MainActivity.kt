@@ -121,6 +121,7 @@ class MainActivity : AppCompatActivity() {
     private val viewerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        binding.imageGrid.cancelPendingInputEvents()
         val changed = result.data?.getBooleanExtra(ViewerActivity.ExtraContentChanged, false) == true
         if (result.resultCode == RESULT_OK && changed) {
             refreshVisibleItems()

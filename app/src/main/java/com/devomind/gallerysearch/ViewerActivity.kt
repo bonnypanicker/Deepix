@@ -104,6 +104,28 @@ class ViewerActivity : AppCompatActivity() {
         }
     }
 
+    private var touchIntercepted = false
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            touchIntercepted = false
+        }
+
+        handleViewerTouch(ev)
+
+        if (draggingToDismiss) {
+            if (!touchIntercepted) {
+                touchIntercepted = true
+                val cancelEvent = MotionEvent.obtain(ev)
+                cancelEvent.action = MotionEvent.ACTION_CANCEL
+                super.dispatchTouchEvent(cancelEvent)
+                cancelEvent.recycle()
+            }
+            return true
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -244,7 +266,7 @@ class ViewerActivity : AppCompatActivity() {
         val isVideo = item.mediaType == GalleryRepository.MediaType.Video
 
         binding.fileNameText.text = item.displayName ?: "Photo"
-        binding.positionCounter.text = "${position + 1} / ${items.size}"
+        bindDots(position, items.size)
         renderFavoriteState(favoritesStore.isFavorite(uri))
 
         binding.editBtn.setImageResource(
@@ -281,9 +303,30 @@ class ViewerActivity : AppCompatActivity() {
         scheduleAutoHide()
     }
 
+    private fun bindDots(position: Int, count: Int) {
+        binding.dotIndicator.removeAllViews()
+        if (count <= 1) return
+        val maxDots = 20
+        val start = (position - maxDots / 2).coerceAtLeast(0).coerceAtMost((count - maxDots).coerceAtLeast(0))
+        val end = (start + maxDots).coerceAtMost(count)
+        
+        for (i in start until end) {
+            val view = View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(6), dp(6)).apply {
+                    marginEnd = dp(4)
+                    marginStart = dp(4)
+                }
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(if (i == position) Color.WHITE else Color.parseColor("#4DFFFFFF"))
+                }
+            }
+            binding.dotIndicator.addView(view)
+        }
+    }
+
     private fun bindGlobalActions() {
         binding.backBtn.setOnClickListener { supportFinishAfterTransition() }
-        binding.infoBtn.setOnClickListener { toggleInfoPanel() }
         binding.shareBtn.setOnClickListener { shareCurrent() }
         binding.wallpaperBtn.setOnClickListener {
             val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
@@ -306,9 +349,6 @@ class ViewerActivity : AppCompatActivity() {
         binding.deleteBtn.setOnClickListener {
             val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
             confirmDelete(item.uri)
-        }
-        binding.viewerRoot.setOnTouchListener { _, event ->
-            handleViewerTouch(event)
         }
     }
 
@@ -649,7 +689,7 @@ class ViewerActivity : AppCompatActivity() {
 
                 val upY = event.rawY
                 val isUpwardSwipe = downY - upY > dp(24) && velocityY < -INFO_PANEL_VELOCITY_PX_PER_SEC
-                if (isUpwardSwipe && event.y > binding.viewerRoot.height * 0.72f) {
+                if (isUpwardSwipe) {
                     if (!infoVisible) toggleInfoPanel()
                     return true
                 }
