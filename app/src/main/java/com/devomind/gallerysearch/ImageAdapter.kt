@@ -225,6 +225,23 @@ class ImageAdapter(
 
     fun selectedUris(): List<Uri> = selected.toList()
 
+    /** Replaces the current selection with [uris] that exist in the visible cells. */
+    fun setSelection(uris: Collection<Uri>) {
+        val present = cells.asSequence()
+            .flatMap { cell ->
+                when (cell) {
+                    is GalleryCell.Photo -> sequenceOf(cell.item.uri)
+                    is GalleryCell.Collage -> cell.items.asSequence().map { it.uri }
+                    else -> emptySequence()
+                }
+            }
+            .toSet()
+        selected.clear()
+        selected.addAll(uris.filter { it in present })
+        notifyDataSetChanged()
+        onSelectionChanged(selected.size)
+    }
+
     private fun toggleSelection(uri: Uri) {
         val hadSelection = selected.isNotEmpty()
         if (uri in selected) {

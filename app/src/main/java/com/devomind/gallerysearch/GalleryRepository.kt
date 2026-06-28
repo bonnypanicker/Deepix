@@ -511,6 +511,21 @@ class GalleryRepository(
     private fun snapshotIndex(): LinkedHashMap<String, FloatArray> =
         synchronized(indexLock) { LinkedHashMap(embeddings) }
 
+    /** All indexed image embeddings (uri string -> vector), loading the on-disk index if needed. */
+    fun allEmbeddings(): Map<String, FloatArray> {
+        var snapshot = snapshotIndex()
+        if (snapshot.isEmpty()) {
+            synchronized(indexLock) {
+                if (embeddings.isEmpty()) embeddings = loadIndex()
+                snapshot = LinkedHashMap(embeddings)
+            }
+        }
+        return snapshot
+    }
+
+    /** Encode arbitrary text to a normalized CLIP embedding, or null if the text encoder isn't ready. */
+    fun encodeText(text: String): FloatArray? = textEncoder?.encode(text)
+
     private fun setMetadataDocuments(documents: Map<String, MetadataSearch.Document>) {
         metadataDocuments = LinkedHashMap(documents)
         metadataSearchIndex = if (metadataDocuments.isEmpty()) null else MetadataSearch.indexFromDocuments(metadataDocuments.values)

@@ -421,6 +421,11 @@
             android:text="folders" />
 
         <TextView
+            android:id="@+id/drawerSmartCleanup"
+            style="@style/MetroDrawerItem"
+            android:text="smart cleanup" />
+
+        <TextView
             android:id="@+id/drawerIndex"
             style="@style/MetroDrawerItem"
             android:text="start indexing" />
