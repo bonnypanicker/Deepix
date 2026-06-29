@@ -40,6 +40,13 @@ object DesignTokens {
     const val GRID_DEFAULT_COLUMNS = 4
     const val GRID_THUMBNAIL_SPACING_DP = 2
 
+    // Collage (justified rows) layout
+    const val COLLAGE_SPAN_COUNT = 12
+    // Baseline images-per-row; smaller => taller rows / fewer per row.
+    const val COLLAGE_TARGET_ROWS_PER_WIDTH = 3.1f
+    const val COLLAGE_MIN_ASPECT = 0.55f
+    const val COLLAGE_MAX_ASPECT = 2.4f
+
     const val MENU_FADE_DURATION_MS: Long = 160L
     const val MENU_NEAR_FADE_DURATION_MS: Long = 120L
     const val MENU_NEAR_X_DP: Float = 96f

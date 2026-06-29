@@ -61,7 +61,9 @@ class FastScrollIndicator @JvmOverloads constructor(
         }
 
         override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
-            if (!isDragging && rv.scrollState == RecyclerView.SCROLL_STATE_DRAGGING) {
+            // Track the thumb on every scroll (drag, fling, programmatic) so it
+            // never jumps or lags behind the content.
+            if (!isDragging) {
                 updateFromOffset(rv.computeVerticalScrollOffset())
             }
         }
@@ -165,13 +167,18 @@ class FastScrollIndicator @JvmOverloads constructor(
     }
 
     private fun scrollTo(touchY: Float, rv: RecyclerView) {
-        val totalRange = rv.computeVerticalScrollRange()
-        val extent = rv.computeVerticalScrollExtent()
-        if (totalRange <= extent) return
+        val lm = rv.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager ?: return
+        val itemCount = rv.adapter?.itemCount ?: 0
+        if (itemCount == 0) return
 
-        val fraction = (touchY / height).coerceIn(0f, 1f)
-        val targetOffset = (fraction * (totalRange - extent)).toInt()
-        rv.scrollBy(0, targetOffset - rv.computeVerticalScrollOffset())
+        val top = dip(20f)
+        val usable = (height - top * 2f).coerceAtLeast(1f)
+        val fraction = ((touchY - top) / usable).coerceIn(0f, 1f)
+
+        // Position-based jump: reliable and smooth for variable-height grids,
+        // unlike scrollBy against an estimated pixel range.
+        val target = (fraction * (itemCount - 1)).toInt().coerceIn(0, itemCount - 1)
+        lm.scrollToPositionWithOffset(target, 0)
 
         thumbY = touchY
         updateFromFraction(fraction)
@@ -188,7 +195,8 @@ class FastScrollIndicator @JvmOverloads constructor(
             return
         }
         val fraction = offset.toFloat() / (totalRange - extent)
-        val cy = fraction * height
+        val top = dip(20f)
+        val cy = top + fraction.coerceIn(0f, 1f) * (height - top * 2f)
         if (Math.abs(thumbY - cy) > dip(1f)) {
             thumbY = cy
             updateFromFraction(fraction)

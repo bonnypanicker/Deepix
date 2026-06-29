@@ -197,7 +197,7 @@ class MainActivity : AppCompatActivity() {
         adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
         adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
 
-        val initialSpanCount = if (adapter.useCollageLayout) DesignTokens.GRID_SPAN_COUNT else adapter.gridColumnCount
+        val initialSpanCount = if (adapter.useCollageLayout) DesignTokens.COLLAGE_SPAN_COUNT else adapter.gridColumnCount
         val layoutManager = GridLayoutManager(this, initialSpanCount)
         layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
             override fun getSpanSize(position: Int): Int = adapter.spanSizeAt(position, layoutManager.spanCount)
@@ -224,6 +224,8 @@ class MainActivity : AppCompatActivity() {
         binding.imageGrid.setOnTouchListener(touchListener)
 
         binding.imageGrid.adapter = adapter
+        binding.imageGrid.setHasFixedSize(true)
+        binding.imageGrid.setItemViewCacheSize(12)
         binding.imageGrid.addItemDecoration(StickyHeaderDecoration(adapter))
         binding.fastScrollIndicator.attach(binding.imageGrid, adapter)
 
@@ -1217,11 +1219,11 @@ class MainActivity : AppCompatActivity() {
         useCollageLayout: Boolean
     ): List<GalleryCell> {
         if (items.isEmpty()) return listOf(GalleryCell.Empty(emptyText))
+        val rowWidthPx = resources.displayMetrics.widthPixels
         val cells = ArrayList<GalleryCell>()
         var lastMonth: String? = null
         var lastDay: String? = null
         var currentDayItems = ArrayList<GalleryRepository.MediaItem>()
-        var isFirstGroup = true
 
         for (item in items) {
             val month = safeFormat(monthFormatter, item.dateMillis, "Unknown date")
@@ -1229,8 +1231,7 @@ class MainActivity : AppCompatActivity() {
 
             if (month != lastMonth || day != lastDay) {
                 if (currentDayItems.isNotEmpty()) {
-                    appendDayCells(cells, currentDayItems, isFirstGroup, useCollageLayout)
-                    isFirstGroup = false
+                    appendDayCells(cells, currentDayItems, useCollageLayout, rowWidthPx)
                     currentDayItems = ArrayList()
                 }
 
@@ -1244,7 +1245,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (currentDayItems.isNotEmpty()) {
-            appendDayCells(cells, currentDayItems, isFirstGroup, useCollageLayout)
+            appendDayCells(cells, currentDayItems, useCollageLayout, rowWidthPx)
         }
 
         return cells
@@ -1253,25 +1254,103 @@ class MainActivity : AppCompatActivity() {
     private fun appendDayCells(
         cells: MutableList<GalleryCell>,
         dayItems: List<GalleryRepository.MediaItem>,
-        isFirstGroup: Boolean,
-        useCollageLayout: Boolean
+        useCollageLayout: Boolean,
+        rowWidthPx: Int
     ) {
         if (!useCollageLayout) {
             dayItems.forEach { cells += GalleryCell.Photo(it, featured = false) }
             return
         }
+        appendJustifiedRows(cells, dayItems, rowWidthPx)
+    }
 
-        when {
-            isFirstGroup && dayItems.isNotEmpty() -> {
-                cells += GalleryCell.Photo(dayItems[0], featured = true)
-                dayItems.asSequence().drop(1).forEach { cells += GalleryCell.Photo(it, featured = false) }
-            }
-            dayItems.size >= 3 -> {
-                cells += GalleryCell.Collage(dayItems.take(3))
-                dayItems.asSequence().drop(3).forEach { cells += GalleryCell.Photo(it, featured = false) }
-            }
-            else -> dayItems.forEach { cells += GalleryCell.Photo(it, featured = false) }
+    /**
+     * Lays photos out as justified rows (Google-Photos / aves style): each row is
+     * scaled so its photos keep their aspect ratio and together fill the full width.
+     * Spans are distributed across [DesignTokens.COLLAGE_SPAN_COUNT] and every photo
+     * in a row shares the same height so rows align cleanly.
+     */
+    private fun appendJustifiedRows(
+        cells: MutableList<GalleryCell>,
+        dayItems: List<GalleryRepository.MediaItem>,
+        rowWidthPx: Int
+    ) {
+        val spanCount = DesignTokens.COLLAGE_SPAN_COUNT
+        val width = rowWidthPx.coerceAtLeast(1)
+        val targetRowHeight = width / DesignTokens.COLLAGE_TARGET_ROWS_PER_WIDTH
+        // A row is "full" once the accumulated aspect ratios would shrink it to the
+        // target height. targetAspectSum = width / targetRowHeight.
+        val targetAspectSum = (width / targetRowHeight).toDouble()
+
+        val row = ArrayList<GalleryRepository.MediaItem>()
+        var aspectSum = 0.0
+
+        fun aspectOf(item: GalleryRepository.MediaItem): Double {
+            val w = item.width
+            val h = item.height
+            val ratio = if (w > 0 && h > 0) w.toDouble() / h.toDouble() else 1.0
+            return ratio.coerceIn(
+                DesignTokens.COLLAGE_MIN_ASPECT.toDouble(),
+                DesignTokens.COLLAGE_MAX_ASPECT.toDouble()
+            )
         }
+
+        fun flush(stretchToFill: Boolean) {
+            if (row.isEmpty()) return
+
+            if (stretchToFill) {
+                val rowHeight = (width / aspectSum).toInt().coerceAtLeast(1)
+                val spans = IntArray(row.size)
+                var assigned = 0
+                for (i in row.indices) {
+                    val s = Math.round((aspectOf(row[i]) / aspectSum) * spanCount).toInt().coerceAtLeast(1)
+                    spans[i] = s
+                    assigned += s
+                }
+                // Reconcile rounding so the row exactly fills the width.
+                var diff = spanCount - assigned
+                while (diff != 0) {
+                    val idx = if (diff > 0) {
+                        spans.indices.maxByOrNull { spans[it] }!!
+                    } else {
+                        spans.indices.filter { spans[it] > 1 }.maxByOrNull { spans[it] } ?: break
+                    }
+                    spans[idx] += if (diff > 0) 1 else -1
+                    diff += if (diff > 0) -1 else 1
+                }
+                for (i in row.indices) {
+                    cells += GalleryCell.Photo(
+                        item = row[i],
+                        collageSpan = spans[i].coerceIn(1, spanCount),
+                        collageHeightPx = rowHeight
+                    )
+                }
+            } else {
+                // Partial last row: keep photos at the natural target height and
+                // let them sit left-aligned rather than stretching to full width.
+                val rowHeight = targetRowHeight.toInt().coerceAtLeast(1)
+                for (item in row) {
+                    val span = Math.round(aspectOf(item) * targetRowHeight / width * spanCount)
+                        .toInt().coerceIn(1, spanCount)
+                    cells += GalleryCell.Photo(
+                        item = item,
+                        collageSpan = span,
+                        collageHeightPx = rowHeight
+                    )
+                }
+            }
+            row.clear()
+            aspectSum = 0.0
+        }
+
+        for (item in dayItems) {
+            row.add(item)
+            aspectSum += aspectOf(item)
+            if (aspectSum >= targetAspectSum) {
+                flush(stretchToFill = true)
+            }
+        }
+        flush(stretchToFill = false)
     }
 
     private fun buildMergedPhotoSearchResults(
@@ -1894,7 +1973,20 @@ class MainActivity : AppCompatActivity() {
             if (!binding.imageGrid.isAttachedToWindow) return@post
             binding.imageGrid.scrollToPosition(0)
             binding.fastScrollIndicator.syncToRecyclerView()
+            dismissLoadingOverlay()
         }
+    }
+
+    private var loadingOverlayDismissed = false
+
+    private fun dismissLoadingOverlay() {
+        if (loadingOverlayDismissed) return
+        loadingOverlayDismissed = true
+        binding.loadingOverlay.animate()
+            .alpha(0f)
+            .setDuration(220)
+            .withEndAction { binding.loadingOverlay.visibility = View.GONE }
+            .start()
     }
 
     private fun safeFormat(
@@ -2613,7 +2705,7 @@ class MainActivity : AppCompatActivity() {
         adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
         adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
         val layoutManager = binding.imageGrid.layoutManager as GridLayoutManager
-        layoutManager.spanCount = if (adapter.useCollageLayout) DesignTokens.GRID_SPAN_COUNT else adapter.gridColumnCount
+        layoutManager.spanCount = if (adapter.useCollageLayout) DesignTokens.COLLAGE_SPAN_COUNT else adapter.gridColumnCount
         layoutManager.spanSizeLookup.invalidateSpanIndexCache()
         updateDrawerState()
         // If the "only while charging" preference changed while indexing is active, re-apply it.
@@ -2667,6 +2759,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFatalError(error: Throwable) {
+        dismissLoadingOverlay()
         AlertDialog.Builder(this)
             .setTitle("Gallery Search Error")
             .setMessage(error.stackTraceToString())

@@ -31,7 +31,9 @@ sealed class GalleryCell {
     data class Photo(
         val item: GalleryRepository.MediaItem,
         val featured: Boolean = false,
-        val searchSources: SearchSources = SearchSources()
+        val searchSources: SearchSources = SearchSources(),
+        val collageSpan: Int = 0,
+        val collageHeightPx: Int = 0
     ) : GalleryCell()
     data class Collage(val items: List<GalleryRepository.MediaItem>) : GalleryCell()
     data class AlbumCell(val album: GalleryRepository.Album) : GalleryCell()
@@ -157,7 +159,7 @@ class ImageAdapter(
             is GalleryCell.FolderCell -> totalSpanCount
             is GalleryCell.Photo -> {
                 if (useCollageLayout) {
-                    if (cell.featured) totalSpanCount else totalSpanCount / 3
+                    cell.collageSpan.coerceIn(1, totalSpanCount)
                 } else {
                     1
                 }
@@ -319,6 +321,7 @@ class ImageAdapter(
                     .apply(com.bumptech.glide.request.RequestOptions().frame(1_000_000L))
                     .centerCrop()
                     .override(width, height)
+                    .dontAnimate()
                     .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
             } else {
                 Glide.with(context)
@@ -326,6 +329,7 @@ class ImageAdapter(
                     .format(DecodeFormat.PREFER_RGB_565)
                     .centerCrop()
                     .override(width, height)
+                    .dontAnimate()
                     .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
             }
             request.into(imageView)
@@ -346,24 +350,19 @@ class ImageAdapter(
                 }
                 loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, cellSize, cellSize)
             } else {
-                val regularSize = ((metrics.widthPixels - gutter * 6) / 3).coerceAtLeast(96)
-                when {
-                    cell.featured -> {
-                        val spanWidth = metrics.widthPixels
-                        val height = (spanWidth * 0.56f).toInt()
-                        binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
-                            this.height = height
-                        }
-                        loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, spanWidth, height)
-                    }
-                    else -> {
-                        val height = regularSize
-                        binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
-                            this.height = height
-                        }
-                        loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, regularSize, height)
-                    }
+                // Justified-rows collage: height is precomputed per row so every
+                // tile in a row lines up; width is filled by the grid span.
+                val rowHeight = if (cell.collageHeightPx > 0) {
+                    cell.collageHeightPx
+                } else {
+                    ((metrics.widthPixels - gutter * 6) / 3).coerceAtLeast(96)
                 }
+                val span = cell.collageSpan.coerceIn(1, DesignTokens.COLLAGE_SPAN_COUNT)
+                val approxWidth = (metrics.widthPixels * span / DesignTokens.COLLAGE_SPAN_COUNT).coerceAtLeast(1)
+                binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
+                    this.height = rowHeight
+                }
+                loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, approxWidth, rowHeight)
             }
 
             bindSelection(cell, selectionMode, isSelected)

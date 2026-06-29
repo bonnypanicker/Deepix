@@ -375,6 +375,36 @@
                     android:tint="@color/metroTextSecondary" />
             </LinearLayout>
         </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/loadingOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/metroBgPrimary"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <ProgressBar
+                android:id="@+id/loadingSpinner"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:indeterminate="true"
+                android:indeterminateTint="@color/metroAccent" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:fontFamily="sans-serif-light"
+                android:includeFontPadding="false"
+                android:letterSpacing="0.08"
+                android:text="Loading your gallery"
+                android:textAllCaps="true"
+                android:textColor="@color/metroTextSecondary"
+                android:textSize="13sp" />
+        </LinearLayout>
     </FrameLayout>
 
     <LinearLayout
