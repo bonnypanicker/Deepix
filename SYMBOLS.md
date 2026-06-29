@@ -50,7 +50,36 @@ ExifData                  ExifData.kt              data class; hasCameraInfo: Bo
 ExifExtractor             ExifExtractor.kt         extract(context, uri): ExifData
 TagPickerDialog           TagPickerDialog.kt       AlertDialog subclass for tag assignment
 ThreadBenchmark           ThreadBenchmark.kt       benchmarks optimal ORT thread count
+SmartCleanupActivity      SmartCleanupActivity.kt   dedicated cleanup screen; reads CleanupResultStore, observes CleanupWorker; tiles + selectable grid; pause/resume/stop
+CleanupAnalyzer           CleanupAnalyzer.kt        object; analyze(items,embeddings,sizeByUri,encodeText,imageStats,onProgress,onPartial,resumeQuality,scannedUris): Report
+  Category                CleanupAnalyzer.kt        DUPLICATES|SIMILAR|LIKELY_CLUTTER|SCREENSHOTS|DOCUMENTS|RECEIPTS|QR_CODES|BLURRY|DARK|BRIGHT|LOW_RESOLUTION
+  ImageStats              CleanupAnalyzer.kt        data class: variance, meanLuma, fractionNearWhite
+  Report                  CleanupAnalyzer.kt        categoryItems, suggestedDeleteUris, sizeByUri; count(); reclaimableBytes(); totalReclaimableBytes()
+CleanupWorker             CleanupWorker.kt          CoroutineWorker; WorkName="gallery_smart_cleanup"; foreground; full scan → CleanupResultStore; resumable; ProgressCurrent/TotalKey
+CleanupResultStore        CleanupResultStore.kt     save()/load()/clear(); Result(categoryUris,suggestedUris,scannedUris,done,total,complete,updatedAt) → cleanup_results.json
+CleanupHandoff            CleanupHandoff.kt         object; items, indexedCount, release() — hand-off to SmartCleanupActivity
+SettingsActivity          SettingsActivity.kt       prefs screen: collage/grid columns/pinned/charging-only/clear cleanup/about; writes IndexPreferences
 ```
+
+## Search / cleanup additions (this session)
+
+```
+GalleryRepository.allEmbeddings(): Map<String,FloatArray>           // snapshot (loads index if empty)
+GalleryRepository.encodeText(text): FloatArray?                     // delegate to TextEncoder
+GalleryRepository.imageEmbedding(uri): FloatArray?                  // stored, or encode on demand
+GalleryRepository.searchByEmbedding(query, excludeUri, floor=0.5, limit=500): List<SemanticSearchHit>  // image-to-image
+ImageAdapter.setSelection(uris)                                     // pre-select a set
+ImageAdapter.toggle(uri)                                            // public selection toggle (cleanup tap)
+MediaPagerAdapter ctor cb += onPlayStateChanged(position, playing)  // play/pause/replay + mute sync
+MediaPagerAdapter.PageViewHolder.togglePlayback()/setVideoControlsVisible()
+StructuredSearch.ScreenshotFilter                                   // is=screenshot (name/path heuristic)
+IndexPreferences.isCleanupPaused()/setCleanupPaused()
+IndexPreferences.isIndexConsentGiven()/setIndexConsentGiven()/wasIndexConsentAsked()/setIndexConsentAsked()
+IndexPreferences.isChargingOnlyIndexing()/setChargingOnlyIndexing()
+MainActivity: maybePromptIndexingConsent()/showIndexingConsentDialog()/onIndexDrawerAction()/pauseIndexing()/resumeIndexing()/buildIndexRequest()
+MainActivity SortMode enum   Relevance | Newest | Oldest
+MainActivity ShowFilter enum All | Favorites | Screenshots
+ViewerActivity.ExtraFindSimilarUri                                  // returned to launch image-to-image search
 
 ---
 
@@ -76,12 +105,14 @@ TagDao                db/TagDao.kt                getAll(); getTagsForMedia(uri)
 ```
 Mode          MainState.kt   Browse | Search | AlbumDetail | FolderDetail | SmartAlbumDetail
 Section       MainState.kt   Collection | Videos | Albums | Favorites | Folders
-SearchMode    MainActivity   Hybrid | AiOnly | MetadataOnly  (private enum)
+SearchMode    MainActivity   Hybrid | AiOnly | MetadataOnly  (private enum; chosen in Sort & filter sheet)
+SortMode      MainActivity   Relevance | Newest | Oldest  (private enum; search result order)
+ShowFilter    MainActivity   All | Favorites | Screenshots  (private enum; → fav=yes / is=screenshot)
 MediaType     GalleryRepository.kt  Image | Video  (@Parcelize)
 TokenizedText ClipTokenizer.kt  data class: inputIds: LongArray, attentionMask: LongArray
 InitResult    MainState.kt   imageEncoder, textEncoder, repository, snapshot
 LibrarySnapshot MainState.kt albums, imageItems, collectionItems, videoItems, selectedAlbumIds
-GestureDirection ViewerActivity.kt  UNDETERMINED | HORIZONTAL_PAGE | VERTICAL_DISMISS | VERTICAL_INFO | TAP  (gesture classification)
+GestureDirection ViewerActivity.kt  UNDETERMINED | HORIZONTAL_PAGE | VERTICAL_DISMISS | VERTICAL_INFO  (gesture classification)
 ```
 
 ---

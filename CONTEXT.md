@@ -13,8 +13,14 @@
 | File | Role |
 |---|---|
 | `GallerySearchApp` | Application class. Owns `SharedEncoders` (lazy singleton for ONNX sessions) |
-| `MainActivity` | God activity: browse/search/album/smart-album/folder modes, WorkManager orchestration, all UI state |
-| `ViewerActivity` | Full-screen pager: spring-physics swipe-to-dismiss (single-finger gated), EXIF/info panel, position counter, top-bar date, set-as-wallpaper, Metro delete dialog, video scrubber sync |
+| `MainActivity` | God activity: browse/search/album/smart-album/folder modes, WorkManager orchestration, all UI state, Smart Cleanup launch, revamped search (filter chips + sort/filter sheet + image-to-image) |
+| `ViewerActivity` | Full-screen pager: spring-physics swipe-to-dismiss (single-finger gated), Metro **key-value Info bottom sheet** (filename/date/size/dims/duration/location/device/lens/settings/path/tags), top-bar title+date, favorite/info/overflow actions, flat bottom action row (Share/Edit/Wallpaper/Delete), **Find similar** (image-to-image), Metro delete dialog, video controls |
+| `SmartCleanupActivity` | Dedicated Metro screen: CLIP-detected clutter tiles + storage summary, per-category selectable grid, MediaStore delete. Reads `CleanupResultStore`, observes `CleanupWorker`; progress bar + pause/resume/stop |
+| `SettingsActivity` | Metro preferences screen: Collage layout, Grid columns, Pinned-in-collections, Index-only-while-charging, Clear cleanup cache, About. Writes `IndexPreferences`; MainActivity re-applies on return |
+| `CleanupAnalyzer` | Pure logic: near-dup + similar grouping (embeddings), zero-shot category classify, blur/dark/bright via `ImageStats`, low-res via metadata. Resumable (scannedUris) + streaming (onPartial) |
+| `CleanupWorker` | `CoroutineWorker` (foreground, parallel to `IndexWorker`). Full-library scan, writes `CleanupResultStore` incrementally, resumes from scanned set, pausable via `IndexPreferences.isCleanupPaused` |
+| `CleanupResultStore` | JSON file (`filesDir/cleanup_results.json`): per-category uris + suggested-delete subset + scannedUris + progress/complete |
+| `CleanupHandoff` | Strong-ref hand-off of candidate image list + indexedCount to `SmartCleanupActivity` (mirrors `ViewerItemsHolder`) |
 | `GalleryRepository` | Data + AI core: MediaStore queries, embedding index (binary file), metadata index, search |
 | `DbRepository` | Room facade: media metadata, EXIF, favorites, tags, tag-media cross-refs |
 | `ImageEncoder` | MobileCLIP S2 FP16 vision ONNX. Input: `[N,3,256,256]` CHW float. Output: L2-norm embedding |
@@ -35,7 +41,7 @@
 | `EmbeddingUtils` | `l2Normalize()` + `cosineSimilarity()` (dot product on pre-normalized vectors) |
 | `FastScrollIndicator` | Custom View: animated thumb, track line, 64dp touch target from right edge |
 | `StickyHeaderDecoration` | RecyclerView `ItemDecoration` for floating date headers |
-| `MediaPagerAdapter` | ViewPager2 adapter for viewer pages: Glide image load (spinner via `RequestListener`), pooled ExoPlayer per holder tracked in `SparseArray`, video scrubber (250ms poll + seek) |
+| `MediaPagerAdapter` | ViewPager2 adapter for viewer pages: Glide image load (spinner via `RequestListener`), pooled ExoPlayer per holder tracked in `SparseArray`, **center play/pause/replay button**, **mute toggle** (session-wide), video scrubber (250ms poll + live seek), `onPlayStateChanged` callback |
 | `ViewerItemsHolder` | Strong-ref hand-off of the media list to `ViewerActivity` (avoids Binder size limit); cleared via `release()` |
 
 ---
@@ -43,6 +49,7 @@
 ## Key Data Flows
 
 ### Indexing Flow
+**Consent-gated:** indexing never auto-starts. First launch shows a one-time plain-language consent dialog (battery note + "search by describing your photos") with Start now / Choose folders / Not now. `IndexPreferences.isIndexConsentGiven` gates `maybeStartBackgroundIndexing()`. Side panel item toggles start ↔ pause ↔ resume (`onIndexDrawerAction` + `updateIndexDrawerLabel`). Settings "index only while charging" adds a `Constraints.setRequiresCharging(true)` to the work request (`buildIndexRequest`).
 ```
 IndexWorker.doWork()
   → GalleryRepository.getNewImageUris() / getImageUrisForAlbumIds()  [MediaStore]
@@ -59,16 +66,56 @@ IndexWorker.doWork()
 ### Search Flow
 ```
 MainActivity.submitSearch()
+  → query = effectiveQuery()  [free text + active filter chips + Show filter token]
   → StructuredSearch.parse(query) → ParsedQuery (filters + textQuery)
   → parsedQuery.filterItems(items, favorites, lookup)  [structured filters]
   → MetadataSearch (unless AiOnly mode)
   → repo.search(textQuery) [semantic, unless MetadataOnly mode]
       → QueryExpander.buildWeightedEmbedding(query)  [if WordNet loaded]
       → TextEncoder.encode() × N query variants
-      → cosine similarity over embedding map
-      → threshold: 0.19f (SearchTuning.ScoreThreshold)
-  → buildMergedPhotoSearchResults()  [merge + dedupe]
-  → renderSearchResults() → paginate 20 at a time (cap 80)
+      → cosine similarity over embedding map; threshold 0.19f
+  → buildMergedPhotoSearchResults()  [merge + dedupe, NO hard cap]
+  → renderSearchResults() → applySortAndShow()
+      → Relevance: flat ranked grid, paginate 30 at a time (infinite)
+      → Newest/Oldest: month-grouped timeline cells (cap 1500), pagination off
+
+Search UI (revamp):
+  - Search bar: magnifier / query-image thumbnail + input + × clear
+  - Header row: "Photos · N" summary + "Sort & filter" funnel button
+  - Active filter chips (removable) + quick suggestion pills (tap to add)
+  - Sort & filter BOTTOM SHEET (sheet_search_filter.xml): Sort (Relevance/Newest/Oldest),
+    Match (Smart+text / Smart only / Text only → SearchMode), Show (All/Favorites/Screenshots)
+  - On-image source badges = sparkle icon (semantic) + tag icon (text match)
+
+Image-to-image search:
+  ViewerActivity overflow "Find similar" → finish with ExtraFindSimilarUri
+  → MainActivity.searchSimilarImage(uri)
+      → repo.imageEmbedding(uri)  [stored, or encode on demand]
+      → repo.searchByEmbedding(emb, floor 0.55, limit 500) over ALL embeddings
+      → renderSearchResults(); thumbnail shown in the search bar
+```
+
+### Smart Cleanup Flow
+```
+Drawer "smart cleanup" → CleanupHandoff.items/indexedCount set → SmartCleanupActivity
+  onCreate → load CleanupResultStore (instant tiles) → enqueue CleanupWorker (KEEP) → observe
+
+CleanupWorker.doWork()  [foreground, parallel to IndexWorker, unique "gallery_smart_cleanup"]
+  → if IndexPreferences.isCleanupPaused → return
+  → repo.getImageItemsForAlbumIds(emptySet()) [all images] + repo.allEmbeddings() + sizes
+  → resume: load store (prior quality findings + scannedUris)
+  → CleanupAnalyzer.analyze(items, embeddings, sizes, encodeText, imageStats, onProgress, onPartial, resumeQuality, scannedUris)
+      → Duplicates (cosine ≥0.97) / Similar (≥0.93) via union-find
+      → zero-shot classify → Likely clutter (memes+stickers+emoji), Screenshots, Documents, Receipts, QR
+      → onPartial(report) after fast pass → store.save (streaming)
+      → quality pass: decode each remaining photo → Blurry/Dark/Bright; Low-res via metadata
+      → store.save every ~1.5s + setProgress(done,total)
+  → final store.save(complete=true)
+
+SmartCleanupActivity observes worker progress → reload store → renderTiles (live grow)
+  Categories sorted by reclaimable size; tap → selectable grid (suggested pre-selected) → delete
+  Pause/Resume (cancel + IndexPreferences.setCleanupPaused; resume re-enqueues, continues from scannedUris) · Stop
+  Auto re-scans (resume) when indexing completes
 ```
 
 ### Smart Album Flow
@@ -98,7 +145,8 @@ Refresh: re-runs runSearchPipeline, updates stored memberUris + cover
 - **Embedding index:** `filesDir/embedding_index.bin` — custom binary (magic `0x47534958`, v2)
   - Format: `[magic][version][count]` then per-entry `[uriByteLen][uriBytes][embDim][floats...]`
 - **Metadata index:** `filesDir/metadata_index.bin` — custom binary (magic `0x474d4458`, v1)
-- Both use atomic write (`.tmp` → rename)
+- **Cleanup results:** `filesDir/cleanup_results.json` — per-category uris + suggested + scannedUris + progress (written by `CleanupWorker`)
+- Both binary indexes use atomic write (`.tmp` → rename)
 
 ---
 
@@ -153,15 +201,19 @@ FOREGROUND_SERVICE · FOREGROUND_SERVICE_DATA_SYNC · POST_NOTIFICATIONS
 READ_MEDIA_IMAGES · READ_MEDIA_VIDEO · READ_MEDIA_VISUAL_USER_SELECTED
 READ_EXTERNAL_STORAGE (maxSdkVersion=32)
 ```
+`POST_NOTIFICATIONS` is requested at runtime on API 33+ (`MainActivity.ensureNotificationPermission`) so index/cleanup foreground-progress notifications appear (off by default otherwise).
 
 ---
 
 ## UI Modes & Navigation
 - **Mode enum:** `Browse | Search | AlbumDetail | FolderDetail | SmartAlbumDetail`
 - **Section enum:** `Collection | Videos | Albums | Favorites | Folders`
-- **SearchMode enum:** `Hybrid | AiOnly | MetadataOnly`
-- Navigation: DrawerLayout (left) + bottom nav bar (5 tabs) + back stack via `OnBackPressedCallback`
-- Viewer: launched via `viewerLauncher` (ActivityResultContracts), returns `ExtraContentChanged` bool
+- **SearchMode enum:** `Hybrid | AiOnly | MetadataOnly` (selected in the Sort & filter sheet "Match")
+- **SortMode enum:** `Relevance | Newest | Oldest` (search results)
+- **ShowFilter enum:** `All | Favorites | Screenshots` (search "Show" → fav=yes / is=screenshot tokens)
+- Navigation: DrawerLayout (left, incl. "smart cleanup") + bottom nav bar (5 tabs) + back stack via `OnBackPressedCallback`
+- Viewer: launched via `viewerLauncher` (ActivityResultContracts), returns `ExtraContentChanged` bool + optional `ExtraFindSimilarUri`
+- Smart Cleanup: launched via `cleanupLauncher`, returns `ExtraContentChanged` bool
 
 ---
 
@@ -179,23 +231,20 @@ READ_EXTERNAL_STORAGE (maxSdkVersion=32)
 11. **`ViewerItemsHolder` GC under memory pressure** — switched from `WeakReference` to a strong reference cleared via `release()` (called in `onCreate` after copy and again in `onDestroy`).
 12. **Video duration overloaded `locationName`** — `PhotoMetadata` now has a dedicated `durationMillis` field shown in its own info-panel duration row.
 13. **Gesture conflicts in viewer** — diagonal swipes misread as dismiss (only checked `deltaY`, never angle); info panel tap didn't close; stale captions during fast swiping (uncancelled metadata coroutines); info panel drag freeze at start. Fixed via: angle-aware gesture classification with `GestureDirection` enum locked at 10dp slop threshold (1.2x horizontal-to-vertical ratio); `onMediaTap` checks `infoVisible` first; `viewPager.isUserInputEnabled` toggled with panel state; cancellable `metadataJob` with position guard; info panel touch listener always returns `true` to consume from first frame.
+14. **Video play/pause auto-hide was inverted** — controls used to stay forever while playing and vanish while paused. Now images + playing videos auto-hide after 3s; a paused/ended video keeps controls visible. Play/pause/replay icons are driven by the player's `onIsPlayingChanged` (never desync). Initial video autoplays via `playWhenReady`.
+15. **Cleanup froze on "scanning N/total"** — full-library quality decode ran before any tile showed. Now `CleanupAnalyzer` streams partial results (fast embedding categories first) and the scan runs in `CleanupWorker` (background, resumable) writing `CleanupResultStore` incrementally; UI loads the store live.
+16. **Notifications off by default (API 33+)** — `POST_NOTIFICATIONS` was declared but never requested at runtime → request added in `MainActivity`.
+17. **Search showed raw query syntax** — pills used to inject `orientation=portrait`-style tokens into the EditText. Filters are now removable chips backed by `activeFilters`; the box holds only free text. `effectiveQuery()` composes text + chips + Show filter at search time.
 
 ---
 
 ## Active Roadmap Phase (as of last commit)
-**Phase 4 complete — Smart Albums (prompt-backed persistent albums).** Smart albums appear in the PINNED section of both the Albums page and the Collections page (when "pinned in collections" is enabled). Created via a two-field popup dialog (name + prompt), persisted in SharedPreferences, with Refresh/Rename/Edit Prompt/Delete/Unpin long-press menu. Members resolved from stored URIs in engine-rank order.
+**Smart Cleanup (CLIP-backed declutter) — complete & live.** Dedicated `SmartCleanupActivity` reached via drawer "smart cleanup". A background `CleanupWorker` (foreground, parallel to indexing) scans the whole library and streams results to `CleanupResultStore`; the screen shows tiles instantly and grows them live with a progress bar + pause/resume/stop. Categories: Duplicates, Similar photos, **Likely clutter** (memes+stickers+emoji), Screenshots, Documents, Receipts, QR codes, Blurry, Too dark, Overexposed, Low quality. Storage-recoverable summary card; smart pre-selection; reuses MediaStore delete. Never auto-deletes; no `.onnx`/tokenizer changes.
 
-**Viewer overhaul complete — production-grade `ViewerActivity`.** All three phases of `implementation_plan.md` implemented:
-- *Phase 1 (bugs/stability):* single-finger dismiss gate, Glide-listener spinner, forced info-panel reset on page change, `supportFinishAfterTransition()`, geocoder `withTimeoutOrNull(3000)`, dedicated video duration field, strong-ref `ViewerItemsHolder`, `SparseArray` player tracking + `releaseAll()`, double-bind guard.
-- *Phase 2 (Metro polish):* position counter ("12 / 147"), top-bar date subtitle, bottom gradient, 260dp pill with set-as-wallpaper button (images only), info-panel drag handle + duration row, `translationY` control slide animation, AMOLED custom delete dialog.
-- *Phase 3 (video scrubber):* minimal `SeekBar` overlay with elapsed/total labels, 250ms progress poll, seek-on-drag, shown/hidden with controls, auto-hide suppressed while scrubbing.
+**Video player overhaul — complete.** Center play/pause/replay button, session-wide mute toggle, live scrubber, fixed auto-hide, consistent autoplay + player-driven icon state.
 
-**Gesture conflict fixes complete — production-grade touch handling.** All 6 bugs from frame-by-frame analysis fixed:
-- Angle-aware gesture classification with `GestureDirection` enum (10dp slop, 1.2x ratio) eliminates diagonal swipe conflicts
-- Info panel tap-to-close via `onMediaTap` awareness
-- ViewPager2 paging disabled while info panel open (`isUserInputEnabled` toggle)
-- Cancellable metadata jobs prevent stale caption flashing during fast swiping
-- Info panel touch consumption from first frame eliminates drag freeze
-- Scoped `handleViewerTouch()` gated on `!infoVisible` reduces overhead
+**Viewer Metro redesign — complete.** Filename+date in top bar (extension stripped), favorite/info/overflow actions, flat bottom action row (Share/Edit/Wallpaper/Delete), content-sized key-value **Info bottom sheet** with dim scrim, **Find similar** (image-to-image) in overflow.
 
-**Last commit:** fix: viewer gesture conflicts — angle-aware classification, metadata job cancellation, info panel coordination
+**Search revamp — complete.** Icon source badges (sparkle/tag), no result cap (infinite pagination), Sort & filter **bottom sheet** (Sort/Match/Show), date-grouped results for date sorts, removable filter chips, image-to-image search with source thumbnail in the bar.
+
+**Last commit:** feat: Smart Cleanup progress bar, pause/resume/stop, Likely clutter group (search revamp pending commit)

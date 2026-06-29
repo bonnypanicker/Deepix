@@ -52,7 +52,35 @@ MainActivity.submitSearch()
   │     └── QueryExpander.buildWeightedEmbedding()
   │           └── WordNetExpansionDictionary  (photo_synonyms.json.gz)
   │           └── TextEncoder.encode()  (per term + query variants)
-  └── buildMergedPhotoSearchResults()  → SearchResultManager → paginate
+  └── buildMergedPhotoSearchResults()  (no cap) → applySortAndShow()
+        ├── Relevance → flat ranked grid, paginate 30 (infinite)
+        └── Newest/Oldest → month-grouped timeline cells (cap 1500)
+
+Search UI: search bar (× clear / query-image thumb) + "Photos · N" header + Sort&filter funnel
+  └── sheet_search_filter.xml  (Sort: Relevance/Newest/Oldest · Match: SearchMode · Show: All/Favorites/Screenshots)
+  active filter chips (activeFilters) + quick suggestion pills; effectiveQuery() = text + chips + showFilterToken()
+  on-image badges: sparkle (semantic) + tag (text match)
+  Filter subclasses incl. new StructuredSearch.ScreenshotFilter (is=screenshot)
+
+Image-to-image: ViewerActivity overflow "Find similar" → ExtraFindSimilarUri
+  → MainActivity.searchSimilarImage() → repo.imageEmbedding() + repo.searchByEmbedding() (all embeddings)
+```
+
+### Smart Cleanup Pipeline
+```
+MainActivity drawer "smart cleanup" → CleanupHandoff → SmartCleanupActivity
+  ├── CleanupResultStore.load()  (instant tiles)
+  ├── WorkManager.enqueueUniqueWork("gallery_smart_cleanup", KEEP, CleanupWorker)
+  └── observe CleanupWorker LiveData → reload store live → renderTiles + progress bar
+
+CleanupWorker (foreground, parallel to IndexWorker)
+  ├── GalleryRepository.getImageItemsForAlbumIds(emptySet()) + allEmbeddings() + encodeText()
+  ├── CleanupAnalyzer.analyze(... onPartial, resumeQuality, scannedUris)
+  │     ├── EmbeddingUtils.cosineSimilarity  (duplicates ≥0.97 / similar ≥0.93)
+  │     ├── zero-shot prompt vectors → Likely clutter / Screenshots / Documents / Receipts / QR
+  │     └── ImageStats (decode) → Blurry / Dark / Bright ; metadata → Low-res
+  ├── CleanupResultStore.save()  (incremental, throttled)
+  └── IndexPreferences.isCleanupPaused()  (pause/resume/stop)
 ```
 
 ### Smart Album Pipeline
@@ -88,7 +116,10 @@ MainActivity
   │     ├── MediaPagerAdapter  (ViewPager2)
   │     │     ├── Glide (image, RequestListener → spinner + shared-element start)
   │     │     ├── ExoPlayer (per holder, SparseArray-tracked, releaseAll in onDestroy)
-  │     │     └── scrubber: videoSeekBar + videoElapsed/videoTotal (onScrubbingChanged → activity auto-hide)
+  │     │     ├── center play/pause/replay button + mute toggle (session-wide)
+  │     │     └── scrubber: videoSeekBar + videoElapsed/videoTotal (onPlayStateChanged → activity auto-hide)
+  │     ├── Info bottom sheet (item_info_row.xml rows) + dim scrim
+  │     ├── overflow "Find similar" → ExtraFindSimilarUri → MainActivity.searchSimilarImage()
   │     ├── Gesture handling (angle-aware classification)
   │     │     ├── GestureDirection enum (UNDETERMINED → HORIZONTAL_PAGE | VERTICAL_DISMISS | VERTICAL_INFO)
   │     │     ├── downX/downY tracking, 10dp slop threshold, 1.2x ratio lock
@@ -97,6 +128,10 @@ MainActivity
   │     ├── FavoritesStore → DbRepository
   │     └── ExifExtractor → ExifData
   ├── TagPickerDialog → DbRepository (TagDao)
+  ├── SmartCleanupActivity  (via cleanupLauncher)
+  │     ├── CleanupHandoff (items hand-off)
+  │     ├── CleanupResultStore (load/observe live)
+  │     └── CleanupWorker (WorkManager, foreground, parallel to IndexWorker)
   └── FolderNode (folder tree construction)
 ```
 
@@ -111,7 +146,8 @@ DbRepository
 
 AlbumPinStore  (SharedPreferences / JSONArray)
 SmartAlbumStore  (SharedPreferences / JSONArray)
-IndexPreferences  (SharedPreferences)
+IndexPreferences  (SharedPreferences; incl. isCleanupPaused)
+CleanupResultStore  (JSON file: filesDir/cleanup_results.json)
 ```
 
 ---
@@ -171,4 +207,9 @@ scrubber_thumb.xml / scrubber_progress.xml → item_viewer_page.xml (video SeekB
 dialog_tag_picker.xml   → TagPickerDialog
 dialog_smart_album.xml  → MainActivity (smart album create dialog)
 item_empty.xml          → ImageAdapter (empty state)
+activity_smart_cleanup.xml → SmartCleanupActivity (overview tiles + progress + detail grid)
+item_cleanup_tile.xml   → SmartCleanupActivity (Metro category tile)
+sheet_search_filter.xml → MainActivity (Sort & filter bottom sheet)
+item_info_row.xml       → ViewerActivity (Info sheet key-value row, via <include>)
+activity_settings.xml   → SettingsActivity (Metro preferences screen)
 ```
