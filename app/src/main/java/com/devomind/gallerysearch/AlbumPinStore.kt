@@ -7,6 +7,7 @@ class AlbumPinStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PrefsName, Context.MODE_PRIVATE)
 
     fun pin(albumId: String) {
+        markInitialized()
         val ids = loadOrdered()
         if (albumId !in ids) {
             ids += albumId
@@ -15,10 +16,20 @@ class AlbumPinStore(context: Context) {
     }
 
     fun unpin(albumId: String) {
+        markInitialized()
         val ids = loadOrdered()
         if (albumId in ids) {
             ids -= albumId
             saveOrdered(ids)
+        }
+    }
+
+    /** True once defaults have been applied or the user has changed pins manually. */
+    fun isInitialized(): Boolean = prefs.getBoolean(KeyInitialized, false)
+
+    fun markInitialized() {
+        if (!prefs.getBoolean(KeyInitialized, false)) {
+            prefs.edit().putBoolean(KeyInitialized, true).apply()
         }
     }
 
@@ -31,6 +42,7 @@ class AlbumPinStore(context: Context) {
     }
 
     fun setPinnedOrder(albumIds: List<String>) {
+        markInitialized()
         saveOrdered(albumIds.toMutableList())
     }
 
@@ -65,5 +77,6 @@ class AlbumPinStore(context: Context) {
     companion object {
         private const val PrefsName = "album_pins"
         private const val KeyPinned = "pinned_album_ids"
+        private const val KeyInitialized = "pins_initialized"
     }
 }

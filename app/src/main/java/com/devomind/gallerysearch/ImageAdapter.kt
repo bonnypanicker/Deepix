@@ -24,6 +24,7 @@ import com.devomind.gallerysearch.databinding.ItemFolderBinding
 import com.devomind.gallerysearch.databinding.ItemImageBinding
 import com.devomind.gallerysearch.databinding.ItemPinnedAlbumChipBinding
 import com.devomind.gallerysearch.databinding.ItemPinnedAlbumsHeaderBinding
+import com.devomind.gallerysearch.databinding.ItemSmartAlbumOnboardingBinding
 import com.devomind.gallerysearch.databinding.ItemTimelineHeaderBinding
 
 sealed class GalleryCell {
@@ -41,6 +42,7 @@ sealed class GalleryCell {
     data class PinnedAlbumsHeader(
         val albums: List<GalleryRepository.Album>
     ) : GalleryCell()
+    object SmartAlbumOnboarding : GalleryCell()
     data class Empty(val text: String) : GalleryCell()
 }
 
@@ -50,7 +52,8 @@ class ImageAdapter(
     private val onAlbumClick: (GalleryRepository.Album) -> Unit,
     private val onAlbumLongClick: (GalleryRepository.Album, View) -> Unit,
     private val onFolderClick: (FolderNode) -> Unit = {},
-    private val onFolderExpandClick: (FolderNode) -> Unit = {}
+    private val onFolderExpandClick: (FolderNode) -> Unit = {},
+    private val onCreateSmartAlbum: () -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     var cells = mutableListOf<GalleryCell>()
@@ -95,6 +98,7 @@ class ImageAdapter(
             is GalleryCell.AlbumCell -> ViewTypeAlbum
             is GalleryCell.FolderCell -> ViewTypeFolder
             is GalleryCell.PinnedAlbumsHeader -> ViewTypePinnedAlbumsHeader
+            is GalleryCell.SmartAlbumOnboarding -> ViewTypeSmartOnboarding
             is GalleryCell.Empty -> ViewTypeEmpty
         }
     }
@@ -113,6 +117,10 @@ class ImageAdapter(
                 onAlbumClick
             )
             ViewTypeEmpty -> EmptyViewHolder(ItemEmptyBinding.inflate(inflater, parent, false))
+            ViewTypeSmartOnboarding -> SmartAlbumOnboardingViewHolder(
+                ItemSmartAlbumOnboardingBinding.inflate(inflater, parent, false),
+                onCreateSmartAlbum
+            )
             else -> PhotoViewHolder(ItemImageBinding.inflate(inflater, parent, false), onPhotoClick, ::toggleSelection)
         }
     }
@@ -131,6 +139,7 @@ class ImageAdapter(
             is GalleryCell.AlbumCell -> (holder as AlbumViewHolder).bind(cell.album)
             is GalleryCell.FolderCell -> (holder as FolderViewHolder).bind(cell.node)
             is GalleryCell.PinnedAlbumsHeader -> (holder as PinnedAlbumsHeaderViewHolder).bind(cell)
+            is GalleryCell.SmartAlbumOnboarding -> Unit
             is GalleryCell.Empty -> (holder as EmptyViewHolder).bind(cell)
         }
     }
@@ -154,6 +163,7 @@ class ImageAdapter(
             is GalleryCell.Header,
             is GalleryCell.Empty,
             is GalleryCell.PinnedAlbumsHeader -> totalSpanCount
+            is GalleryCell.SmartAlbumOnboarding -> totalSpanCount
             is GalleryCell.Collage -> totalSpanCount
             is GalleryCell.AlbumCell -> totalSpanCount / 2
             is GalleryCell.FolderCell -> totalSpanCount
@@ -289,6 +299,7 @@ class ImageAdapter(
             is GalleryCell.AlbumCell -> "album:${cell.album.id}"
             is GalleryCell.FolderCell -> "folder:${cell.node.path}"
             is GalleryCell.PinnedAlbumsHeader -> "pinned_albums_header"
+            is GalleryCell.SmartAlbumOnboarding -> "smart_album_onboarding"
             is GalleryCell.Empty -> "empty:${cell.text}"
         }
         return key.fold(1125899906842597L) { hash, char -> 31L * hash + char.code.toLong() }
@@ -651,6 +662,16 @@ class ImageAdapter(
         }
     }
 
+    class SmartAlbumOnboardingViewHolder(
+        binding: ItemSmartAlbumOnboardingBinding,
+        onCreateSmartAlbum: () -> Unit
+    ) : RecyclerView.ViewHolder(binding.root) {
+        init {
+            binding.onboardingCreateBtn.setOnClickListener { onCreateSmartAlbum() }
+            binding.root.setOnClickListener { onCreateSmartAlbum() }
+        }
+    }
+
     class FolderViewHolder(
         private val binding: ItemFolderBinding,
         private val onFolderClick: (FolderNode) -> Unit,
@@ -701,5 +722,6 @@ class ImageAdapter(
         const val ViewTypeEmpty = 5
         const val ViewTypePinnedAlbumsHeader = 6
         const val ViewTypeFolder = 7
+        const val ViewTypeSmartOnboarding = 8
     }
 }

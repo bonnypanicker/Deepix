@@ -192,7 +192,8 @@ class MainActivity : AppCompatActivity() {
             onAlbumClick = ::openAlbum,
             onAlbumLongClick = ::showAlbumPinMenu,
             onFolderClick = ::openFolder,
-            onFolderExpandClick = ::toggleFolderExpanded
+            onFolderExpandClick = ::toggleFolderExpanded,
+            onCreateSmartAlbum = { showCreateSmartAlbumDialog() }
         )
         adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
         adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
@@ -895,6 +896,7 @@ class MainActivity : AppCompatActivity() {
             if (currentMode == Mode.Browse && currentAlbum == null && activeSection == expectedSection) {
                 val validIds = albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet()
                 albumPinStore.cleanup(validIds)
+                ensureDefaultPins()
                 val pinnedIds = albumPinStore.getPinnedAlbumIds()
                 val smartById = smartAlbums.associate { it.id to it.toAlbum() }
                 val albumById = (albums + smartById.values).associateBy { it.id }
@@ -927,6 +929,7 @@ class MainActivity : AppCompatActivity() {
 
         val validIds = albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet()
         albumPinStore.cleanup(validIds)
+        ensureDefaultPins()
         val pinnedIds = albumPinStore.getPinnedAlbumIds()
 
         val smartById = smartAlbums.associate { it.id to it.toAlbum() }
@@ -936,6 +939,10 @@ class MainActivity : AppCompatActivity() {
         val normalAlbums = albums.filter { it.id !in pinnedIds }
 
         val cells = mutableListOf<GalleryCell>()
+        // Onboarding: nudge first-time users to try smart albums.
+        if (smartAlbums.isEmpty()) {
+            cells += GalleryCell.SmartAlbumOnboarding
+        }
         if (pinnedAlbums.isNotEmpty()) {
             cells += GalleryCell.Header("PINNED", "")
             pinnedAlbums.forEach { cells += GalleryCell.AlbumCell(it) }
@@ -955,6 +962,40 @@ class MainActivity : AppCompatActivity() {
         updateDrawerState()
         updateBottomPanelState()
         showBottomPanel()
+    }
+
+    /**
+     * On first run (before the user has pinned anything), auto-pin the most
+     * relevant device albums so the Albums tab isn't empty at the top.
+     */
+    private fun ensureDefaultPins() {
+        if (albumPinStore.isInitialized()) return
+        if (albums.isEmpty()) return // wait until the library has loaded
+        val ranked = albums.sortedWith(
+            compareByDescending<GalleryRepository.Album> { albumRelevanceScore(it.name) }
+                .thenByDescending { it.count }
+        )
+        val defaults = ranked.take(4).map { it.id }
+        if (defaults.isNotEmpty()) {
+            albumPinStore.setPinnedOrder(defaults)
+        } else {
+            albumPinStore.markInitialized()
+        }
+    }
+
+    /** Higher score => more likely to be a meaningful album worth pinning. */
+    private fun albumRelevanceScore(name: String): Int {
+        val n = name.lowercase(Locale.getDefault())
+        return when {
+            n.contains("camera") || n == "dcim" -> 100
+            n.contains("screenshot") -> 80
+            n.contains("download") -> 70
+            n.contains("whatsapp") && n.contains("image") -> 65
+            n.contains("whatsapp") -> 60
+            n.contains("pictures") || n.contains("photos") -> 55
+            n.contains("instagram") || n.contains("telegram") || n.contains("snapchat") -> 50
+            else -> 0
+        }
     }
 
     private fun renderAlbumDetail(album: GalleryRepository.Album) {
@@ -2200,21 +2241,45 @@ class MainActivity : AppCompatActivity() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_smart_album, null)
         val nameInput = dialogView.findViewById<EditText>(R.id.smartAlbumName)
         val promptInput = dialogView.findViewById<EditText>(R.id.smartAlbumPrompt)
+        val suggestionRow = dialogView.findViewById<android.widget.LinearLayout>(R.id.smartAlbumSuggestions)
+        val cancelBtn = dialogView.findViewById<TextView>(R.id.smartAlbumCancel)
+        val createBtn = dialogView.findViewById<TextView>(R.id.smartAlbumCreate)
 
-        AlertDialog.Builder(this)
-            .setTitle("New Smart Album")
+        val dialog = AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
             .setView(dialogView)
-            .setPositiveButton("Create") { _, _ ->
-                val name = nameInput.text.toString().trim()
-                val prompt = promptInput.text.toString().trim()
-                if (name.isEmpty() || prompt.isEmpty()) {
-                    Toast.makeText(this, "Album name and prompt are required", Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                createSmartAlbum(name, prompt)
+            .create()
+
+        // Quick-start prompt chips: tapping fills the prompt (and the name if empty).
+        val suggestions = listOf(
+            "Beach days" to "sunset at the beach",
+            "Food" to "food and meals",
+            "Pets" to "cats and dogs",
+            "Nature" to "mountains and landscapes",
+            "Cars" to "cars and vehicles",
+            "Documents" to "documents and screenshots"
+        )
+        suggestions.forEach { (label, prompt) ->
+            val chip = createSearchPillView(label = label, selected = false) {
+                promptInput.setText(prompt)
+                promptInput.setSelection(prompt.length)
+                if (nameInput.text.isNullOrBlank()) nameInput.setText(label)
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+            suggestionRow.addView(chip)
+        }
+
+        cancelBtn.setOnClickListener { dialog.dismiss() }
+        createBtn.setOnClickListener {
+            val name = nameInput.text.toString().trim()
+            val prompt = promptInput.text.toString().trim()
+            if (name.isEmpty() || prompt.isEmpty()) {
+                Toast.makeText(this, "Album name and description are required", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            dialog.dismiss()
+            createSmartAlbum(name, prompt)
+        }
+
+        dialog.show()
     }
 
     private fun createSmartAlbum(name: String, prompt: String) {

@@ -83,4 +83,15 @@
         <item name="android:layout_height">1dp</item>
         <item name="android:background">#1A1A1A</item>
     </style>
+
+    <style name="Theme.GallerySearch.Dialog" parent="Theme.AppCompat.Dialog">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimAmount">0.62</item>
+        <item name="android:windowMinWidthMajor">88%</item>
+        <item name="android:windowMinWidthMinor">92%</item>
+        <item name="colorAccent">@color/metroAccent</item>
+        <item name="android:textColorPrimary">@color/metroTextPrimary</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
 </resources>
