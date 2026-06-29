@@ -229,15 +229,6 @@ class MainActivity : AppCompatActivity() {
 
         binding.imageGrid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
-                val alpha = if (rv.computeVerticalScrollOffset() > 32) {
-                    DesignTokens.SCROLLED_HEADER_ALPHA
-                } else {
-                    DesignTokens.HEADER_ALPHA
-                }
-                if (adapter.selectionCount == 0) {
-                    binding.menuBtn.animate().alpha(alpha).setDuration(160).start()
-                }
-                
                 // Infinite scroll pagination for search results
                 if (currentMode == Mode.Search && fullSearchResults.isNotEmpty()) {
                     val layoutManager = rv.layoutManager as GridLayoutManager
@@ -270,9 +261,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindChrome() {
         binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
-        binding.searchLaunchBtn.setOnClickListener { openSearch() }
         binding.addAlbumBtn.setOnClickListener { showCreateSmartAlbumDialog() }
-        binding.searchClearBtn.setOnClickListener { onSearchClear() }
+        binding.searchTrailingBtn.setOnClickListener {
+            if (currentMode == Mode.Search) onSearchClear() else openSearch()
+        }
         binding.searchFilterBtn.setOnClickListener { showSortFilterSheet() }
 
         binding.drawerCollection.setOnClickListener {
@@ -348,20 +340,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.mainSurface.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_MOVE || event.action == MotionEvent.ACTION_DOWN) {
-                val nearMenu = event.x < DesignTokens.MENU_NEAR_X_DP * resources.displayMetrics.density &&
-                    event.y < topInsetPx + (DesignTokens.MENU_NEAR_Y_DP * resources.displayMetrics.density)
-                if (adapter.selectionCount == 0) {
-                    val alpha = if (nearMenu) 1f else DesignTokens.SCROLLED_HEADER_ALPHA
-                    binding.menuBtn.animate()
-                        .alpha(alpha)
-                        .setDuration(DesignTokens.MENU_NEAR_FADE_DURATION_MS)
-                        .start()
-                }
-            }
-            false
-        }
         binding.selectAllBtn.setOnClickListener { adapter.selectAll() }
         binding.shareSelectionBtn.setOnClickListener { shareSelected() }
         binding.deleteSelectionBtn.setOnClickListener { confirmDeleteSelected() }
@@ -1015,12 +993,14 @@ class MainActivity : AppCompatActivity() {
         renderJob?.cancel()
         currentMode = Mode.Search
         binding.searchPanel.visibility = View.VISIBLE
-        binding.screenTitle.visibility = View.VISIBLE
-        binding.screenTitle.text = "search"
+        binding.screenTitle.visibility = View.GONE
+        binding.searchBox.visibility = View.VISIBLE
         binding.resultCount.text = ""
         binding.fastScrollIndicator.visibility = View.GONE
+        binding.searchInput.hint = if (imageSearchActive) "Photos similar to this image" else "Search photos"
+        updateSearchTrailingIcon()
+        binding.searchInput.requestFocus()
         updateSearchMetaText()
-        updateTopBarForMode("search")
         updateDrawerState()
         updateBottomPanelState()
         updateSearchPillState()
@@ -1031,6 +1011,16 @@ class MainActivity : AppCompatActivity() {
         } else {
             submitSearch()
         }
+    }
+
+    private fun updateSearchTrailingIcon() {
+        val res = if (currentMode == Mode.Search) {
+            R.drawable.ic_fluent_dismiss_24_regular
+        } else {
+            R.drawable.ic_fluent_search_24_regular
+        }
+        binding.searchTrailingBtn.setImageResource(res)
+        binding.searchTrailingBtn.contentDescription = if (currentMode == Mode.Search) "Clear search" else "Search"
     }
 
     private fun closeSearch(clearQuery: Boolean) {
@@ -1045,7 +1035,9 @@ class MainActivity : AppCompatActivity() {
         imageSearchActive = false
         clearImageSearchThumb()
         binding.searchInput.clearFocus()
+        binding.searchInput.hint = "Search albums, photos…"
         currentMode = if (currentAlbum != null) Mode.AlbumDetail else Mode.Browse
+        updateSearchTrailingIcon()
         renderCurrentState()
     }
 
@@ -1582,7 +1574,9 @@ class MainActivity : AppCompatActivity() {
         suppressSearchInput = false
         showImageSearchThumb(uri)
         binding.fastScrollIndicator.visibility = View.GONE
-        updateTopBarForMode("search")
+        binding.screenTitle.visibility = View.GONE
+        binding.searchBox.visibility = View.VISIBLE
+        updateSearchTrailingIcon()
         updateDrawerState()
         updateBottomPanelState()
         updateSearchPillState()
@@ -1848,7 +1842,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showImageSearchThumb(uri: Uri) {
-        binding.searchLeadingIcon.visibility = View.GONE
         binding.searchImageThumb.visibility = View.VISIBLE
         com.bumptech.glide.Glide.with(this)
             .load(uri)
@@ -1862,8 +1855,7 @@ class MainActivity : AppCompatActivity() {
         binding.searchImageThumb.visibility = View.GONE
         binding.searchImageThumb.setOnClickListener(null)
         com.bumptech.glide.Glide.with(this).clear(binding.searchImageThumb)
-        binding.searchLeadingIcon.visibility = View.VISIBLE
-        binding.searchInput.hint = "Search this section"
+        binding.searchInput.hint = "Search albums, photos…"
     }
 
     private fun clearImageSearch() {
@@ -2285,9 +2277,9 @@ class MainActivity : AppCompatActivity() {
             binding.menuBtn.setImageResource(R.drawable.ic_fluent_back_24_regular)
             binding.menuBtn.alpha = 1f
             binding.menuBtn.setOnClickListener { adapter.clearSelection() }
-            binding.searchLaunchBtn.visibility = View.GONE
+            binding.searchBox.visibility = View.GONE
         } else {
-            binding.searchLaunchBtn.visibility = View.VISIBLE
+            binding.searchBox.visibility = View.VISIBLE
             updateTopBarForMode(currentTopTitle())
         }
     }
@@ -2592,9 +2584,9 @@ class MainActivity : AppCompatActivity() {
             binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
         }
 
-        binding.screenTitle.visibility = if (title == null) View.GONE else View.VISIBLE
+        binding.screenTitle.visibility = if (title == null || currentMode == Mode.Search) View.GONE else View.VISIBLE
         binding.screenTitle.text = title.orEmpty()
-        binding.searchLaunchBtn.visibility = if (adapter.selectionCount > 0) View.GONE else View.VISIBLE
+        binding.searchBox.visibility = if (adapter.selectionCount > 0) View.GONE else View.VISIBLE
         val isAlbumsSection = activeSection == Section.Albums &&
             currentMode == Mode.Browse &&
             adapter.selectionCount == 0

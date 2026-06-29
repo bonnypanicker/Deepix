@@ -29,66 +29,102 @@
             android:orientation="vertical">
 
             <FrameLayout
-                android:id="@+id/topChrome"
+                android:id="@+id/titleRow"
                 android:layout_width="match_parent"
-                android:layout_height="96dp">
-
-                <ImageButton
-                    android:id="@+id/menuBtn"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:layout_gravity="start|top"
-                    android:layout_marginStart="4dp"
-                    android:alpha="0.2"
-                    android:background="@android:color/transparent"
-                    android:contentDescription="Menu"
-                    android:padding="12dp"
-                    android:src="@drawable/ic_fluent_navigation_24_regular"
-                    android:tint="@color/metroTextPrimary" />
+                android:layout_height="wrap_content"
+                android:paddingTop="10dp"
+                android:paddingBottom="6dp">
 
                 <TextView
                     android:id="@+id/screenTitle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="bottom"
+                    android:layout_gravity="center"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-light"
+                    android:gravity="center"
                     android:includeFontPadding="false"
-                    android:paddingStart="16dp"
-                    android:paddingEnd="16dp"
-                    android:paddingBottom="16dp"
-                    android:text="collection"
+                    android:letterSpacing="0.04"
+                    android:paddingStart="56dp"
+                    android:paddingEnd="56dp"
+                    android:singleLine="true"
+                    android:text="collections"
                     android:textAllCaps="true"
                     android:textColor="@color/metroTextPrimary"
-                    android:textSize="26sp"
-                    android:letterSpacing="0.02"
-                    android:fontFamily="sans-serif-light"
-                    android:visibility="visible" />
+                    android:textSize="20sp" />
 
                 <ImageButton
                     android:id="@+id/addAlbumBtn"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:layout_gravity="end|top"
-                    android:layout_marginEnd="48dp"
-                    android:alpha="0.2"
-                    android:background="@android:color/transparent"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:layout_gravity="end|center_vertical"
+                    android:layout_marginEnd="12dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Add smart album"
-                    android:padding="12dp"
+                    android:padding="10dp"
                     android:src="@drawable/ic_fluent_add_24_regular"
                     android:tint="@color/metroTextPrimary"
                     android:visibility="gone" />
+            </FrameLayout>
+
+            <LinearLayout
+                android:id="@+id/searchBox"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/search_bg"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp">
 
                 <ImageButton
-                    android:id="@+id/searchLaunchBtn"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:layout_gravity="end|top"
-                    android:layout_marginEnd="4dp"
+                    android:id="@+id/menuBtn"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Menu"
+                    android:padding="10dp"
+                    android:src="@drawable/ic_fluent_navigation_24_regular"
+                    android:tint="@color/metroTextPrimary" />
+
+                <ImageView
+                    android:id="@+id/searchImageThumb"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="2dp"
+                    android:contentDescription="Similar image"
+                    android:scaleType="centerCrop"
+                    android:visibility="gone" />
+
+                <EditText
+                    android:id="@+id/searchInput"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
                     android:background="@android:color/transparent"
+                    android:hint="Search albums, photos…"
+                    android:imeOptions="actionSearch"
+                    android:inputType="text"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:singleLine="true"
+                    android:textColor="@color/metroTextPrimary"
+                    android:textColorHint="@color/metroTextSecondary"
+                    android:textSize="16sp" />
+
+                <ImageButton
+                    android:id="@+id/searchTrailingBtn"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Search"
-                    android:padding="12dp"
+                    android:padding="11dp"
                     android:src="@drawable/ic_fluent_search_24_regular"
                     android:tint="@color/metroTextPrimary" />
-            </FrameLayout>
+            </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/searchPanel"
@@ -101,60 +137,6 @@
                 android:paddingEnd="16dp"
                 android:paddingBottom="14dp"
                 android:visibility="gone">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:background="@drawable/search_bg"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="8dp">
-
-                    <ImageView
-                        android:id="@+id/searchLeadingIcon"
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:contentDescription="@null"
-                        android:src="@drawable/ic_fluent_search_24_regular"
-                        android:tint="@color/metroTextSecondary" />
-
-                    <ImageView
-                        android:id="@+id/searchImageThumb"
-                        android:layout_width="30dp"
-                        android:layout_height="30dp"
-                        android:contentDescription="Similar image"
-                        android:scaleType="centerCrop"
-                        android:visibility="gone" />
-
-                    <EditText
-                        android:id="@+id/searchInput"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:background="@android:color/transparent"
-                        android:hint="Search this section"
-                        android:imeOptions="actionSearch"
-                        android:inputType="text"
-                        android:paddingStart="12dp"
-                        android:paddingEnd="12dp"
-                        android:singleLine="true"
-                        android:textColor="@color/metroTextPrimary"
-                        android:textColorHint="@color/metroTextDisabled"
-                        android:textSize="16sp" />
-
-                    <ImageView
-                        android:id="@+id/searchClearBtn"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:background="?android:attr/selectableItemBackgroundBorderless"
-                        android:clickable="true"
-                        android:contentDescription="Clear"
-                        android:focusable="true"
-                        android:padding="8dp"
-                        android:src="@drawable/ic_fluent_dismiss_24_regular"
-                        android:tint="@color/metroTextSecondary" />
-                </LinearLayout>
 
                 <LinearLayout
                     android:id="@+id/searchHeaderRow"
