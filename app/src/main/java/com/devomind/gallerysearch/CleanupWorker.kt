@@ -32,6 +32,9 @@ class CleanupWorker(
     private var lastWriteAt = 0L
 
     override suspend fun doWork(): Result {
+        if (IndexPreferences.isCleanupPaused(applicationContext)) {
+            return Result.success()
+        }
         runCatching { setForeground(foregroundInfo(0, 0)) }
             .onFailure { Log.w(Tag, "Foreground start not allowed; cleanup runs in background.", it) }
 
@@ -50,6 +53,22 @@ class CleanupWorker(
             val embeddings = repo.allEmbeddings()
             val sizes = loadImageSizes()
 
+            // Resume from any prior run: keep quality findings, skip already-scanned photos.
+            val prior = store.load()
+            val scanned = LinkedHashSet<String>(prior?.scannedUris ?: emptyList())
+            val resumeQuality = if (prior != null) {
+                mapOf(
+                    CleanupAnalyzer.Category.BLURRY to prior.categoryUris[CleanupAnalyzer.Category.BLURRY].orEmpty().toSet(),
+                    CleanupAnalyzer.Category.DARK to prior.categoryUris[CleanupAnalyzer.Category.DARK].orEmpty().toSet(),
+                    CleanupAnalyzer.Category.BRIGHT to prior.categoryUris[CleanupAnalyzer.Category.BRIGHT].orEmpty().toSet(),
+                    CleanupAnalyzer.Category.LOW_RESOLUTION to prior.categoryUris[CleanupAnalyzer.Category.LOW_RESOLUTION].orEmpty().toSet()
+                )
+            } else {
+                emptyMap()
+            }
+
+            var lastDone = scanned.size
+            var lastTotal = 0
             val finalReport = CleanupAnalyzer.analyze(
                 items = images,
                 embeddings = embeddings,
@@ -57,6 +76,8 @@ class CleanupWorker(
                 encodeText = { runCatching { repo.encodeText(it) }.getOrNull() },
                 imageStats = { computeImageStats(it) },
                 onProgress = { done, total ->
+                    lastDone = done
+                    lastTotal = total
                     setProgressAsync(
                         Data.Builder()
                             .putInt(ProgressCurrentKey, done)
@@ -67,10 +88,12 @@ class CleanupWorker(
                         runCatching { setForegroundAsync(foregroundInfo(done, total)) }
                     }
                 },
-                onPartial = { report -> persist(report, complete = false, throttle = true) }
+                onPartial = { report -> persist(report, complete = false, scanned.toList(), lastDone, lastTotal, throttle = true) },
+                resumeQuality = resumeQuality,
+                scannedUris = scanned
             )
 
-            persist(finalReport, complete = true, throttle = false)
+            persist(finalReport, complete = true, scanned.toList(), lastTotal, lastTotal, throttle = false)
             Result.success()
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -83,7 +106,14 @@ class CleanupWorker(
         }
     }
 
-    private fun persist(report: CleanupAnalyzer.Report, complete: Boolean, throttle: Boolean) {
+    private fun persist(
+        report: CleanupAnalyzer.Report,
+        complete: Boolean,
+        scannedUris: List<String>,
+        done: Int,
+        total: Int,
+        throttle: Boolean
+    ) {
         val now = System.currentTimeMillis()
         if (throttle && now - lastWriteAt < WRITE_THROTTLE_MS) return
         lastWriteAt = now
@@ -91,8 +121,9 @@ class CleanupWorker(
             CleanupResultStore.Result(
                 categoryUris = report.categoryItems.mapValues { entry -> entry.value.map { it.uri.toString() } },
                 suggestedUris = report.suggestedDeleteUris.mapValues { entry -> entry.value.map { it.toString() } },
-                done = 0,
-                total = 0,
+                scannedUris = scannedUris,
+                done = done,
+                total = total,
                 complete = complete,
                 updatedAt = now
             )
@@ -102,6 +133,7 @@ class CleanupWorker(
     private fun emptyResult(complete: Boolean) = CleanupResultStore.Result(
         categoryUris = emptyMap(),
         suggestedUris = emptyMap(),
+        scannedUris = emptyList(),
         done = 0,
         total = 0,
         complete = complete,

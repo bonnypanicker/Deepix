@@ -20,6 +20,7 @@ class CleanupResultStore(context: Context) {
     data class Result(
         val categoryUris: Map<CleanupAnalyzer.Category, List<String>>,
         val suggestedUris: Map<CleanupAnalyzer.Category, List<String>>,
+        val scannedUris: List<String>,
         val done: Int,
         val total: Int,
         val complete: Boolean,
@@ -33,6 +34,7 @@ class CleanupResultStore(context: Context) {
             root.put("done", result.done)
             root.put("total", result.total)
             root.put("complete", result.complete)
+            root.put("scanned", JSONArray(result.scannedUris))
 
             val categories = JSONObject()
             val suggested = JSONObject()
@@ -67,6 +69,7 @@ class CleanupResultStore(context: Context) {
             Result(
                 categoryUris = categoryUris,
                 suggestedUris = suggestedUris,
+                scannedUris = root.optJSONArray("scanned").toStringList(),
                 done = root.optInt("done", 0),
                 total = root.optInt("total", 0),
                 complete = root.optBoolean("complete", false),

@@ -50,6 +50,11 @@ class SmartCleanupActivity : AppCompatActivity() {
     private var pendingDeleteNeedsRetry = false
 
     private var scanRunning = false
+    private var paused = false
+    private var userStopped = false
+    private var scanComplete = false
+    private var progressDone = 0
+    private var progressTotal = 0
     private var indexingRunning = false
     private var indexProgressCurrent = 0
     private var indexProgressTotal = 0
@@ -111,6 +116,8 @@ class SmartCleanupActivity : AppCompatActivity() {
         binding.refreshBtn.setOnClickListener { startScan(replace = true) }
         binding.selectAllBtn.setOnClickListener { toggleSelectAll() }
         binding.deleteBar.setOnClickListener { confirmDeleteSelected() }
+        binding.pauseResumeBtn.setOnClickListener { if (scanRunning) pauseScan() else resumeScan() }
+        binding.stopBtn.setOnClickListener { stopScan() }
 
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -122,12 +129,14 @@ class SmartCleanupActivity : AppCompatActivity() {
             }
         })
 
+        paused = IndexPreferences.isCleanupPaused(this)
         itemsByUri = items.associateBy { it.uri.toString() }
         loadSizesAsync()
         loadStoredResults()
         observeIndexing()
         observeCleanup()
-        startScan(replace = false)
+        if (!paused) startScan(replace = false)
+        updateScanControls()
     }
 
     /**
@@ -147,8 +156,8 @@ class SmartCleanupActivity : AppCompatActivity() {
                     indexProgressTotal = work.progress.getInt(IndexWorker.ProgressTotalKey, indexProgressTotal)
                 }
                 // Re-scan once indexing completes so new embeddings feed the categories.
-                if (wasRunning && work?.state == WorkInfo.State.SUCCEEDED) {
-                    startScan(replace = true)
+                if (wasRunning && work?.state == WorkInfo.State.SUCCEEDED && !paused && !userStopped) {
+                    resumeScan()
                 }
                 if (binding.detailView.visibility != View.VISIBLE) {
                     showIndexingBannerIfNeeded()
@@ -197,12 +206,61 @@ class SmartCleanupActivity : AppCompatActivity() {
 
     /** Enqueues the background scan. KEEP reuses an in-flight scan; REPLACE forces a fresh one. */
     private fun startScan(replace: Boolean) {
+        paused = false
+        userStopped = false
+        IndexPreferences.setCleanupPaused(this, false)
+        if (replace) cleanupStore.clear()
         val request = androidx.work.OneTimeWorkRequestBuilder<CleanupWorker>().build()
         WorkManager.getInstance(this).enqueueUniqueWork(
             CleanupWorker.WorkName,
             if (replace) androidx.work.ExistingWorkPolicy.REPLACE else androidx.work.ExistingWorkPolicy.KEEP,
             request
         )
+        updateScanControls()
+    }
+
+    private fun pauseScan() {
+        paused = true
+        IndexPreferences.setCleanupPaused(this, true)
+        WorkManager.getInstance(this).cancelUniqueWork(CleanupWorker.WorkName)
+        scanRunning = false
+        updateScanControls()
+    }
+
+    private fun resumeScan() {
+        paused = false
+        userStopped = false
+        IndexPreferences.setCleanupPaused(this, false)
+        val request = androidx.work.OneTimeWorkRequestBuilder<CleanupWorker>().build()
+        WorkManager.getInstance(this).enqueueUniqueWork(
+            CleanupWorker.WorkName, androidx.work.ExistingWorkPolicy.KEEP, request
+        )
+        updateScanControls()
+    }
+
+    private fun stopScan() {
+        paused = true
+        userStopped = true
+        IndexPreferences.setCleanupPaused(this, true)
+        WorkManager.getInstance(this).cancelUniqueWork(CleanupWorker.WorkName)
+        scanRunning = false
+        updateScanControls()
+    }
+
+    /** Shows the progress bar + pause/resume/stop controls based on the current scan state. */
+    private fun updateScanControls() {
+        val showRow = !userStopped && (scanRunning || (paused && !scanComplete && (progressTotal > 0 || progressDone > 0)))
+        binding.progressRow.visibility = if (showRow) View.VISIBLE else View.GONE
+        binding.refreshBtn.isEnabled = !scanRunning
+        binding.pauseResumeBtn.text = if (scanRunning) "Pause" else "Resume"
+        if (progressTotal > 0) {
+            binding.progressBar.max = progressTotal
+            binding.progressBar.progress = progressDone.coerceIn(0, progressTotal)
+            binding.progressText.text =
+                (if (paused && !scanRunning) "Paused · " else "Scanning photos for quality · ") + "$progressDone / $progressTotal"
+        } else {
+            binding.progressText.text = if (paused && !scanRunning) "Paused" else "Analyzing your library…"
+        }
     }
 
     /** Streams results from the worker: reloads the persisted store on every progress update. */
@@ -212,22 +270,13 @@ class SmartCleanupActivity : AppCompatActivity() {
             .observe(this) { infos ->
                 val work = infos.firstOrNull()
                 scanRunning = work?.state == WorkInfo.State.RUNNING || work?.state == WorkInfo.State.ENQUEUED
-                binding.refreshBtn.isEnabled = !scanRunning
 
                 if (work?.state == WorkInfo.State.RUNNING) {
-                    val done = work.progress.getInt(CleanupWorker.ProgressCurrentKey, 0)
-                    val total = work.progress.getInt(CleanupWorker.ProgressTotalKey, 0)
-                    binding.progressRow.visibility = View.VISIBLE
-                    binding.progressText.text =
-                        if (total > 0) "Scanning photos for quality… $done / $total" else "Analyzing your library…"
-                } else if (scanRunning) {
-                    binding.progressRow.visibility = View.VISIBLE
-                    binding.progressText.text = "Analyzing your library…"
-                } else {
-                    binding.progressRow.visibility = View.GONE
+                    progressDone = work.progress.getInt(CleanupWorker.ProgressCurrentKey, progressDone)
+                    progressTotal = work.progress.getInt(CleanupWorker.ProgressTotalKey, progressTotal)
                 }
+                updateScanControls()
 
-                // Pull the latest persisted results (live growth) unless the user is in a category.
                 if (binding.detailView.visibility != View.VISIBLE) {
                     loadStoredResults()
                 }
@@ -236,8 +285,16 @@ class SmartCleanupActivity : AppCompatActivity() {
 
     private fun loadStoredResults() {
         val result = cleanupStore.load() ?: return
+        scanComplete = result.complete
+        if (!scanRunning && result.total > 0) {
+            progressDone = result.done
+            progressTotal = result.total
+        }
         applyStored(result)
-        if (binding.detailView.visibility != View.VISIBLE) renderTiles()
+        if (binding.detailView.visibility != View.VISIBLE) {
+            renderTiles()
+            updateScanControls()
+        }
     }
 
     private fun applyStored(result: CleanupResultStore.Result) {
@@ -277,12 +334,14 @@ class SmartCleanupActivity : AppCompatActivity() {
     }
 
     private fun saveCurrentToStore() {
+        val prior = cleanupStore.load()
         val result = CleanupResultStore.Result(
             categoryUris = categoryItems.mapValues { entry -> entry.value.map { it.uri.toString() } },
             suggestedUris = suggested.mapValues { entry -> entry.value.map { it.toString() } },
-            done = 0,
-            total = 0,
-            complete = true,
+            scannedUris = prior?.scannedUris ?: emptyList(),
+            done = prior?.done ?: 0,
+            total = prior?.total ?: 0,
+            complete = prior?.complete ?: true,
             updatedAt = System.currentTimeMillis()
         )
         cleanupStore.save(result)
@@ -358,9 +417,8 @@ class SmartCleanupActivity : AppCompatActivity() {
         binding.detailHint.text = when (category) {
             CleanupAnalyzer.Category.DUPLICATES -> "Best copy kept; extra copies pre-selected"
             CleanupAnalyzer.Category.SIMILAR -> "Best shot kept; near-identical ones pre-selected"
+            CleanupAnalyzer.Category.LIKELY_CLUTTER -> "Stickers, emoji & memes pre-selected"
             CleanupAnalyzer.Category.BLURRY -> "Blurry shots pre-selected"
-            CleanupAnalyzer.Category.MEMES -> "Memes pre-selected"
-            CleanupAnalyzer.Category.STICKERS -> "Stickers & emoji pre-selected"
             CleanupAnalyzer.Category.SCREENSHOTS -> "Tap to select the ones to remove"
             CleanupAnalyzer.Category.DOCUMENTS -> "Documents — review before deleting"
             CleanupAnalyzer.Category.RECEIPTS -> "Receipts — review before deleting"
@@ -494,9 +552,8 @@ class SmartCleanupActivity : AppCompatActivity() {
     private fun tileColor(category: CleanupAnalyzer.Category): Int = when (category) {
         CleanupAnalyzer.Category.DUPLICATES -> Color.parseColor("#3B9EFF")
         CleanupAnalyzer.Category.SIMILAR -> Color.parseColor("#2E7FD6")
+        CleanupAnalyzer.Category.LIKELY_CLUTTER -> Color.parseColor("#E0823D")
         CleanupAnalyzer.Category.SCREENSHOTS -> Color.parseColor("#2FA968")
-        CleanupAnalyzer.Category.MEMES -> Color.parseColor("#E0823D")
-        CleanupAnalyzer.Category.STICKERS -> Color.parseColor("#D2603B")
         CleanupAnalyzer.Category.DOCUMENTS -> Color.parseColor("#5C6BC0")
         CleanupAnalyzer.Category.RECEIPTS -> Color.parseColor("#7E57C2")
         CleanupAnalyzer.Category.QR_CODES -> Color.parseColor("#00897B")
@@ -509,9 +566,8 @@ class SmartCleanupActivity : AppCompatActivity() {
     private fun categoryTitle(category: CleanupAnalyzer.Category): String = when (category) {
         CleanupAnalyzer.Category.DUPLICATES -> "Duplicates"
         CleanupAnalyzer.Category.SIMILAR -> "Similar photos"
+        CleanupAnalyzer.Category.LIKELY_CLUTTER -> "Likely clutter"
         CleanupAnalyzer.Category.SCREENSHOTS -> "Screenshots"
-        CleanupAnalyzer.Category.MEMES -> "Memes"
-        CleanupAnalyzer.Category.STICKERS -> "Stickers & emoji"
         CleanupAnalyzer.Category.DOCUMENTS -> "Documents"
         CleanupAnalyzer.Category.RECEIPTS -> "Receipts"
         CleanupAnalyzer.Category.QR_CODES -> "QR codes"

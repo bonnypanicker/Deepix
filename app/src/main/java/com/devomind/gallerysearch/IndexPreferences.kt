@@ -11,6 +11,7 @@ object IndexPreferences {
     private const val KeyGridColumnCount = "grid_column_count"
     private const val KeyCollageLayout = "use_collage_layout"
     private const val KeyIndexPaused = "index_paused"
+    private const val KeyCleanupPaused = "cleanup_paused"
 
     fun saveSelectedAlbums(context: Context, albumIds: Set<String>) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
@@ -49,6 +50,18 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KeyIndexPaused, paused)
+            .apply()
+    }
+
+    fun isCleanupPaused(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyCleanupPaused, false)
+    }
+
+    fun setCleanupPaused(context: Context, paused: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyCleanupPaused, paused)
             .apply()
     }
 

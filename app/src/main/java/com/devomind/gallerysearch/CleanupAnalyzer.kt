@@ -17,7 +17,7 @@ object CleanupAnalyzer {
 
     enum class Category {
         DUPLICATES, SIMILAR,
-        SCREENSHOTS, MEMES, STICKERS, DOCUMENTS, RECEIPTS, QR_CODES,
+        LIKELY_CLUTTER, SCREENSHOTS, DOCUMENTS, RECEIPTS, QR_CODES,
         BLURRY, DARK, BRIGHT, LOW_RESOLUTION
     }
 
@@ -77,10 +77,10 @@ object CleanupAnalyzer {
             "a screenshot", "a screenshot of a phone screen", "a screenshot of an app",
             "a screenshot of a website", "a screenshot of a chat conversation"
         )),
-        MEME(Category.MEMES, listOf(
+        MEME(Category.LIKELY_CLUTTER, listOf(
             "a meme", "an internet meme", "a funny image with caption text", "a reaction image"
         )),
-        STICKER(Category.STICKERS, listOf(
+        STICKER(Category.LIKELY_CLUTTER, listOf(
             "a sticker", "a whatsapp sticker", "a telegram sticker", "a cartoon sticker",
             "an emoji", "a smiley"
         )),
@@ -102,7 +102,9 @@ object CleanupAnalyzer {
         encodeText: (String) -> FloatArray?,
         imageStats: (Uri) -> ImageStats?,
         onProgress: (done: Int, total: Int) -> Unit,
-        onPartial: (Report) -> Unit = {}
+        onPartial: (Report) -> Unit = {},
+        resumeQuality: Map<Category, Set<String>> = emptyMap(),
+        scannedUris: MutableSet<String> = mutableSetOf()
     ): Report {
         val categoryItems = linkedMapOf<Category, MutableList<GalleryRepository.MediaItem>>()
         val suggested = linkedMapOf<Category, MutableSet<Uri>>()
@@ -153,8 +155,8 @@ object CleanupAnalyzer {
             val category = cls?.category
             if (category != null) {
                 categoryItems[category]!!.add(item)
-                // Stickers and memes are almost always disposable — pre-select them.
-                if (category == Category.STICKERS || category == Category.MEMES) {
+                // Stickers, emoji and memes are almost always disposable — pre-select them.
+                if (category == Category.LIKELY_CLUTTER) {
                     suggested[category]!!.add(item.uri)
                 }
             } else {
@@ -172,12 +174,26 @@ object CleanupAnalyzer {
         // Show the fast (embedding + metadata) categories immediately so the screen is live.
         onPartial(snapshot())
 
-        // Bounded-free: scan every real photo (worker runs this in the background). Most-recent
-        // first so streamed/partial results surface the freshest photos earliest.
-        val scanList = photoCandidates.sortedByDescending { it.dateMillis }
-        val total = scanList.size
-        var done = 0
-        onProgress(0, total)
+        // Re-seed previously found quality results so a resumed scan keeps prior findings.
+        val qualityCategories = listOf(Category.BLURRY, Category.DARK, Category.BRIGHT, Category.LOW_RESOLUTION)
+        for (category in qualityCategories) {
+            val priorUris = resumeQuality[category].orEmpty()
+            if (priorUris.isEmpty()) continue
+            for (item in photoCandidates) {
+                if (item.uri.toString() in priorUris) {
+                    categoryItems[category]!!.add(item)
+                    if (category == Category.BLURRY) suggested[category]!!.add(item.uri)
+                }
+            }
+        }
+
+        // Scan only photos not already processed (resume-friendly); most-recent first.
+        val scanList = photoCandidates
+            .filter { it.uri.toString() !in scannedUris }
+            .sortedByDescending { it.dateMillis }
+        val totalCandidates = photoCandidates.size
+        var scanned = scannedUris.size
+        onProgress(scanned, totalCandidates)
         for (item in scanList) {
             val stats = imageStats(item.uri)
             when {
@@ -192,9 +208,10 @@ object CleanupAnalyzer {
                 isLowResolution(item) ->
                     categoryItems[Category.LOW_RESOLUTION]!!.add(item)
             }
-            done++
-            if (done % 40 == 0 || done == total) {
-                onProgress(done, total)
+            scannedUris.add(item.uri.toString())
+            scanned++
+            if (scanned % 40 == 0 || scanned == totalCandidates) {
+                onProgress(scanned, totalCandidates)
                 onPartial(snapshot())
                 yield()
             }
