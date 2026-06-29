@@ -12,6 +12,9 @@ object IndexPreferences {
     private const val KeyCollageLayout = "use_collage_layout"
     private const val KeyIndexPaused = "index_paused"
     private const val KeyCleanupPaused = "cleanup_paused"
+    private const val KeyIndexConsentGiven = "index_consent_given"
+    private const val KeyIndexConsentAsked = "index_consent_asked"
+    private const val KeyChargingOnly = "index_charging_only"
 
     fun saveSelectedAlbums(context: Context, albumIds: Set<String>) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
@@ -62,6 +65,46 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KeyCleanupPaused, paused)
+            .apply()
+    }
+
+    /** Whether the user has approved building the AI photo index. */
+    fun isIndexConsentGiven(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyIndexConsentGiven, false)
+    }
+
+    fun setIndexConsentGiven(context: Context, given: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyIndexConsentGiven, given)
+            .putBoolean(KeyIndexConsentAsked, true)
+            .apply()
+    }
+
+    /** Whether we've shown the one-time consent prompt (so we don't auto-nag again). */
+    fun wasIndexConsentAsked(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyIndexConsentAsked, false)
+    }
+
+    fun setIndexConsentAsked(context: Context) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyIndexConsentAsked, true)
+            .apply()
+    }
+
+    /** Limit background indexing to while the device is charging. */
+    fun isChargingOnlyIndexing(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyChargingOnly, false)
+    }
+
+    fun setChargingOnlyIndexing(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyChargingOnly, enabled)
             .apply()
     }
 

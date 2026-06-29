@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/settingsRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:id="@+id/topBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp">
+
+            <ImageButton
+                android:id="@+id/backBtn"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="start|center_vertical"
+                android:layout_marginStart="6dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Back"
+                android:padding="12dp"
+                android:src="@drawable/ic_fluent_back_24_regular"
+                android:tint="#FFFFFF" />
+        </FrameLayout>
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="20dp"
+                android:paddingEnd="20dp"
+                android:paddingBottom="32dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-light"
+                    android:includeFontPadding="false"
+                    android:text="settings"
+                    android:textColor="#FFFFFF"
+                    android:textSize="40sp" />
+
+                <!-- ===================== DISPLAY ===================== -->
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="DISPLAY" />
+
+                <LinearLayout
+                    android:id="@+id/rowCollage"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Collage layout" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Mixed large + small tiles instead of an even grid" />
+                    </LinearLayout>
+
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/switchCollage"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clickable="false"
+                        android:focusable="false" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout
+                    android:id="@+id/rowGridColumns"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Grid columns" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Number of photos per row in grid layout" />
+                    </LinearLayout>
+
+                    <ImageButton
+                        android:id="@+id/colMinus"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="?android:attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Fewer columns"
+                        android:padding="6dp"
+                        android:src="@drawable/ic_fluent_subtract_24_regular"
+                        android:tint="#FFFFFF" />
+
+                    <TextView
+                        android:id="@+id/colValue"
+                        android:layout_width="28dp"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:text="4"
+                        android:textColor="#FFFFFF"
+                        android:textSize="17sp" />
+
+                    <ImageButton
+                        android:id="@+id/colPlus"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="?android:attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="More columns"
+                        android:padding="6dp"
+                        android:src="@drawable/ic_fluent_add_24_regular"
+                        android:tint="#FFFFFF" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout
+                    android:id="@+id/rowPinned"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Pinned albums in Collections" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Show a pinned-albums strip atop the Collections page" />
+                    </LinearLayout>
+
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/switchPinned"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clickable="false"
+                        android:focusable="false" />
+                </LinearLayout>
+
+                <!-- ===================== INDEXING ===================== -->
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="INDEXING" />
+
+                <LinearLayout
+                    android:id="@+id/rowCharging"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Index only while charging" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Save battery — pause AI photo indexing until the device is plugged in" />
+                    </LinearLayout>
+
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/switchCharging"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clickable="false"
+                        android:focusable="false" />
+                </LinearLayout>
+
+                <!-- ===================== STORAGE ===================== -->
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="STORAGE" />
+
+                <LinearLayout
+                    android:id="@+id/rowClearCleanup"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Clear Smart Cleanup cache" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Forget previous cleanup scan results" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_fluent_chevron_right_24_regular"
+                        android:tint="#6F6F6F" />
+                </LinearLayout>
+
+                <!-- ===================== ABOUT ===================== -->
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="ABOUT" />
+
+                <LinearLayout style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Deepix" />
+
+                        <TextView
+                            android:id="@+id/aboutVersion"
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Version" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="On-device AI" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="MobileCLIP-S2 · runs fully offline" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+    </LinearLayout>
+</FrameLayout>

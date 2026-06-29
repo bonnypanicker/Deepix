@@ -143,82 +143,40 @@
                         android:textColorHint="@color/metroTextDisabled"
                         android:textSize="16sp" />
 
-                    <TextView
-                        android:id="@+id/searchDismissBtn"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif"
-                        android:includeFontPadding="false"
-                        android:paddingStart="8dp"
-                        android:paddingEnd="6dp"
-                        android:text="cancel"
-                        android:textAllCaps="true"
-                        android:textColor="@color/metroTextSecondary"
-                        android:textSize="12sp" />
+                    <ImageView
+                        android:id="@+id/searchClearBtn"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="?android:attr/selectableItemBackgroundBorderless"
+                        android:clickable="true"
+                        android:contentDescription="Clear"
+                        android:focusable="true"
+                        android:padding="8dp"
+                        android:src="@drawable/ic_fluent_dismiss_24_regular"
+                        android:tint="@color/metroTextSecondary" />
                 </LinearLayout>
 
                 <LinearLayout
-                    android:id="@+id/searchModeRow"
+                    android:id="@+id/searchHeaderRow"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="12dp"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
                     <TextView
-                        android:id="@+id/searchModeHybrid"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:background="@drawable/search_filter_chip_active_bg"
-                        android:includeFontPadding="false"
-                        android:paddingStart="14dp"
-                        android:paddingTop="8dp"
-                        android:paddingEnd="14dp"
-                        android:paddingBottom="8dp"
-                        android:text="AI + META"
-                        android:textAllCaps="true"
-                        android:textColor="@color/metroTextPrimary"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/searchModeAi"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:background="@drawable/search_filter_chip_bg"
-                        android:includeFontPadding="false"
-                        android:paddingStart="14dp"
-                        android:paddingTop="8dp"
-                        android:paddingEnd="14dp"
-                        android:paddingBottom="8dp"
-                        android:text="AI"
-                        android:textAllCaps="true"
-                        android:textColor="@color/metroTextPrimary"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/searchModeMetadata"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:background="@drawable/search_filter_chip_bg"
-                        android:includeFontPadding="false"
-                        android:paddingStart="14dp"
-                        android:paddingTop="8dp"
-                        android:paddingEnd="14dp"
-                        android:paddingBottom="8dp"
-                        android:text="META"
-                        android:textAllCaps="true"
-                        android:textColor="@color/metroTextPrimary"
-                        android:textSize="12sp" />
-
-                    <View
+                        android:id="@+id/searchResultSummary"
                         android:layout_width="0dp"
-                        android:layout_height="1dp"
-                        android:layout_weight="1" />
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:includeFontPadding="false"
+                        android:letterSpacing="0.04"
+                        android:textAllCaps="true"
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="12sp" />
 
                     <LinearLayout
-                        android:id="@+id/sortBtn"
+                        android:id="@+id/searchFilterBtn"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:background="@drawable/search_filter_chip_bg"
@@ -228,23 +186,23 @@
                         android:orientation="horizontal"
                         android:paddingStart="12dp"
                         android:paddingTop="8dp"
-                        android:paddingEnd="12dp"
+                        android:paddingEnd="14dp"
                         android:paddingBottom="8dp">
 
                         <ImageView
                             android:layout_width="16dp"
                             android:layout_height="16dp"
                             android:contentDescription="@null"
-                            android:src="@drawable/ic_fluent_sort_24_regular"
+                            android:src="@drawable/ic_fluent_filter_24_regular"
                             android:tint="@color/metroTextPrimary" />
 
                         <TextView
-                            android:id="@+id/sortLabel"
+                            android:id="@+id/searchFilterLabel"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="6dp"
+                            android:layout_marginStart="7dp"
                             android:includeFontPadding="false"
-                            android:text="Relevance"
+                            android:text="Sort &amp; filter"
                             android:textColor="@color/metroTextPrimary"
                             android:textSize="12sp" />
                     </LinearLayout>
@@ -482,14 +440,9 @@
             android:text="album scope" />
 
         <TextView
-            android:id="@+id/drawerPinnedCollections"
+            android:id="@+id/drawerSettings"
             style="@style/MetroDrawerItem"
-            android:text="pinned in collections" />
-
-        <TextView
-            android:id="@+id/drawerLayoutToggle"
-            style="@style/MetroDrawerItem"
-            android:text="grid view" />
+            android:text="settings" />
 
         <TextView
             android:id="@+id/statusText"

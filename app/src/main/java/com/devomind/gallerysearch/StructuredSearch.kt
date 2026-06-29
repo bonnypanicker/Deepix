@@ -117,6 +117,18 @@ internal object StructuredSearch {
         }
     }
 
+    internal data class ScreenshotFilter(
+        override val rawToken: String
+    ) : Filter {
+        override val chipLabel: String = "screenshots"
+        override fun matches(item: GalleryRepository.MediaItem, favoriteKeys: Set<String>, lookup: FilterLookup): Boolean {
+            val name = item.displayName?.lowercase(Locale.ROOT).orEmpty()
+            val path = item.path.lowercase(Locale.ROOT)
+            return name.startsWith("screenshot") || name.startsWith("screen shot") ||
+                path.contains("/screenshots/") || path.contains("screenshot")
+        }
+    }
+
     internal data class TagFilter(
         override val rawToken: String,
         val value: String
@@ -288,6 +300,11 @@ internal object StructuredSearch {
             "orientation" -> OrientationFilter(token, value.lowercase(Locale.ROOT))
             "type" -> TypeFilter(token, value.lowercase(Locale.ROOT))
             "tag" -> TagFilter(token, value)
+            "is" -> if (value.lowercase(Locale.ROOT) == "screenshot" || value.lowercase(Locale.ROOT) == "screenshots") {
+                ScreenshotFilter(token)
+            } else {
+                null
+            }
             "make" -> MakeFilter(token, value)
             "model" -> ModelFilter(token, value)
             "iso" -> parseNumericFilter(token, value, operator, ::IsoFilter)

@@ -41,6 +41,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -93,6 +94,8 @@ class MainActivity : AppCompatActivity() {
     private var searchDebounceJob: Job? = null
     private var renderJob: Job? = null
     private var lastProgressRefresh = -1
+    private var indexRunning = false
+    private var chargingPrefSnapshot = false
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
     private var topInsetPx = 0
@@ -103,6 +106,7 @@ class MainActivity : AppCompatActivity() {
     private var currentDisplayedSearchResultCount = 0
     private var searchResultsMaster: List<PhotoSearchResult> = emptyList()
     private var currentSortMode = SortMode.Relevance
+    private var showFilter = ShowFilter.All
     private var lastSearchStatusText = ""
     private var imageSearchActive = false
     private var suppressSearchInput = false
@@ -146,6 +150,10 @@ class MainActivity : AppCompatActivity() {
         val changed = result.data?.getBooleanExtra(SmartCleanupActivity.ExtraContentChanged, false) == true
         if (changed) refreshVisibleItems()
     }
+
+    private val settingsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { applyDisplaySettings() }
 
     private val deleteRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -264,11 +272,8 @@ class MainActivity : AppCompatActivity() {
         binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
         binding.searchLaunchBtn.setOnClickListener { openSearch() }
         binding.addAlbumBtn.setOnClickListener { showCreateSmartAlbumDialog() }
-        binding.searchDismissBtn.setOnClickListener { closeSearch(clearQuery = true) }
-        binding.searchModeHybrid.setOnClickListener { setSearchMode(SearchMode.Hybrid) }
-        binding.searchModeAi.setOnClickListener { setSearchMode(SearchMode.AiOnly) }
-        binding.searchModeMetadata.setOnClickListener { setSearchMode(SearchMode.MetadataOnly) }
-        binding.sortBtn.setOnClickListener { showSortMenu() }
+        binding.searchClearBtn.setOnClickListener { onSearchClear() }
+        binding.searchFilterBtn.setOnClickListener { showSortFilterSheet() }
 
         binding.drawerCollection.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
@@ -292,34 +297,17 @@ class MainActivity : AppCompatActivity() {
         }
         binding.drawerIndex.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
-            enqueueBackgroundIndexing()
+            onIndexDrawerAction()
         }
         binding.drawerAlbumScope.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             showAlbumSelector()
         }
 
-        binding.drawerPinnedCollections.setOnClickListener {
+        binding.drawerSettings.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
-            val current = IndexPreferences.isShowPinnedInCollections(this)
-            IndexPreferences.setShowPinnedInCollections(this, !current)
-            updateDrawerState()
-            refreshVisibleItems()
-        }
-
-        binding.drawerLayoutToggle.setOnClickListener {
-            binding.drawerLayout.closeDrawer(GravityCompat.START)
-            val current = IndexPreferences.isCollageLayout(this)
-            val newMode = !current
-            IndexPreferences.setCollageLayout(this, newMode)
-            adapter.useCollageLayout = newMode
-
-            val layoutManager = binding.imageGrid.layoutManager as GridLayoutManager
-            layoutManager.spanCount = if (newMode) DesignTokens.GRID_SPAN_COUNT else adapter.gridColumnCount
-            layoutManager.spanSizeLookup.invalidateSpanIndexCache()
-
-            updateDrawerState()
-            refreshVisibleItems()
+            chargingPrefSnapshot = IndexPreferences.isChargingOnlyIndexing(this)
+            settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
         }
 
         binding.bottomCollections.setOnClickListener { navigateToSection(Section.Collection) }
@@ -517,7 +505,7 @@ class MainActivity : AppCompatActivity() {
 
             // -------------------- TRACK C (index after first render) ----
             binding.root.post {
-                enqueueBackgroundIndexingIfPossible(showToast = false)
+                maybePromptIndexingConsent()
             }
         }
     }
@@ -550,25 +538,89 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun enqueueBackgroundIndexingIfPossible(showToast: Boolean) {
+    private fun maybePromptIndexingConsent() {
         if (IndexPreferences.isIndexPaused(applicationContext)) {
             binding.statusText.text = "Indexing paused"
+            updateIndexDrawerLabel()
             return
         }
-        val savedSelection = IndexPreferences.loadSelectedAlbums(applicationContext)
-        val payload = Data.Builder()
-            .putStringArray(IndexWorker.SelectedAlbumIdsKey, savedSelection.toTypedArray())
+        if (IndexPreferences.isIndexConsentGiven(applicationContext)) {
+            maybeStartBackgroundIndexing()
+            return
+        }
+        // First run: ask once. Afterwards the user starts it from the side panel.
+        if (!IndexPreferences.wasIndexConsentAsked(applicationContext)) {
+            showIndexingConsentDialog()
+        }
+    }
+
+    private fun showIndexingConsentDialog() {
+        IndexPreferences.setIndexConsentAsked(applicationContext)
+        val message =
+            "Let Deepix learn what's in your photos so you can find them just by describing them — " +
+                "search things like \"beach\", \"my dog\", \"birthday cake\" or \"receipts\" and get instant matches.\n\n" +
+                "Everything stays on your device. This runs in the background and uses more battery while it works — " +
+                "you can pause it anytime from the menu, or limit it to while charging in Settings."
+        AlertDialog.Builder(this)
+            .setTitle("Make your photos searchable")
+            .setMessage(message)
+            .setPositiveButton("Start now") { _, _ -> enqueueBackgroundIndexing(showToast = true) }
+            .setNeutralButton("Choose folders") { _, _ -> showAlbumSelector(grantConsent = true) }
+            .setNegativeButton("Not now", null)
+            .show()
+    }
+
+    private fun onIndexDrawerAction() {
+        when {
+            indexRunning -> pauseIndexing()
+            IndexPreferences.isIndexPaused(this) -> resumeIndexing()
+            !IndexPreferences.isIndexConsentGiven(this) -> showIndexingConsentDialog()
+            else -> enqueueBackgroundIndexing()
+        }
+    }
+
+    private fun pauseIndexing() {
+        IndexPreferences.setIndexPaused(this, true)
+        WorkManager.getInstance(this).cancelUniqueWork(INDEX_WORK_NAME)
+        indexRunning = false
+        binding.statusText.text = "Indexing paused"
+        updateIndexDrawerLabel()
+        Toast.makeText(this, "Indexing paused.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun resumeIndexing() {
+        IndexPreferences.setIndexPaused(this, false)
+        enqueueIndexWork(ExistingWorkPolicy.KEEP)
+        updateIndexDrawerLabel()
+        Toast.makeText(this, "Indexing resumed.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun updateIndexDrawerLabel() {
+        binding.drawerIndex.text = when {
+            indexRunning -> "pause indexing"
+            IndexPreferences.isIndexPaused(this) -> "resume indexing"
+            else -> "start indexing"
+        }
+    }
+
+    /** Builds the index work request, honoring the "only while charging" preference. */
+    private fun buildIndexRequest(selection: Set<String>): androidx.work.OneTimeWorkRequest {
+        val constraints = Constraints.Builder()
+            .apply { if (IndexPreferences.isChargingOnlyIndexing(this@MainActivity)) setRequiresCharging(true) }
             .build()
-        val request = OneTimeWorkRequestBuilder<IndexWorker>()
+        val payload = Data.Builder()
+            .putStringArray(IndexWorker.SelectedAlbumIdsKey, selection.toTypedArray())
+            .build()
+        return OneTimeWorkRequestBuilder<IndexWorker>()
             .setInputData(payload)
+            .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.LINEAR, DesignTokens.INDEX_BACKOFF_SECONDS, TimeUnit.SECONDS)
             .build()
-        WorkManager.getInstance(this).enqueueUniqueWork(
-            INDEX_WORK_NAME,
-            ExistingWorkPolicy.KEEP,
-            request
-        )
-        if (showToast) Toast.makeText(this, "Indexing started.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun enqueueIndexWork(policy: ExistingWorkPolicy) {
+        IndexWorker.cancelStatusNotification(this)
+        WorkManager.getInstance(this).enqueueUniqueWork(INDEX_WORK_NAME, policy, buildIndexRequest(selectedAlbumIds))
     }
 
     private suspend fun loadLibrarySnapshot(
@@ -973,6 +1025,7 @@ class MainActivity : AppCompatActivity() {
         updateBottomPanelState()
         updateSearchPillState()
         if (effectiveQuery().isBlank()) {
+            binding.searchResultSummary.text = ""
             adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
             resetGridToTop()
         } else {
@@ -997,7 +1050,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSearchMetaText() {
-        updateSearchModeUi()
         updateSearchPillState()
     }
 
@@ -1295,29 +1347,53 @@ class MainActivity : AppCompatActivity() {
             fullSearchResults = emptyList()
             adapter.replaceCells(listOf(GalleryCell.Empty(emptyText)))
             resetGridToTop()
-            binding.resultCount.text = "No results found"
+            binding.searchResultSummary.text = "No results"
             binding.statusText.text = statusText
             return
         }
         applySortAndShow()
     }
 
-    /** Applies the active sort to the master result list and renders the first page (no cap). */
+    /**
+     * Renders search results. Relevance keeps the ranked flat grid with infinite pagination;
+     * date sorts group results under month headers (the reference's philosophy).
+     */
     private fun applySortAndShow() {
         fullSearchResults = sortResults(searchResultsMaster, currentSortMode)
         currentDisplayedSearchResultCount = 0
 
-        val pageSize = SEARCH_PAGE_SIZE
-        val firstPage = fullSearchResults.take(pageSize)
-        currentDisplayedSearchResultCount = firstPage.size
-
-        val cells = firstPage.map { result ->
-            GalleryCell.Photo(item = result.item, featured = false, searchSources = result.sources)
+        if (currentSortMode == SortMode.Relevance) {
+            val firstPage = fullSearchResults.take(SEARCH_PAGE_SIZE)
+            currentDisplayedSearchResultCount = firstPage.size
+            adapter.replaceCells(firstPage.map {
+                GalleryCell.Photo(item = it.item, featured = false, searchSources = it.sources)
+            })
+        } else {
+            // Date-grouped: render all (capped) with month headers; pagination disabled.
+            val capped = fullSearchResults.take(SEARCH_DISPLAY_CAP)
+            currentDisplayedSearchResultCount = fullSearchResults.size
+            adapter.replaceCells(buildSearchTimelineCells(capped))
         }
-        adapter.replaceCells(cells)
         resetGridToTop()
+        updateFastScrollVisibility()
+        binding.fastScrollIndicator.syncToRecyclerView()
         updateSearchResultCount()
         binding.statusText.text = lastSearchStatusText
+    }
+
+    /** Groups ranked results under month headers while preserving the AI/text source badges. */
+    private fun buildSearchTimelineCells(results: List<PhotoSearchResult>): List<GalleryCell> {
+        val cells = ArrayList<GalleryCell>(results.size + 8)
+        var lastMonth: String? = null
+        for (result in results) {
+            val month = safeFormat(monthFormatter, result.item.dateMillis, "Unknown date")
+            if (month != lastMonth) {
+                cells += GalleryCell.Header(month, "")
+                lastMonth = month
+            }
+            cells += GalleryCell.Photo(item = result.item, featured = false, searchSources = result.sources)
+        }
+        return cells
     }
 
     private fun sortResults(results: List<PhotoSearchResult>, mode: SortMode): List<PhotoSearchResult> {
@@ -1325,34 +1401,154 @@ class MainActivity : AppCompatActivity() {
             SortMode.Relevance -> results // already ranked by score
             SortMode.Newest -> results.sortedByDescending { it.item.dateMillis }
             SortMode.Oldest -> results.sortedBy { it.item.dateMillis }
-            SortMode.Name -> results.sortedBy { it.item.displayName?.lowercase(Locale.getDefault()).orEmpty() }
         }
     }
 
     private fun updateSearchResultCount() {
-        binding.resultCount.text = when {
-            fullSearchResults.size == 1 -> "1 result"
-            currentDisplayedSearchResultCount < fullSearchResults.size ->
-                "Showing $currentDisplayedSearchResultCount of ${fullSearchResults.size} results"
-            else -> "${fullSearchResults.size} results"
+        val total = fullSearchResults.size
+        binding.searchResultSummary.text = when {
+            total == 0 -> "No results"
+            total == 1 -> "1 result"
+            currentSortMode == SortMode.Relevance && currentDisplayedSearchResultCount < total ->
+                "Photos · $total"
+            else -> "Photos · $total"
         }
     }
 
-    private fun showSortMenu() {
-        val menu = androidx.appcompat.widget.PopupMenu(this, binding.sortBtn)
-        SortMode.entries.forEachIndexed { index, mode ->
-            menu.menu.add(0, index, index, mode.label)
+    private fun onSearchClear() {
+        if (effectiveQuery().isBlank() && !imageSearchActive) {
+            closeSearch(clearQuery = true)
+            return
         }
-        menu.setOnMenuItemClickListener { item ->
-            val mode = SortMode.entries[item.itemId]
-            if (mode != currentSortMode) {
-                currentSortMode = mode
-                binding.sortLabel.text = mode.label
-                if (searchResultsMaster.isNotEmpty()) applySortAndShow()
+        activeFilters.clear()
+        showFilter = ShowFilter.All
+        imageSearchActive = false
+        clearImageSearchThumb()
+        suppressSearchInput = true
+        binding.searchInput.text?.clear()
+        suppressSearchInput = false
+        updateSearchPillState()
+        adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
+        resetGridToTop()
+        binding.searchResultSummary.text = ""
+        binding.searchInput.requestFocus()
+    }
+
+    /** Metro-style bottom sheet: sort order, match engine, and a quick type filter. */
+    private fun showSortFilterSheet() {
+        val view = layoutInflater.inflate(R.layout.sheet_search_filter, null)
+        val container = view.findViewById<LinearLayout>(R.id.sheetContainer)
+
+        var pendingSort = currentSortMode
+        var pendingMode = searchMode
+        var pendingShow = showFilter
+
+        // We rebuild the whole option list whenever a selection changes so checkmarks update.
+        var rebuild: () -> Unit = {}
+        rebuild = {
+            container.removeAllViews()
+            addSheetHeader(container, "SORT BY")
+            SortMode.entries.forEach { mode ->
+                addSheetOption(container, mode.label, pendingSort == mode) {
+                    pendingSort = mode
+                    rebuild()
+                }
             }
-            true
+            addSheetHeader(container, "MATCH")
+            listOf(
+                SearchMode.Hybrid to "Smart + text",
+                SearchMode.AiOnly to "Smart only",
+                SearchMode.MetadataOnly to "Text only"
+            ).forEach { (mode, label) ->
+                addSheetOption(container, label, pendingMode == mode) {
+                    pendingMode = mode
+                    rebuild()
+                }
+            }
+            addSheetHeader(container, "SHOW")
+            ShowFilter.entries.forEach { show ->
+                addSheetOption(container, show.label, pendingShow == show) {
+                    pendingShow = show
+                    rebuild()
+                }
+            }
         }
-        menu.show()
+        rebuild()
+
+        val dialog = AlertDialog.Builder(this).setView(view).create()
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        dialog.window?.setGravity(android.view.Gravity.BOTTOM)
+        dialog.window?.setLayout(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+
+        view.findViewById<TextView>(R.id.sheetCancel).setOnClickListener { dialog.dismiss() }
+        view.findViewById<TextView>(R.id.sheetApply).setOnClickListener {
+            dialog.dismiss()
+            applySheetSelections(pendingSort, pendingMode, pendingShow)
+        }
+        dialog.show()
+    }
+
+    private fun addSheetHeader(container: LinearLayout, title: String) {
+        container.addView(TextView(this).apply {
+            text = title
+            textSize = 11f
+            isAllCaps = true
+            letterSpacing = 0.06f
+            setTextColor(Color.parseColor("#6F6F6F"))
+            setPadding(dp(16), dp(16), dp(16), dp(6))
+        })
+    }
+
+    private fun addSheetOption(container: LinearLayout, label: String, selected: Boolean, onClick: () -> Unit) {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            background = ContextCompat.getDrawable(this@MainActivity, android.R.drawable.list_selector_background)
+            isClickable = true
+            isFocusable = true
+            setPadding(dp(16), dp(13), dp(16), dp(13))
+            setOnClickListener { onClick() }
+        }
+        row.addView(TextView(this).apply {
+            text = label
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        row.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_fluent_checkmark_24_regular)
+            imageTintList = ColorStateList.valueOf(Color.parseColor("#3B9EFF"))
+            layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
+            visibility = if (selected) View.VISIBLE else View.INVISIBLE
+        })
+        container.addView(row)
+    }
+
+    private fun applySheetSelections(sort: SortMode, mode: SearchMode, show: ShowFilter) {
+        currentSortMode = sort
+        searchMode = mode
+        showFilter = show
+        if (imageSearchActive) {
+            // Re-sort the existing similar-image results without re-running the search.
+            if (searchResultsMaster.isNotEmpty()) applySortAndShow()
+            return
+        }
+        if (effectiveQuery().isBlank()) {
+            adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
+            resetGridToTop()
+            binding.searchResultSummary.text = ""
+        } else {
+            submitSearch()
+        }
+    }
+
+    private fun showFilterToken(): String = when (showFilter) {
+        ShowFilter.All -> ""
+        ShowFilter.Favorites -> "fav=yes"
+        ShowFilter.Screenshots -> "is=screenshot"
     }
 
     private fun paginateSearchResults() {
@@ -1415,7 +1611,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             currentSortMode = SortMode.Relevance
-            binding.sortLabel.text = currentSortMode.label
             renderSearchResults(results, "No similar photos found", "Similar to $name")
         }
     }
@@ -1436,7 +1631,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateSearchPillState() {
         if (binding.searchPanel.visibility != View.VISIBLE) return
-        updateSearchModeUi()
         if (imageSearchActive) {
             binding.searchActivePillsScroll.visibility = View.GONE
             binding.searchQuickPillsScroll.visibility = View.GONE
@@ -1446,10 +1640,13 @@ class MainActivity : AppCompatActivity() {
         renderQuickSearchPills()
     }
 
-    /** Composes free-text + active filter chips into the query the engine actually runs. */
+    /** Composes free-text + active filter chips + the Show filter into the query the engine runs. */
     private fun effectiveQuery(): String {
         val text = binding.searchInput.text?.toString()?.trim().orEmpty()
-        return (listOf(text) + activeFilters).filter { it.isNotBlank() }.joinToString(" ").trim()
+        return (listOf(text) + activeFilters + listOf(showFilterToken()))
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .trim()
     }
 
     private fun addFilter(token: String) {
@@ -1476,29 +1673,6 @@ class MainActivity : AppCompatActivity() {
             resetGridToTop()
             binding.resultCount.text = ""
         } else {
-            submitSearch()
-        }
-    }
-
-    private fun updateSearchModeUi() {
-        bindSearchModeChip(binding.searchModeHybrid, searchMode == SearchMode.Hybrid)
-        bindSearchModeChip(binding.searchModeAi, searchMode == SearchMode.AiOnly)
-        bindSearchModeChip(binding.searchModeMetadata, searchMode == SearchMode.MetadataOnly)
-    }
-
-    private fun bindSearchModeChip(view: TextView, selected: Boolean) {
-        view.background = ContextCompat.getDrawable(
-            this,
-            if (selected) R.drawable.search_filter_chip_active_bg else R.drawable.search_filter_chip_bg
-        )
-        view.alpha = if (selected) 1f else 0.82f
-    }
-
-    private fun setSearchMode(mode: SearchMode) {
-        if (searchMode == mode) return
-        searchMode = mode
-        updateSearchModeUi()
-        if (currentMode == Mode.Search && binding.searchPanel.visibility == View.VISIBLE) {
             submitSearch()
         }
     }
@@ -2161,9 +2335,13 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun showAlbumSelector() {
+    private fun showAlbumSelector(grantConsent: Boolean = false) {
         if (albums.isEmpty()) {
             Toast.makeText(this, "No albums found on device.", Toast.LENGTH_SHORT).show()
+            if (grantConsent) {
+                // No albums to scope; just approve indexing of everything.
+                enqueueBackgroundIndexing(showToast = true)
+            }
             return
         }
 
@@ -2171,18 +2349,20 @@ class MainActivity : AppCompatActivity() {
         val checked = albums.map { it.id in selectedAlbumIds }.toBooleanArray()
 
         AlertDialog.Builder(this)
-            .setTitle("Album scope")
+            .setTitle(if (grantConsent) "Choose folders to index" else "Album scope")
             .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
                 checked[which] = isChecked
             }
             .setNeutralButton("All") { _, _ ->
                 selectedAlbumIds = emptySet()
                 IndexPreferences.saveSelectedAlbums(this, selectedAlbumIds)
+                if (grantConsent) IndexPreferences.setIndexConsentGiven(this, true)
                 refreshVisibleItems()
             }
             .setPositiveButton("Apply") { _, _ ->
                 selectedAlbumIds = albums.filterIndexed { index, _ -> checked[index] }.map { it.id }.toSet()
                 IndexPreferences.saveSelectedAlbums(this, selectedAlbumIds)
+                if (grantConsent) IndexPreferences.setIndexConsentGiven(this, true)
                 refreshVisibleItems()
             }
             .setNegativeButton(android.R.string.cancel, null)
@@ -2264,24 +2444,11 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, label, Toast.LENGTH_SHORT).show()
     }
 
-    private fun enqueueBackgroundIndexing(showToast: Boolean = true) {
+    private fun enqueueBackgroundIndexing(showToast: Boolean = true, replace: Boolean = false) {
         IndexPreferences.setIndexPaused(this, false)
-        IndexWorker.cancelStatusNotification(this)
-
-        val payload = Data.Builder()
-            .putStringArray(IndexWorker.SelectedAlbumIdsKey, selectedAlbumIds.toTypedArray())
-            .build()
-
-        val request = OneTimeWorkRequestBuilder<IndexWorker>()
-            .setInputData(payload)
-            .setBackoffCriteria(BackoffPolicy.LINEAR, DesignTokens.INDEX_BACKOFF_SECONDS, TimeUnit.SECONDS)
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniqueWork(
-            INDEX_WORK_NAME,
-            ExistingWorkPolicy.KEEP,
-            request
-        )
+        IndexPreferences.setIndexConsentGiven(this, true)
+        enqueueIndexWork(if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP)
+        updateIndexDrawerLabel()
         if (showToast) {
             Toast.makeText(this, "Indexing started.", Toast.LENGTH_SHORT).show()
         }
@@ -2292,10 +2459,14 @@ class MainActivity : AppCompatActivity() {
             .getWorkInfosForUniqueWorkLiveData(INDEX_WORK_NAME)
             .observe(this) { infos ->
                 val work = infos.firstOrNull() ?: return@observe
+                indexRunning = work.state == WorkInfo.State.RUNNING || work.state == WorkInfo.State.ENQUEUED
+                updateIndexDrawerLabel()
                 when (work.state) {
                     WorkInfo.State.ENQUEUED,
                     WorkInfo.State.BLOCKED -> {
-                        binding.statusText.text = "Index job queued"
+                        binding.statusText.text =
+                            if (IndexPreferences.isChargingOnlyIndexing(this)) "Indexing queued · waiting to charge"
+                            else "Index job queued"
                     }
                     WorkInfo.State.RUNNING -> {
                         val current = work.progress.getInt(IndexWorker.ProgressCurrentKey, 0)
@@ -2366,13 +2537,15 @@ class MainActivity : AppCompatActivity() {
     private fun maybeStartBackgroundIndexing() {
         val repo = repository ?: return
         if (allUris.isEmpty()) return
+        if (!IndexPreferences.isIndexConsentGiven(applicationContext)) return  // wait for user approval
         if (repo.indexedCount >= allUris.size) return
         if (IndexPreferences.isIndexPaused(applicationContext)) {
             binding.statusText.text =
                 "Indexing paused · ${selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)}"
+            updateIndexDrawerLabel()
             return
         }
-        enqueueBackgroundIndexing(showToast = false)
+        enqueueIndexWork(ExistingWorkPolicy.KEEP)
         binding.statusText.text =
             "Background indexing queued · ${selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)}"
     }
@@ -2441,12 +2614,21 @@ class MainActivity : AppCompatActivity() {
         binding.drawerFolders.setBackgroundColor(
             if (currentMode != Mode.Search && activeSection == Section.Folders) active else inactive
         )
+        updateIndexDrawerLabel()
+    }
 
-        val isPinned = IndexPreferences.isShowPinnedInCollections(this)
-        binding.drawerPinnedCollections.text = if (isPinned) "pinned in collections ✓" else "pinned in collections"
-
-        val isCollage = IndexPreferences.isCollageLayout(this)
-        binding.drawerLayoutToggle.text = if (isCollage) "collage view ✓" else "grid view ✓"
+    private fun applyDisplaySettings() {
+        adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
+        adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
+        val layoutManager = binding.imageGrid.layoutManager as GridLayoutManager
+        layoutManager.spanCount = if (adapter.useCollageLayout) DesignTokens.GRID_SPAN_COUNT else adapter.gridColumnCount
+        layoutManager.spanSizeLookup.invalidateSpanIndexCache()
+        updateDrawerState()
+        // If the "only while charging" preference changed while indexing is active, re-apply it.
+        if (indexRunning && IndexPreferences.isChargingOnlyIndexing(this) != chargingPrefSnapshot) {
+            enqueueBackgroundIndexing(showToast = false, replace = true)
+        }
+        refreshVisibleItems()
     }
 
     private fun updateBottomPanelState() {
@@ -2516,6 +2698,7 @@ class MainActivity : AppCompatActivity() {
         private const val TAG = "MainActivity"
         private const val INDEX_WORK_NAME = "gallery_background_index"
         private const val SEARCH_PAGE_SIZE = 30
+        private const val SEARCH_DISPLAY_CAP = 1500
         private const val SIMILAR_IMAGE_FLOOR = 0.55f
     }
 
@@ -2527,8 +2710,13 @@ class MainActivity : AppCompatActivity() {
 
     private enum class SortMode(val label: String) {
         Relevance("Relevance"),
-        Newest("Newest"),
-        Oldest("Oldest"),
-        Name("Name")
+        Newest("Newest first"),
+        Oldest("Oldest first")
+    }
+
+    private enum class ShowFilter(val label: String) {
+        All("All results"),
+        Favorites("Favorites only"),
+        Screenshots("Screenshots only")
     }
 }
