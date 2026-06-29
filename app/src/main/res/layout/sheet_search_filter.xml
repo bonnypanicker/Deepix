@@ -4,16 +4,14 @@
     android:layout_height="wrap_content"
     android:background="@drawable/info_sheet_bg"
     android:orientation="vertical"
-    android:paddingStart="8dp"
     android:paddingTop="10dp"
-    android:paddingEnd="8dp"
     android:paddingBottom="8dp">
 
     <View
         android:layout_width="32dp"
         android:layout_height="4dp"
         android:layout_gravity="center_horizontal"
-        android:layout_marginBottom="12dp"
+        android:layout_marginBottom="14dp"
         android:background="@drawable/info_drag_handle" />
 
     <TextView
@@ -21,8 +19,8 @@
         android:layout_height="wrap_content"
         android:fontFamily="sans-serif-light"
         android:includeFontPadding="false"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
         android:text="Sort &amp; filter"
         android:textColor="#FFFFFF"
         android:textSize="24sp" />
@@ -46,9 +44,9 @@
         android:layout_height="wrap_content"
         android:gravity="end"
         android:orientation="horizontal"
-        android:paddingStart="8dp"
+        android:paddingStart="12dp"
         android:paddingTop="6dp"
-        android:paddingEnd="8dp"
+        android:paddingEnd="6dp"
         android:paddingBottom="6dp">
 
         <TextView
@@ -58,8 +56,10 @@
             android:background="?android:attr/selectableItemBackground"
             android:clickable="true"
             android:focusable="true"
+            android:minWidth="80dp"
             android:padding="14dp"
             android:text="CANCEL"
+            android:textAlignment="center"
             android:textColor="#9A9A9A"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -68,12 +68,14 @@
             android:id="@+id/sheetApply"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="4dp"
             android:background="?android:attr/selectableItemBackground"
             android:clickable="true"
             android:focusable="true"
+            android:minWidth="80dp"
             android:padding="14dp"
             android:text="APPLY"
+            android:textAlignment="center"
             android:textColor="#3B9EFF"
             android:textSize="14sp"
             android:textStyle="bold" />

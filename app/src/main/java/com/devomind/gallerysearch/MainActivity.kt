@@ -1610,7 +1610,7 @@ class MainActivity : AppCompatActivity() {
             isAllCaps = true
             letterSpacing = 0.06f
             setTextColor(Color.parseColor("#6F6F6F"))
-            setPadding(dp(16), dp(16), dp(16), dp(6))
+            setPadding(dp(20), dp(16), dp(20), dp(6))
         })
     }
 
@@ -1621,13 +1621,14 @@ class MainActivity : AppCompatActivity() {
             background = ContextCompat.getDrawable(this@MainActivity, android.R.drawable.list_selector_background)
             isClickable = true
             isFocusable = true
-            setPadding(dp(16), dp(13), dp(16), dp(13))
+            setPadding(dp(20), dp(13), dp(20), dp(13))
             setOnClickListener { onClick() }
         }
         row.addView(TextView(this).apply {
             text = label
             textSize = 15f
-            setTextColor(Color.WHITE)
+            includeFontPadding = false
+            setTextColor(if (selected) Color.parseColor("#3B9EFF") else Color.WHITE)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         row.addView(ImageView(this).apply {
