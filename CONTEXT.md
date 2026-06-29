@@ -13,7 +13,7 @@
 | File | Role |
 |---|---|
 | `GallerySearchApp` | Application class. Owns `SharedEncoders` (lazy singleton for ONNX sessions) |
-| `MainActivity` | God activity: browse/search/album/smart-album/folder modes, WorkManager orchestration, all UI state, Smart Cleanup launch, revamped search (filter chips + sort/filter sheet + image-to-image) |
+| `MainActivity` | God activity: browse/search/album/smart-album/folder modes, WorkManager orchestration, all UI state, Smart Cleanup launch, revamped search (filter chips + sort/filter sheet + image-to-image). Owns the **persistent top search box** (used in both browse + search), full-screen **loading overlay** (faded out on first render), **justified-rows collage** builder, **auto-pin defaults** + albums **onboarding card** |
 | `ViewerActivity` | Full-screen pager: spring-physics swipe-to-dismiss (single-finger gated), Metro **key-value Info bottom sheet** (filename/date/size/dims/duration/location/device/lens/settings/path/tags), top-bar title+date, favorite/info/overflow actions, flat bottom action row (Share/Edit/Wallpaper/Delete), **Find similar** (image-to-image), Metro delete dialog, video controls |
 | `SmartCleanupActivity` | Dedicated Metro screen: CLIP-detected clutter tiles + storage summary, per-category selectable grid, MediaStore delete. Reads `CleanupResultStore`, observes `CleanupWorker`; progress bar + pause/resume/stop |
 | `SettingsActivity` | Metro preferences screen: Collage layout, Grid columns, Pinned-in-collections, Index-only-while-charging, Clear cleanup cache, About. Writes `IndexPreferences`; MainActivity re-applies on return |
@@ -30,8 +30,8 @@
 | `QueryExpander` | Weighted embedding from WordNet synonyms/hypernyms/hyponyms (weights: 1.0/0.85/0.6/0.5) |
 | `StructuredSearch` | Query parser: extracts filter chips (favorite, album, mime, ext, date, tag, EXIF, ISO, focal) |
 | `MetadataSearch` | TF-IDF-style keyword search over filename/bucket/mime/date fields |
-| `ImageAdapter` | RecyclerView adapter: grid/collage layouts, sticky date headers, selection, album rows |
-| `AlbumPinStore` | SharedPreferences JSON array of pinned album IDs (ordered) |
+| `ImageAdapter` | RecyclerView adapter: grid + **justified-rows collage** layouts (per-photo span/height precomputed from aspect ratio), sticky date headers, selection, album rows, **smart-album onboarding card** (`onCreateSmartAlbum` cb) |
+| `AlbumPinStore` | SharedPreferences JSON array of pinned album IDs (ordered). Tracks an `initialized` flag so default pins apply only once |
 | `SmartAlbumStore` | SharedPreferences JSON array of smart album definitions (name, prompt, member Uris, cover) |
 | `FavoritesStore` | Wraps Room `FavoriteDao`. Migrates legacy SharedPrefs on first run |
 | `IndexPreferences` | SharedPrefs: selected albums, last-indexed timestamp, thread count, grid columns, layout mode |
@@ -39,7 +39,7 @@
 | `WordNetExpansionDictionary` | Loads `photo_synonyms.json.gz` from assets at runtime |
 | `OnnxSessionOptions` | Creates ORT sessions: 4 threads, ALL_OPT, NNAPI intentionally disabled |
 | `EmbeddingUtils` | `l2Normalize()` + `cosineSimilarity()` (dot product on pre-normalized vectors) |
-| `FastScrollIndicator` | Custom View: animated thumb, track line, 64dp touch target from right edge |
+| `FastScrollIndicator` | Custom View: animated thumb, track line, 64dp touch target from right edge. Tracks on every scroll (drag/fling/programmatic); drag jumps via `scrollToPositionWithOffset` (smooth on variable-height grids) |
 | `StickyHeaderDecoration` | RecyclerView `ItemDecoration` for floating date headers |
 | `MediaPagerAdapter` | ViewPager2 adapter for viewer pages: Glide image load (spinner via `RequestListener`), pooled ExoPlayer per holder tracked in `SparseArray`, **center play/pause/replay button**, **mute toggle** (session-wide), video scrubber (250ms poll + live seek), `onPlayStateChanged` callback |
 | `ViewerItemsHolder` | Strong-ref hand-off of the media list to `ViewerActivity` (avoids Binder size limit); cleared via `release()` |
@@ -162,7 +162,10 @@ MaxScoreDropRatio = 0.75f
 ## Design Tokens (selected critical ones, `DesignTokens.kt`)
 ```kotlin
 GRID_DEFAULT_COLUMNS = 4     GRID_MIN_COLUMNS = 2     GRID_MAX_COLUMNS = 6
-GRID_SPAN_COUNT = 6          // collage mode span
+GRID_SPAN_COUNT = 6          // legacy collage span (unused by justified builder)
+COLLAGE_SPAN_COUNT = 12      // justified-rows collage grid resolution
+COLLAGE_TARGET_ROWS_PER_WIDTH = 3.1f  // ~images per row baseline
+COLLAGE_MIN_ASPECT = 0.55f   COLLAGE_MAX_ASPECT = 2.4f  // aspect clamps
 DISPLAY_CAP = 800            // max items shown in browse
 SEARCH_METADATA_HARD_CAP = 80
 SEARCH_INPUT_DEBOUNCE_MS = 180L
@@ -235,6 +238,12 @@ READ_EXTERNAL_STORAGE (maxSdkVersion=32)
 15. **Cleanup froze on "scanning N/total"** — full-library quality decode ran before any tile showed. Now `CleanupAnalyzer` streams partial results (fast embedding categories first) and the scan runs in `CleanupWorker` (background, resumable) writing `CleanupResultStore` incrementally; UI loads the store live.
 16. **Notifications off by default (API 33+)** — `POST_NOTIFICATIONS` was declared but never requested at runtime → request added in `MainActivity`.
 17. **Search showed raw query syntax** — pills used to inject `orientation=portrait`-style tokens into the EditText. Filters are now removable chips backed by `activeFilters`; the box holds only free text. `effectiveQuery()` composes text + chips + Show filter at search time.
+18. **Collage layout misaligned** — old approach mixed a full-width "featured" photo, a fixed 3-tile collage cell, and 1/3-span photos with tile sizes computed in the ViewHolder that didn't match the grid span widths (gaps, non-square tiles). Replaced with a **justified-rows** builder (`appendJustifiedRows`): photos grouped into rows by aspect ratio (`MediaItem.width/height`), each row scaled to a uniform height filling the width, spans distributed across `COLLAGE_SPAN_COUNT` (12). `GalleryCell.Photo` carries `collageSpan` + `collageHeightPx`. Last partial row stays left-aligned at target height. `GalleryCell.Collage` + featured are no longer emitted.
+19. **No loading state on launch** — added a full-screen `loadingOverlay` (accent spinner + "Loading your gallery") shown on open, faded out via one-shot `dismissLoadingOverlay()` on first content layout (and on fatal error).
+20. **Fast scroll bugged / scroll jerky** — thumb only updated while actively dragging the page (jumped on fling); now tracks on every scroll. Drag now jumps via `scrollToPositionWithOffset` (reliable on variable-height grids) instead of `scrollBy` against an estimated range. Grid smoothness: `setHasFixedSize(true)`, larger view cache, Glide `dontAnimate()`.
+21. **Oval pills + weak selection color** — `search_filter_chip_bg`/`_active_bg` had an 18dp radius (oval) and a washed-out navy selected fill. Now 6dp rounded-square with a solid accent (`#3B9EFF`) selected state.
+22. **Smart album dialog was bland** — replaced the default `AlertDialog` (system title/buttons) with a custom Metro window (`Theme.GallerySearch.Dialog` + `dialog_metro_bg`): sparkle title, helper text, labelled name/description fields, tappable prompt suggestion chips, flat accent Create/Cancel.
+23. **Sort & filter sheet misaligned** — inconsistent insets (root 8dp + child 16dp = 24dp vs buttons 22dp). Unified to a 20dp inset across title/headers/options; selected option label now accent-colored.
 
 ---
 
@@ -247,4 +256,6 @@ READ_EXTERNAL_STORAGE (maxSdkVersion=32)
 
 **Search revamp — complete.** Icon source badges (sparkle/tag), no result cap (infinite pagination), Sort & filter **bottom sheet** (Sort/Match/Show), date-grouped results for date sorts, removable filter chips, image-to-image search with source thumbnail in the bar.
 
-**Last commit:** feat: Smart Cleanup progress bar, pause/resume/stop, Likely clutter group (search revamp pending commit)
+**Albums & UI polish — complete.** Persistent top search box shared by browse + search (trailing icon swaps search↔dismiss, hides during multi-select); smaller timeline (22sp) and pinned-albums (13sp) headers. Justified-rows collage layout option. Full-screen loading overlay on launch. Fast-scroll tracks all scrolls + position-based drag jumps. Auto-pin of the 4 most relevant device albums on first run (`ensureDefaultPins`/`albumRelevanceScore`). Albums onboarding card to create a smart album. Metro-redesigned smart-album creation dialog. Rounded-square pills with accent selection. Aligned Sort & filter sheet.
+
+**Last commit:** Align sort & filter sheet to a consistent inset

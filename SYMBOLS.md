@@ -21,7 +21,7 @@ DbRepository              DbRepository.kt          upsertMedia(); toggleFavorite
 IndexWorker               IndexWorker.kt           CoroutineWorker; WorkName="gallery_background_index"; BatchSize via GalleryRepository
 IndexControlReceiver      IndexControlReceiver.kt  ActionPause/ActionResume broadcasts; pendingIntent()
 IndexPreferences          IndexPreferences.kt      save/loadSelectedAlbums; save/loadLastIndexedTime; isIndexPaused/setIndexPaused; getGridColumnCount
-AlbumPinStore             AlbumPinStore.kt         pin/unpin/isPinned/getPinnedAlbumIds/setPinnedOrder/cleanup
+AlbumPinStore             AlbumPinStore.kt         pin/unpin/isPinned/getPinnedAlbumIds/setPinnedOrder/cleanup/isInitialized/markInitialized
 SmartAlbumStore           SmartAlbumStore.kt       getAll(); get(id); upsert(album); delete(id); isSmartId(id)
   SmartAlbum              SmartAlbumStore.kt       data class: id,name,prompt,searchMode,memberUris,coverUri,createdAt,updatedAt; toAlbum(): Album
 FavoritesStore            FavoritesStore.kt        all(); isFavorite(Uri); toggle(Uri): Boolean — wraps DbRepository
@@ -38,10 +38,11 @@ EmbeddingUtils            EmbeddingUtils.kt        l2Normalize(FloatArray): Floa
 OnnxOutput                OnnxOutput.kt            flattenFloatArray(value: Any): FloatArray
 OnnxSessionOptions        OnnxSessionOptions.kt    create(tag,threadCount=4): OrtSession.SessionOptions — NNAPI disabled
 DesignTokens              DesignTokens.kt          (see CONTEXT.md for key values)
-FastScrollIndicator       FastScrollIndicator.kt   attach(RecyclerView, ImageAdapter)
 StickyHeaderDecoration    StickyHeaderDecoration.kt  RecyclerView.ItemDecoration
 ThumbnailScaleGestureListener  ThumbnailScaleGestureListener.kt  pinch-to-resize grid columns
-ImageAdapter              ImageAdapter.kt          RecyclerView.Adapter; useCollageLayout; gridColumnCount; spanSizeAt(); replaceCells()
+ImageAdapter              ImageAdapter.kt          RecyclerView.Adapter; useCollageLayout; gridColumnCount; spanSizeAt(); replaceCells(); ctor cb onCreateSmartAlbum
+  GalleryCell             ImageAdapter.kt          sealed: Header|Photo(collageSpan,collageHeightPx)|Collage|AlbumCell|FolderCell|PinnedAlbumsHeader|SmartAlbumOnboarding|Empty
+FastScrollIndicator       FastScrollIndicator.kt   attach(RecyclerView, ImageAdapter); tracks all scrolls; drag → scrollToPositionWithOffset
 MediaPagerAdapter         MediaPagerAdapter.kt     RecyclerView.Adapter for ViewPager2; ctor cb: onInitialImageLoaded/onMediaTap/onMediaLongClick/onVideoCompleted/onScrubbingChanged; releaseAll()
   PageViewHolder          MediaPagerAdapter.kt     bind(); start/pause/stopPlayback(); isPlaying(); isZoomed(); setScrubberVisible(); cleanup(); player tracked in SparseArray
 ViewerItemsHolder         ViewerItemsHolder.kt     object; store()/retrieve(uri)/release(); strong ref (was WeakReference)
@@ -79,6 +80,10 @@ IndexPreferences.isChargingOnlyIndexing()/setChargingOnlyIndexing()
 MainActivity: maybePromptIndexingConsent()/showIndexingConsentDialog()/onIndexDrawerAction()/pauseIndexing()/resumeIndexing()/buildIndexRequest()
 MainActivity SortMode enum   Relevance | Newest | Oldest
 MainActivity ShowFilter enum All | Favorites | Screenshots
+MainActivity: ensureDefaultPins()/albumRelevanceScore(name)        // auto-pin 4 most relevant albums on first run
+MainActivity: appendJustifiedRows(cells,dayItems,rowWidthPx)        // justified-rows collage builder
+MainActivity: updateSearchTrailingIcon()                           // search box trailing icon search↔dismiss
+MainActivity: dismissLoadingOverlay()                              // one-shot fade of launch loading overlay
 ViewerActivity.ExtraFindSimilarUri                                  // returned to launch image-to-image search
 
 ---
@@ -158,6 +163,9 @@ WeightHyponym     = 0.50f
 // DesignTokens.kt (key ones)
 GRID_DEFAULT_COLUMNS = 4
 GRID_SPAN_COUNT = 6
+COLLAGE_SPAN_COUNT = 12
+COLLAGE_TARGET_ROWS_PER_WIDTH = 3.1f
+COLLAGE_MIN_ASPECT = 0.55f   COLLAGE_MAX_ASPECT = 2.4f
 DISPLAY_CAP = 800
 SEARCH_METADATA_HARD_CAP = 80
 SEARCH_INPUT_DEBOUNCE_MS = 180L

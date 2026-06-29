@@ -205,11 +205,19 @@ viewer_bottom_gradient.xml → activity_viewer.xml (bottomGradient)
 info_drag_handle.xml    → activity_viewer.xml (info panel handle)
 scrubber_thumb.xml / scrubber_progress.xml → item_viewer_page.xml (video SeekBar)
 dialog_tag_picker.xml   → TagPickerDialog
-dialog_smart_album.xml  → MainActivity (smart album create dialog)
+dialog_smart_album.xml  → MainActivity (smart album create dialog, Metro Theme.GallerySearch.Dialog)
+item_smart_album_onboarding.xml → ImageAdapter (albums onboarding card; onCreateSmartAlbum)
 item_empty.xml          → ImageAdapter (empty state)
 activity_smart_cleanup.xml → SmartCleanupActivity (overview tiles + progress + detail grid)
 item_cleanup_tile.xml   → SmartCleanupActivity (Metro category tile)
-sheet_search_filter.xml → MainActivity (Sort & filter bottom sheet)
+sheet_search_filter.xml → MainActivity (Sort & filter bottom sheet; 20dp inset)
 item_info_row.xml       → ViewerActivity (Info sheet key-value row, via <include>)
 activity_settings.xml   → SettingsActivity (Metro preferences screen)
+```
+
+## Selected Drawables
+```
+search_filter_chip_bg.xml / search_filter_chip_active_bg.xml → search/quick/onboarding pills (6dp rounded-square; active = solid accent)
+onboarding_card_bg.xml / onboarding_button_bg.xml → albums onboarding card + smart-album dialog Create button
+dialog_metro_bg.xml     → Metro dialog window background (smart album dialog)
 ```
