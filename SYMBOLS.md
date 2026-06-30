@@ -82,6 +82,7 @@ MainActivity SortMode enum   Relevance | Newest | Oldest
 MainActivity ShowFilter enum All | Favorites | Screenshots
 MainActivity: ensureDefaultPins()/albumRelevanceScore(name)        // auto-pin 4 most relevant albums on first run
 MainActivity: appendJustifiedRows(cells,dayItems,rowWidthPx)        // justified-rows collage builder
+MainActivity: resetGridToTop()                                     // invalidates GridLayoutManager span caches (fixes collage first-render)
 MainActivity: updateSearchTrailingIcon()                           // search box trailing icon search↔dismiss
 MainActivity: dismissLoadingOverlay()                              // one-shot fade of launch loading overlay
 ViewerActivity.ExtraFindSimilarUri                                  // returned to launch image-to-image search
@@ -164,7 +165,7 @@ WeightHyponym     = 0.50f
 GRID_DEFAULT_COLUMNS = 4
 GRID_SPAN_COUNT = 6
 COLLAGE_SPAN_COUNT = 12
-COLLAGE_TARGET_ROWS_PER_WIDTH = 3.1f
+COLLAGE_TARGET_ROWS_PER_WIDTH = 2.3f
 COLLAGE_MIN_ASPECT = 0.55f   COLLAGE_MAX_ASPECT = 2.4f
 DISPLAY_CAP = 800
 SEARCH_METADATA_HARD_CAP = 80

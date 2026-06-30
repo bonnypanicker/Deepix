@@ -164,7 +164,7 @@ MaxScoreDropRatio = 0.75f
 GRID_DEFAULT_COLUMNS = 4     GRID_MIN_COLUMNS = 2     GRID_MAX_COLUMNS = 6
 GRID_SPAN_COUNT = 6          // legacy collage span (unused by justified builder)
 COLLAGE_SPAN_COUNT = 12      // justified-rows collage grid resolution
-COLLAGE_TARGET_ROWS_PER_WIDTH = 3.1f  // ~images per row baseline
+COLLAGE_TARGET_ROWS_PER_WIDTH = 2.3f  // ~images per row baseline (lower = bigger thumbnails)
 COLLAGE_MIN_ASPECT = 0.55f   COLLAGE_MAX_ASPECT = 2.4f  // aspect clamps
 DISPLAY_CAP = 800            // max items shown in browse
 SEARCH_METADATA_HARD_CAP = 80
@@ -243,7 +243,8 @@ READ_EXTERNAL_STORAGE (maxSdkVersion=32)
 20. **Fast scroll bugged / scroll jerky** — thumb only updated while actively dragging the page (jumped on fling); now tracks on every scroll. Drag now jumps via `scrollToPositionWithOffset` (reliable on variable-height grids) instead of `scrollBy` against an estimated range. Grid smoothness: `setHasFixedSize(true)`, larger view cache, Glide `dontAnimate()`.
 21. **Oval pills + weak selection color** — `search_filter_chip_bg`/`_active_bg` had an 18dp radius (oval) and a washed-out navy selected fill. Now 6dp rounded-square with a solid accent (`#3B9EFF`) selected state.
 22. **Smart album dialog was bland** — replaced the default `AlertDialog` (system title/buttons) with a custom Metro window (`Theme.GallerySearch.Dialog` + `dialog_metro_bg`): sparkle title, helper text, labelled name/description fields, tappable prompt suggestion chips, flat accent Create/Cancel.
-23. **Sort & filter sheet misaligned** — inconsistent insets (root 8dp + child 16dp = 24dp vs buttons 22dp). Unified to a 20dp inset across title/headers/options; selected option label now accent-colored.
+23. **Sort & filter sheet misaligned** — inconsistent insets (root 8dp + child 16dp = 24dp vs buttons 22dp). Unified to a 20dp inset across title/headers/options/footer; selected option label now accent-colored; APPLY uses the accent pill button; divider above footer.
+24. **Collage first render showed thin stale-span strips** — GridLayoutManager caches span index/group lookups and didn't refresh on `notifyDataSetChanged`, so on the first pass collage tiles laid out with stale (span-1) widths before correcting on relayout. Fixed in `resetGridToTop()`: disable + invalidate `spanSizeLookup` index/group caches on every cell replace. Also bumped collage thumbnail size (`COLLAGE_TARGET_ROWS_PER_WIDTH` 3.1 → 2.3).
 
 ---
 
@@ -258,4 +259,4 @@ READ_EXTERNAL_STORAGE (maxSdkVersion=32)
 
 **Albums & UI polish — complete.** Persistent top search box shared by browse + search (trailing icon swaps search↔dismiss, hides during multi-select); smaller timeline (22sp) and pinned-albums (13sp) headers. Justified-rows collage layout option. Full-screen loading overlay on launch. Fast-scroll tracks all scrolls + position-based drag jumps. Auto-pin of the 4 most relevant device albums on first run (`ensureDefaultPins`/`albumRelevanceScore`). Albums onboarding card to create a smart album. Metro-redesigned smart-album creation dialog. Rounded-square pills with accent selection. Aligned Sort & filter sheet.
 
-**Last commit:** Align sort & filter sheet to a consistent inset
+**Last commit:** Fix sort/filter sheet alignment, collage first-render span-cache glitch, and larger collage thumbnails
