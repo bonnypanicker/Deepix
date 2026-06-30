@@ -162,6 +162,34 @@ class IndexWorker(
         private const val ForegroundItemStep = 20
         private const val ForegroundPercentStep = 2
 
+        /**
+         * Single source of truth for the index work request so every enqueue path
+         * (initial start, resume, settings re-apply, notification action) honors the
+         * "index only while charging" preference. Reads the pref at build time.
+         */
+        fun buildWorkRequest(
+            context: Context,
+            selection: Set<String>
+        ): androidx.work.OneTimeWorkRequest {
+            val constraints = androidx.work.Constraints.Builder()
+                .apply {
+                    if (IndexPreferences.isChargingOnlyIndexing(context)) setRequiresCharging(true)
+                }
+                .build()
+            val payload = androidx.work.Data.Builder()
+                .putStringArray(SelectedAlbumIdsKey, selection.toTypedArray())
+                .build()
+            return androidx.work.OneTimeWorkRequestBuilder<IndexWorker>()
+                .setInputData(payload)
+                .setConstraints(constraints)
+                .setBackoffCriteria(
+                    androidx.work.BackoffPolicy.LINEAR,
+                    DesignTokens.INDEX_BACKOFF_SECONDS,
+                    java.util.concurrent.TimeUnit.SECONDS
+                )
+                .build()
+        }
+
         fun showPausedNotification(context: Context) {
             ensureChannel(context)
             val notification = NotificationCompat.Builder(context, ChannelId)

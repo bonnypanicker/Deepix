@@ -5,12 +5,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import androidx.work.BackoffPolicy
-import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
-import java.util.concurrent.TimeUnit
 
 class IndexControlReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -31,13 +27,7 @@ class IndexControlReceiver : BroadcastReceiver() {
         IndexWorker.cancelStatusNotification(context)
 
         val selectedAlbums = IndexPreferences.loadSelectedAlbums(context)
-        val payload = Data.Builder()
-            .putStringArray(IndexWorker.SelectedAlbumIdsKey, selectedAlbums.toTypedArray())
-            .build()
-        val request = OneTimeWorkRequestBuilder<IndexWorker>()
-            .setInputData(payload)
-            .setBackoffCriteria(BackoffPolicy.LINEAR, DesignTokens.INDEX_BACKOFF_SECONDS, TimeUnit.SECONDS)
-            .build()
+        val request = IndexWorker.buildWorkRequest(context, selectedAlbums)
 
         WorkManager.getInstance(context).enqueueUniqueWork(
             IndexWorker.WorkName,

@@ -49,7 +49,7 @@
 ## Key Data Flows
 
 ### Indexing Flow
-**Consent-gated:** indexing never auto-starts. First launch shows a one-time plain-language consent dialog (battery note + "search by describing your photos") with Start now / Choose folders / Not now. `IndexPreferences.isIndexConsentGiven` gates `maybeStartBackgroundIndexing()`. Side panel item toggles start ↔ pause ↔ resume (`onIndexDrawerAction` + `updateIndexDrawerLabel`). Settings "index only while charging" adds a `Constraints.setRequiresCharging(true)` to the work request (`buildIndexRequest`).
+**Consent-gated:** indexing never auto-starts. First launch shows a one-time plain-language consent dialog (battery note + "search by describing your photos") with Start now / Choose folders / Not now. `IndexPreferences.isIndexConsentGiven` gates `maybeStartBackgroundIndexing()`. Side panel item toggles start ↔ pause ↔ resume (`onIndexDrawerAction` + `updateIndexDrawerLabel`). Settings "index only while charging" adds a `Constraints.setRequiresCharging(true)` to the work request. **All** enqueue paths (initial start, settings re-apply, notification "Resume") build the request through the single `IndexWorker.buildWorkRequest(context, selection)`, which reads `IndexPreferences.isChargingOnlyIndexing` at build time.
 ```
 IndexWorker.doWork()
   → GalleryRepository.getNewImageUris() / getImageUrisForAlbumIds()  [MediaStore]
@@ -245,6 +245,7 @@ READ_EXTERNAL_STORAGE (maxSdkVersion=32)
 22. **Smart album dialog was bland** — replaced the default `AlertDialog` (system title/buttons) with a custom Metro window (`Theme.GallerySearch.Dialog` + `dialog_metro_bg`): sparkle title, helper text, labelled name/description fields, tappable prompt suggestion chips, flat accent Create/Cancel.
 23. **Sort & filter sheet misaligned** — inconsistent insets (root 8dp + child 16dp = 24dp vs buttons 22dp). Unified to a 20dp inset across title/headers/options/footer; selected option label now accent-colored; APPLY uses the accent pill button; divider above footer.
 24. **Collage first render showed thin stale-span strips** — GridLayoutManager caches span index/group lookups and didn't refresh on `notifyDataSetChanged`, so on the first pass collage tiles laid out with stale (span-1) widths before correcting on relayout. Fixed in `resetGridToTop()`: disable + invalidate `spanSizeLookup` index/group caches on every cell replace. Also bumped collage thumbnail size (`COLLAGE_TARGET_ROWS_PER_WIDTH` 3.1 → 2.3).
+25. **"Index only while charging" ignored on notification Resume** — `IndexControlReceiver.resumeIndexing()` built its own work request with no constraints, so resuming from the notification bypassed the charging preference. Each enqueue path had its own request-builder, inviting drift. Fixed by centralizing on `IndexWorker.buildWorkRequest(context, selection)` (reads the pref at build time, applies `setRequiresCharging`); `MainActivity` and `IndexControlReceiver` both route through it. Settings toggle while indexing re-enqueues with `ExistingWorkPolicy.REPLACE` so the constraint swaps on the running job.
 
 ---
 

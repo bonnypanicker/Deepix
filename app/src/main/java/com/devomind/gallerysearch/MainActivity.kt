@@ -40,11 +40,7 @@ import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import androidx.work.BackoffPolicy
-import androidx.work.Constraints
-import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.devomind.gallerysearch.databinding.ActivityMainBinding
@@ -60,7 +56,6 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
@@ -584,24 +579,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Builds the index work request, honoring the "only while charging" preference. */
-    private fun buildIndexRequest(selection: Set<String>): androidx.work.OneTimeWorkRequest {
-        val constraints = Constraints.Builder()
-            .apply { if (IndexPreferences.isChargingOnlyIndexing(this@MainActivity)) setRequiresCharging(true) }
-            .build()
-        val payload = Data.Builder()
-            .putStringArray(IndexWorker.SelectedAlbumIdsKey, selection.toTypedArray())
-            .build()
-        return OneTimeWorkRequestBuilder<IndexWorker>()
-            .setInputData(payload)
-            .setConstraints(constraints)
-            .setBackoffCriteria(BackoffPolicy.LINEAR, DesignTokens.INDEX_BACKOFF_SECONDS, TimeUnit.SECONDS)
-            .build()
-    }
-
     private fun enqueueIndexWork(policy: ExistingWorkPolicy) {
         IndexWorker.cancelStatusNotification(this)
-        WorkManager.getInstance(this).enqueueUniqueWork(INDEX_WORK_NAME, policy, buildIndexRequest(selectedAlbumIds))
+        val request = IndexWorker.buildWorkRequest(this, selectedAlbumIds)
+        WorkManager.getInstance(this).enqueueUniqueWork(INDEX_WORK_NAME, policy, request)
     }
 
     private suspend fun loadLibrarySnapshot(

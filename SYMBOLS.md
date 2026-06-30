@@ -77,7 +77,8 @@ StructuredSearch.ScreenshotFilter                                   // is=screen
 IndexPreferences.isCleanupPaused()/setCleanupPaused()
 IndexPreferences.isIndexConsentGiven()/setIndexConsentGiven()/wasIndexConsentAsked()/setIndexConsentAsked()
 IndexPreferences.isChargingOnlyIndexing()/setChargingOnlyIndexing()
-MainActivity: maybePromptIndexingConsent()/showIndexingConsentDialog()/onIndexDrawerAction()/pauseIndexing()/resumeIndexing()/buildIndexRequest()
+MainActivity: maybePromptIndexingConsent()/showIndexingConsentDialog()/onIndexDrawerAction()/pauseIndexing()/resumeIndexing()/enqueueIndexWork(policy)
+IndexWorker.buildWorkRequest(context, selection)                   // SINGLE source of truth for index work request (applies charging constraint); used by MainActivity + IndexControlReceiver
 MainActivity SortMode enum   Relevance | Newest | Oldest
 MainActivity ShowFilter enum All | Favorites | Screenshots
 MainActivity: ensureDefaultPins()/albumRelevanceScore(name)        // auto-pin 4 most relevant albums on first run
