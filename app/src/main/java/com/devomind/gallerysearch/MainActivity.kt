@@ -1007,10 +1007,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Shows the fast-scroll bar whenever the current listing is long enough to be
+     * worth scrolling. Measured from the actual scroll range after layout (not from
+     * date-header count), so it appears on every image listing regardless of how the
+     * photos are spread across months.
+     */
     private fun updateFastScrollVisibility() {
-        val hasTimeline = adapter.cells.count { it is GalleryCell.Header } > 2
-        binding.fastScrollIndicator.visibility = if (hasTimeline) View.VISIBLE else View.GONE
-        if (hasTimeline) binding.fastScrollIndicator.syncToRecyclerView()
+        binding.imageGrid.removeCallbacks(fastScrollVisibilityRunnable)
+        binding.imageGrid.post(fastScrollVisibilityRunnable)
+    }
+
+    private val fastScrollVisibilityRunnable = Runnable {
+        val rv = binding.imageGrid
+        val range = rv.computeVerticalScrollRange()
+        val extent = rv.computeVerticalScrollExtent()
+        val scrollable = extent > 0 && range > extent * FAST_SCROLL_MIN_RATIO
+        binding.fastScrollIndicator.visibility = if (scrollable) View.VISIBLE else View.GONE
+        if (scrollable) binding.fastScrollIndicator.syncToRecyclerView()
     }
 
     private fun openSearch() {
@@ -1020,6 +1034,7 @@ class MainActivity : AppCompatActivity() {
         binding.screenTitle.visibility = View.GONE
         binding.searchBox.visibility = View.VISIBLE
         binding.resultCount.text = ""
+        binding.imageGrid.removeCallbacks(fastScrollVisibilityRunnable)
         binding.fastScrollIndicator.visibility = View.GONE
         binding.searchInput.hint = if (imageSearchActive) "Photos similar to this image" else "Search photos"
         updateSearchTrailingIcon()
@@ -1675,6 +1690,7 @@ class MainActivity : AppCompatActivity() {
         binding.searchInput.setText("")
         suppressSearchInput = false
         showImageSearchThumb(uri)
+        binding.imageGrid.removeCallbacks(fastScrollVisibilityRunnable)
         binding.fastScrollIndicator.visibility = View.GONE
         binding.screenTitle.visibility = View.GONE
         binding.searchBox.visibility = View.VISIBLE
@@ -2838,6 +2854,8 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val INDEX_WORK_NAME = "gallery_background_index"
+        // Show the fast-scroll bar once content exceeds ~1.5 viewports.
+        private const val FAST_SCROLL_MIN_RATIO = 1.5f
         private const val SEARCH_PAGE_SIZE = 30
         private const val SEARCH_DISPLAY_CAP = 1500
         private const val SIMILAR_IMAGE_FLOOR = 0.55f

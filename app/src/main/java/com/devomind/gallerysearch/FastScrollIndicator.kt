@@ -94,11 +94,19 @@ class FastScrollIndicator @JvmOverloads constructor(
         updateFromOffset(recyclerView?.computeVerticalScrollOffset() ?: 0)
     }
 
+    // The track is confined to the listing area: it starts below the search-bar
+    // header and ends above the bottom nav, both of which the host applies as the
+    // RecyclerView's top/bottom padding. Following that padding keeps the thumb in
+    // sync with the visible photo listing in every mode.
+    private fun trackTop(): Float = (recyclerView?.paddingTop?.toFloat() ?: 0f) + dip(8f)
+
+    private fun trackBottom(): Float = height - (recyclerView?.paddingBottom?.toFloat() ?: 0f) - dip(8f)
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
         if (isDragging) {
-            val cy = thumbY.coerceIn(dip(20f), height - dip(20f))
+            val cy = thumbY.coerceIn(trackTop(), trackBottom())
             thumbRadius = dip(12f)
             thumbPaint.color = 0xEE3B9EFF.toInt()
 
@@ -126,7 +134,7 @@ class FastScrollIndicator @JvmOverloads constructor(
         } else {
             thumbPaint.color = 0xBB8A8A8A.toInt()
             thumbRadius = dip(5f)
-            val cy = thumbY.coerceIn(dip(6f), height - dip(6f))
+            val cy = thumbY.coerceIn(trackTop(), trackBottom())
             if (alpha > 0.1f) {
                 canvas.drawCircle(width - dip(24f), cy, thumbRadius, thumbPaint)
             }
@@ -163,7 +171,7 @@ class FastScrollIndicator @JvmOverloads constructor(
     }
 
     private fun isTouchInScrollArea(x: Float, y: Float): Boolean {
-        return x > width - dip(48f)
+        return x > width - dip(48f) && y >= trackTop() && y <= trackBottom()
     }
 
     private fun scrollTo(touchY: Float, rv: RecyclerView) {
@@ -171,8 +179,8 @@ class FastScrollIndicator @JvmOverloads constructor(
         val itemCount = rv.adapter?.itemCount ?: 0
         if (itemCount == 0) return
 
-        val top = dip(20f)
-        val usable = (height - top * 2f).coerceAtLeast(1f)
+        val top = trackTop()
+        val usable = (trackBottom() - top).coerceAtLeast(1f)
         val fraction = ((touchY - top) / usable).coerceIn(0f, 1f)
 
         // Position-based jump: reliable and smooth for variable-height grids,
@@ -195,8 +203,8 @@ class FastScrollIndicator @JvmOverloads constructor(
             return
         }
         val fraction = offset.toFloat() / (totalRange - extent)
-        val top = dip(20f)
-        val cy = top + fraction.coerceIn(0f, 1f) * (height - top * 2f)
+        val top = trackTop()
+        val cy = top + fraction.coerceIn(0f, 1f) * (trackBottom() - top).coerceAtLeast(1f)
         if (Math.abs(thumbY - cy) > dip(1f)) {
             thumbY = cy
             updateFromFraction(fraction)
