@@ -2010,6 +2010,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resetGridToTop() {
+        // Clear GridLayoutManager's span caches so a freshly replaced cell list
+        // lays out with the correct span sizes on the very first pass (otherwise
+        // collage tiles briefly render with stale span widths).
+        (binding.imageGrid.layoutManager as? GridLayoutManager)?.spanSizeLookup?.apply {
+            isSpanIndexCacheEnabled = false
+            isSpanGroupIndexCacheEnabled = false
+            invalidateSpanIndexCache()
+            invalidateSpanGroupIndexCache()
+        }
         binding.imageGrid.stopScroll()
         binding.imageGrid.post {
             if (!binding.imageGrid.isAttachedToWindow) return@post

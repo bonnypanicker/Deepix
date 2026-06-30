@@ -42,8 +42,8 @@ object DesignTokens {
 
     // Collage (justified rows) layout
     const val COLLAGE_SPAN_COUNT = 12
-    // Baseline images-per-row; smaller => taller rows / fewer per row.
-    const val COLLAGE_TARGET_ROWS_PER_WIDTH = 3.1f
+    // Baseline images-per-row; smaller => taller rows / bigger thumbnails.
+    const val COLLAGE_TARGET_ROWS_PER_WIDTH = 2.3f
     const val COLLAGE_MIN_ASPECT = 0.55f
     const val COLLAGE_MAX_ASPECT = 2.4f
 
