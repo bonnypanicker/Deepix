@@ -188,7 +188,11 @@ class MainActivity : AppCompatActivity() {
             onAlbumLongClick = ::showAlbumPinMenu,
             onFolderClick = ::openFolder,
             onFolderExpandClick = ::toggleFolderExpanded,
-            onCreateSmartAlbum = { showCreateSmartAlbumDialog() }
+            onCreateSmartAlbum = { showCreateSmartAlbumDialog() },
+            onDismissSmartAlbumOnboarding = {
+                IndexPreferences.setSmartAlbumOnboardingDismissed(this)
+                if (activeSection == Section.Albums && currentMode == Mode.Browse) renderAlbums()
+            }
         )
         adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
         adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
@@ -920,8 +924,8 @@ class MainActivity : AppCompatActivity() {
         val normalAlbums = albums.filter { it.id !in pinnedIds }
 
         val cells = mutableListOf<GalleryCell>()
-        // Onboarding: nudge first-time users to try smart albums.
-        if (smartAlbums.isEmpty()) {
+        // Onboarding: nudge first-time users to try smart albums (until dismissed).
+        if (smartAlbums.isEmpty() && !IndexPreferences.isSmartAlbumOnboardingDismissed(this)) {
             cells += GalleryCell.SmartAlbumOnboarding
         }
         if (pinnedAlbums.isNotEmpty()) {

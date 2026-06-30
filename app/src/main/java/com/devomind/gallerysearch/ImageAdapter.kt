@@ -53,7 +53,8 @@ class ImageAdapter(
     private val onAlbumLongClick: (GalleryRepository.Album, View) -> Unit,
     private val onFolderClick: (FolderNode) -> Unit = {},
     private val onFolderExpandClick: (FolderNode) -> Unit = {},
-    private val onCreateSmartAlbum: () -> Unit = {}
+    private val onCreateSmartAlbum: () -> Unit = {},
+    private val onDismissSmartAlbumOnboarding: () -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     var cells = mutableListOf<GalleryCell>()
@@ -119,7 +120,8 @@ class ImageAdapter(
             ViewTypeEmpty -> EmptyViewHolder(ItemEmptyBinding.inflate(inflater, parent, false))
             ViewTypeSmartOnboarding -> SmartAlbumOnboardingViewHolder(
                 ItemSmartAlbumOnboardingBinding.inflate(inflater, parent, false),
-                onCreateSmartAlbum
+                onCreateSmartAlbum,
+                onDismissSmartAlbumOnboarding
             )
             else -> PhotoViewHolder(ItemImageBinding.inflate(inflater, parent, false), onPhotoClick, ::toggleSelection)
         }
@@ -664,11 +666,13 @@ class ImageAdapter(
 
     class SmartAlbumOnboardingViewHolder(
         binding: ItemSmartAlbumOnboardingBinding,
-        onCreateSmartAlbum: () -> Unit
+        onCreateSmartAlbum: () -> Unit,
+        onDismiss: () -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
         init {
             binding.onboardingCreateBtn.setOnClickListener { onCreateSmartAlbum() }
             binding.root.setOnClickListener { onCreateSmartAlbum() }
+            binding.onboardingDismissBtn.setOnClickListener { onDismiss() }
         }
     }
 

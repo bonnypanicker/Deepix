@@ -15,6 +15,7 @@ object IndexPreferences {
     private const val KeyIndexConsentGiven = "index_consent_given"
     private const val KeyIndexConsentAsked = "index_consent_asked"
     private const val KeyChargingOnly = "index_charging_only"
+    private const val KeySmartAlbumOnboardingDismissed = "smart_album_onboarding_dismissed"
 
     fun saveSelectedAlbums(context: Context, albumIds: Set<String>) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
@@ -105,6 +106,19 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KeyChargingOnly, enabled)
+            .apply()
+    }
+
+    /** Whether the user dismissed the "Create a smart album" onboarding card. */
+    fun isSmartAlbumOnboardingDismissed(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeySmartAlbumOnboardingDismissed, false)
+    }
+
+    fun setSmartAlbumOnboardingDismissed(context: Context) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeySmartAlbumOnboardingDismissed, true)
             .apply()
     }
 

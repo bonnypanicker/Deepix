@@ -22,7 +22,7 @@
         android:paddingBottom="20dp">
 
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal">
@@ -35,15 +35,31 @@
                 android:tint="@color/metroAccent" />
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="10dp"
+                android:layout_weight="1"
                 android:fontFamily="sans-serif-medium"
                 android:includeFontPadding="false"
                 android:letterSpacing="0.04"
                 android:text="Create a smart album"
                 android:textColor="@color/metroTextPrimary"
                 android:textSize="18sp" />
+
+            <ImageView
+                android:id="@+id/onboardingDismissBtn"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="-6dp"
+                android:layout_marginEnd="-6dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:contentDescription="Dismiss"
+                android:focusable="true"
+                android:padding="6dp"
+                android:src="@drawable/ic_fluent_dismiss_24_regular"
+                android:tint="@color/metroTextSecondary" />
         </LinearLayout>
 
         <TextView
