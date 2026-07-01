@@ -96,11 +96,11 @@ class FastScrollIndicator @JvmOverloads constructor(
 
     // The track is confined to the listing area: it starts below the search-bar
     // header and ends above the bottom nav, both of which the host applies as the
-    // RecyclerView's top/bottom padding. Following that padding keeps the thumb in
-    // sync with the visible photo listing in every mode.
-    private fun trackTop(): Float = (recyclerView?.paddingTop?.toFloat() ?: 0f) + dip(8f)
+    // RecyclerView's top/bottom padding. The inset clears the largest thumb radius
+    // (the enlarged drag dot) so the dot never overlaps the search bar or bottom nav.
+    private fun trackTop(): Float = (recyclerView?.paddingTop?.toFloat() ?: 0f) + dip(14f)
 
-    private fun trackBottom(): Float = height - (recyclerView?.paddingBottom?.toFloat() ?: 0f) - dip(8f)
+    private fun trackBottom(): Float = height - (recyclerView?.paddingBottom?.toFloat() ?: 0f) - dip(14f)
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -147,7 +147,7 @@ class FastScrollIndicator @JvmOverloads constructor(
 
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                if (!isTouchInScrollArea(event.x, event.y)) return false
+                if (!isTouchOnThumb(event.x, event.y)) return false
                 isDragging = true
                 fadeAnim?.cancel()
                 alpha = 1f
@@ -170,8 +170,16 @@ class FastScrollIndicator @JvmOverloads constructor(
         return super.onTouchEvent(event)
     }
 
-    private fun isTouchInScrollArea(x: Float, y: Float): Boolean {
-        return x > width - dip(48f) && y >= trackTop() && y <= trackBottom()
+    /**
+     * Only a drag that starts on the thumb dot itself begins fast-scrolling; touches elsewhere on
+     * the strip fall through to the list. The hit zone is far larger than the visual dot (the dot
+     * stays small) so it's easy to grab: a wide horizontal band and a tall vertical window centred
+     * on the dot.
+     */
+    private fun isTouchOnThumb(x: Float, y: Float): Boolean {
+        if (x < width - dip(56f)) return false
+        val cy = thumbY.coerceIn(trackTop(), trackBottom())
+        return Math.abs(y - cy) <= dip(28f)
     }
 
     private fun scrollTo(touchY: Float, rv: RecyclerView) {
