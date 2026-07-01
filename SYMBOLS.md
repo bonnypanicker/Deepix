@@ -77,7 +77,7 @@ StructuredSearch.ScreenshotFilter                                   // is=screen
 IndexPreferences.isCleanupPaused()/setCleanupPaused()
 IndexPreferences.isIndexConsentGiven()/setIndexConsentGiven()/wasIndexConsentAsked()/setIndexConsentAsked()
 IndexPreferences.isChargingOnlyIndexing()/setChargingOnlyIndexing()
-MainActivity: maybePromptIndexingConsent()/showIndexingConsentDialog()/onIndexDrawerAction()/pauseIndexing()/resumeIndexing()/enqueueIndexWork(policy)
+MainActivity: maybePromptIndexingConsent()/showIndexingStartedDialog()/onIndexDrawerAction()/pauseIndexing()/resumeIndexing()/enqueueIndexWork(policy)
 IndexWorker.buildWorkRequest(context, selection)                   // SINGLE source of truth for index work request (applies charging constraint); used by MainActivity + IndexControlReceiver
 MainActivity SortMode enum   Relevance | Newest | Oldest
 MainActivity ShowFilter enum All | Favorites | Screenshots
@@ -87,6 +87,8 @@ MainActivity: resetGridToTop()                                     // invalidate
 MainActivity: updateSearchTrailingIcon()                           // search box trailing icon search↔dismiss
 MainActivity: dismissLoadingOverlay()                              // one-shot fade of launch loading overlay
 ViewerActivity.ExtraFindSimilarUri                                  // returned to launch image-to-image search
+RotatablePhotoView.resetRotation()                                 // PhotoView subclass: two-finger twist rotates photo, snaps to nearest 90° (View.rotation, about centre); reset on bind
+RotationGestureDetector(Listener)                                  // two-finger twist detector → onRotationBegin/onRotation(deltaDeg)/onRotationEnd
 
 ---
 

@@ -87,13 +87,13 @@
                 android:tint="#FFFFFF" />
 
             <ImageButton
-                android:id="@+id/infoBtn"
+                android:id="@+id/similarBtn"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Info"
+                android:contentDescription="Search similar images"
                 android:padding="12dp"
-                android:src="@drawable/ic_fluent_info_24_regular"
+                android:src="@drawable/ic_fluent_image_search_24_regular"
                 android:tint="#FFFFFF" />
 
             <ImageButton

@@ -308,7 +308,6 @@ class MainActivity : AppCompatActivity() {
         binding.bottomAlbums.setOnClickListener { navigateToSection(Section.Albums) }
         binding.bottomFavorites.setOnClickListener { navigateToSection(Section.Favorites) }
         binding.bottomVideos.setOnClickListener { navigateToSection(Section.Videos) }
-        binding.bottomFolders.setOnClickListener { navigateToSection(Section.Folders) }
 
         binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
@@ -528,25 +527,25 @@ class MainActivity : AppCompatActivity() {
             maybeStartBackgroundIndexing()
             return
         }
-        // First run: ask once. Afterwards the user starts it from the side panel.
+        // First run: auto-start indexing (delayed, in background) and tell the user once.
         if (!IndexPreferences.wasIndexConsentAsked(applicationContext)) {
-            showIndexingConsentDialog()
+            enqueueBackgroundIndexing(showToast = false)
+            showIndexingStartedDialog()
         }
     }
 
-    private fun showIndexingConsentDialog() {
+    private fun showIndexingStartedDialog() {
         IndexPreferences.setIndexConsentAsked(applicationContext)
         val message =
-            "Let Deepix learn what's in your photos so you can find them just by describing them — " +
-                "search things like \"beach\", \"my dog\", \"birthday cake\" or \"receipts\" and get instant matches.\n\n" +
-                "Everything stays on your device. This runs in the background and uses more battery while it works — " +
-                "you can pause it anytime from the menu, or limit it to while charging in Settings."
+            "Deepix is now scanning your photos with on-device AI so you can find them just by describing them — " +
+                "try \"beach\", \"my dog\" or \"receipts\".\n\n" +
+                "It runs in the background and uses extra battery while working. Pause anytime from the side menu " +
+                "or the notification. Everything stays on your device."
         AlertDialog.Builder(this)
-            .setTitle("Make your photos searchable")
+            .setTitle("✨ Making your photos searchable")
             .setMessage(message)
-            .setPositiveButton("Start now") { _, _ -> enqueueBackgroundIndexing(showToast = true) }
+            .setPositiveButton("Got it", null)
             .setNeutralButton("Choose folders") { _, _ -> showAlbumSelector(grantConsent = true) }
-            .setNegativeButton("Not now", null)
             .show()
     }
 
@@ -554,7 +553,6 @@ class MainActivity : AppCompatActivity() {
         when {
             indexRunning -> pauseIndexing()
             IndexPreferences.isIndexPaused(this) -> resumeIndexing()
-            !IndexPreferences.isIndexConsentGiven(this) -> showIndexingConsentDialog()
             else -> enqueueBackgroundIndexing()
         }
     }
@@ -2849,17 +2847,12 @@ class MainActivity : AppCompatActivity() {
             icon = binding.bottomVideosIcon,
             active = currentMode != Mode.Search && activeSection == Section.Videos
         )
-        updateBottomTab(
-            tab = binding.bottomFolders,
-            icon = binding.bottomFoldersIcon,
-            active = currentMode != Mode.Search && activeSection == Section.Folders
-        )
     }
 
     private fun updateBottomTab(tab: View, icon: android.widget.ImageView, active: Boolean) {
         tab.alpha = if (active) 1f else 0.72f
         icon.imageTintList = ColorStateList.valueOf(
-            if (active) Color.WHITE else Color.parseColor("#6F6F6F")
+            if (active) ContextCompat.getColor(this, R.color.metroAccent) else Color.parseColor("#6F6F6F")
         )
         icon.scaleX = if (active) 1f else 0.92f
         icon.scaleY = if (active) 1f else 0.92f

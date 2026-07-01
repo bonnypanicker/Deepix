@@ -88,7 +88,7 @@ Search UI (revamp):
   - On-image source badges = sparkle icon (semantic) + tag icon (text match)
 
 Image-to-image search:
-  ViewerActivity overflow "Find similar" → finish with ExtraFindSimilarUri
+  ViewerActivity top-bar image-search button (similarBtn) → finish with ExtraFindSimilarUri
   → MainActivity.searchSimilarImage(uri)
       → repo.imageEmbedding(uri)  [stored, or encode on demand]
       → repo.searchByEmbedding(emb, floor 0.55, limit 500) over ALL embeddings

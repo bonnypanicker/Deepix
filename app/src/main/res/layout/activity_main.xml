@@ -300,7 +300,25 @@
                     android:layout_height="24dp"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_fluent_image_24_regular"
-                    android:tint="@color/metroTextPrimary" />
+                    android:tint="@color/metroAccent" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/bottomVideos"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingTop="2dp">
+
+                <ImageView
+                    android:id="@+id/bottomVideosIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_fluent_video_24_regular"
+                    android:tint="@color/metroTextSecondary" />
             </LinearLayout>
 
             <LinearLayout
@@ -336,42 +354,6 @@
                     android:layout_height="24dp"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_fluent_heart_24_regular"
-                    android:tint="@color/metroTextSecondary" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/bottomVideos"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:paddingTop="2dp">
-
-                <ImageView
-                    android:id="@+id/bottomVideosIcon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:contentDescription="@null"
-                    android:src="@drawable/ic_fluent_video_24_regular"
-                    android:tint="@color/metroTextSecondary" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/bottomFolders"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:paddingTop="2dp">
-
-                <ImageView
-                    android:id="@+id/bottomFoldersIcon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:contentDescription="@null"
-                    android:src="@drawable/ic_fluent_folder_24_regular"
                     android:tint="@color/metroTextSecondary" />
             </LinearLayout>
         </LinearLayout>

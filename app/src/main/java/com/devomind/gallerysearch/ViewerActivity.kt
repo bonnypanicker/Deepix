@@ -280,6 +280,8 @@ class ViewerActivity : AppCompatActivity() {
         renderFavoriteState(favoritesStore.isFavorite(uri))
 
         setEditAction(isVideo = isVideo, playing = false)
+        // Image-to-image search only applies to photos.
+        binding.similarBtn.visibility = if (isVideo) View.GONE else View.VISIBLE
 
         // Cancel any in-flight metadata load from a previous page before starting a new one.
         metadataJob?.cancel()
@@ -361,10 +363,21 @@ class ViewerActivity : AppCompatActivity() {
             val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
             confirmDelete(item.uri)
         }
-        binding.infoBtn.setOnClickListener { if (!infoVisible) toggleInfoPanel() }
+        binding.similarBtn.setOnClickListener { findSimilar() }
         binding.infoCloseBtn.setOnClickListener { if (infoVisible) toggleInfoPanel() }
         binding.infoScrim.setOnClickListener { if (infoVisible) toggleInfoPanel() }
         binding.moreBtn.setOnClickListener { showOverflowMenu(it) }
+    }
+
+    /** Image-to-image search: hand the current photo's URI back to the gallery to run a visual search. */
+    private fun findSimilar() {
+        val item = items.getOrNull(currentPosition) ?: return
+        if (item.mediaType == GalleryRepository.MediaType.Video) {
+            Toast.makeText(this, "Similar search isn't available for videos.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        findSimilarUri = item.uri.toString()
+        supportFinishAfterTransition()
     }
 
     private fun showOverflowMenu(anchor: View) {
@@ -372,9 +385,6 @@ class ViewerActivity : AppCompatActivity() {
         val menu = androidx.appcompat.widget.PopupMenu(this, anchor)
         menu.menu.add(0, MENU_TAGS, 0, "Add tags")
         menu.menu.add(0, MENU_INFO, 1, "Info")
-        if (item.mediaType != GalleryRepository.MediaType.Video) {
-            menu.menu.add(0, MENU_SIMILAR, 2, "Find similar")
-        }
         menu.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
                 MENU_TAGS -> {
@@ -383,11 +393,6 @@ class ViewerActivity : AppCompatActivity() {
                 }
                 MENU_INFO -> {
                     if (!infoVisible) toggleInfoPanel()
-                    true
-                }
-                MENU_SIMILAR -> {
-                    findSimilarUri = item.uri.toString()
-                    supportFinishAfterTransition()
                     true
                 }
                 else -> false
@@ -1205,7 +1210,6 @@ class ViewerActivity : AppCompatActivity() {
         private const val SCRIM_MAX_ALPHA = 0.72f
         private const val MENU_TAGS = 1
         private const val MENU_INFO = 2
-        private const val MENU_SIMILAR = 3
         const val ExtraContentChanged = "content_changed"
         const val ExtraItems = "items"
         const val ExtraPosition = "position"

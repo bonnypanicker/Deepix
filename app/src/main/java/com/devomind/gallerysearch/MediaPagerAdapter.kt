@@ -133,6 +133,7 @@ class MediaPagerAdapter(
             binding.playPauseButton.visibility = View.GONE
             binding.photoView.visibility = View.VISIBLE
             binding.loadingSpinner.visibility = View.VISIBLE
+            binding.photoView.resetRotation()
 
             if (transitionName != null) {
                 ViewCompat.setTransitionName(binding.photoView, transitionName)
@@ -393,6 +394,7 @@ class MediaPagerAdapter(
             binding.playPauseButton.visibility = View.GONE
             val ctx = binding.photoView.context.applicationContext
             Glide.with(ctx).clear(binding.photoView)
+            binding.photoView.resetRotation()
         }
 
         private fun formatTime(ms: Long): String {
