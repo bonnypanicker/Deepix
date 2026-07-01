@@ -68,6 +68,8 @@ SettingsActivity          SettingsActivity.kt       prefs screen: collage/grid c
 GalleryRepository.allEmbeddings(): Map<String,FloatArray>           // snapshot (loads index if empty)
 GalleryRepository.encodeText(text): FloatArray?                     // delegate to TextEncoder
 GalleryRepository.imageEmbedding(uri): FloatArray?                  // stored, or encode on demand
+GalleryRepository.imageEmbeddingForRegion(uri, RectF): FloatArray?  // region crop (EXIF-oriented @2048px), CLIP encode live; RectF normalized 0..1
+GalleryRepository.regionThumbnail(uri, RectF): Bitmap?             // oriented cropped preview for the search bar thumb
 GalleryRepository.searchByEmbedding(query, excludeUri, floor=0.5, limit=500): List<SemanticSearchHit>  // image-to-image
 ImageAdapter.setSelection(uris)                                     // pre-select a set
 ImageAdapter.toggle(uri)                                            // public selection toggle (cleanup tap)
@@ -87,6 +89,8 @@ MainActivity: resetGridToTop()                                     // invalidate
 MainActivity: updateSearchTrailingIcon()                           // search box trailing icon search↔dismiss
 MainActivity: dismissLoadingOverlay()                              // one-shot fade of launch loading overlay
 ViewerActivity.ExtraFindSimilarUri                                  // returned to launch image-to-image search
+ViewerActivity.ExtraFindSimilarCrop                                // FloatArray [l,t,r,b] normalized crop for region search
+CropOverlayView.setImageBounds(RectF)/normalizedSelection()        // interactive crop rect (draw/resize/move); region image-search
 RotatablePhotoView.resetRotation()                                 // PhotoView subclass: two-finger twist rotates photo, snaps to nearest 90° (View.rotation, about centre); reset on bind
 RotationGestureDetector(Listener)                                  // two-finger twist detector → onRotationBegin/onRotation(deltaDeg)/onRotationEnd
 

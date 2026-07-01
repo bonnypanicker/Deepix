@@ -62,8 +62,8 @@ Search UI: search bar (× clear / query-image thumb) + "Photos · N" header + So
   on-image badges: sparkle (semantic) + tag (text match)
   Filter subclasses incl. new StructuredSearch.ScreenshotFilter (is=screenshot)
 
-Image-to-image: ViewerActivity top-bar image-search button (similarBtn) → ExtraFindSimilarUri
-  → MainActivity.searchSimilarImage() → repo.imageEmbedding() + repo.searchByEmbedding() (all embeddings)
+Image-to-image: ViewerActivity top-bar image-search button (similarBtn) → whole image OR region crop → ExtraFindSimilarUri [+ ExtraFindSimilarCrop]
+  → MainActivity.searchSimilarImage(uri, cropRect?) → repo.imageEmbedding()/imageEmbeddingForRegion() + repo.searchByEmbedding() (all embeddings)
 ```
 
 ### Smart Cleanup Pipeline
@@ -119,7 +119,7 @@ MainActivity
   │     │     ├── center play/pause/replay button + mute toggle (session-wide)
   │     │     └── scrubber: videoSeekBar + videoElapsed/videoTotal (onPlayStateChanged → activity auto-hide)
   │     ├── Info bottom sheet (item_info_row.xml rows) + dim scrim
-  │     ├── top-bar image-search button (similarBtn) → ExtraFindSimilarUri → MainActivity.searchSimilarImage()
+  │     ├── top-bar image-search button (similarBtn) → whole-image OR region crop (CropOverlayView) → ExtraFindSimilarUri [+ ExtraFindSimilarCrop] → MainActivity.searchSimilarImage()
   │     ├── Gesture handling (angle-aware classification)
   │     │     ├── GestureDirection enum (UNDETERMINED → HORIZONTAL_PAGE | VERTICAL_DISMISS | VERTICAL_INFO)
   │     │     ├── downX/downY tracking, 10dp slop threshold, 1.2x ratio lock

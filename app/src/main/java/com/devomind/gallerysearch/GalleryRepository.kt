@@ -535,6 +535,96 @@ class GalleryRepository(
         return if (isEmbeddingValid(embedding)) embedding else null
     }
 
+    /**
+     * Encodes a specific region of the image for region-scoped image-to-image search.
+     * [region] is normalised (0..1) in the displayed (EXIF-oriented) image space, matching what
+     * the viewer's crop overlay produces. Always encodes live (never cached) since crops are
+     * one-off queries.
+     */
+    fun imageEmbeddingForRegion(uri: Uri, region: android.graphics.RectF): FloatArray? {
+        val encoder = imageEncoder ?: return null
+        val crop = decodeRegionBitmap(uri, region, RegionDecodeMaxEdge) ?: return null
+        val embedding = runCatching { encoder.encode(crop) }.getOrNull()
+        crop.recycle()
+        return embedding?.takeIf { isEmbeddingValid(it) }
+    }
+
+    /** A small oriented, cropped preview of [region] for the search bar thumbnail. */
+    fun regionThumbnail(uri: Uri, region: android.graphics.RectF): Bitmap? =
+        decodeRegionBitmap(uri, region, RegionThumbnailMaxEdge)
+
+    /**
+     * Decodes the [region] of [uri] as an upright (EXIF-applied) bitmap. Decodes the whole image at
+     * a capped resolution, applies orientation, then crops — so the crop rect maps 1:1 onto the
+     * displayed photo and the resulting crop is upright (best input for CLIP).
+     */
+    private fun decodeRegionBitmap(uri: Uri, region: android.graphics.RectF, maxEdge: Int): Bitmap? {
+        val oriented = decodeOrientedBitmap(uri, maxEdge) ?: return null
+        val w = oriented.width
+        val h = oriented.height
+        val left = (region.left * w).roundToInt().coerceIn(0, w - 1)
+        val top = (region.top * h).roundToInt().coerceIn(0, h - 1)
+        val right = (region.right * w).roundToInt().coerceIn(left + 1, w)
+        val bottom = (region.bottom * h).roundToInt().coerceIn(top + 1, h)
+        val crop = runCatching {
+            Bitmap.createBitmap(oriented, left, top, right - left, bottom - top)
+        }.getOrNull()
+        if (crop == null || crop !== oriented) oriented.recycle()
+        return crop
+    }
+
+    /** Decodes [uri] downsampled so the longest edge is ~[maxEdge], with EXIF orientation applied. */
+    private fun decodeOrientedBitmap(uri: Uri, maxEdge: Int): Bitmap? = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, bounds)
+        } ?: return null
+        val rawW = bounds.outWidth
+        val rawH = bounds.outHeight
+        if (rawW <= 0 || rawH <= 0) return null
+
+        var sample = 1
+        while (maxOf(rawW, rawH) / sample > maxEdge) sample *= 2
+
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        val decoded = context.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, opts)
+        } ?: return null
+
+        val orientation = context.contentResolver.openInputStream(uri)?.use { stream ->
+            androidx.exifinterface.media.ExifInterface(stream)
+                .getAttributeInt(
+                    androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION,
+                    androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
+                )
+        } ?: androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
+
+        applyExifOrientation(decoded, orientation)
+    }.onFailure { Log.w(Tag, "Failed to decode region bitmap for $uri", it) }.getOrNull()
+
+    /** Returns [bitmap] rotated/flipped to upright per the EXIF [orientation]; recycles the source if replaced. */
+    private fun applyExifOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
+        val matrix = android.graphics.Matrix()
+        when (orientation) {
+            androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+            androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+            androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+            androidx.exifinterface.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+            androidx.exifinterface.media.ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+            androidx.exifinterface.media.ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.postRotate(90f); matrix.postScale(-1f, 1f) }
+            androidx.exifinterface.media.ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.postScale(-1f, 1f) }
+            else -> return bitmap
+        }
+        val rotated = runCatching {
+            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        }.getOrNull() ?: return bitmap
+        if (rotated !== bitmap) bitmap.recycle()
+        return rotated
+    }
+
     /** Image-to-image search: cosine of [query] against every indexed embedding, ranked desc. */
     fun searchByEmbedding(
         query: FloatArray,
@@ -788,6 +878,10 @@ class GalleryRepository(
         private const val MetadataIndexMagic = 0x474d4458
         private const val MetadataIndexVersion = 1
         private const val MaxBitmapEdge = 512
+        // Region crops decode at higher resolution than the 512px index bitmaps so small
+        // selections still carry enough detail for the 256px CLIP encoder.
+        private const val RegionDecodeMaxEdge = 2048
+        private const val RegionThumbnailMaxEdge = 256
         private const val SaveEvery = 20
         private const val MaxUriBytes = 4096
         private const val MaxEmbeddingSize = 4096

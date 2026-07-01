@@ -88,12 +88,19 @@ Search UI (revamp):
   - On-image source badges = sparkle icon (semantic) + tag icon (text match)
 
 Image-to-image search:
-  ViewerActivity top-bar image-search button (similarBtn) → finish with ExtraFindSimilarUri
-  → MainActivity.searchSimilarImage(uri)
-      → repo.imageEmbedding(uri)  [stored, or encode on demand]
+  ViewerActivity top-bar image-search button (similarBtn) → PopupMenu:
+    • "Search whole image"  → finish with ExtraFindSimilarUri
+    • "Search part of image" → crop mode (CropOverlayView: drag corner-to-corner, resize handles,
+        rule-of-thirds; zoom/rotation reset, chrome hidden) → finish with ExtraFindSimilarUri +
+        ExtraFindSimilarCrop (FloatArray [l,t,r,b] normalized 0..1 in displayed-image space)
+  → MainActivity.searchSimilarImage(uri, cropRect?)
+      → cropRect == null: repo.imageEmbedding(uri)  [stored, or encode on demand]
+      → cropRect != null: repo.imageEmbeddingForRegion(uri, region)  [decodeOrientedBitmap @2048px,
+          EXIF-applied, crop region, CLIP encode live — never cached]
       → repo.searchByEmbedding(emb, floor 0.55, limit 500) over ALL embeddings
-      → renderSearchResults(); thumbnail shown in the search bar
+      → renderSearchResults(); search bar shows full or cropped-region thumbnail
 ```
+
 
 ### Smart Cleanup Flow
 ```

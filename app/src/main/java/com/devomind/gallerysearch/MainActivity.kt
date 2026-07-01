@@ -135,7 +135,8 @@ class MainActivity : AppCompatActivity() {
         if (changed) refreshVisibleItems()
         val similarUri = result.data?.getStringExtra(ViewerActivity.ExtraFindSimilarUri)
         if (similarUri != null) {
-            searchSimilarImage(Uri.parse(similarUri))
+            val crop = result.data?.getFloatArrayExtra(ViewerActivity.ExtraFindSimilarCrop)
+            searchSimilarImage(Uri.parse(similarUri), crop)
         }
     }
 
@@ -1716,9 +1717,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Image-to-image search across the whole library using the CLIP image embedding. */
-    private fun searchSimilarImage(uri: Uri) {
+    private fun searchSimilarImage(uri: Uri, cropRect: FloatArray? = null) {
         val repo = repository ?: return
         val name = imageItems.firstOrNull { it.uri == uri }?.displayName ?: "image"
+        val isRegion = cropRect != null && cropRect.size >= 4
 
         currentMode = Mode.Search
         imageSearchActive = true
@@ -1726,7 +1728,7 @@ class MainActivity : AppCompatActivity() {
         suppressSearchInput = true
         binding.searchInput.setText("")
         suppressSearchInput = false
-        showImageSearchThumb(uri)
+        showImageSearchThumb(uri, cropRect)
         binding.imageGrid.removeCallbacks(fastScrollVisibilityRunnable)
         binding.fastScrollIndicator.visibility = View.GONE
         binding.screenTitle.visibility = View.GONE
@@ -1736,7 +1738,7 @@ class MainActivity : AppCompatActivity() {
         updateBottomPanelState()
         updateSearchPillState()
         binding.progressBar.visibility = View.VISIBLE
-        binding.statusText.text = "Finding similar photos…"
+        binding.statusText.text = if (isRegion) "Finding photos similar to this region…" else "Finding similar photos…"
         binding.resultCount.text = ""
 
         searchJob?.cancel()
@@ -1744,7 +1746,12 @@ class MainActivity : AppCompatActivity() {
             val pool = imageItems
             val byUri = pool.associateBy { it.uri }
             val hits = withContext(Dispatchers.Default) {
-                val embedding = repo.imageEmbedding(uri) ?: return@withContext null
+                val embedding = if (isRegion) {
+                    val region = android.graphics.RectF(cropRect!![0], cropRect[1], cropRect[2], cropRect[3])
+                    repo.imageEmbeddingForRegion(uri, region)
+                } else {
+                    repo.imageEmbedding(uri)
+                } ?: return@withContext null
                 repo.searchByEmbedding(embedding, excludeUri = uri.toString(), floor = SIMILAR_IMAGE_FLOOR, limit = 500)
             }
             binding.progressBar.visibility = View.GONE
@@ -1760,7 +1767,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             currentSortMode = SortMode.Relevance
-            renderSearchResults(results, "No similar photos found", "Similar to $name")
+            val title = if (isRegion) "Similar to region" else "Similar to $name"
+            renderSearchResults(results, "No similar photos found", title)
         }
     }
 
@@ -1996,14 +2004,33 @@ class MainActivity : AppCompatActivity() {
         return row
     }
 
-    private fun showImageSearchThumb(uri: Uri) {
+    private fun showImageSearchThumb(uri: Uri, cropRect: FloatArray? = null) {
         binding.searchImageThumb.visibility = View.VISIBLE
-        com.bumptech.glide.Glide.with(this)
-            .load(uri)
-            .centerCrop()
-            .into(binding.searchImageThumb)
         binding.searchImageThumb.setOnClickListener { clearImageSearch() }
-        binding.searchInput.hint = "Photos similar to this image"
+        binding.searchInput.hint = if (cropRect != null) "Photos similar to this region" else "Photos similar to this image"
+
+        if (cropRect == null || cropRect.size < 4) {
+            com.bumptech.glide.Glide.with(this)
+                .load(uri)
+                .centerCrop()
+                .into(binding.searchImageThumb)
+            return
+        }
+
+        // Region search: show the cropped preview so the user sees exactly what's being matched.
+        val repo = repository
+        val region = android.graphics.RectF(cropRect[0], cropRect[1], cropRect[2], cropRect[3])
+        lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) { repo?.regionThumbnail(uri, region) }
+            if (!imageSearchActive) return@launch
+            if (bitmap != null) {
+                com.bumptech.glide.Glide.with(this@MainActivity).clear(binding.searchImageThumb)
+                binding.searchImageThumb.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                binding.searchImageThumb.setImageBitmap(bitmap)
+            } else {
+                com.bumptech.glide.Glide.with(this@MainActivity).load(uri).centerCrop().into(binding.searchImageThumb)
+            }
+        }
     }
 
     private fun clearImageSearchThumb() {

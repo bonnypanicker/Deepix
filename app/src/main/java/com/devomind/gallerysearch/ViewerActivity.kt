@@ -27,6 +27,7 @@ import androidx.dynamicanimation.animation.SpringForce
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.addCallback
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -76,6 +77,8 @@ class ViewerActivity : AppCompatActivity() {
     private var gestureDirection = GestureDirection.UNDETERMINED
     private var metadataJob: kotlinx.coroutines.Job? = null
     private var findSimilarUri: String? = null
+    private var findSimilarCrop: FloatArray? = null
+    private var cropMode = false
 
     private enum class GestureDirection {
         UNDETERMINED, HORIZONTAL_PAGE, VERTICAL_DISMISS, VERTICAL_INFO
@@ -122,7 +125,7 @@ class ViewerActivity : AppCompatActivity() {
         // Skip the global gesture state machine entirely while the info panel
         // is visible — attachInfoPanelDrag already owns all touches in that state,
         // and ViewPager2 paging is disabled, so there is nothing for this to do.
-        if (!infoVisible) {
+        if (!infoVisible && !cropMode) {
             handleViewerTouch(ev)
         }
 
@@ -364,19 +367,106 @@ class ViewerActivity : AppCompatActivity() {
             confirmDelete(item.uri)
         }
         binding.similarBtn.setOnClickListener { findSimilar() }
+        binding.cropCancel.setOnClickListener { exitCropMode() }
+        binding.cropSearch.setOnClickListener { confirmCropSearch() }
         binding.infoCloseBtn.setOnClickListener { if (infoVisible) toggleInfoPanel() }
         binding.infoScrim.setOnClickListener { if (infoVisible) toggleInfoPanel() }
         binding.moreBtn.setOnClickListener { showOverflowMenu(it) }
+
+        onBackPressedDispatcher.addCallback(this) {
+            when {
+                cropMode -> exitCropMode()
+                infoVisible -> toggleInfoPanel()
+                else -> {
+                    isEnabled = false
+                    supportFinishAfterTransition()
+                }
+            }
+        }
     }
 
-    /** Image-to-image search: hand the current photo's URI back to the gallery to run a visual search. */
+    /** Image-to-image search: offer whole-image or region-scoped search for the current photo. */
     private fun findSimilar() {
         val item = items.getOrNull(currentPosition) ?: return
         if (item.mediaType == GalleryRepository.MediaType.Video) {
             Toast.makeText(this, "Similar search isn't available for videos.", Toast.LENGTH_SHORT).show()
             return
         }
+        val menu = androidx.appcompat.widget.PopupMenu(this, binding.similarBtn)
+        menu.menu.add(0, MENU_SIMILAR_WHOLE, 0, "Search whole image")
+        menu.menu.add(0, MENU_SIMILAR_REGION, 1, "Search part of image")
+        menu.setOnMenuItemClickListener { menuItem ->
+            when (menuItem.itemId) {
+                MENU_SIMILAR_WHOLE -> {
+                    findSimilarUri = item.uri.toString()
+                    supportFinishAfterTransition()
+                    true
+                }
+                MENU_SIMILAR_REGION -> {
+                    enterCropMode()
+                    true
+                }
+                else -> false
+            }
+        }
+        menu.show()
+    }
+
+    /** Enters region-select mode: resets transforms, hides chrome, and shows the crop overlay. */
+    private fun enterCropMode() {
+        if (cropMode) return
+        val holder = getCurrentPageViewHolder() ?: return
+        val photoView = holder.binding.photoView
+        if (photoView.visibility != View.VISIBLE) return
+
+        cropMode = true
+        autoHideHandler.removeCallbacks(autoHideRunnable)
+
+        // Neutralise zoom/rotation so the crop rect maps 1:1 onto the displayed image.
+        photoView.resetRotation()
+        runCatching { photoView.setScale(1f, false) }
+        photoView.setZoomable(false)
+        binding.viewPager.isUserInputEnabled = false
+
+        binding.topBar.visibility = View.GONE
+        binding.bottomControls.visibility = View.GONE
+        binding.bottomGradient.visibility = View.GONE
+        binding.cropBar.visibility = View.VISIBLE
+        binding.cropOverlay.visibility = View.VISIBLE
+        binding.cropOverlay.post {
+            val rect = photoView.displayRect
+                ?: android.graphics.RectF(0f, 0f, photoView.width.toFloat(), photoView.height.toFloat())
+            binding.cropOverlay.setImageBounds(rect)
+        }
+    }
+
+    /** Leaves region-select mode and restores normal viewing chrome. */
+    private fun exitCropMode() {
+        if (!cropMode) return
+        cropMode = false
+        binding.cropOverlay.visibility = View.GONE
+        binding.cropBar.visibility = View.GONE
+        getCurrentPageViewHolder()?.binding?.photoView?.setZoomable(true)
+        binding.viewPager.isUserInputEnabled = true
+        binding.topBar.visibility = View.VISIBLE
+        binding.bottomControls.visibility = View.VISIBLE
+        binding.bottomGradient.visibility = View.VISIBLE
+        setControlsVisible(true)
+    }
+
+    /** Confirms the selected region and returns it to the gallery to run a region-scoped search. */
+    private fun confirmCropSearch() {
+        val norm = binding.cropOverlay.normalizedSelection()
+        val item = items.getOrNull(currentPosition)
+        if (norm == null || item == null) {
+            exitCropMode()
+            return
+        }
         findSimilarUri = item.uri.toString()
+        findSimilarCrop = floatArrayOf(norm.left, norm.top, norm.right, norm.bottom)
+        // Hide the crop chrome so the shared-element return transition is clean.
+        binding.cropOverlay.visibility = View.GONE
+        binding.cropBar.visibility = View.GONE
         supportFinishAfterTransition()
     }
 
@@ -1210,12 +1300,15 @@ class ViewerActivity : AppCompatActivity() {
         private const val SCRIM_MAX_ALPHA = 0.72f
         private const val MENU_TAGS = 1
         private const val MENU_INFO = 2
+        private const val MENU_SIMILAR_WHOLE = 3
+        private const val MENU_SIMILAR_REGION = 4
         const val ExtraContentChanged = "content_changed"
         const val ExtraItems = "items"
         const val ExtraPosition = "position"
         const val ExtraTransitionName = "transition_name"
         const val ExtraMarker = "marker_uri"
         const val ExtraFindSimilarUri = "find_similar_uri"
+        const val ExtraFindSimilarCrop = "find_similar_crop"
     }
 
     override fun onDestroy() {
@@ -1236,6 +1329,7 @@ class ViewerActivity : AppCompatActivity() {
         if (contentChanged || findSimilarUri != null) {
             val data = Intent().putExtra(ExtraContentChanged, contentChanged)
             findSimilarUri?.let { data.putExtra(ExtraFindSimilarUri, it) }
+            findSimilarCrop?.let { data.putExtra(ExtraFindSimilarCrop, it) }
             setResult(RESULT_OK, data)
         }
         super.finish()
