@@ -1314,7 +1314,8 @@ class MainActivity : AppCompatActivity() {
     private fun appendJustifiedRows(
         cells: MutableList<GalleryCell>,
         dayItems: List<GalleryRepository.MediaItem>,
-        rowWidthPx: Int
+        rowWidthPx: Int,
+        sourcesFor: ((GalleryRepository.MediaItem) -> SearchSources)? = null
     ) {
         val spanCount = DesignTokens.COLLAGE_SPAN_COUNT
         val width = rowWidthPx.coerceAtLeast(1)
@@ -1362,6 +1363,7 @@ class MainActivity : AppCompatActivity() {
                 for (i in row.indices) {
                     cells += GalleryCell.Photo(
                         item = row[i],
+                        searchSources = sourcesFor?.invoke(row[i]) ?: SearchSources(),
                         collageSpan = spans[i].coerceIn(1, spanCount),
                         collageHeightPx = rowHeight
                     )
@@ -1375,6 +1377,7 @@ class MainActivity : AppCompatActivity() {
                         .toInt().coerceIn(1, spanCount)
                     cells += GalleryCell.Photo(
                         item = item,
+                        searchSources = sourcesFor?.invoke(item) ?: SearchSources(),
                         collageSpan = span,
                         collageHeightPx = rowHeight
                     )
@@ -1477,9 +1480,7 @@ class MainActivity : AppCompatActivity() {
         if (currentSortMode == SortMode.Relevance) {
             val firstPage = fullSearchResults.take(SEARCH_PAGE_SIZE)
             currentDisplayedSearchResultCount = firstPage.size
-            adapter.replaceCells(firstPage.map {
-                GalleryCell.Photo(item = it.item, featured = false, searchSources = it.sources)
-            })
+            adapter.replaceCells(buildSearchPhotoCells(firstPage))
         } else {
             // Date-grouped: render all (capped) with month headers; pagination disabled.
             val capped = fullSearchResults.take(SEARCH_DISPLAY_CAP)
@@ -1493,18 +1494,54 @@ class MainActivity : AppCompatActivity() {
         binding.statusText.text = lastSearchStatusText
     }
 
+    /**
+     * Flat ranked results (Relevance). In collage mode they run through the justified-rows
+     * builder so search matches the browse collage; in grid mode they stay 1-span photos.
+     */
+    private fun buildSearchPhotoCells(results: List<PhotoSearchResult>): List<GalleryCell> {
+        if (!adapter.useCollageLayout) {
+            return results.map {
+                GalleryCell.Photo(item = it.item, featured = false, searchSources = it.sources)
+            }
+        }
+        val cells = ArrayList<GalleryCell>(results.size)
+        val sources = results.associate { it.item.uri to it.sources }
+        appendJustifiedRows(cells, results.map { it.item }, resources.displayMetrics.widthPixels) {
+            sources[it.uri] ?: SearchSources()
+        }
+        return cells
+    }
+
     /** Groups ranked results under month headers while preserving the AI/text source badges. */
     private fun buildSearchTimelineCells(results: List<PhotoSearchResult>): List<GalleryCell> {
         val cells = ArrayList<GalleryCell>(results.size + 8)
+        val rowWidthPx = resources.displayMetrics.widthPixels
+        val sources = results.associate { it.item.uri to it.sources }
         var lastMonth: String? = null
+        var monthItems = ArrayList<GalleryRepository.MediaItem>()
+
+        fun flushMonth() {
+            if (monthItems.isEmpty()) return
+            if (adapter.useCollageLayout) {
+                appendJustifiedRows(cells, monthItems, rowWidthPx) { sources[it.uri] ?: SearchSources() }
+            } else {
+                monthItems.forEach {
+                    cells += GalleryCell.Photo(item = it, featured = false, searchSources = sources[it.uri] ?: SearchSources())
+                }
+            }
+            monthItems = ArrayList()
+        }
+
         for (result in results) {
             val month = safeFormat(monthFormatter, result.item.dateMillis, "Unknown date")
             if (month != lastMonth) {
+                flushMonth()
                 cells += GalleryCell.Header(month, "")
                 lastMonth = month
             }
-            cells += GalleryCell.Photo(item = result.item, featured = false, searchSources = result.sources)
+            monthItems.add(result.item)
         }
+        flushMonth()
         return cells
     }
 
@@ -1673,11 +1710,9 @@ class MainActivity : AppCompatActivity() {
 
         if (nextBatch.isEmpty()) return
 
-        val newCells = nextBatch.map { result ->
-            GalleryCell.Photo(item = result.item, featured = false, searchSources = result.sources)
-        }
+        val newCells = buildSearchPhotoCells(nextBatch)
 
-        currentDisplayedSearchResultCount += newCells.size
+        currentDisplayedSearchResultCount += nextBatch.size
         adapter.updateCells(adapter.cells + newCells)
         updateSearchResultCount()
     }
