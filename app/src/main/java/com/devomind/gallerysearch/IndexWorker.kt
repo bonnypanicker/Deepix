@@ -49,6 +49,7 @@ class IndexWorker(
             }
             if (uris.isEmpty()) {
                 IndexPreferences.saveLastIndexedTime(applicationContext)
+                IndexPreferences.setIndexProgressPercent(applicationContext, 100)
                 return Result.success()
             }
             val total = max(1, uris.size)
@@ -59,6 +60,7 @@ class IndexWorker(
                 }
                 val bounded = current.coerceAtMost(total)
                 val progressPercent = (bounded * 100) / total
+                IndexPreferences.setIndexProgressPercent(applicationContext, progressPercent)
                 setProgressAsync(
                     androidx.work.Data.Builder()
                         .putInt(ProgressCurrentKey, bounded)
@@ -82,6 +84,7 @@ class IndexWorker(
 
             // Save timestamp so next run only processes new photos
             IndexPreferences.saveLastIndexedTime(applicationContext)
+            IndexPreferences.setIndexProgressPercent(applicationContext, 100)
 
             Result.success()
         } catch (paused: IndexPausedException) {
@@ -121,17 +124,25 @@ class IndexWorker(
 
     private fun createForegroundInfo(current: Int, total: Int): ForegroundInfo {
         ensureChannel()
+        val indeterminate = total <= 1
+        val percent = if (indeterminate) 0 else (current.coerceAtMost(total) * 100) / total
+        val text = if (indeterminate) "Starting…" else "$percent%"
         val notification: Notification = NotificationCompat.Builder(applicationContext, ChannelId)
-            .setContentTitle("Indexing gallery photos")
-            .setContentText("Processed $current / $total")
+            .setContentTitle("Indexing photos for AI search")
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setProgress(total, current, total <= 1)
+            .setProgress(100, percent, indeterminate)
             .addAction(
                 android.R.drawable.ic_media_pause,
                 "Pause",
                 IndexControlReceiver.pendingIntent(applicationContext, IndexControlReceiver.ActionPause)
+            )
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Stop",
+                IndexControlReceiver.pendingIntent(applicationContext, IndexControlReceiver.ActionStop)
             )
             .build()
         return ForegroundInfo(NotificationId, notification)
@@ -193,8 +204,8 @@ class IndexWorker(
         fun showPausedNotification(context: Context) {
             ensureChannel(context)
             val notification = NotificationCompat.Builder(context, ChannelId)
-                .setContentTitle("Gallery indexing paused")
-                .setContentText("Resume when you are ready to continue semantic search indexing.")
+                .setContentTitle("Photo indexing paused")
+                .setContentText("Resume when you're ready to finish building your AI search index.")
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
@@ -202,6 +213,11 @@ class IndexWorker(
                     android.R.drawable.ic_media_play,
                     "Resume",
                     IndexControlReceiver.pendingIntent(context, IndexControlReceiver.ActionResume)
+                )
+                .addAction(
+                    android.R.drawable.ic_menu_close_clear_cancel,
+                    "Stop",
+                    IndexControlReceiver.pendingIntent(context, IndexControlReceiver.ActionStop)
                 )
                 .build()
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

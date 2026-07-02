@@ -11,11 +11,13 @@ object IndexPreferences {
     private const val KeyGridColumnCount = "grid_column_count"
     private const val KeyCollageLayout = "use_collage_layout"
     private const val KeyIndexPaused = "index_paused"
+    private const val KeyIndexStopped = "index_stopped"
     private const val KeyCleanupPaused = "cleanup_paused"
     private const val KeyIndexConsentGiven = "index_consent_given"
     private const val KeyIndexConsentAsked = "index_consent_asked"
     private const val KeyChargingOnly = "index_charging_only"
     private const val KeySmartAlbumOnboardingDismissed = "smart_album_onboarding_dismissed"
+    private const val KeyIndexProgressPercent = "index_progress_percent"
 
     fun saveSelectedAlbums(context: Context, albumIds: Set<String>) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
@@ -45,6 +47,19 @@ object IndexPreferences {
 
     fun loadLastIndexedTime(context: Context): Long = getLastIndexedTime(context)
 
+    /** Last known indexing progress (0..100), so the Settings screen can show it while paused/idle. */
+    fun getIndexProgressPercent(context: Context): Int {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getInt(KeyIndexProgressPercent, 0)
+    }
+
+    fun setIndexProgressPercent(context: Context, percent: Int) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KeyIndexProgressPercent, percent.coerceIn(0, 100))
+            .apply()
+    }
+
     fun isIndexPaused(context: Context): Boolean {
         return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .getBoolean(KeyIndexPaused, false)
@@ -54,6 +69,19 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KeyIndexPaused, paused)
+            .apply()
+    }
+
+    /** User explicitly stopped indexing: don't auto-restart on browse/relaunch, no notification. */
+    fun isIndexStopped(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyIndexStopped, false)
+    }
+
+    fun setIndexStopped(context: Context, stopped: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyIndexStopped, stopped)
             .apply()
     }
 

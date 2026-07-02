@@ -3,6 +3,7 @@ package com.devomind.gallerysearch
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -11,6 +12,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.devomind.gallerysearch.databinding.ActivitySettingsBinding
 
 /**
@@ -35,6 +38,7 @@ class SettingsActivity : AppCompatActivity() {
         bindToggles()
         bindGridColumns()
         bindActions()
+        bindIndexing()
         bindAbout()
     }
 
@@ -97,6 +101,112 @@ class SettingsActivity : AppCompatActivity() {
             CleanupResultStore(this).clear()
             Toast.makeText(this, "Smart Cleanup cache cleared.", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Indexing status + controls
+    // ------------------------------------------------------------------
+
+    /** Tracks the latest WorkManager state so button taps render immediately without waiting. */
+    private var latestIndexState: WorkInfo.State? = null
+
+    private fun bindIndexing() {
+        binding.btnIndexPrimary.setOnClickListener {
+            when {
+                isRunningState(latestIndexState) -> IndexController.pause(this)
+                IndexPreferences.isIndexPaused(this) -> IndexController.resume(this)
+                else -> IndexController.start(this)
+            }
+            // Optimistic refresh; the observer will correct it as WorkManager transitions.
+            renderIndexing(latestIndexState, livePercent = null)
+        }
+        binding.btnIndexStop.setOnClickListener {
+            IndexController.stop(this)
+            renderIndexing(WorkInfo.State.CANCELLED, livePercent = null)
+        }
+
+        WorkManager.getInstance(this)
+            .getWorkInfosForUniqueWorkLiveData(IndexWorker.WorkName)
+            .observe(this) { infos ->
+                val work = infos.firstOrNull()
+                latestIndexState = work?.state
+                val livePercent = if (work?.state == WorkInfo.State.RUNNING) {
+                    work.progress.getInt(IndexWorker.ProgressPercentKey, -1).takeIf { it >= 0 }
+                } else {
+                    null
+                }
+                renderIndexing(work?.state, livePercent)
+            }
+    }
+
+    private fun isRunningState(state: WorkInfo.State?): Boolean =
+        state == WorkInfo.State.RUNNING || state == WorkInfo.State.ENQUEUED || state == WorkInfo.State.BLOCKED
+
+    private fun renderIndexing(state: WorkInfo.State?, livePercent: Int?) {
+        val paused = IndexPreferences.isIndexPaused(this)
+        val stopped = IndexPreferences.isIndexStopped(this)
+        val percent = livePercent ?: IndexPreferences.getIndexProgressPercent(this)
+        val chargingOnly = IndexPreferences.isChargingOnlyIndexing(this)
+
+        binding.indexProgress.progress = percent
+
+        when {
+            state == WorkInfo.State.RUNNING -> {
+                binding.indexProgress.isIndeterminate = false
+                binding.indexProgress.progress = percent
+                binding.indexStatus.text = "Indexing your photos… $percent%"
+                binding.indexSubStatus.text = "On-device AI · nothing leaves your phone"
+                setPrimary("Pause")
+                setStopVisible(true)
+            }
+            state == WorkInfo.State.ENQUEUED || state == WorkInfo.State.BLOCKED -> {
+                binding.indexProgress.isIndeterminate = true
+                binding.indexStatus.text = if (chargingOnly) "Waiting to charge" else "Queued…"
+                binding.indexSubStatus.text = if (chargingOnly)
+                    "Indexing resumes when the device is plugged in"
+                else
+                    "On-device AI · nothing leaves your phone"
+                setPrimary("Pause")
+                setStopVisible(true)
+            }
+            paused -> {
+                binding.indexProgress.isIndeterminate = false
+                binding.indexStatus.text = "Indexing paused · $percent%"
+                binding.indexSubStatus.text = "Resume to finish building your AI search index"
+                setPrimary("Resume")
+                setStopVisible(true)
+            }
+            stopped && percent < 100 -> {
+                binding.indexProgress.isIndeterminate = false
+                binding.indexStatus.text = "Indexing stopped · $percent%"
+                binding.indexSubStatus.text = "Start again to finish building your AI search index"
+                setPrimary("Start")
+                setStopVisible(false)
+            }
+            percent >= 100 || state == WorkInfo.State.SUCCEEDED -> {
+                binding.indexProgress.isIndeterminate = false
+                binding.indexProgress.progress = 100
+                binding.indexStatus.text = "Your photos are indexed"
+                binding.indexSubStatus.text = "New photos are indexed automatically"
+                setPrimary("Re-index")
+                setStopVisible(false)
+            }
+            else -> {
+                binding.indexProgress.isIndeterminate = false
+                binding.indexStatus.text = "Indexing not started"
+                binding.indexSubStatus.text = "Build a private, on-device index to search by description"
+                setPrimary("Start")
+                setStopVisible(false)
+            }
+        }
+    }
+
+    private fun setPrimary(label: String) {
+        binding.btnIndexPrimary.text = label
+    }
+
+    private fun setStopVisible(visible: Boolean) {
+        binding.btnIndexStop.visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     private fun bindAbout() {

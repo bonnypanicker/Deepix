@@ -81,6 +81,9 @@ IndexPreferences.isIndexConsentGiven()/setIndexConsentGiven()/wasIndexConsentAsk
 IndexPreferences.isChargingOnlyIndexing()/setChargingOnlyIndexing()
 MainActivity: maybePromptIndexingConsent()/showIndexingStartedDialog()/onIndexDrawerAction()/pauseIndexing()/resumeIndexing()/enqueueIndexWork(policy)
 IndexWorker.buildWorkRequest(context, selection)                   // SINGLE source of truth for index work request (applies charging constraint); used by MainActivity + IndexControlReceiver
+IndexController.pause/resume/stop/start(context)                   // shared indexing lifecycle; stop clears notification (uses IndexPreferences.isIndexStopped)
+IndexPreferences.getIndexProgressPercent()/setIndexProgressPercent()  // last progress %, shown in Settings while paused/idle
+IndexPreferences.isIndexStopped()/setIndexStopped()                // explicit stop: no auto-restart, no notification
 MainActivity SortMode enum   Relevance | Newest | Oldest
 MainActivity ShowFilter enum All | Favorites | Screenshots
 MainActivity: ensureDefaultPins()/albumRelevanceScore(name)        // auto-pin 4 most relevant albums on first run
@@ -171,9 +174,10 @@ WeightHyponym     = 0.50f
 // DesignTokens.kt (key ones)
 GRID_DEFAULT_COLUMNS = 4
 GRID_SPAN_COUNT = 6
-COLLAGE_SPAN_COUNT = 12
+COLLAGE_SPAN_COUNT = 60
 COLLAGE_TARGET_ROWS_PER_WIDTH = 2.3f
 COLLAGE_MIN_ASPECT = 0.55f   COLLAGE_MAX_ASPECT = 2.4f
+COLLAGE_LAST_ROW_FILL_THRESHOLD = 0.7f   COLLAGE_MIN/MAX_ROW_HEIGHT_RATIO = 0.6f/1.7f
 DISPLAY_CAP = 800
 SEARCH_METADATA_HARD_CAP = 80
 SEARCH_INPUT_DEBOUNCE_MS = 180L

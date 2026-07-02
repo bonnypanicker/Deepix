@@ -41,11 +41,20 @@ object DesignTokens {
     const val GRID_THUMBNAIL_SPACING_DP = 2
 
     // Collage (justified rows) layout
-    const val COLLAGE_SPAN_COUNT = 12
+    // Grid resolution for row widths. Higher = finer per-photo widths, so a row's photos fill the
+    // width more precisely with less quantization gap / aspect distortion.
+    const val COLLAGE_SPAN_COUNT = 60
     // Baseline images-per-row; smaller => taller rows / bigger thumbnails.
     const val COLLAGE_TARGET_ROWS_PER_WIDTH = 2.3f
     const val COLLAGE_MIN_ASPECT = 0.55f
     const val COLLAGE_MAX_ASPECT = 2.4f
+    // A trailing partial row is stretched to fill (instead of left-aligned at target height) once
+    // it is at least this fraction full — reduces empty space without over-enlarging sparse rows.
+    const val COLLAGE_LAST_ROW_FILL_THRESHOLD = 0.7f
+    // Clamp a stretched row's height to this multiple of the target so a single wide panorama (or a
+    // barely-full last row) never collapses too short or balloons too tall.
+    const val COLLAGE_MIN_ROW_HEIGHT_RATIO = 0.6f
+    const val COLLAGE_MAX_ROW_HEIGHT_RATIO = 1.7f
 
     const val MENU_FADE_DURATION_MS: Long = 160L
     const val MENU_NEAR_FADE_DURATION_MS: Long = 120L

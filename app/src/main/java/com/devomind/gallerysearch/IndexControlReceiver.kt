@@ -5,40 +5,20 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import androidx.work.ExistingWorkPolicy
-import androidx.work.WorkManager
 
 class IndexControlReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            ActionPause -> pauseIndexing(context)
-            ActionResume -> resumeIndexing(context)
+            ActionPause -> IndexController.pause(context)
+            ActionResume -> IndexController.resume(context)
+            ActionStop -> IndexController.stop(context)
         }
-    }
-
-    private fun pauseIndexing(context: Context) {
-        IndexPreferences.setIndexPaused(context, true)
-        WorkManager.getInstance(context).cancelUniqueWork(IndexWorker.WorkName)
-        IndexWorker.showPausedNotification(context)
-    }
-
-    private fun resumeIndexing(context: Context) {
-        IndexPreferences.setIndexPaused(context, false)
-        IndexWorker.cancelStatusNotification(context)
-
-        val selectedAlbums = IndexPreferences.loadSelectedAlbums(context)
-        val request = IndexWorker.buildWorkRequest(context, selectedAlbums)
-
-        WorkManager.getInstance(context).enqueueUniqueWork(
-            IndexWorker.WorkName,
-            ExistingWorkPolicy.REPLACE,
-            request
-        )
     }
 
     companion object {
         const val ActionPause = "com.devomind.gallerysearch.action.PAUSE_INDEXING"
         const val ActionResume = "com.devomind.gallerysearch.action.RESUME_INDEXING"
+        const val ActionStop = "com.devomind.gallerysearch.action.STOP_INDEXING"
 
         fun pendingIntent(context: Context, action: String): PendingIntent {
             val intent = Intent(context, IndexControlReceiver::class.java).setAction(action)

@@ -524,6 +524,11 @@ class MainActivity : AppCompatActivity() {
             updateIndexDrawerLabel()
             return
         }
+        // User explicitly stopped indexing — don't silently restart it.
+        if (IndexPreferences.isIndexStopped(applicationContext)) {
+            updateIndexDrawerLabel()
+            return
+        }
         if (IndexPreferences.isIndexConsentGiven(applicationContext)) {
             maybeStartBackgroundIndexing()
             return
@@ -538,12 +543,14 @@ class MainActivity : AppCompatActivity() {
     private fun showIndexingStartedDialog() {
         IndexPreferences.setIndexConsentAsked(applicationContext)
         val message =
-            "Deepix is now scanning your photos with on-device AI so you can find them just by describing them — " +
-                "try \"beach\", \"my dog\" or \"receipts\".\n\n" +
-                "It runs in the background and uses extra battery while working. Pause anytime from the side menu " +
-                "or the notification. Everything stays on your device."
+            "Deepix is building a private search index of your photos with on-device AI, so you can " +
+                "find them just by describing them — try \"beach\", \"my dog\" or \"receipts\".\n\n" +
+                "This full scan runs once. After that, only newly added photos are indexed automatically.\n\n" +
+                "It works entirely offline — nothing ever leaves your phone. Indexing runs in the background " +
+                "and uses extra battery while it works; you can pause or stop it anytime from the side menu, " +
+                "Settings, or the notification."
         AlertDialog.Builder(this)
-            .setTitle("✨ Making your photos searchable")
+            .setTitle("✨ Local AI photo search")
             .setMessage(message)
             .setPositiveButton("Got it", null)
             .setNeutralButton("Choose folders") { _, _ -> showAlbumSelector(grantConsent = true) }
@@ -569,6 +576,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun resumeIndexing() {
         IndexPreferences.setIndexPaused(this, false)
+        IndexPreferences.setIndexStopped(this, false)
         enqueueIndexWork(ExistingWorkPolicy.KEEP)
         updateIndexDrawerLabel()
         Toast.makeText(this, "Indexing resumed.", Toast.LENGTH_SHORT).show()
@@ -1340,7 +1348,12 @@ class MainActivity : AppCompatActivity() {
             if (row.isEmpty()) return
 
             if (stretchToFill) {
-                val rowHeight = (width / aspectSum).toInt().coerceAtLeast(1)
+                // Scale the row to a uniform height that fills the width, clamped so a single very
+                // wide photo (or a barely-full last row) never collapses too short or balloons.
+                val minH = targetRowHeight * DesignTokens.COLLAGE_MIN_ROW_HEIGHT_RATIO
+                val maxH = targetRowHeight * DesignTokens.COLLAGE_MAX_ROW_HEIGHT_RATIO
+                val rowHeight = (width / aspectSum).coerceIn(minH.toDouble(), maxH.toDouble())
+                    .toInt().coerceAtLeast(1)
                 val spans = IntArray(row.size)
                 var assigned = 0
                 for (i in row.indices) {
@@ -1387,13 +1400,33 @@ class MainActivity : AppCompatActivity() {
         }
 
         for (item in dayItems) {
-            row.add(item)
-            aspectSum += aspectOf(item)
-            if (aspectSum >= targetAspectSum) {
-                flush(stretchToFill = true)
+            val ar = aspectOf(item)
+            if (row.isNotEmpty() && aspectSum + ar >= targetAspectSum) {
+                // The item would complete the row. Keep it here only if doing so lands the row
+                // height closer to the target than leaving it out would — this avoids the greedy
+                // overshoot that scales rows (and thumbnails) smaller than intended.
+                val heightWith = width / (aspectSum + ar)
+                val heightWithout = width / aspectSum
+                val includeIsBetter =
+                    Math.abs(heightWith - targetRowHeight) <= Math.abs(heightWithout - targetRowHeight)
+                if (includeIsBetter) {
+                    row.add(item)
+                    aspectSum += ar
+                    flush(stretchToFill = true)
+                } else {
+                    flush(stretchToFill = true)
+                    row.add(item)
+                    aspectSum = ar
+                }
+            } else {
+                row.add(item)
+                aspectSum += ar
             }
         }
-        flush(stretchToFill = false)
+        // Trailing row: stretch to fill when it's reasonably full (less empty space), otherwise
+        // keep it left-aligned at the natural target height.
+        val lastRowFilled = aspectSum >= targetAspectSum * DesignTokens.COLLAGE_LAST_ROW_FILL_THRESHOLD
+        flush(stretchToFill = lastRowFilled)
     }
 
     private fun buildMergedPhotoSearchResults(
@@ -2666,6 +2699,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun enqueueBackgroundIndexing(showToast: Boolean = true, replace: Boolean = false) {
         IndexPreferences.setIndexPaused(this, false)
+        IndexPreferences.setIndexStopped(this, false)
         IndexPreferences.setIndexConsentGiven(this, true)
         enqueueIndexWork(if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP)
         updateIndexDrawerLabel()
@@ -2762,6 +2796,11 @@ class MainActivity : AppCompatActivity() {
         if (IndexPreferences.isIndexPaused(applicationContext)) {
             binding.statusText.text =
                 "Indexing paused · ${selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)}"
+            updateIndexDrawerLabel()
+            return
+        }
+        // Respect an explicit Stop — don't silently restart while browsing.
+        if (IndexPreferences.isIndexStopped(applicationContext)) {
             updateIndexDrawerLabel()
             return
         }

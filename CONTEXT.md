@@ -170,9 +170,11 @@ MaxScoreDropRatio = 0.75f
 ```kotlin
 GRID_DEFAULT_COLUMNS = 4     GRID_MIN_COLUMNS = 2     GRID_MAX_COLUMNS = 6
 GRID_SPAN_COUNT = 6          // legacy collage span (unused by justified builder)
-COLLAGE_SPAN_COUNT = 12      // justified-rows collage grid resolution
+COLLAGE_SPAN_COUNT = 60      // justified-rows collage grid resolution (finer width fitting)
 COLLAGE_TARGET_ROWS_PER_WIDTH = 2.3f  // ~images per row baseline (lower = bigger thumbnails)
 COLLAGE_MIN_ASPECT = 0.55f   COLLAGE_MAX_ASPECT = 2.4f  // aspect clamps
+COLLAGE_LAST_ROW_FILL_THRESHOLD = 0.7f   // stretch trailing row if this full
+COLLAGE_MIN/MAX_ROW_HEIGHT_RATIO = 0.6f / 1.7f  // clamp stretched row height vs target
 DISPLAY_CAP = 800            // max items shown in browse
 SEARCH_METADATA_HARD_CAP = 80
 SEARCH_INPUT_DEBOUNCE_MS = 180L
@@ -256,6 +258,8 @@ READ_EXTERNAL_STORAGE (maxSdkVersion=32)
 26. **Screen titles centered/inconsistent** — the shared `screenTitle` was `gravity=center` with 56dp side padding. Now `start`-aligned with a 16dp start inset (the app standard, matching the Pinned Albums header), so collections/albums/favorites/videos/folders headers all left-align consistently. `paddingEnd=56dp` kept so the title clears the `+` add button on the Albums page.
 27. **Fast-scroll bar missing on Collections + spanned full screen** — visibility was gated on month-`Header` count (`> 2`), so a Collections page of recent photos (≤2 months) never showed the bar. Now `updateFastScrollVisibility()` posts after layout and shows when the scroll range exceeds the viewport by `FAST_SCROLL_MIN_RATIO` (1.5×) — works on every image listing regardless of date spread. Also the `FastScrollIndicator` track spanned the whole screen (behind the search bar / nav); it now follows the RecyclerView's top/bottom padding (`trackTop()`/`trackBottom()`) so the thumb + touch area stay within the visible listing in every mode.
 28. **Smart-album onboarding card not dismissable** — the Albums onboarding card had no close affordance. Added a top-right ✕ (`onboardingDismissBtn`) wired through `ImageAdapter.onDismissSmartAlbumOnboarding`; dismissal persists via `IndexPreferences.isSmartAlbumOnboardingDismissed`/`set…` and re-renders the page. `renderAlbums()` shows the card only when `smartAlbums.isEmpty() && !dismissed`.
+29. **Collage thumbnails too small / uneven rows** — the justified-rows builder greedily added items until `aspectSum ≥ target` and always kept the crossing item, so rows overshot the target and scaled shorter than intended (small thumbnails, uneven heights). Now `appendJustifiedRows` makes a closest-to-target break decision (keep the crossing item only if it lands the row height nearer the target, else start a new row with it), stretched-row height is clamped to `0.6×–1.7×` the target (`COLLAGE_MIN/MAX_ROW_HEIGHT_RATIO`), the trailing row stretches to fill when ≥`COLLAGE_LAST_ROW_FILL_THRESHOLD` (0.7) full, and `COLLAGE_SPAN_COUNT` was raised 12 → 60 for finer width fitting. Thumbnails (centerCrop) are unaffected by aspect since only the box shape changes.
+30. **Indexing controls in Settings + percentage notification** — Settings INDEXING section now shows a live progress bar + status with a contextual primary button (Pause/Resume/Start/Re-index) and a Stop button (observes `WorkManager` work info; live % from `ProgressPercentKey`, persisted `IndexPreferences.getIndexProgressPercent` for paused/idle). Foreground notification shows **percentage** (`setProgress(100, %)`) instead of `x / total`, with Pause + Stop actions; the paused notification has Resume + Stop. Lifecycle centralized in `IndexController` (pause/resume/stop/start). **Stop** removes the notification and sets a distinct `isIndexStopped` flag (paused stays false, so the cancelled worker's teardown can't re-post a notification) — browse/relaunch won't silently restart; Start/Resume clears it. Onboarding dialog reworded: one-time full scan, then only new photos, fully offline ("Local AI photo search").
 
 ---
 
