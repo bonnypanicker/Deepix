@@ -19,6 +19,9 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
     private val processorConfig = ProcessorConfig.fromAssets(context)
     private val modelAssetName: String
 
+    /** Guards the shared OrtSession so indexing and live queries never call run() concurrently. */
+    private val sessionLock = Any()
+
     init {
         modelAssetName = resolveVisionModelAssetName(context)
         val modelBytes = AssetUtils.readAssetBytes(context, modelAssetName)
@@ -40,11 +43,15 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
             FloatBuffer.wrap(image),
             longArrayOf(1, 3, ImageSize.toLong(), ImageSize.toLong())
         ).use { tensor ->
-            session.run(mapOf(inputName to tensor)).use { result ->
-                val value = result.get(outputName).orElseThrow {
-                    IllegalStateException("Vision model did not return output '$outputName'")
-                }.value
-                return EmbeddingUtils.l2Normalize(OnnxOutput.flattenFloatArray(value))
+            // Serialize model runs: indexing (encodeBatch) and live queries (encode) share one
+            // OrtSession, and concurrent run() calls can fail depending on the execution provider.
+            synchronized(sessionLock) {
+                session.run(mapOf(inputName to tensor)).use { result ->
+                    val value = result.get(outputName).orElseThrow {
+                        IllegalStateException("Vision model did not return output '$outputName'")
+                    }.value
+                    return EmbeddingUtils.l2Normalize(OnnxOutput.flattenFloatArray(value))
+                }
             }
         }
     }
@@ -80,13 +87,15 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
             FloatBuffer.wrap(batchArray),
             shape
         ).use { tensor ->
-            session.run(mapOf(inputName to tensor)).use { result ->
-                val value = result.get(outputName).orElseThrow {
-                    IllegalStateException("Vision model did not return output '$outputName'")
-                }.value
+            synchronized(sessionLock) {
+                session.run(mapOf(inputName to tensor)).use { result ->
+                    val value = result.get(outputName).orElseThrow {
+                        IllegalStateException("Vision model did not return output '$outputName'")
+                    }.value
 
-                // Output shape is [N, embeddingDim] — extract each row
-                return extractBatchEmbeddings(value, batchSize)
+                    // Output shape is [N, embeddingDim] — extract each row
+                    return extractBatchEmbeddings(value, batchSize)
+                }
             }
         }
     }

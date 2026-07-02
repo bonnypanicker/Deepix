@@ -542,11 +542,25 @@ class GalleryRepository(
      * one-off queries.
      */
     fun imageEmbeddingForRegion(uri: Uri, region: android.graphics.RectF): FloatArray? {
-        val encoder = imageEncoder ?: return null
-        val crop = decodeRegionBitmap(uri, region, RegionDecodeMaxEdge) ?: return null
-        val embedding = runCatching { encoder.encode(crop) }.getOrNull()
+        val encoder = imageEncoder
+        if (encoder == null) {
+            Log.w(Tag, "imageEmbeddingForRegion: image encoder not ready")
+            return null
+        }
+        val crop = decodeRegionBitmap(uri, region, RegionDecodeMaxEdge)
+        if (crop == null) {
+            Log.w(Tag, "imageEmbeddingForRegion: failed to decode crop for $uri region=$region")
+            return null
+        }
+        val embedding = runCatching { encoder.encode(crop) }
+            .onFailure { Log.w(Tag, "imageEmbeddingForRegion: encode failed", it) }
+            .getOrNull()
         crop.recycle()
-        return embedding?.takeIf { isEmbeddingValid(it) }
+        if (embedding == null || !isEmbeddingValid(embedding)) {
+            Log.w(Tag, "imageEmbeddingForRegion: invalid/null embedding for $uri")
+            return null
+        }
+        return embedding
     }
 
     /** A small oriented, cropped preview of [region] for the search bar thumbnail. */
@@ -574,36 +588,43 @@ class GalleryRepository(
     }
 
     /** Decodes [uri] downsampled so the longest edge is ~[maxEdge], with EXIF orientation applied. */
-    private fun decodeOrientedBitmap(uri: Uri, maxEdge: Int): Bitmap? = runCatching {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        context.contentResolver.openInputStream(uri)?.use {
-            BitmapFactory.decodeStream(it, null, bounds)
-        } ?: return null
-        val rawW = bounds.outWidth
-        val rawH = bounds.outHeight
-        if (rawW <= 0 || rawH <= 0) return null
+    private fun decodeOrientedBitmap(uri: Uri, maxEdge: Int): Bitmap? {
+        return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, bounds)
+            }
+            val rawW = bounds.outWidth
+            val rawH = bounds.outHeight
+            if (rawW <= 0 || rawH <= 0) return null
 
-        var sample = 1
-        while (maxOf(rawW, rawH) / sample > maxEdge) sample *= 2
+            var sample = 1
+            while (maxOf(rawW, rawH) / sample > maxEdge) sample *= 2
 
-        val opts = BitmapFactory.Options().apply {
-            inSampleSize = sample
-            inPreferredConfig = Bitmap.Config.ARGB_8888
+            val opts = BitmapFactory.Options().apply {
+                inSampleSize = sample
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            val decoded = context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, opts)
+            } ?: return null
+
+            applyExifOrientation(decoded, readExifOrientation(uri))
+        } catch (t: Throwable) {
+            Log.w(Tag, "decodeOrientedBitmap failed for $uri", t)
+            null
         }
-        val decoded = context.contentResolver.openInputStream(uri)?.use {
-            BitmapFactory.decodeStream(it, null, opts)
-        } ?: return null
+    }
 
-        val orientation = context.contentResolver.openInputStream(uri)?.use { stream ->
-            androidx.exifinterface.media.ExifInterface(stream)
-                .getAttributeInt(
-                    androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION,
-                    androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
-                )
+    /** Best-effort EXIF orientation; never throws (defaults to normal on any failure). */
+    private fun readExifOrientation(uri: Uri): Int = runCatching {
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+            androidx.exifinterface.media.ExifInterface(stream).getAttributeInt(
+                androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION,
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
+            )
         } ?: androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
-
-        applyExifOrientation(decoded, orientation)
-    }.onFailure { Log.w(Tag, "Failed to decode region bitmap for $uri", it) }.getOrNull()
+    }.getOrDefault(androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL)
 
     /** Returns [bitmap] rotated/flipped to upright per the EXIF [orientation]; recycles the source if replaced. */
     private fun applyExifOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
