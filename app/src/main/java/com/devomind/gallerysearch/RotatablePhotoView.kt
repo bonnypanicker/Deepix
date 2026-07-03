@@ -42,10 +42,7 @@ class RotatablePhotoView @JvmOverloads constructor(
         override fun onRotation(deltaDegrees: Float) {
             gestureAccumulation += deltaDegrees
             if (!engaged && abs(gestureAccumulation) < ACTIVATION_THRESHOLD_DEGREES) return
-            if (!engaged) {
-                engaged = true
-                parent?.requestDisallowInterceptTouchEvent(true)
-            }
+            engaged = true
             rotation = startRotation + gestureAccumulation
         }
 
@@ -57,7 +54,26 @@ class RotatablePhotoView @JvmOverloads constructor(
     })
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        rotationDetector.onTouchEvent(event)
+        // Once a second finger lands, claim the gesture so ViewPager2 can't turn it into a page
+        // swipe. The framework auto-clears this on the next ACTION_DOWN, so it also covers the
+        // residual one-finger phase after a finger lifts (which otherwise collided with paging).
+        if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN && event.pointerCount >= 2) {
+            parent?.requestDisallowInterceptTouchEvent(true)
+        }
+
+        // Feed the detector using coordinates mapped back into the parent's (un-rotated) frame.
+        // Because we rotate THIS view via setRotation, the framework counter-rotates the incoming
+        // touch coordinates; measuring the twist in that moving frame fed our own rotation back into
+        // the measurement and made the image vibrate. getMatrix() (local->parent) undoes exactly
+        // that counter-rotation, so the angle is measured in a stable frame.
+        if (rotation != 0f) {
+            val transformed = MotionEvent.obtain(event)
+            transformed.transform(matrix)
+            rotationDetector.onTouchEvent(transformed)
+            transformed.recycle()
+        } else {
+            rotationDetector.onTouchEvent(event)
+        }
         return super.dispatchTouchEvent(event)
     }
 
