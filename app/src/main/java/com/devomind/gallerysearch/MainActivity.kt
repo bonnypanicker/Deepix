@@ -65,6 +65,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var albumPinStore: AlbumPinStore
     private lateinit var smartAlbumStore: SmartAlbumStore
     private var imageEncoder: ImageEncoder? = null
+    private var nsfwClassifier: NsfwClassifier? = null
+    private var nsfwComputeJob: kotlinx.coroutines.Job? = null
     private var textEncoder: TextEncoder? = null
     private var repository: GalleryRepository? = null
     private var dbRepository: DbRepository? = null
@@ -515,6 +517,7 @@ class MainActivity : AppCompatActivity() {
                 repository?.loadCachedMetadataIndexForUris(allUris)
             }
             maybeStartBackgroundIndexing()
+            refreshSensitiveBlur()
         }
     }
 
@@ -2735,6 +2738,7 @@ class MainActivity : AppCompatActivity() {
                             return@observe
                         }
                         refreshVisibleItems()
+                        refreshSensitiveBlur()
                         Toast.makeText(this, "Indexing complete.", Toast.LENGTH_SHORT).show()
                     }
                     WorkInfo.State.FAILED -> {
@@ -2887,7 +2891,37 @@ class MainActivity : AppCompatActivity() {
         if (indexRunning && IndexPreferences.isChargingOnlyIndexing(this) != chargingPrefSnapshot) {
             enqueueBackgroundIndexing(showToast = false, replace = true)
         }
+        refreshSensitiveBlur()
         refreshVisibleItems()
+    }
+
+    /**
+     * Beta: classifies indexed photos as sensitive/NSFW with the on-device CLIP encoders and tells
+     * the adapter which uris to blur. Runs off the main thread; reuses stored embeddings so it's
+     * just dot products. Called on settings return and after the index loads.
+     */
+    private fun refreshSensitiveBlur() {
+        val enabled = IndexPreferences.isBlurSensitive(this)
+        if (!enabled) {
+            nsfwComputeJob?.cancel()
+            adapter.setSensitiveState(false, emptySet())
+            return
+        }
+        val repo = repository ?: return
+        val text = textEncoder ?: return
+        val classifier = nsfwClassifier ?: NsfwClassifier(text).also { nsfwClassifier = it }
+        nsfwComputeJob?.cancel()
+        nsfwComputeJob = lifecycleScope.launch {
+            val flagged = withContext(Dispatchers.Default) {
+                val embeddings = repo.allEmbeddings()
+                if (embeddings.isEmpty() || !classifier.isReady()) return@withContext emptySet<String>()
+                embeddings.asSequence()
+                    .filter { classifier.isSensitive(it.value) }
+                    .map { it.key }
+                    .toSet()
+            }
+            adapter.setSensitiveState(true, flagged)
+        }
     }
 
     private fun updateBottomPanelState() {

@@ -18,6 +18,7 @@ object IndexPreferences {
     private const val KeyChargingOnly = "index_charging_only"
     private const val KeySmartAlbumOnboardingDismissed = "smart_album_onboarding_dismissed"
     private const val KeyIndexProgressPercent = "index_progress_percent"
+    private const val KeyBlurSensitive = "blur_sensitive_content"
 
     fun saveSelectedAlbums(context: Context, albumIds: Set<String>) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
@@ -184,6 +185,19 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putInt(KeyGridColumnCount, count)
+            .apply()
+    }
+
+    /** Beta: blur photos flagged as sensitive/NSFW by on-device AI; tap to reveal. */
+    fun isBlurSensitive(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyBlurSensitive, false)
+    }
+
+    fun setBlurSensitive(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyBlurSensitive, enabled)
             .apply()
     }
 

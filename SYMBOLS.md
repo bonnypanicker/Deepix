@@ -67,6 +67,9 @@ SettingsActivity          SettingsActivity.kt       prefs screen: collage/grid c
 ```
 GalleryRepository.allEmbeddings(): Map<String,FloatArray>           // snapshot (loads index if empty)
 GalleryRepository.encodeText(text): FloatArray?                     // delegate to TextEncoder
+NsfwClassifier(textEncoder).isSensitive(imageEmbedding)            // Beta zero-shot NSFW: sensitive vs safe CLIP prompt margin
+ImageAdapter.setSensitiveState(enabled, flaggedUris)               // blur NSFW tiles until tapped (revealSensitive on tap)
+IndexPreferences.isBlurSensitive()/setBlurSensitive()              // settings toggle for the blur feature
 GalleryRepository.imageEmbedding(uri): FloatArray?                  // stored, or encode on demand
 GalleryRepository.imageEmbeddingForRegion(uri, RectF): FloatArray?  // region crop (EXIF-oriented @2048px), CLIP encode live; RectF normalized 0..1
 GalleryRepository.regionThumbnail(uri, RectF): Bitmap?             // oriented cropped preview for the search bar thumb

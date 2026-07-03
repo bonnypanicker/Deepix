@@ -1,0 +1,4 @@
+# Local calibration artifacts — do not commit (large / regenerable)
+*.onnx
+*.npy
+__pycache__/

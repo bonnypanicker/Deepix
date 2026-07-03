@@ -71,6 +71,13 @@ class SettingsActivity : AppCompatActivity() {
             binding.switchCharging.isChecked = newValue
             IndexPreferences.setChargingOnlyIndexing(this, newValue)
         }
+
+        binding.switchBlurSensitive.isChecked = IndexPreferences.isBlurSensitive(this)
+        binding.rowBlurSensitive.setOnClickListener {
+            val newValue = !binding.switchBlurSensitive.isChecked
+            binding.switchBlurSensitive.isChecked = newValue
+            IndexPreferences.setBlurSensitive(this, newValue)
+        }
     }
 
     private fun bindGridColumns() {

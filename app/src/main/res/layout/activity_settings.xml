@@ -255,6 +255,32 @@
                         android:focusable="false" />
                 </LinearLayout>
 
+                <!-- ===================== PRIVACY ===================== -->
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="PRIVACY" />
+
+                <LinearLayout
+                    android:id="@+id/rowBlurSensitive"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Blur sensitive content · Beta" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Blur photos our on-device AI flags as NSFW. Tap a photo to view." />
+                    </LinearLayout>
+
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/switchBlurSensitive"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clickable="false"
+                        android:focusable="false" />
+                </LinearLayout>
+
                 <!-- ===================== STORAGE ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"

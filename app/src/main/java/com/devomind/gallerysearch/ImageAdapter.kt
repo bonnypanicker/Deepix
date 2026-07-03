@@ -63,7 +63,34 @@ class ImageAdapter(
     var gridColumnCount: Int = DesignTokens.GRID_DEFAULT_COLUMNS
     var useCollageLayout: Boolean = false
 
+    // Sensitive-content blur (Beta): NSFW-flagged uris are blurred until tapped to reveal.
+    var blurSensitive: Boolean = false
+        private set
+    private var nsfwUris: Set<String> = emptySet()
+    private val revealedUris = mutableSetOf<String>()
+
     private val selected = linkedSetOf<Uri>()
+
+    /** Updates the blur toggle + the set of flagged uris and refreshes affected tiles. */
+    fun setSensitiveState(enabled: Boolean, flagged: Set<String>) {
+        val changed = enabled != blurSensitive || flagged != nsfwUris
+        blurSensitive = enabled
+        nsfwUris = flagged
+        if (!enabled) revealedUris.clear()
+        if (changed) notifyDataSetChanged()
+    }
+
+    private fun isBlurred(item: GalleryRepository.MediaItem): Boolean {
+        if (!blurSensitive) return false
+        val key = item.uri.toString()
+        return key in nsfwUris && key !in revealedUris
+    }
+
+    private fun revealSensitive(uri: Uri) {
+        if (!revealedUris.add(uri.toString())) return
+        val index = cells.indexOfFirst { it is GalleryCell.Photo && it.item.uri == uri }
+        if (index >= 0) notifyItemChanged(index)
+    }
 
     init {
         setHasStableIds(true)
@@ -123,7 +150,13 @@ class ImageAdapter(
                 onCreateSmartAlbum,
                 onDismissSmartAlbumOnboarding
             )
-            else -> PhotoViewHolder(ItemImageBinding.inflate(inflater, parent, false), onPhotoClick, ::toggleSelection)
+            else -> PhotoViewHolder(
+                ItemImageBinding.inflate(inflater, parent, false),
+                onPhotoClick,
+                ::toggleSelection,
+                ::isBlurred,
+                ::revealSensitive
+            )
         }
     }
 
@@ -317,7 +350,9 @@ class ImageAdapter(
     class PhotoViewHolder(
         private val binding: ItemImageBinding,
         private val onPhotoClick: (GalleryRepository.MediaItem, android.widget.ImageView) -> Unit,
-        private val onSelectionToggle: (Uri) -> Unit
+        private val onSelectionToggle: (Uri) -> Unit,
+        private val isBlurred: (GalleryRepository.MediaItem) -> Boolean = { false },
+        private val onReveal: (Uri) -> Unit = {}
     ) : RecyclerView.ViewHolder(binding.root) {
 
         private fun loadThumbnail(
@@ -325,15 +360,19 @@ class ImageAdapter(
             item: GalleryRepository.MediaItem,
             imageView: ImageView,
             width: Int,
-            height: Int
+            height: Int,
+            blurred: Boolean
         ) {
+            // Blur = decode at a tiny size and let the ImageView upscale it (a cheap, all-API blur).
+            val targetW = if (blurred) BLUR_DOWNSCALE_PX else width
+            val targetH = if (blurred) BLUR_DOWNSCALE_PX else height
             val request = if (item.mediaType == GalleryRepository.MediaType.Video) {
                 Glide.with(context)
                     .asBitmap()
                     .load(item.uri)
                     .apply(com.bumptech.glide.request.RequestOptions().frame(1_000_000L))
                     .centerCrop()
-                    .override(width, height)
+                    .override(targetW, targetH)
                     .dontAnimate()
                     .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
             } else {
@@ -341,7 +380,7 @@ class ImageAdapter(
                     .load(item.uri)
                     .format(DecodeFormat.PREFER_RGB_565)
                     .centerCrop()
-                    .override(width, height)
+                    .override(targetW, targetH)
                     .dontAnimate()
                     .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
             }
@@ -351,6 +390,7 @@ class ImageAdapter(
         fun bind(cell: GalleryCell.Photo, selectionMode: Boolean, isSelected: Boolean, gridColumnCount: Int, useCollageLayout: Boolean) {
             val metrics = binding.root.resources.displayMetrics
             val gutter = (DesignTokens.GRID_GUTTER * metrics.density).toInt()
+            val blurred = isBlurred(cell.item)
 
             ViewCompat.setTransitionName(binding.thumbnail, "media_${cell.item.uri}")
 
@@ -361,7 +401,7 @@ class ImageAdapter(
                 binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
                     this.height = cellSize
                 }
-                loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, cellSize, cellSize)
+                loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, cellSize, cellSize, blurred)
             } else {
                 // Justified-rows collage: height is precomputed per row so every
                 // tile in a row lines up; width is filled by the grid span.
@@ -375,13 +415,15 @@ class ImageAdapter(
                 binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
                     this.height = rowHeight
                 }
-                loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, approxWidth, rowHeight)
+                loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, approxWidth, rowHeight, blurred)
             }
 
             bindSelection(cell, selectionMode, isSelected)
         }
 
         fun bindSelection(cell: GalleryCell.Photo, selectionMode: Boolean, isSelected: Boolean) {
+            val blurred = isBlurred(cell.item)
+            binding.sensitiveOverlay.visibility = if (blurred) View.VISIBLE else View.GONE
             binding.dimScrim.visibility = if (selectionMode && !isSelected) View.VISIBLE else View.GONE
             binding.checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
             if (isSelected) {
@@ -397,12 +439,20 @@ class ImageAdapter(
             bindSearchBadges(cell.searchSources)
             binding.videoBadge.visibility = if (cell.item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
             binding.root.setOnClickListener {
-                if (selectionMode) onSelectionToggle(cell.item.uri) else onPhotoClick(cell.item, binding.thumbnail)
+                when {
+                    selectionMode -> onSelectionToggle(cell.item.uri)
+                    blurred -> onReveal(cell.item.uri)
+                    else -> onPhotoClick(cell.item, binding.thumbnail)
+                }
             }
             binding.root.setOnLongClickListener {
                 onSelectionToggle(cell.item.uri)
                 true
             }
+        }
+
+        private companion object {
+            const val BLUR_DOWNSCALE_PX = 16
         }
 
         private fun bindSearchBadges(sources: SearchSources) {
