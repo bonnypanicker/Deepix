@@ -122,6 +122,18 @@ class ViewerActivity : AppCompatActivity() {
             touchIntercepted = false
         }
 
+        // Paging is strictly single-finger: the moment a 2nd finger lands (twist-to-rotate /
+        // pinch), disable ViewPager2 so the gesture can't also flip to the next photo. Re-enabled
+        // when the whole gesture ends. Crop mode / info panel manage paging themselves.
+        if (!cropMode && !infoVisible) {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_POINTER_DOWN ->
+                    if (ev.pointerCount >= 2) binding.viewPager.isUserInputEnabled = false
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                    binding.viewPager.isUserInputEnabled = true
+            }
+        }
+
         // Skip the global gesture state machine entirely while the info panel
         // is visible — attachInfoPanelDrag already owns all touches in that state,
         // and ViewPager2 paging is disabled, so there is nothing for this to do.
