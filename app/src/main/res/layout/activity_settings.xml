@@ -235,6 +235,30 @@
                 <View style="@style/SettingsDivider" />
 
                 <LinearLayout
+                    android:id="@+id/rowIndexedFolders"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Indexed folders" />
+
+                        <TextView
+                            android:id="@+id/indexedFoldersSubtitle"
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Choose which folders AI search indexes" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_fluent_chevron_right_24_regular"
+                        android:tint="#6F6F6F" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout
                     android:id="@+id/rowCharging"
                     style="@style/SettingsRow">
 
@@ -257,6 +281,7 @@
 
                 <!-- ===================== PRIVACY ===================== -->
                 <TextView
+                    android:id="@+id/privacyHeader"
                     style="@style/SettingsSectionHeader"
                     android:text="PRIVACY" />
 

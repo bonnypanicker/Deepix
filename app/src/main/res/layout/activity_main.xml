@@ -429,11 +429,6 @@
             android:text="start indexing" />
 
         <TextView
-            android:id="@+id/drawerAlbumScope"
-            style="@style/MetroDrawerItem"
-            android:text="album scope" />
-
-        <TextView
             android:id="@+id/drawerSettings"
             style="@style/MetroDrawerItem"
             android:text="settings" />

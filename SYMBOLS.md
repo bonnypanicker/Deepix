@@ -20,7 +20,9 @@ GalleryRepository         GalleryRepository.kt     loadSnapshot(); search(); bui
 DbRepository              DbRepository.kt          upsertMedia(); toggleFavorite(); upsertExif(); addTag(); setTagsForMedia()
 IndexWorker               IndexWorker.kt           CoroutineWorker; WorkName="gallery_background_index"; BatchSize via GalleryRepository
 IndexControlReceiver      IndexControlReceiver.kt  ActionPause/ActionResume broadcasts; pendingIntent()
-IndexPreferences          IndexPreferences.kt      save/loadSelectedAlbums; save/loadLastIndexedTime; isIndexPaused/setIndexPaused; getGridColumnCount
+IndexPreferences          IndexPreferences.kt      save/loadLastIndexedTime; isIndexPaused/setIndexPaused; getGridColumnCount
+IndexScopeStore           IndexScopeStore.kt       getFolderIds/setFolderIds/isAllFolders (empty=all); AI-index folder scope, independent of gallery view
+IndexedFoldersActivity    IndexedFoldersActivity.kt  Settings folder picker → IndexScopeStore + IndexController.rescan
 AlbumPinStore             AlbumPinStore.kt         pin/unpin/isPinned/getPinnedAlbumIds/setPinnedOrder/cleanup/isInitialized/markInitialized
 SmartAlbumStore           SmartAlbumStore.kt       getAll(); get(id); upsert(album); delete(id); isSmartId(id)
   SmartAlbum              SmartAlbumStore.kt       data class: id,name,prompt,searchMode,memberUris,coverUri,createdAt,updatedAt; toAlbum(): Album
@@ -195,7 +197,6 @@ SCREEN_TITLE_SIZE = 40f
 
 ```kotlin
 IndexWorker.WorkName             = "gallery_background_index"
-IndexWorker.SelectedAlbumIdsKey  = "selected_album_ids"
 IndexWorker.ProgressCurrentKey   = "progress_current"
 IndexWorker.ProgressTotalKey     = "progress_total"
 IndexWorker.ProgressPercentKey   = "progress_percent"

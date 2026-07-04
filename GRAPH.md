@@ -30,7 +30,7 @@ GallerySearchApp
 ### Indexing Pipeline
 ```
 IndexWorker
-  ├── GalleryRepository  (getNewImageUris, buildIndex, rebuildMetadataIndex)
+  ├── GalleryRepository  (getImageUrisForAlbumIds[scope], buildIndex[reconciles: prune+add], rebuildMetadataIndex)
   │     ├── ImageEncoder  (encodeBatch)
   │     ├── MetadataSearch  (buildDocuments, indexFromDocuments)
   │     └── EmbeddingUtils  (l2Normalize, cosineSimilarity)

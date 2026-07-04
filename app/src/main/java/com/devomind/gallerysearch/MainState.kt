@@ -11,8 +11,7 @@ internal data class LibrarySnapshot(
     val albums: List<GalleryRepository.Album>,
     val imageItems: List<GalleryRepository.MediaItem>,
     val collectionItems: List<GalleryRepository.MediaItem>,
-    val videoItems: List<GalleryRepository.MediaItem>,
-    val selectedAlbumIds: Set<String>
+    val videoItems: List<GalleryRepository.MediaItem>
 )
 
 internal enum class Mode { Browse, Search, AlbumDetail, FolderDetail, SmartAlbumDetail }

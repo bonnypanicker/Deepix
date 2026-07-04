@@ -42,6 +42,11 @@ class SettingsActivity : AppCompatActivity() {
         bindAbout()
     }
 
+    override fun onResume() {
+        super.onResume()
+        updateIndexedFoldersSubtitle()
+    }
+
     private fun applyInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.settingsRoot) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -72,11 +77,17 @@ class SettingsActivity : AppCompatActivity() {
             IndexPreferences.setChargingOnlyIndexing(this, newValue)
         }
 
-        binding.switchBlurSensitive.isChecked = IndexPreferences.isBlurSensitive(this)
-        binding.rowBlurSensitive.setOnClickListener {
-            val newValue = !binding.switchBlurSensitive.isChecked
-            binding.switchBlurSensitive.isChecked = newValue
-            IndexPreferences.setBlurSensitive(this, newValue)
+        // Beta sensitive-content blur is temporarily disabled — hide the whole Privacy section.
+        if (NsfwClassifier.FEATURE_ENABLED) {
+            binding.switchBlurSensitive.isChecked = IndexPreferences.isBlurSensitive(this)
+            binding.rowBlurSensitive.setOnClickListener {
+                val newValue = !binding.switchBlurSensitive.isChecked
+                binding.switchBlurSensitive.isChecked = newValue
+                IndexPreferences.setBlurSensitive(this, newValue)
+            }
+        } else {
+            binding.privacyHeader.visibility = View.GONE
+            binding.rowBlurSensitive.visibility = View.GONE
         }
     }
 
@@ -108,6 +119,18 @@ class SettingsActivity : AppCompatActivity() {
             CleanupResultStore(this).clear()
             Toast.makeText(this, "Smart Cleanup cache cleared.", Toast.LENGTH_SHORT).show()
         }
+        binding.rowIndexedFolders.setOnClickListener {
+            startActivity(android.content.Intent(this, IndexedFoldersActivity::class.java))
+        }
+    }
+
+    private fun updateIndexedFoldersSubtitle() {
+        val scoped = !IndexScopeStore.isAllFolders(this)
+        val count = IndexScopeStore.getFolderIds(this).size
+        binding.indexedFoldersSubtitle.text = if (scoped)
+            "Indexing $count selected folder${if (count == 1) "" else "s"}"
+        else
+            "Indexing all folders"
     }
 
     // ------------------------------------------------------------------

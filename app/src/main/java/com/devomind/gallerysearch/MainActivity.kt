@@ -74,7 +74,6 @@ class MainActivity : AppCompatActivity() {
     private var imageItems: List<GalleryRepository.MediaItem> = emptyList()
     private var collectionItems: List<GalleryRepository.MediaItem> = emptyList()
     private var videoItems: List<GalleryRepository.MediaItem> = emptyList()
-    private var selectedAlbumIds: Set<String> = emptySet()
     private var allUris: List<Uri> = emptyList()
     private var allTags: List<com.devomind.gallerysearch.db.TagEntity> = emptyList()
     private var tagUriMap: Map<Long, Set<String>> = emptyMap()
@@ -296,10 +295,6 @@ class MainActivity : AppCompatActivity() {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             onIndexDrawerAction()
         }
-        binding.drawerAlbumScope.setOnClickListener {
-            binding.drawerLayout.closeDrawer(GravityCompat.START)
-            showAlbumSelector()
-        }
 
         binding.drawerSettings.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
@@ -452,9 +447,6 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             setBusy("Loading gallery…")
             try {
-                val selectedIds = withContext(Dispatchers.IO) {
-                    IndexPreferences.loadSelectedAlbums(applicationContext)
-                }
                 val repo = GalleryRepository(applicationContext)
                 repository = repo
                 dbRepository = DbRepository(applicationContext)
@@ -465,7 +457,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 val snapshot = withContext(Dispatchers.IO) {
-                    loadLibrarySnapshot(repo, selectedIds)
+                    loadLibrarySnapshot(repo)
                 }
                 applyLibrarySnapshot(snapshot)
                 smartAlbums = withContext(Dispatchers.IO) { smartAlbumStore.getAll() }
@@ -473,7 +465,7 @@ class MainActivity : AppCompatActivity() {
                 lastProgressRefresh = -1
                 binding.progressBar.visibility = View.GONE
                 binding.statusText.text =
-                    selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+                    indexedSummary(repo.indexedCount)
                 renderCurrentState()
                 primeMetadataIndexAsync()
             } catch (error: Throwable) {
@@ -556,7 +548,6 @@ class MainActivity : AppCompatActivity() {
             .setTitle("✨ Local AI photo search")
             .setMessage(message)
             .setPositiveButton("Got it", null)
-            .setNeutralButton("Choose folders") { _, _ -> showAlbumSelector(grantConsent = true) }
             .show()
     }
 
@@ -595,36 +586,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun enqueueIndexWork(policy: ExistingWorkPolicy) {
         IndexWorker.cancelStatusNotification(this)
-        val request = IndexWorker.buildWorkRequest(this, selectedAlbumIds)
+        val request = IndexWorker.buildWorkRequest(this)
         WorkManager.getInstance(this).enqueueUniqueWork(INDEX_WORK_NAME, policy, request)
     }
 
-    private suspend fun loadLibrarySnapshot(
-        repo: GalleryRepository,
-        requestedSelection: Set<String>
-    ): LibrarySnapshot {
+    /** The gallery view always shows every photo — folder selection only affects AI indexing. */
+    private suspend fun loadLibrarySnapshot(repo: GalleryRepository): LibrarySnapshot {
         val fullSnapshot = repo.loadSnapshot(emptySet())
-        val refreshedAlbums = fullSnapshot.albums
-        val effectiveSelection = requestedSelection.intersect(refreshedAlbums.map { it.id }.toSet())
-
-        val imageItems = if (effectiveSelection.isEmpty()) {
-            fullSnapshot.imageItems
-        } else {
-            fullSnapshot.imageItems.filter { it.bucketId in effectiveSelection }
-        }
-        val videoItems = if (effectiveSelection.isEmpty()) {
-            fullSnapshot.videoItems
-        } else {
-            fullSnapshot.videoItems.filter { it.bucketId in effectiveSelection }
-        }
-        val collectionItems = (imageItems + videoItems).sortedByDescending { it.dateMillis }
-
+        val collectionItems = (fullSnapshot.imageItems + fullSnapshot.videoItems)
+            .sortedByDescending { it.dateMillis }
         return LibrarySnapshot(
-            albums = refreshedAlbums,
-            imageItems = imageItems,
+            albums = fullSnapshot.albums,
+            imageItems = fullSnapshot.imageItems,
             collectionItems = collectionItems,
-            videoItems = videoItems,
-            selectedAlbumIds = effectiveSelection
+            videoItems = fullSnapshot.videoItems
         )
     }
 
@@ -633,9 +608,7 @@ class MainActivity : AppCompatActivity() {
         imageItems = snapshot.imageItems
         collectionItems = snapshot.collectionItems
         videoItems = snapshot.videoItems
-        selectedAlbumIds = snapshot.selectedAlbumIds
         allUris = snapshot.imageItems.map { it.uri }
-        IndexPreferences.saveSelectedAlbums(this, snapshot.selectedAlbumIds)
     }
 
     private val favoriteItems: List<GalleryRepository.MediaItem>
@@ -1120,7 +1093,7 @@ class MainActivity : AppCompatActivity() {
             adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
             resetGridToTop()
             binding.resultCount.text = ""
-            binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+            binding.statusText.text = indexedSummary(repo.indexedCount)
             return
         }
 
@@ -1174,10 +1147,10 @@ class MainActivity : AppCompatActivity() {
                         results = metadataResults,
                         emptyText = "No matching results",
                         statusText = when {
-                            sessionMode == SearchMode.MetadataOnly -> selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+                            sessionMode == SearchMode.MetadataOnly -> indexedSummary(repo.indexedCount)
                             parsedQuery.textQuery.isBlank() -> filterSummaryText(parsedQuery, metadataResults.size)
-                            textEncoder == null -> selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
-                            else -> selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+                            textEncoder == null -> indexedSummary(repo.indexedCount)
+                            else -> indexedSummary(repo.indexedCount)
                         }
                     )
                 }
@@ -1201,7 +1174,7 @@ class MainActivity : AppCompatActivity() {
                 renderSearchResults(
                     results = finalResults,
                     emptyText = "No matching results",
-                    statusText = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+                    statusText = indexedSummary(repo.indexedCount)
                 )
             } catch (cancelled: CancellationException) {
                 Log.d(TAG, "Search job cancelled.", cancelled)
@@ -2214,7 +2187,7 @@ class MainActivity : AppCompatActivity() {
             binding.progressBar.visibility = View.GONE
             val repo = repository
             val summary = if (repo != null)
-                selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount) else ""
+                indexedSummary(repo.indexedCount) else ""
             binding.statusText.text = summary
             if (currentMode == Mode.SmartAlbumDetail && currentSmartAlbum?.id == smart.id) {
                 val refreshed = smartAlbumStore.get(smart.id)
@@ -2339,7 +2312,7 @@ class MainActivity : AppCompatActivity() {
                     else -> "${items.size} results"
                 }
                 binding.progressBar.visibility = View.GONE
-                binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repository?.indexedCount ?: 0)
+                binding.statusText.text = indexedSummary(repository?.indexedCount ?: 0)
             }
         }
     }
@@ -2414,7 +2387,7 @@ class MainActivity : AppCompatActivity() {
             smartAlbums = smartAlbumStore.getAll()
             albumPinStore.pin(album.id)
             binding.progressBar.visibility = View.GONE
-            binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+            binding.statusText.text = indexedSummary(repo.indexedCount)
             if (resultUris.isEmpty()) {
                 Toast.makeText(this@MainActivity, "No matches yet — you can refresh later", Toast.LENGTH_LONG).show()
             }
@@ -2591,44 +2564,10 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun showAlbumSelector(grantConsent: Boolean = false) {
-        if (albums.isEmpty()) {
-            Toast.makeText(this, "No albums found on device.", Toast.LENGTH_SHORT).show()
-            if (grantConsent) {
-                // No albums to scope; just approve indexing of everything.
-                enqueueBackgroundIndexing(showToast = true)
-            }
-            return
-        }
-
-        val labels = albums.map { "${it.name} (${it.count})" }.toTypedArray()
-        val checked = albums.map { it.id in selectedAlbumIds }.toBooleanArray()
-
-        AlertDialog.Builder(this)
-            .setTitle(if (grantConsent) "Choose folders to index" else "Album scope")
-            .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
-                checked[which] = isChecked
-            }
-            .setNeutralButton("All") { _, _ ->
-                selectedAlbumIds = emptySet()
-                IndexPreferences.saveSelectedAlbums(this, selectedAlbumIds)
-                if (grantConsent) IndexPreferences.setIndexConsentGiven(this, true)
-                refreshVisibleItems()
-            }
-            .setPositiveButton("Apply") { _, _ ->
-                selectedAlbumIds = albums.filterIndexed { index, _ -> checked[index] }.map { it.id }.toSet()
-                IndexPreferences.saveSelectedAlbums(this, selectedAlbumIds)
-                if (grantConsent) IndexPreferences.setIndexConsentGiven(this, true)
-                refreshVisibleItems()
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-
     private fun refreshVisibleItems() {
         val repo = repository ?: return
         lifecycleScope.launch(Dispatchers.IO) {
-            val snapshot = loadLibrarySnapshot(repo, selectedAlbumIds)
+            val snapshot = loadLibrarySnapshot(repo)
             val refreshedTags = withContext(Dispatchers.IO) { dbRepository?.getAllTags().orEmpty() }
             val refreshedTagUriMap = withContext(Dispatchers.IO) {
                 refreshedTags.associate { tag ->
@@ -2640,7 +2579,7 @@ class MainActivity : AppCompatActivity() {
                 tagUriMap = refreshedTagUriMap
                 applyLibrarySnapshot(snapshot)
                 currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
-                binding.statusText.text = selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)
+                binding.statusText.text = indexedSummary(repo.indexedCount)
                 val pinnedAlbum = currentAlbum
                 when {
                     currentMode == Mode.Search -> {
@@ -2757,18 +2696,9 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
-    private fun selectionSummaryText(
-        albums: List<GalleryRepository.Album>,
-        selectedIds: Set<String>,
-        indexedCount: Int
-    ): String {
-        val albumText = if (selectedIds.isEmpty()) {
-            "all albums"
-        } else {
-            val selectedCount = albums.count { it.id in selectedIds }
-            "$selectedCount albums"
-        }
-        return "$indexedCount indexed · $albumText"
+    private fun indexedSummary(indexedCount: Int): String {
+        val scoped = !IndexScopeStore.isAllFolders(applicationContext)
+        return if (scoped) "$indexedCount indexed · selected folders" else "$indexedCount indexed"
     }
 
     private fun maybeRefreshLiveIndex(current: Int) {
@@ -2799,7 +2729,7 @@ class MainActivity : AppCompatActivity() {
         if (repo.indexedCount >= allUris.size) return
         if (IndexPreferences.isIndexPaused(applicationContext)) {
             binding.statusText.text =
-                "Indexing paused · ${selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)}"
+                "Indexing paused · ${indexedSummary(repo.indexedCount)}"
             updateIndexDrawerLabel()
             return
         }
@@ -2810,7 +2740,7 @@ class MainActivity : AppCompatActivity() {
         }
         enqueueIndexWork(ExistingWorkPolicy.KEEP)
         binding.statusText.text =
-            "Background indexing queued · ${selectionSummaryText(albums, selectedAlbumIds, repo.indexedCount)}"
+            "Background indexing queued · ${indexedSummary(repo.indexedCount)}"
     }
 
     private fun primeMetadataIndexAsync() {
@@ -2901,7 +2831,8 @@ class MainActivity : AppCompatActivity() {
      * just dot products. Called on settings return and after the index loads.
      */
     private fun refreshSensitiveBlur() {
-        val enabled = IndexPreferences.isBlurSensitive(this)
+        // Feature temporarily disabled — never classify or blur.
+        val enabled = NsfwClassifier.FEATURE_ENABLED && IndexPreferences.isBlurSensitive(this)
         if (!enabled) {
             nsfwComputeJob?.cancel()
             adapter.setSensitiveState(false, emptySet())

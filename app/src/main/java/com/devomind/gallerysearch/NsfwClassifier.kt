@@ -53,7 +53,11 @@ class NsfwClassifier(private val textEncoder: TextEncoder) {
     private fun encodeAll(prompts: List<String>): List<FloatArray> =
         prompts.mapNotNull { runCatching { textEncoder.encode(it) }.getOrNull() }
 
-    private companion object {
+    companion object {
+        // Master switch for the Beta sensitive-content blur. Temporarily OFF: the Settings toggle is
+        // hidden and no classification runs. Flip to true to re-enable the whole feature.
+        const val FEATURE_ENABLED = false
+
         // Calibrated on MobileCLIP-S2 over 200 safe photos (tools/nsfw_calibration): safe photos have
         // median margin -0.012; ~0.5% exceed +0.05, ~0% exceed +0.07. 0.05 favors precision (few
         // false blurs), which is the right trade-off for a blur feature. More aggressive: ~0.04.

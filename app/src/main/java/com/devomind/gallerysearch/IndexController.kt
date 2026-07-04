@@ -51,12 +51,20 @@ object IndexController {
         enqueue(context, ExistingWorkPolicy.KEEP)
     }
 
+    /** Indexed-folder scope changed: rebuild against the new scope now (prunes removed, adds new). */
+    fun rescan(context: Context) {
+        IndexPreferences.setIndexStopped(context, false)
+        IndexPreferences.setIndexPaused(context, false)
+        IndexPreferences.setIndexConsentGiven(context, true)
+        IndexWorker.cancelStatusNotification(context)
+        enqueue(context, ExistingWorkPolicy.REPLACE)
+    }
+
     private fun enqueue(context: Context, policy: ExistingWorkPolicy) {
-        val selection = IndexPreferences.loadSelectedAlbums(context)
         WorkManager.getInstance(context).enqueueUniqueWork(
             IndexWorker.WorkName,
             policy,
-            IndexWorker.buildWorkRequest(context, selection)
+            IndexWorker.buildWorkRequest(context)
         )
     }
 }

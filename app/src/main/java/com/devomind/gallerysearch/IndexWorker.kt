@@ -40,14 +40,15 @@ class IndexWorker(
             val imageEncoder = (applicationContext as GallerySearchApp).sharedEncoders.getImageEncoder()
             val repository = GalleryRepository(applicationContext, imageEncoder, null)
 
-            val selected = inputData.getStringArray(SelectedAlbumIdsKey)?.toSet() ?: emptySet()
-            val since = IndexPreferences.loadLastIndexedTime(applicationContext)
-            val uris = if (since > 0L) {
-                repository.getNewImageUris(selected, since)
-            } else {
-                repository.getImageUrisForAlbumIds(selected)
-            }
+            // The full set of images currently in scope (empty scope = all folders).
+            // buildIndex reconciles the index against this exact set: it encodes newly-added
+            // photos and drops embeddings for any photo no longer in scope (e.g. an unchecked
+            // folder), so scope changes take effect deterministically.
+            val scope = IndexScopeStore.getFolderIds(applicationContext)
+            val uris = repository.getImageUrisForAlbumIds(scope)
             if (uris.isEmpty()) {
+                // No images in scope — prune the index to empty, then finish.
+                repository.buildIndex(uris) { _, _ -> }
                 IndexPreferences.saveLastIndexedTime(applicationContext)
                 IndexPreferences.setIndexProgressPercent(applicationContext, 100)
                 return Result.success()
@@ -161,7 +162,6 @@ class IndexWorker(
 
     companion object {
         const val WorkName = "gallery_background_index"
-        const val SelectedAlbumIdsKey = "selected_album_ids"
         const val ProgressCurrentKey = "progress_current"
         const val ProgressTotalKey = "progress_total"
         const val ProgressPercentKey = "progress_percent"
@@ -178,20 +178,13 @@ class IndexWorker(
          * (initial start, resume, settings re-apply, notification action) honors the
          * "index only while charging" preference. Reads the pref at build time.
          */
-        fun buildWorkRequest(
-            context: Context,
-            selection: Set<String>
-        ): androidx.work.OneTimeWorkRequest {
+        fun buildWorkRequest(context: Context): androidx.work.OneTimeWorkRequest {
             val constraints = androidx.work.Constraints.Builder()
                 .apply {
                     if (IndexPreferences.isChargingOnlyIndexing(context)) setRequiresCharging(true)
                 }
                 .build()
-            val payload = androidx.work.Data.Builder()
-                .putStringArray(SelectedAlbumIdsKey, selection.toTypedArray())
-                .build()
             return androidx.work.OneTimeWorkRequestBuilder<IndexWorker>()
-                .setInputData(payload)
                 .setConstraints(constraints)
                 .setBackoffCriteria(
                     androidx.work.BackoffPolicy.LINEAR,

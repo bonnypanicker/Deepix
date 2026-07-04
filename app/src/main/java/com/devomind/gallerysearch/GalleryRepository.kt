@@ -237,44 +237,6 @@ class GalleryRepository(
         return getImageItemsForAlbumIds(albumIds).map { it.uri }
     }
 
-    /**
-     * Returns only image URIs added to MediaStore after the given timestamp.
-     * Used for incremental indexing — skip photos that were already indexed.
-     */
-    fun getNewImageUris(albumIds: Set<String>, sinceTimestamp: Long): List<Uri> {
-        if (sinceTimestamp <= 0L) return getImageUrisForAlbumIds(albumIds)
-
-        val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-        } else {
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        }
-
-        val projection = arrayOf(
-            MediaStore.Images.Media._ID,
-            MediaStore.Images.Media.BUCKET_ID,
-            MediaStore.Images.Media.DATE_ADDED
-        )
-        // DATE_ADDED is stored as seconds since epoch in MediaStore
-        val selection = "${MediaStore.Images.Media.DATE_ADDED} > ?"
-        val selectionArgs = arrayOf((sinceTimestamp / 1000).toString())
-        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} ASC"
-
-        val uris = ArrayList<Uri>()
-        context.contentResolver.query(collection, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
-            while (cursor.moveToNext()) {
-                val bucketId = cursor.getString(bucketIdColumn) ?: continue
-                if (albumIds.isEmpty() || bucketId in albumIds) {
-                    uris += ContentUris.withAppendedId(collection, cursor.getLong(idColumn))
-                }
-            }
-        }
-        Log.d(Tag, "Incremental query: ${uris.size} new images since ${sinceTimestamp}")
-        return uris
-    }
-
     fun getAlbums(): List<Album> {
         return buildAlbumsFrom(getAllMediaItemsForAlbumIds(emptySet()))
     }
@@ -308,9 +270,11 @@ class GalleryRepository(
      * batching reduces per-image ONNX framework overhead.
      */
     suspend fun buildIndex(uris: List<Uri>, onProgress: (current: Int, total: Int) -> Unit) {
-        val uriKeys = uris.map { it.toString() }
-        val uriSet = uriKeys.toSet()
-        val loaded = loadIndex().filterKeys { it in uriSet }
+        val uriSet = uris.mapTo(HashSet()) { it.toString() }
+        // Reconcile against the requested set: keep in-scope embeddings, drop everything else
+        // (e.g. photos from a folder the user unchecked).
+        val onDisk = loadIndex()
+        val loaded = onDisk.filterKeys { it in uriSet }
         synchronized(indexLock) {
             embeddings = LinkedHashMap(loaded)
         }
@@ -322,7 +286,9 @@ class GalleryRepository(
         val unindexed = uris.filter { !containsEmbedding(it.toString()) }
 
         if (unindexed.isEmpty()) {
-            Log.d(Tag, "All $total images already indexed — nothing to do")
+            // Nothing new to encode, but persist any pruning so removed folders don't reappear.
+            if (loaded.size != onDisk.size) saveIndex(snapshotIndex())
+            Log.d(Tag, "All $total images already indexed (pruned ${onDisk.size - loaded.size})")
             onProgress(total, total)
             return
         }

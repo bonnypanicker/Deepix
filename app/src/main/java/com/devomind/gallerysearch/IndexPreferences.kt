@@ -4,7 +4,6 @@ import android.content.Context
 
 object IndexPreferences {
     private const val PrefName = "index_prefs"
-    private const val KeyAlbums = "selected_album_ids"
     private const val KeyLastIndexed = "last_indexed_time"
     private const val KeyOptimalThreads = "optimal_thread_count"
     private const val KeyShowPinnedCollections = "show_pinned_collections"
@@ -19,20 +18,6 @@ object IndexPreferences {
     private const val KeySmartAlbumOnboardingDismissed = "smart_album_onboarding_dismissed"
     private const val KeyIndexProgressPercent = "index_progress_percent"
     private const val KeyBlurSensitive = "blur_sensitive_content"
-
-    fun saveSelectedAlbums(context: Context, albumIds: Set<String>) {
-        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .edit()
-            .putStringSet(KeyAlbums, albumIds)
-            .apply()
-    }
-
-    fun loadSelectedAlbums(context: Context): Set<String> {
-        val set = context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .getStringSet(KeyAlbums, emptySet())
-            ?: emptySet()
-        return set.toSet()
-    }
 
     fun saveLastIndexedTime(context: Context) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
