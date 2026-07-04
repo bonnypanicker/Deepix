@@ -118,6 +118,9 @@ class MainActivity : AppCompatActivity() {
     ) { grants ->
         if (grants.any { it.value }) {
             initializeCore()
+            // The storage dialog has just been dismissed, so chaining the notification request
+            // here (rather than concurrently in onCreate) makes it show on first launch.
+            ensureNotificationPermission()
         } else {
             Toast.makeText(this, "Storage permission required", Toast.LENGTH_LONG).show()
             finish()
@@ -249,8 +252,10 @@ class MainActivity : AppCompatActivity() {
 
         bindChrome()
         bindBackNavigation()
+        // Notification permission is requested only after the storage-permission flow resolves —
+        // Android drops a second runtime-permission dialog launched while the first is still
+        // pending, which previously lost the notification prompt on first launch.
         requestGalleryPermission()
-        ensureNotificationPermission()
         observeIndexWorker()
     }
 
@@ -423,6 +428,8 @@ class MainActivity : AppCompatActivity() {
         val permissions = requiredPermissions()
         if (permissions.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) {
             initializeCore()
+            // Storage already granted (no dialog shown) — safe to prompt for notifications now.
+            ensureNotificationPermission()
         } else {
             permissionLauncher.launch(permissions)
         }
