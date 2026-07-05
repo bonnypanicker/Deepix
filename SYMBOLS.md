@@ -97,6 +97,8 @@ MainActivity SortMode enum   Relevance | Newest | Oldest
 MainActivity ShowFilter enum All | Favorites | Screenshots
 MainActivity: ensureDefaultPins()/albumRelevanceScore(name)        // auto-pin 4 most relevant albums on first run
 MainActivity: appendJustifiedRows(cells,dayItems,rowWidthPx)        // justified-rows collage builder
+MainActivity: ensureEncodersLoaded(warmupDelayMs): CompletableDeferred<Boolean> // idempotent lazy CLIP load; awaited by search paths
+MainActivity: shouldRunBackgroundIndexing(): Boolean               // true when index pass should run (also gates eager encoder warm-up)
 MainActivity: renderPagedTimeline(items,emptyText,contextKey,prefix) // incremental browse grid — first page fast, rest on scroll
 MainActivity: paginateBrowse()                                     // appends next timeline page near bottom
 MainActivity: buildTimelinePage(items,from,to,continuingMonth,collage) // header+day rows for a slice (no repeated month headers)
