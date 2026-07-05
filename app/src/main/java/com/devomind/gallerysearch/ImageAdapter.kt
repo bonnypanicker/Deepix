@@ -29,19 +29,18 @@ import com.devomind.gallerysearch.databinding.ItemTimelineHeaderBinding
 
 /**
  * Applies the Metro selection visuals to one thumbnail: an accent frame + corner
- * tick on the selected item, a dim scrim on unselected items while in selection
- * mode. [animate] is true only for a genuine user toggle so the tick doesn't pop
- * every time a cell is recycled/scrolled back into view.
+ * tick highlight the selected item; unselected items are left untouched (no dim),
+ * for a cleaner WP10 look. [animate] is true only for a genuine user toggle so the
+ * tick doesn't pop every time a cell is recycled/scrolled back into view.
  */
 private fun bindSelectionVisual(
     dimScrim: View,
     selectionFrame: View,
     checkBadge: View,
-    selectionMode: Boolean,
     isSelected: Boolean,
     animate: Boolean
 ) {
-    dimScrim.visibility = if (selectionMode && !isSelected) View.VISIBLE else View.GONE
+    dimScrim.visibility = View.GONE
     selectionFrame.visibility = if (isSelected) View.VISIBLE else View.GONE
     checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
     checkBadge.animate().cancel()
@@ -461,7 +460,6 @@ class ImageAdapter(
                 dimScrim = binding.dimScrim,
                 selectionFrame = binding.selectionFrame,
                 checkBadge = binding.checkBadge,
-                selectionMode = selectionMode,
                 isSelected = isSelected,
                 animate = animate
             )
@@ -621,7 +619,7 @@ class ImageAdapter(
             animate: Boolean
         ) {
             ViewCompat.setTransitionName(thumbnail, "media_${item.uri}")
-            bindSelectionVisual(dimScrim, selectionFrame, checkBadge, selectionMode, isSelected, animate)
+            bindSelectionVisual(dimScrim, selectionFrame, checkBadge, isSelected, animate)
             videoBadge.visibility =
                 if (item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
 
