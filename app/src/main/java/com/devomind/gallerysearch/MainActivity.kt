@@ -17,7 +17,6 @@ import android.text.style.ImageSpan
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
-import android.view.Window
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
@@ -204,7 +203,8 @@ class MainActivity : AppCompatActivity() {
         // flips false in dismissLoadingOverlay), with a hard timeout as a safety net.
         splashScreen.setKeepOnScreenCondition { keepSplash }
         super.onCreate(savedInstanceState)
-        requestWindowFeature(Window.FEATURE_NO_TITLE)
+        // No requestWindowFeature() here: installSplashScreen() has already added
+        // window content, and the theme (windowNoTitle=true) covers the title bar.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.BLACK
