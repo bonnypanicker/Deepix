@@ -141,6 +141,18 @@ MainActivity.renderAlbums()
 MainActivity.renderMediaSection() (Collections page)
   → albumPinStore.cleanup(realAlbumIds + smartAlbumIds)
   → pinnedAlbums = pinnedIds.mapNotNull { albumById[it] }  [same merge as Albums page]
+  → renderPagedTimeline(items, ..., "section:<Section>", prefix)  [incremental]
+
+Browse timeline paging (renderPagedTimeline / paginateBrowse):
+  → First page (~BROWSE_PAGE_SIZE=120 items, extended to a day boundary, cap
+    BROWSE_PAGE_MAX=320) built off-thread and shown immediately — no DISPLAY_CAP.
+  → Scroll listener appends the next page (adapter.updateCells(cells + next)) when
+    lastVisible >= total - PAGE_PREFETCH_CELLS(12); guarded by pagingInFlight +
+    pagedContext staleness. buildTimelinePage(from,to,continuingMonth) avoids
+    repeating month headers across page boundaries.
+  → Used by Collections/Videos/Favorites + album/folder/smart-album details.
+    Albums & folder-tree grids set pagedContext=null (not timelines); search has
+    its own pagination.
 
 Album-detail for smart albums:
   → albumDetailItems resolves from stored smartAlbum.memberUris (engine-rank order)
@@ -176,7 +188,10 @@ COLLAGE_TARGET_ROWS_PER_WIDTH = 2.3f  // ~images per row baseline (lower = bigge
 COLLAGE_MIN_ASPECT = 0.55f   COLLAGE_MAX_ASPECT = 2.4f  // aspect clamps
 COLLAGE_LAST_ROW_FILL_THRESHOLD = 0.7f   // stretch trailing row if this full
 COLLAGE_MIN/MAX_ROW_HEIGHT_RATIO = 0.6f / 1.7f  // clamp stretched row height vs target
-DISPLAY_CAP = 800            // max items shown in browse
+DISPLAY_CAP = 800            // legacy browse cap — no longer applied (browse is paged)
+BROWSE_PAGE_SIZE = 120       // items per browse page (extended to day boundary)
+BROWSE_PAGE_MAX = 320        // hard cap when extending a page to the day boundary
+PAGE_PREFETCH_CELLS = 12     // append next page when this close to the bottom
 SEARCH_METADATA_HARD_CAP = 80
 SEARCH_INPUT_DEBOUNCE_MS = 180L
 INDEX_BACKOFF_SECONDS = 10L
@@ -277,5 +292,7 @@ READ_EXTERNAL_STORAGE (maxSdkVersion=32)
 **Search revamp — complete.** Icon source badges (sparkle/tag), no result cap (infinite pagination), Sort & filter **bottom sheet** (Sort/Match/Show), date-grouped results for date sorts, removable filter chips, image-to-image search with source thumbnail in the bar.
 
 **Albums & UI polish — complete.** Persistent top search box shared by browse + search (trailing icon swaps search↔dismiss, hides during multi-select); smaller timeline (22sp) and pinned-albums (13sp) headers. Justified-rows collage layout option. Full-screen loading overlay on launch. Fast-scroll tracks all scrolls + position-based drag jumps. Auto-pin of the 4 most relevant device albums on first run (`ensureDefaultPins`/`albumRelevanceScore`). Albums onboarding card to create a smart album. Metro-redesigned smart-album creation dialog. Rounded-square pills with accent selection. Aligned Sort & filter sheet.
+
+**Incremental browse loading — complete.** The browse timeline (Collections/Videos/Favorites + album/folder/smart-album details) now renders the first page (~120 items, extended to a day boundary) immediately off-thread and appends further pages on scroll, instead of building up to the 800-item `DISPLAY_CAP` up front. Page building is header/day-aware so month headers aren't repeated across boundaries. Albums/folder-tree grids and search keep their own (non-timeline) rendering. See `renderPagedTimeline`/`paginateBrowse`/`buildTimelinePage`/`nextPageEnd`.
 
 **Last commit:** Fix sort/filter sheet alignment, collage first-render span-cache glitch, and larger collage thumbnails

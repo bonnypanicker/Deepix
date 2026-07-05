@@ -161,7 +161,7 @@ CleanupResultStore  (JSON file: filesDir/cleanup_results.json)
 | `ClipTokenizer.ContextLength` (77) | `TextEncoder.encode()` shape, `QueryExpander.getEmbedding()` |
 | `GalleryDatabase` version | Add migration or `fallbackToDestructiveMigration()` is already set |
 | `IndexWorker.BatchSize` (4) | Memory pressure on low-RAM devices. `GalleryRepository.buildIndex()` chunking |
-| `DesignTokens.DISPLAY_CAP` (800) | Browse mode item cap in `MainActivity` |
+| `MainActivity.BROWSE_PAGE_SIZE/MAX` (120/320) | Browse timeline page size; grid is paged (no hard item cap) |
 | `DesignTokens.SEARCH_METADATA_HARD_CAP` (80) | Search pagination cap in `MainActivity` |
 | `SmartAlbumStore.MAX_SMART_MEMBERS` (800) | Stored URI count per smart album in `createSmartAlbum()` |
 | `SmartAlbumStore.SMART_PREFIX` ("smart:") | ID parsing in `isSmartId()`, `albumDetailItems`, `renderAlbums()` |

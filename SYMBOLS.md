@@ -97,6 +97,10 @@ MainActivity SortMode enum   Relevance | Newest | Oldest
 MainActivity ShowFilter enum All | Favorites | Screenshots
 MainActivity: ensureDefaultPins()/albumRelevanceScore(name)        // auto-pin 4 most relevant albums on first run
 MainActivity: appendJustifiedRows(cells,dayItems,rowWidthPx)        // justified-rows collage builder
+MainActivity: renderPagedTimeline(items,emptyText,contextKey,prefix) // incremental browse grid — first page fast, rest on scroll
+MainActivity: paginateBrowse()                                     // appends next timeline page near bottom
+MainActivity: buildTimelinePage(items,from,to,continuingMonth,collage) // header+day rows for a slice (no repeated month headers)
+MainActivity: nextPageEnd(from)                                    // page end extended to day boundary (cap BROWSE_PAGE_MAX)
 MainActivity: resetGridToTop()                                     // invalidates GridLayoutManager span caches (fixes collage first-render)
 MainActivity: updateSearchTrailingIcon()                           // search box trailing icon search↔dismiss
 MainActivity: dismissLoadingOverlay()                              // one-shot fade of launch loading overlay
@@ -187,7 +191,8 @@ COLLAGE_SPAN_COUNT = 60
 COLLAGE_TARGET_ROWS_PER_WIDTH = 2.3f
 COLLAGE_MIN_ASPECT = 0.55f   COLLAGE_MAX_ASPECT = 2.4f
 COLLAGE_LAST_ROW_FILL_THRESHOLD = 0.7f   COLLAGE_MIN/MAX_ROW_HEIGHT_RATIO = 0.6f/1.7f
-DISPLAY_CAP = 800
+DISPLAY_CAP = 800  (legacy; browse now paged, not capped)
+BROWSE_PAGE_SIZE = 120   BROWSE_PAGE_MAX = 320   PAGE_PREFETCH_CELLS = 12  (MainActivity paging)
 SEARCH_METADATA_HARD_CAP = 80
 SEARCH_INPUT_DEBOUNCE_MS = 180L
 INDEX_BACKOFF_SECONDS = 10L
