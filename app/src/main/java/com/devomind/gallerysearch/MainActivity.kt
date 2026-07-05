@@ -108,6 +108,14 @@ class MainActivity : AppCompatActivity() {
     private var suppressSearchInput = false
     private val activeFilters = LinkedHashSet<String>()
 
+    // Incremental (paged) loading of the browse timeline grid so large libraries render fast.
+    private var pagedItems: List<GalleryRepository.MediaItem> = emptyList()
+    private var pagedDisplayedCount = 0
+    private var pagedLastMonth: String? = null
+    private var pagedContext: String? = null   // null = paging inactive (e.g. albums/folders/search)
+    private var pagingInFlight = false
+    private var pagedPrefixCount = 0            // non-timeline cells prepended (e.g. pinned header)
+
     private val monthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
         .withZone(ZoneId.systemDefault())
     private val dayFormatter = DateTimeFormatter.ofPattern("EEE, d", Locale.getDefault())
@@ -236,15 +244,22 @@ class MainActivity : AppCompatActivity() {
 
         binding.imageGrid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
-                // Infinite scroll pagination for search results
-                if (currentMode == Mode.Search && fullSearchResults.isNotEmpty()) {
-                    val layoutManager = rv.layoutManager as GridLayoutManager
-                    val lastVisible = layoutManager.findLastVisibleItemPosition()
-                    val total = adapter.itemCount
-                    
-                    // Load more when within 6 items from the bottom
-                    if (currentDisplayedSearchResultCount < fullSearchResults.size && lastVisible >= total - 6) {
+                if (dy <= 0) return
+                val layoutManager = rv.layoutManager as GridLayoutManager
+                val lastVisible = layoutManager.findLastVisibleItemPosition()
+                val total = adapter.itemCount
+                if (currentMode == Mode.Search) {
+                    // Infinite scroll pagination for search results
+                    if (fullSearchResults.isNotEmpty() &&
+                        currentDisplayedSearchResultCount < fullSearchResults.size &&
+                        lastVisible >= total - 6
+                    ) {
                         paginateSearchResults()
+                    }
+                } else if (pagedContext != null) {
+                    // Incremental loading of the browse timeline grid.
+                    if (pagedDisplayedCount < pagedItems.size && lastVisible >= total - PAGE_PREFETCH_CELLS) {
+                        paginateBrowse()
                     }
                 }
             }
@@ -712,6 +727,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderFolders() {
         currentMode = Mode.Browse
+        pagedContext = null  // folder tree is not a paged timeline
         binding.searchPanel.visibility = View.GONE
         binding.resultCount.text = ""
         updateTopBarForMode("folders")
@@ -836,19 +852,8 @@ class MainActivity : AppCompatActivity() {
         updateBottomPanelState()
         showBottomPanel()
 
-        val expectedPath = folder.path
-        val cappedItems = items.sortedByDescending { it.dateMillis }.take(DesignTokens.DISPLAY_CAP)
-        renderJob = lifecycleScope.launch {
-            val cells = withContext(Dispatchers.Default) {
-                buildTimelineCells(cappedItems, "No media in this folder", adapter.useCollageLayout)
-            }
-            if (currentMode == Mode.FolderDetail && currentFolder?.path == expectedPath) {
-                adapter.replaceCells(cells)
-                resetGridToTop()
-                updateFastScrollVisibility()
-                binding.fastScrollIndicator.syncToRecyclerView()
-            }
-        }
+        val sorted = items.sortedByDescending { it.dateMillis }
+        renderPagedTimeline(sorted, "No media in this folder", "folder:${folder.path}")
     }
 
     private fun renderMediaSection(
@@ -866,42 +871,28 @@ class MainActivity : AppCompatActivity() {
         showBottomPanel()
 
         val expectedSection = activeSection
-        val cappedItems = items.take(DesignTokens.DISPLAY_CAP)
-        renderJob = lifecycleScope.launch {
-            val cells = withContext(Dispatchers.Default) {
-                buildTimelineCells(cappedItems, emptyText, adapter.useCollageLayout)
-            }
-            if (currentMode == Mode.Browse && currentAlbum == null && activeSection == expectedSection) {
-                val validIds = albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet()
-                albumPinStore.cleanup(validIds)
-                ensureDefaultPins()
-                val pinnedIds = albumPinStore.getPinnedAlbumIds()
-                val smartById = smartAlbums.associate { it.id to it.toAlbum() }
-                val albumById = (albums + smartById.values).associateBy { it.id }
-                val pinnedAlbums = pinnedIds.mapNotNull { albumById[it] }
 
-                val finalCells = if (expectedSection == Section.Collection &&
-                    IndexPreferences.isShowPinnedInCollections(this@MainActivity) &&
-                    pinnedAlbums.isNotEmpty()
-                ) {
-                    val withHeader = mutableListOf<GalleryCell>()
-                    withHeader += GalleryCell.PinnedAlbumsHeader(pinnedAlbums)
-                    withHeader += cells
-                    withHeader.toList()
-                } else {
-                    cells
-                }
-
-                adapter.replaceCells(finalCells)
-                resetGridToTop()
-                updateFastScrollVisibility()
-                binding.fastScrollIndicator.syncToRecyclerView()
+        // Pinned-albums strip is prepended to the Collections page (cheap; from in-memory state).
+        val prefix = mutableListOf<GalleryCell>()
+        if (expectedSection == Section.Collection) {
+            val validIds = albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet()
+            albumPinStore.cleanup(validIds)
+            ensureDefaultPins()
+            val pinnedIds = albumPinStore.getPinnedAlbumIds()
+            val smartById = smartAlbums.associate { it.id to it.toAlbum() }
+            val albumById = (albums + smartById.values).associateBy { it.id }
+            val pinnedAlbums = pinnedIds.mapNotNull { albumById[it] }
+            if (IndexPreferences.isShowPinnedInCollections(this) && pinnedAlbums.isNotEmpty()) {
+                prefix += GalleryCell.PinnedAlbumsHeader(pinnedAlbums)
             }
         }
+
+        renderPagedTimeline(items, emptyText, "section:$expectedSection", prefix)
     }
 
     private fun renderAlbums() {
         currentMode = Mode.Browse
+        pagedContext = null  // albums grid is not a paged timeline
         binding.searchPanel.visibility = View.GONE
         binding.resultCount.text = ""
 
@@ -989,19 +980,7 @@ class MainActivity : AppCompatActivity() {
         updateBottomPanelState()
         showBottomPanel()
 
-        val expectedAlbumId = album.id
-        val cappedItems = items.take(DesignTokens.DISPLAY_CAP)
-        renderJob = lifecycleScope.launch {
-            val cells = withContext(Dispatchers.Default) {
-                buildTimelineCells(cappedItems, "No media in this album", adapter.useCollageLayout)
-            }
-            if (currentMode == Mode.AlbumDetail && currentAlbum?.id == expectedAlbumId) {
-                adapter.replaceCells(cells)
-                resetGridToTop()
-                updateFastScrollVisibility()
-                binding.fastScrollIndicator.syncToRecyclerView()
-            }
-        }
+        renderPagedTimeline(items, "No media in this album", "album:${album.id}")
     }
 
     /**
@@ -1027,6 +1006,7 @@ class MainActivity : AppCompatActivity() {
     private fun openSearch() {
         renderJob?.cancel()
         currentMode = Mode.Search
+        pagedContext = null  // search has its own pagination
         binding.searchPanel.visibility = View.VISIBLE
         binding.screenTitle.visibility = View.GONE
         binding.searchBox.visibility = View.VISIBLE
@@ -1247,19 +1227,27 @@ class MainActivity : AppCompatActivity() {
         return repo.searchMetadata(parsedQuery.textQuery, items)
     }
 
-    private fun buildTimelineCells(
+    /**
+     * Builds timeline cells (month headers + per-day justified rows) for the slice [from, to).
+     * [continuingMonth] is the last month header emitted by the previous page, so a header isn't
+     * repeated across page boundaries. Returns the cells plus the last month emitted (for the next
+     * page). Pages must start on a day boundary (see [nextPageEnd]) so justified rows aren't split.
+     */
+    private fun buildTimelinePage(
         items: List<GalleryRepository.MediaItem>,
-        emptyText: String,
+        from: Int,
+        to: Int,
+        continuingMonth: String?,
         useCollageLayout: Boolean
-    ): List<GalleryCell> {
-        if (items.isEmpty()) return listOf(GalleryCell.Empty(emptyText))
+    ): Pair<List<GalleryCell>, String?> {
         val rowWidthPx = resources.displayMetrics.widthPixels
         val cells = ArrayList<GalleryCell>()
-        var lastMonth: String? = null
+        var lastMonth: String? = continuingMonth
         var lastDay: String? = null
         var currentDayItems = ArrayList<GalleryRepository.MediaItem>()
 
-        for (item in items) {
+        for (i in from until to) {
+            val item = items[i]
             val month = safeFormat(monthFormatter, item.dateMillis, "Unknown date")
             val day = safeFormat(dayFormatter, item.dateMillis, "")
 
@@ -1268,7 +1256,6 @@ class MainActivity : AppCompatActivity() {
                     appendDayCells(cells, currentDayItems, useCollageLayout, rowWidthPx)
                     currentDayItems = ArrayList()
                 }
-
                 if (month != lastMonth) {
                     cells += GalleryCell.Header(month, day.uppercase(Locale.getDefault()))
                     lastMonth = month
@@ -1281,8 +1268,91 @@ class MainActivity : AppCompatActivity() {
         if (currentDayItems.isNotEmpty()) {
             appendDayCells(cells, currentDayItems, useCollageLayout, rowWidthPx)
         }
+        return cells to lastMonth
+    }
 
-        return cells
+    /** End index (exclusive) of the next page: ~PAGE_SIZE items, extended to the day boundary. */
+    private fun nextPageEnd(from: Int): Int {
+        val size = pagedItems.size
+        var end = minOf(from + BROWSE_PAGE_SIZE, size)
+        if (end in (from + 1) until size) {
+            val boundaryDay = safeFormat(dayFormatter, pagedItems[end - 1].dateMillis, "")
+            while (end < size &&
+                (end - from) < BROWSE_PAGE_MAX &&
+                safeFormat(dayFormatter, pagedItems[end].dateMillis, "") == boundaryDay
+            ) {
+                end++
+            }
+        }
+        return end
+    }
+
+    /**
+     * Renders a browse timeline incrementally: the first page is built and shown immediately, then
+     * more pages are appended as the user scrolls (see [paginateBrowse]).
+     */
+    private fun renderPagedTimeline(
+        items: List<GalleryRepository.MediaItem>,
+        emptyText: String,
+        contextKey: String,
+        prefixCells: List<GalleryCell> = emptyList()
+    ) {
+        renderJob?.cancel()
+        pagedItems = items
+        pagedDisplayedCount = 0
+        pagedLastMonth = null
+        pagedContext = contextKey
+        pagingInFlight = false
+        pagedPrefixCount = prefixCells.size
+
+        if (items.isEmpty()) {
+            adapter.replaceCells(prefixCells + GalleryCell.Empty(emptyText))
+            pagedContext = null
+            resetGridToTop()
+            updateFastScrollVisibility()
+            binding.fastScrollIndicator.syncToRecyclerView()
+            return
+        }
+
+        val to = nextPageEnd(0)
+        val useCollage = adapter.useCollageLayout
+        renderJob = lifecycleScope.launch {
+            val (cells, lastMonth) = withContext(Dispatchers.Default) {
+                buildTimelinePage(items, 0, to, null, useCollage)
+            }
+            if (pagedContext != contextKey) return@launch
+            pagedDisplayedCount = to
+            pagedLastMonth = lastMonth
+            adapter.replaceCells(prefixCells + cells)
+            resetGridToTop()
+            updateFastScrollVisibility()
+            binding.fastScrollIndicator.syncToRecyclerView()
+        }
+    }
+
+    /** Appends the next timeline page when the user nears the bottom of the grid. */
+    private fun paginateBrowse() {
+        val ctx = pagedContext ?: return
+        if (pagingInFlight || pagedDisplayedCount >= pagedItems.size) return
+        val from = pagedDisplayedCount
+        val to = nextPageEnd(from)
+        if (to <= from) return
+        val continuing = pagedLastMonth
+        val useCollage = adapter.useCollageLayout
+        val items = pagedItems
+        pagingInFlight = true
+        lifecycleScope.launch {
+            val (cells, lastMonth) = withContext(Dispatchers.Default) {
+                buildTimelinePage(items, from, to, continuing, useCollage)
+            }
+            if (pagedContext == ctx && pagedDisplayedCount == from) {
+                pagedDisplayedCount = to
+                pagedLastMonth = lastMonth
+                adapter.updateCells(adapter.cells + cells)
+                updateFastScrollVisibility()
+            }
+            pagingInFlight = false
+        }
     }
 
     private fun appendDayCells(
@@ -2305,26 +2375,14 @@ class MainActivity : AppCompatActivity() {
             .filter { it.uri.toString() in uriOrder.keys }
             .sortedBy { uriOrder[it.uri.toString()] ?: Int.MAX_VALUE }
 
-        val expectedAlbumId = smart.id
-        val cappedItems = items.take(DesignTokens.DISPLAY_CAP)
-        renderJob = lifecycleScope.launch {
-            val cells = withContext(Dispatchers.Default) {
-                buildTimelineCells(cappedItems, "No results for this prompt yet", adapter.useCollageLayout)
-            }
-            if (currentMode == Mode.SmartAlbumDetail && currentSmartAlbum?.id == expectedAlbumId) {
-                adapter.replaceCells(cells)
-                resetGridToTop()
-                updateFastScrollVisibility()
-                binding.fastScrollIndicator.syncToRecyclerView()
-                binding.resultCount.text = when {
-                    items.isEmpty() -> ""
-                    items.size == 1 -> "1 result"
-                    else -> "${items.size} results"
-                }
-                binding.progressBar.visibility = View.GONE
-                binding.statusText.text = indexedSummary(repository?.indexedCount ?: 0)
-            }
+        binding.resultCount.text = when {
+            items.isEmpty() -> ""
+            items.size == 1 -> "1 result"
+            else -> "${items.size} results"
         }
+        binding.progressBar.visibility = View.GONE
+        binding.statusText.text = indexedSummary(repository?.indexedCount ?: 0)
+        renderPagedTimeline(items, "No results for this prompt yet", "smart:${smart.id}")
     }
 
     private fun showCreateSmartAlbumDialog() {
@@ -2944,6 +3002,11 @@ class MainActivity : AppCompatActivity() {
         private const val SEARCH_PAGE_SIZE = 30
         private const val SEARCH_DISPLAY_CAP = 1500
         private const val SIMILAR_IMAGE_FLOOR = 0.55f
+        // Incremental browse-grid paging: first page renders fast, more append on scroll.
+        // Sizes are in source items (not cells); rows/headers are derived per page.
+        private const val BROWSE_PAGE_SIZE = 120
+        private const val BROWSE_PAGE_MAX = 320
+        private const val PAGE_PREFETCH_CELLS = 12
     }
 
     private enum class SearchMode {
