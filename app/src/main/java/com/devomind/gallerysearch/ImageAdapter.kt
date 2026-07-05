@@ -6,7 +6,7 @@ import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.animation.OvershootInterpolator
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
@@ -26,6 +26,39 @@ import com.devomind.gallerysearch.databinding.ItemPinnedAlbumChipBinding
 import com.devomind.gallerysearch.databinding.ItemPinnedAlbumsHeaderBinding
 import com.devomind.gallerysearch.databinding.ItemSmartAlbumOnboardingBinding
 import com.devomind.gallerysearch.databinding.ItemTimelineHeaderBinding
+
+/**
+ * Applies the Metro selection visuals to one thumbnail: an accent frame + corner
+ * tick on the selected item, a dim scrim on unselected items while in selection
+ * mode. [animate] is true only for a genuine user toggle so the tick doesn't pop
+ * every time a cell is recycled/scrolled back into view.
+ */
+private fun bindSelectionVisual(
+    dimScrim: View,
+    selectionFrame: View,
+    checkBadge: View,
+    selectionMode: Boolean,
+    isSelected: Boolean,
+    animate: Boolean
+) {
+    dimScrim.visibility = if (selectionMode && !isSelected) View.VISIBLE else View.GONE
+    selectionFrame.visibility = if (isSelected) View.VISIBLE else View.GONE
+    checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
+    checkBadge.animate().cancel()
+    if (isSelected && animate) {
+        checkBadge.scaleX = 0.6f
+        checkBadge.scaleY = 0.6f
+        checkBadge.animate()
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(120L)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+    } else {
+        checkBadge.scaleX = 1f
+        checkBadge.scaleY = 1f
+    }
+}
 
 sealed class GalleryCell {
     data class Header(val title: String, val subtitle: String) : GalleryCell()
@@ -182,7 +215,7 @@ class ImageAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int, payloads: MutableList<Any>) {
         if (payloads.any { it == PayloadSelection }) {
             when (val cell = cells[position]) {
-                is GalleryCell.Photo -> (holder as PhotoViewHolder).bindSelection(cell, selected.isNotEmpty(), cell.item.uri in selected)
+                is GalleryCell.Photo -> (holder as PhotoViewHolder).bindSelection(cell, selected.isNotEmpty(), cell.item.uri in selected, animate = true)
                 is GalleryCell.Collage -> (holder as CollageViewHolder).bindSelection(cell, selected)
                 else -> onBindViewHolder(holder, position)
             }
@@ -418,24 +451,20 @@ class ImageAdapter(
                 loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, approxWidth, rowHeight, blurred)
             }
 
-            bindSelection(cell, selectionMode, isSelected)
+            bindSelection(cell, selectionMode, isSelected, animate = false)
         }
 
-        fun bindSelection(cell: GalleryCell.Photo, selectionMode: Boolean, isSelected: Boolean) {
+        fun bindSelection(cell: GalleryCell.Photo, selectionMode: Boolean, isSelected: Boolean, animate: Boolean) {
             val blurred = isBlurred(cell.item)
             binding.sensitiveOverlay.visibility = if (blurred) View.VISIBLE else View.GONE
-            binding.dimScrim.visibility = if (selectionMode && !isSelected) View.VISIBLE else View.GONE
-            binding.checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
-            if (isSelected) {
-                binding.checkBadge.scaleX = 0f
-                binding.checkBadge.scaleY = 0f
-                binding.checkBadge.animate()
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setDuration(200)
-                    .setInterpolator(OvershootInterpolator(1.2f))
-                    .start()
-            }
+            bindSelectionVisual(
+                dimScrim = binding.dimScrim,
+                selectionFrame = binding.selectionFrame,
+                checkBadge = binding.checkBadge,
+                selectionMode = selectionMode,
+                isSelected = isSelected,
+                animate = animate
+            )
             bindSearchBadges(cell.searchSources)
             binding.videoBadge.visibility = if (cell.item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
             binding.root.setOnClickListener {
@@ -481,6 +510,7 @@ class ImageAdapter(
                 container = binding.leadTile,
                 thumbnail = binding.leadThumbnail,
                 dimScrim = binding.leadDimScrim,
+                selectionFrame = binding.leadSelectionFrame,
                 checkBadge = binding.leadCheckBadge,
                 videoBadge = binding.leadVideoBadge,
                 item = cell.items[0],
@@ -488,12 +518,14 @@ class ImageAdapter(
                 overrideHeight = leadSize,
                 selectionMode = selected.isNotEmpty(),
                 isSelected = cell.items[0].uri in selected,
-                loadImage = true
+                loadImage = true,
+                animate = false
             )
             bindTile(
                 container = binding.topRightTile,
                 thumbnail = binding.topRightThumbnail,
                 dimScrim = binding.topRightDimScrim,
+                selectionFrame = binding.topRightSelectionFrame,
                 checkBadge = binding.topRightCheckBadge,
                 videoBadge = binding.topRightVideoBadge,
                 item = cell.items[1],
@@ -501,12 +533,14 @@ class ImageAdapter(
                 overrideHeight = regularSize,
                 selectionMode = selected.isNotEmpty(),
                 isSelected = cell.items[1].uri in selected,
-                loadImage = true
+                loadImage = true,
+                animate = false
             )
             bindTile(
                 container = binding.bottomRightTile,
                 thumbnail = binding.bottomRightThumbnail,
                 dimScrim = binding.bottomRightDimScrim,
+                selectionFrame = binding.bottomRightSelectionFrame,
                 checkBadge = binding.bottomRightCheckBadge,
                 videoBadge = binding.bottomRightVideoBadge,
                 item = cell.items[2],
@@ -514,7 +548,8 @@ class ImageAdapter(
                 overrideHeight = regularSize,
                 selectionMode = selected.isNotEmpty(),
                 isSelected = cell.items[2].uri in selected,
-                loadImage = true
+                loadImage = true,
+                animate = false
             )
         }
 
@@ -527,6 +562,7 @@ class ImageAdapter(
                 container = binding.leadTile,
                 thumbnail = binding.leadThumbnail,
                 dimScrim = binding.leadDimScrim,
+                selectionFrame = binding.leadSelectionFrame,
                 checkBadge = binding.leadCheckBadge,
                 videoBadge = binding.leadVideoBadge,
                 item = cell.items[0],
@@ -534,12 +570,14 @@ class ImageAdapter(
                 overrideHeight = leadSize,
                 selectionMode = selected.isNotEmpty(),
                 isSelected = cell.items[0].uri in selected,
-                loadImage = false
+                loadImage = false,
+                animate = true
             )
             bindTile(
                 container = binding.topRightTile,
                 thumbnail = binding.topRightThumbnail,
                 dimScrim = binding.topRightDimScrim,
+                selectionFrame = binding.topRightSelectionFrame,
                 checkBadge = binding.topRightCheckBadge,
                 videoBadge = binding.topRightVideoBadge,
                 item = cell.items[1],
@@ -547,12 +585,14 @@ class ImageAdapter(
                 overrideHeight = regularSize,
                 selectionMode = selected.isNotEmpty(),
                 isSelected = cell.items[1].uri in selected,
-                loadImage = false
+                loadImage = false,
+                animate = true
             )
             bindTile(
                 container = binding.bottomRightTile,
                 thumbnail = binding.bottomRightThumbnail,
                 dimScrim = binding.bottomRightDimScrim,
+                selectionFrame = binding.bottomRightSelectionFrame,
                 checkBadge = binding.bottomRightCheckBadge,
                 videoBadge = binding.bottomRightVideoBadge,
                 item = cell.items[2],
@@ -560,7 +600,8 @@ class ImageAdapter(
                 overrideHeight = regularSize,
                 selectionMode = selected.isNotEmpty(),
                 isSelected = cell.items[2].uri in selected,
-                loadImage = false
+                loadImage = false,
+                animate = true
             )
         }
 
@@ -568,28 +609,19 @@ class ImageAdapter(
             container: FrameLayout,
             thumbnail: ImageView,
             dimScrim: View,
-            checkBadge: TextView,
+            selectionFrame: View,
+            checkBadge: View,
             videoBadge: TextView,
             item: GalleryRepository.MediaItem,
             overrideWidth: Int,
             overrideHeight: Int,
             selectionMode: Boolean,
             isSelected: Boolean,
-            loadImage: Boolean
+            loadImage: Boolean,
+            animate: Boolean
         ) {
             ViewCompat.setTransitionName(thumbnail, "media_${item.uri}")
-            dimScrim.visibility = if (selectionMode && !isSelected) View.VISIBLE else View.GONE
-            checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
-            if (isSelected) {
-                checkBadge.scaleX = 0f
-                checkBadge.scaleY = 0f
-                checkBadge.animate()
-                    .scaleX(1f)
-                    .scaleY(1f)
-                    .setDuration(200)
-                    .setInterpolator(OvershootInterpolator(1.2f))
-                    .start()
-            }
+            bindSelectionVisual(dimScrim, selectionFrame, checkBadge, selectionMode, isSelected, animate)
             videoBadge.visibility =
                 if (item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
 

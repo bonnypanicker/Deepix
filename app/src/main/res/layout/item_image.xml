@@ -17,8 +17,14 @@
         android:id="@+id/dimScrim"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_margin="2dp"
         android:background="@color/metroDimScrim"
+        android:visibility="gone" />
+
+    <View
+        android:id="@+id/selectionFrame"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/selection_frame"
         android:visibility="gone" />
 
     <!-- Sensitive-content cover (Beta): shown over blurred NSFW thumbnails until tapped. -->
@@ -83,7 +89,7 @@
             android:visibility="gone" />
     </LinearLayout>
 
-    <TextView
+    <ImageView
         android:id="@+id/checkBadge"
         android:layout_width="24dp"
         android:layout_height="24dp"
@@ -91,10 +97,10 @@
         android:layout_marginTop="8dp"
         android:layout_marginEnd="8dp"
         android:background="@drawable/selection_badge_bg"
-        android:gravity="center"
-        android:text="✓"
-        android:textColor="@color/metroTextPrimary"
-        android:textSize="15sp"
+        android:contentDescription="@null"
+        android:padding="3dp"
+        android:src="@drawable/ic_fluent_checkmark_24_regular"
+        android:tint="@color/metroTextPrimary"
         android:visibility="gone" />
 
     <TextView

@@ -29,7 +29,14 @@
             android:background="@color/metroDimScrim"
             android:visibility="gone" />
 
-        <TextView
+        <View
+            android:id="@+id/leadSelectionFrame"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/selection_frame"
+            android:visibility="gone" />
+
+        <ImageView
             android:id="@+id/leadCheckBadge"
             android:layout_width="24dp"
             android:layout_height="24dp"
@@ -37,10 +44,10 @@
             android:layout_marginTop="8dp"
             android:layout_marginEnd="8dp"
             android:background="@drawable/selection_badge_bg"
-            android:gravity="center"
-            android:text="✓"
-            android:textColor="@color/metroTextPrimary"
-            android:textSize="15sp"
+            android:contentDescription="@null"
+            android:padding="3dp"
+            android:src="@drawable/ic_fluent_checkmark_24_regular"
+            android:tint="@color/metroTextPrimary"
             android:visibility="gone" />
 
         <TextView
@@ -92,7 +99,14 @@
                 android:background="@color/metroDimScrim"
                 android:visibility="gone" />
 
-            <TextView
+            <View
+                android:id="@+id/topRightSelectionFrame"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/selection_frame"
+                android:visibility="gone" />
+
+            <ImageView
                 android:id="@+id/topRightCheckBadge"
                 android:layout_width="24dp"
                 android:layout_height="24dp"
@@ -100,10 +114,10 @@
                 android:layout_marginTop="8dp"
                 android:layout_marginEnd="8dp"
                 android:background="@drawable/selection_badge_bg"
-                android:gravity="center"
-                android:text="✓"
-                android:textColor="@color/metroTextPrimary"
-                android:textSize="15sp"
+                android:contentDescription="@null"
+                android:padding="3dp"
+                android:src="@drawable/ic_fluent_checkmark_24_regular"
+                android:tint="@color/metroTextPrimary"
                 android:visibility="gone" />
 
             <TextView
@@ -148,7 +162,14 @@
                 android:background="@color/metroDimScrim"
                 android:visibility="gone" />
 
-            <TextView
+            <View
+                android:id="@+id/bottomRightSelectionFrame"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/selection_frame"
+                android:visibility="gone" />
+
+            <ImageView
                 android:id="@+id/bottomRightCheckBadge"
                 android:layout_width="24dp"
                 android:layout_height="24dp"
@@ -156,10 +177,10 @@
                 android:layout_marginTop="8dp"
                 android:layout_marginEnd="8dp"
                 android:background="@drawable/selection_badge_bg"
-                android:gravity="center"
-                android:text="✓"
-                android:textColor="@color/metroTextPrimary"
-                android:textSize="15sp"
+                android:contentDescription="@null"
+                android:padding="3dp"
+                android:src="@drawable/ic_fluent_checkmark_24_regular"
+                android:tint="@color/metroTextPrimary"
                 android:visibility="gone" />
 
             <TextView

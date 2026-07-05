@@ -226,49 +226,114 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- Metro selection command bar: flat, full-width, replaces the bottom nav
+             while multi-selecting (matches the WP10 command-bar pattern). -->
         <LinearLayout
-            android:id="@+id/selectionPill"
-            android:layout_width="wrap_content"
-            android:layout_height="52dp"
-            android:layout_gravity="bottom|center_horizontal"
-            android:layout_marginBottom="84dp"
-            android:background="@drawable/pill_bg"
-            android:gravity="center"
-            android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
+            android:id="@+id/selectionBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:background="@color/metroBgPrimary"
+            android:orientation="vertical"
             android:visibility="gone">
 
-            <ImageButton
-                android:id="@+id/selectAllBtn"
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:background="@android:color/transparent"
-                android:contentDescription="Select all"
-                android:padding="15dp"
-                android:src="@drawable/ic_fluent_select_all_24_regular"
-                android:tint="@color/metroTextPrimary"
-                android:visibility="gone" />
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/metroBgSurface" />
 
-            <ImageButton
-                android:id="@+id/shareSelectionBtn"
-                android:layout_width="64dp"
-                android:layout_height="52dp"
-                android:background="@android:color/transparent"
-                android:contentDescription="Share selected"
-                android:padding="15dp"
-                android:src="@drawable/ic_fluent_share_24_regular"
-                android:tint="@color/metroTextPrimary" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:orientation="horizontal">
 
-            <ImageButton
-                android:id="@+id/deleteSelectionBtn"
-                android:layout_width="64dp"
-                android:layout_height="52dp"
-                android:background="@android:color/transparent"
-                android:contentDescription="Delete selected"
-                android:padding="15dp"
-                android:src="@drawable/ic_fluent_delete_24_regular"
-                android:tint="@color/metroTextPrimary" />
+                <LinearLayout
+                    android:id="@+id/selectAllBtn"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:contentDescription="Select all"
+                        android:src="@drawable/ic_fluent_select_all_24_regular"
+                        android:tint="@color/metroTextPrimary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:includeFontPadding="false"
+                        android:letterSpacing="0.04"
+                        android:text="select all"
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/shareSelectionBtn"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:contentDescription="Share selected"
+                        android:src="@drawable/ic_fluent_share_24_regular"
+                        android:tint="@color/metroTextPrimary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:includeFontPadding="false"
+                        android:letterSpacing="0.04"
+                        android:text="share"
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/deleteSelectionBtn"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:contentDescription="Delete selected"
+                        android:src="@drawable/ic_fluent_delete_24_regular"
+                        android:tint="@color/metroTextPrimary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:includeFontPadding="false"
+                        android:letterSpacing="0.04"
+                        android:text="delete"
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="10sp" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
 
         <com.devomind.gallerysearch.FastScrollIndicator

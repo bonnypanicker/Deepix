@@ -399,10 +399,7 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             binding.bottomPanel.updatePadding(bottom = systemInsets.bottom)
-
-            val selectionParams = binding.selectionPill.layoutParams as android.widget.FrameLayout.LayoutParams
-            selectionParams.bottomMargin = systemInsets.bottom + dp(84)
-            binding.selectionPill.layoutParams = selectionParams
+            binding.selectionBar.updatePadding(bottom = systemInsets.bottom)
             insets
         }
     }
@@ -2698,10 +2695,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderSelectionState(count: Int) {
-        binding.selectionPill.visibility = if (count > 0) View.VISIBLE else View.GONE
-        binding.selectAllBtn.visibility = if (count > 0) View.VISIBLE else View.GONE
+        val selecting = count > 0
+        // Metro pattern: the selection command bar takes over the bottom nav's slot.
+        binding.selectionBar.visibility = if (selecting) View.VISIBLE else View.GONE
+        binding.bottomPanel.visibility = if (selecting) View.GONE else View.VISIBLE
 
-        if (count > 0) {
+        if (selecting) {
             binding.screenTitle.visibility = View.VISIBLE
             binding.screenTitle.text = "$count selected"
             binding.menuBtn.setImageResource(R.drawable.ic_fluent_back_24_regular)
