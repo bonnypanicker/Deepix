@@ -68,6 +68,10 @@ class MainActivity : AppCompatActivity() {
     private var nsfwClassifier: NsfwClassifier? = null
     private var nsfwComputeJob: kotlinx.coroutines.Job? = null
     private var textEncoder: TextEncoder? = null
+    // Tracks the one-shot CLIP encoder load. The ~135 MB models are only warmed eagerly when a
+    // background index pass will run; otherwise they load lazily on the first search so idle/paused
+    // cold starts stay light. Completes true once encoders are attached, false if the load failed.
+    private var encodersReady: kotlinx.coroutines.CompletableDeferred<Boolean>? = null
     private var repository: GalleryRepository? = null
     private var dbRepository: DbRepository? = null
     private var albums: List<GalleryRepository.Album> = emptyList()
@@ -507,10 +511,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadEncodersInBackground() {
+        // The CLIP encoders are ~135 MB and dominate cold-start memory pressure. Only warm them
+        // eagerly when a background index pass is actually going to run (it needs them). When
+        // indexing is paused, stopped, or complete, defer the load until the user searches — so an
+        // idle/paused cold start opens fast instead of reloading the models against the first frames.
+        if (shouldRunBackgroundIndexing()) {
+            ensureEncodersLoaded(warmupDelayMs = ENCODER_WARMUP_DELAY_MS)
+        } else {
+            lifecycleScope.launch {
+                maybeStartBackgroundIndexing()   // updates paused/idle status text + drawer label
+                refreshSensitiveBlur()           // no-ops until the text encoder is loaded
+            }
+        }
+    }
+
+    /**
+     * Loads the CLIP image/text encoders and the on-disk embedding caches exactly once, then wires
+     * them into the repository. Safe to call from multiple entry points: returns the same in-flight
+     * [CompletableDeferred] so callers can await readiness. On failure the guard is reset so the next
+     * search can retry. [warmupDelayMs] lets the eager (indexing) path yield to the first frames.
+     */
+    private fun ensureEncodersLoaded(
+        warmupDelayMs: Long = 0
+    ): kotlinx.coroutines.CompletableDeferred<Boolean> {
+        encodersReady?.let { return it }
+        val ready = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        encodersReady = ready
         lifecycleScope.launch {
-            // Yield to the first frames so the ONNX model load (~135 MB) doesn't compete with the
-            // cold-start UI. Search that needs the models shows its own loading state meanwhile.
-            kotlinx.coroutines.delay(ENCODER_WARMUP_DELAY_MS)
+            if (warmupDelayMs > 0) kotlinx.coroutines.delay(warmupDelayMs)
             val sharedEncoders = (application as GallerySearchApp).sharedEncoders
             val encoders = withContext(Dispatchers.IO) {
                 val imageAsync = async { runCatching { sharedEncoders.getImageEncoder() }.getOrNull() }
@@ -521,21 +549,26 @@ class MainActivity : AppCompatActivity() {
             val text = encoders.second
             if (image == null) {
                 Log.w(TAG, "Vision encoder failed to load; semantic search disabled.")
+                encodersReady = null      // allow a retry on the next search
+                ready.complete(false)
                 return@launch
             }
             imageEncoder = image
             textEncoder = text
             repository?.attachEncoders(image, text)
-            if (currentMode == Mode.Search && !binding.searchInput.text.isNullOrBlank()) {
-                submitSearch()
-            }
             withContext(Dispatchers.IO) {
                 repository?.loadCachedIndexForUris(allUris)
                 repository?.loadCachedMetadataIndexForUris(allUris)
             }
+            ready.complete(true)
+            // If the user was already searching (metadata-only until now), re-run to add AI results.
+            if (currentMode == Mode.Search && !binding.searchInput.text.isNullOrBlank()) {
+                submitSearch()
+            }
             maybeStartBackgroundIndexing()
             refreshSensitiveBlur()
         }
+        return ready
     }
 
     private fun maybePromptIndexingConsent() {
@@ -1005,6 +1038,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun openSearch() {
         renderJob?.cancel()
+        // Start warming the encoders as soon as the user enters search, so the models are usually
+        // ready by the time a query is submitted (they may have been deferred at startup).
+        ensureEncodersLoaded()
         currentMode = Mode.Search
         pagedContext = null  // search has its own pagination
         binding.searchPanel.visibility = View.VISIBLE
@@ -1145,9 +1181,14 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
 
-                if (!shouldSearchAi || textEncoder == null) {
-                    return@launch
+                if (!shouldSearchAi) return@launch
+
+                // Encoders may have been deferred at startup — load them on demand for AI search.
+                if (textEncoder == null) {
+                    ensureEncodersLoaded().await()
+                    if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
                 }
+                if (textEncoder == null) return@launch
 
                 val semanticResults = withContext(Dispatchers.Default) {
                     repo.search(parsedQuery.textQuery)
@@ -1832,6 +1873,9 @@ class MainActivity : AppCompatActivity() {
 
         searchJob?.cancel()
         searchJob = lifecycleScope.launch {
+            // Image-to-image needs the CLIP image encoder; load it on demand if it was deferred.
+            if (imageEncoder == null) ensureEncodersLoaded().await()
+            if (!imageSearchActive || currentMode != Mode.Search) return@launch
             val pool = imageItems
             val byUri = pool.associateBy { it.uri }
             val hits = withContext(Dispatchers.Default) {
@@ -2795,6 +2839,21 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * True when a background index pass should run now: consent given, work remaining, and neither
+     * paused nor stopped. Used both to enqueue the worker and to decide whether to warm the CLIP
+     * encoders eagerly at startup (only when indexing needs them).
+     */
+    private fun shouldRunBackgroundIndexing(): Boolean {
+        val repo = repository ?: return false
+        if (allUris.isEmpty()) return false
+        if (!IndexPreferences.isIndexConsentGiven(applicationContext)) return false
+        if (repo.indexedCount >= allUris.size) return false
+        if (IndexPreferences.isIndexPaused(applicationContext)) return false
+        if (IndexPreferences.isIndexStopped(applicationContext)) return false
+        return true
     }
 
     private fun maybeStartBackgroundIndexing() {
