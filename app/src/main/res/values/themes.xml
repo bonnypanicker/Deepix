@@ -9,6 +9,13 @@
         <item name="colorAccent">@color/metroAccent</item>
     </style>
 
+    <!-- Launch splash (AndroidX core-splashscreen; backported to minSdk) -->
+    <style name="Theme.GallerySearch.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.GallerySearch</item>
+    </style>
+
     <style name="Theme.GallerySearch.Viewer" parent="Theme.GallerySearch">
         <item name="android:windowFullscreen">false</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
