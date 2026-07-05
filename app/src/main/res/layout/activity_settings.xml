@@ -81,6 +81,51 @@
                 <View style="@style/SettingsDivider" />
 
                 <LinearLayout
+                    android:id="@+id/rowCollageSize"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Collage thumbnail size" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Size of tiles in collage layout" />
+                    </LinearLayout>
+
+                    <ImageButton
+                        android:id="@+id/collageMinus"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="?android:attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Smaller collage tiles"
+                        android:padding="6dp"
+                        android:src="@drawable/ic_fluent_subtract_24_regular"
+                        android:tint="#FFFFFF" />
+
+                    <TextView
+                        android:id="@+id/collageValue"
+                        android:layout_width="28dp"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:text="3"
+                        android:textColor="#FFFFFF"
+                        android:textSize="17sp" />
+
+                    <ImageButton
+                        android:id="@+id/collagePlus"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="?android:attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="Larger collage tiles"
+                        android:padding="6dp"
+                        android:src="@drawable/ic_fluent_add_24_regular"
+                        android:tint="#FFFFFF" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout
                     android:id="@+id/rowGridColumns"
                     style="@style/SettingsRow">
 

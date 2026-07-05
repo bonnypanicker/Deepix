@@ -45,7 +45,7 @@ OnnxOutput                OnnxOutput.kt            flattenFloatArray(value: Any)
 OnnxSessionOptions        OnnxSessionOptions.kt    create(tag,threadCount=4): OrtSession.SessionOptions — NNAPI disabled
 DesignTokens              DesignTokens.kt          (see CONTEXT.md for key values)
 StickyHeaderDecoration    StickyHeaderDecoration.kt  RecyclerView.ItemDecoration
-ThumbnailScaleGestureListener  ThumbnailScaleGestureListener.kt  pinch-to-resize grid columns
+ThumbnailScaleGestureListener  ThumbnailScaleGestureListener.kt  pinch-to-resize; emits onZoom(zoomIn) step (grid columns OR collage scale)
 ImageAdapter              ImageAdapter.kt          RecyclerView.Adapter; useCollageLayout; gridColumnCount; spanSizeAt(); replaceCells(); ctor cb onCreateSmartAlbum
   GalleryCell             ImageAdapter.kt          sealed: Header|Photo(collageSpan,collageHeightPx)|Collage|AlbumCell|FolderCell|PinnedAlbumsHeader|SmartAlbumOnboarding|Empty
 FastScrollIndicator       FastScrollIndicator.kt   attach(RecyclerView, ImageAdapter); tracks all scrolls; drag → scrollToPositionWithOffset
@@ -96,7 +96,11 @@ IndexPreferences.isIndexStopped()/setIndexStopped()                // explicit s
 MainActivity SortMode enum   Relevance | Newest | Oldest
 MainActivity ShowFilter enum All | Favorites | Screenshots
 MainActivity: ensureDefaultPins()/albumRelevanceScore(name)        // auto-pin 4 most relevant albums on first run
-MainActivity: appendJustifiedRows(cells,dayItems,rowWidthPx)        // justified-rows collage builder
+MainActivity: appendJustifiedRows(cells,dayItems,rowWidthPx)        // justified-rows collage builder (uses collageScaleLevel)
+MainActivity: adjustGridColumns(zoomIn,lm)/adjustCollageScale(zoomIn) // pinch step: grid columns / collage thumbnail scale
+MainActivity: rerenderForDisplayChange()                           // rebuild current view's cells in-memory (no library reload)
+IndexPreferences.getCollageScale()/setCollageScale(level 1..5)     // collage thumbnail scale, default COLLAGE_SCALE_DEFAULT
+DesignTokens.collageRowsPerWidth(level): Float                      // level 1..5 → images-per-row baseline
 MainActivity: startSearchHintCycle()/stopSearchHintCycle()/cycleSearchHint() // "alive" search bar: crossfades AI/metadata/indexing hints while empty
 MainActivity: searchHints(): List<CharSequence>                    // AI(sparkle) + Metadata + live "Indexing • N%" when a pass runs
 MainActivity: hintWithSparkle(text)                                // prepends accent ic_fluent_sparkle ImageSpan to a hint
@@ -193,7 +197,8 @@ WeightHyponym     = 0.50f
 GRID_DEFAULT_COLUMNS = 4
 GRID_SPAN_COUNT = 6
 COLLAGE_SPAN_COUNT = 60
-COLLAGE_TARGET_ROWS_PER_WIDTH = 2.3f
+COLLAGE_TARGET_ROWS_PER_WIDTH = 2.3f   // level-3 anchor
+COLLAGE_SCALE_MIN/MAX/DEFAULT = 1/5/3  // collageRowsPerWidth: 1.4/1.8/2.3/2.8/3.3f
 COLLAGE_MIN_ASPECT = 0.55f   COLLAGE_MAX_ASPECT = 2.4f
 COLLAGE_LAST_ROW_FILL_THRESHOLD = 0.7f   COLLAGE_MIN/MAX_ROW_HEIGHT_RATIO = 0.6f/1.7f
 DISPLAY_CAP = 800  (legacy; browse now paged, not capped)

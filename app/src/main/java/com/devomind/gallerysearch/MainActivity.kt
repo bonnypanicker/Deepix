@@ -129,6 +129,10 @@ class MainActivity : AppCompatActivity() {
     private var pagingInFlight = false
     private var pagedPrefixCount = 0            // non-timeline cells prepended (e.g. pinned header)
 
+    // Collage thumbnail scale (1..5); adjustable by pinch gesture + Settings. Cached here so the
+    // justified-rows builder doesn't hit SharedPreferences per day-row.
+    private var collageScaleLevel = DesignTokens.COLLAGE_SCALE_DEFAULT
+
     private val monthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
         .withZone(ZoneId.systemDefault())
     private val dayFormatter = DateTimeFormatter.ofPattern("EEE, d", Locale.getDefault())
@@ -222,6 +226,7 @@ class MainActivity : AppCompatActivity() {
         )
         adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
         adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
+        collageScaleLevel = IndexPreferences.getCollageScale(this)
 
         val initialSpanCount = if (adapter.useCollageLayout) DesignTokens.COLLAGE_SPAN_COUNT else adapter.gridColumnCount
         val layoutManager = GridLayoutManager(this, initialSpanCount)
@@ -231,14 +236,8 @@ class MainActivity : AppCompatActivity() {
 
         binding.imageGrid.layoutManager = layoutManager
 
-        val scaleGestureListener = ThumbnailScaleGestureListener(adapter.gridColumnCount) { newColumns ->
-            if (adapter.useCollageLayout) return@ThumbnailScaleGestureListener
-
-            adapter.gridColumnCount = newColumns
-            IndexPreferences.setGridColumnCount(this@MainActivity, newColumns)
-            layoutManager.spanCount = newColumns
-            layoutManager.spanSizeLookup.invalidateSpanIndexCache()
-            adapter.notifyItemRangeChanged(0, adapter.itemCount, "grid_change")
+        val scaleGestureListener = ThumbnailScaleGestureListener { zoomIn ->
+            if (adapter.useCollageLayout) adjustCollageScale(zoomIn) else adjustGridColumns(zoomIn, layoutManager)
         }
         val scaleGestureDetector = android.view.ScaleGestureDetector(this, scaleGestureListener)
 
@@ -1504,7 +1503,7 @@ class MainActivity : AppCompatActivity() {
     ) {
         val spanCount = DesignTokens.COLLAGE_SPAN_COUNT
         val width = rowWidthPx.coerceAtLeast(1)
-        val targetRowHeight = width / DesignTokens.COLLAGE_TARGET_ROWS_PER_WIDTH
+        val targetRowHeight = width / DesignTokens.collageRowsPerWidth(collageScaleLevel)
         // A row is "full" once the accumulated aspect ratios would shrink it to the
         // target height. targetAspectSum = width / targetRowHeight.
         val targetAspectSum = (width / targetRowHeight).toDouble()
@@ -3029,9 +3028,52 @@ class MainActivity : AppCompatActivity() {
         updateIndexDrawerLabel()
     }
 
+    /** Pinch step in grid mode: fewer columns on zoom-in (bigger), more on zoom-out (smaller). */
+    private fun adjustGridColumns(zoomIn: Boolean, layoutManager: GridLayoutManager) {
+        val current = adapter.gridColumnCount
+        val next = (if (zoomIn) current - 1 else current + 1)
+            .coerceIn(DesignTokens.GRID_MIN_COLUMNS, DesignTokens.GRID_MAX_COLUMNS)
+        if (next == current) return
+        adapter.gridColumnCount = next
+        IndexPreferences.setGridColumnCount(this, next)
+        layoutManager.spanCount = next
+        layoutManager.spanSizeLookup.invalidateSpanIndexCache()
+        adapter.notifyItemRangeChanged(0, adapter.itemCount, "grid_change")
+    }
+
+    /**
+     * Pinch step in collage mode: a lower scale level on zoom-in (bigger thumbnails), higher on
+     * zoom-out (smaller). Collage spans/heights are precomputed per cell, so this rebuilds the
+     * current view's cells (in-memory, no library reload) via [rerenderForDisplayChange].
+     */
+    private fun adjustCollageScale(zoomIn: Boolean) {
+        val current = collageScaleLevel
+        val next = (if (zoomIn) current - 1 else current + 1)
+            .coerceIn(DesignTokens.COLLAGE_SCALE_MIN, DesignTokens.COLLAGE_SCALE_MAX)
+        if (next == current) return
+        collageScaleLevel = next
+        IndexPreferences.setCollageScale(this, next)
+        rerenderForDisplayChange()
+    }
+
+    /**
+     * Rebuilds the current view's cells from already-loaded item lists so a display change (collage
+     * scale) takes effect immediately. Mirrors [refreshVisibleItems]'s dispatch without the IO reload.
+     */
+    private fun rerenderForDisplayChange() {
+        when {
+            currentMode == Mode.Search -> submitSearch()
+            currentMode == Mode.AlbumDetail -> currentAlbum?.let(::renderAlbumDetail) ?: renderCurrentSection()
+            currentMode == Mode.FolderDetail -> currentFolder?.let(::renderFolderDetail) ?: renderCurrentSection()
+            currentMode == Mode.SmartAlbumDetail -> currentSmartAlbum?.let(::renderSmartAlbumDetail) ?: renderCurrentSection()
+            else -> renderCurrentSection()
+        }
+    }
+
     private fun applyDisplaySettings() {
         adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
         adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
+        collageScaleLevel = IndexPreferences.getCollageScale(this)
         val layoutManager = binding.imageGrid.layoutManager as GridLayoutManager
         layoutManager.spanCount = if (adapter.useCollageLayout) DesignTokens.COLLAGE_SPAN_COUNT else adapter.gridColumnCount
         layoutManager.spanSizeLookup.invalidateSpanIndexCache()

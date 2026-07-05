@@ -8,6 +8,7 @@ object IndexPreferences {
     private const val KeyOptimalThreads = "optimal_thread_count"
     private const val KeyShowPinnedCollections = "show_pinned_collections"
     private const val KeyGridColumnCount = "grid_column_count"
+    private const val KeyCollageScale = "collage_scale_level"
     private const val KeyCollageLayout = "use_collage_layout"
     private const val KeyIndexPaused = "index_paused"
     private const val KeyIndexStopped = "index_stopped"
@@ -170,6 +171,19 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putInt(KeyGridColumnCount, count)
+            .apply()
+    }
+
+    /** Collage thumbnail scale level (1..5); higher = smaller thumbnails. See [DesignTokens.collageRowsPerWidth]. */
+    fun getCollageScale(context: Context): Int {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getInt(KeyCollageScale, DesignTokens.COLLAGE_SCALE_DEFAULT)
+    }
+
+    fun setCollageScale(context: Context, level: Int) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KeyCollageScale, level.coerceIn(DesignTokens.COLLAGE_SCALE_MIN, DesignTokens.COLLAGE_SCALE_MAX))
             .apply()
     }
 

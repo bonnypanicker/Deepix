@@ -44,8 +44,23 @@ object DesignTokens {
     // Grid resolution for row widths. Higher = finer per-photo widths, so a row's photos fill the
     // width more precisely with less quantization gap / aspect distortion.
     const val COLLAGE_SPAN_COUNT = 60
-    // Baseline images-per-row; smaller => taller rows / bigger thumbnails.
+    // Baseline images-per-row; smaller => taller rows / bigger thumbnails. This is the default
+    // (COLLAGE_SCALE_DEFAULT) baseline — the actual value is resolved per user scale via
+    // [collageRowsPerWidth]. Kept as the level-3 anchor.
     const val COLLAGE_TARGET_ROWS_PER_WIDTH = 2.3f
+
+    // User-adjustable collage thumbnail scale — a discrete level (like grid columns). Higher level =
+    // smaller thumbnails (more images per row); lower level = bigger thumbnails. Adjustable by pinch
+    // gesture and in Settings, persisted via IndexPreferences.
+    const val COLLAGE_SCALE_MIN = 1
+    const val COLLAGE_SCALE_MAX = 5
+    const val COLLAGE_SCALE_DEFAULT = 3
+    // Level (1..5) → images-per-row baseline. Level 3 == COLLAGE_TARGET_ROWS_PER_WIDTH (unchanged default).
+    private val COLLAGE_SCALE_ROWS = floatArrayOf(1.4f, 1.8f, 2.3f, 2.8f, 3.3f)
+
+    /** Resolves a collage scale level (1..5) to its images-per-row baseline. */
+    fun collageRowsPerWidth(scaleLevel: Int): Float =
+        COLLAGE_SCALE_ROWS[scaleLevel.coerceIn(COLLAGE_SCALE_MIN, COLLAGE_SCALE_MAX) - 1]
     const val COLLAGE_MIN_ASPECT = 0.55f
     const val COLLAGE_MAX_ASPECT = 2.4f
     // A trailing partial row is stretched to fill (instead of left-aligned at target height) once
