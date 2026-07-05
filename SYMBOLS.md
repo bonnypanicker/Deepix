@@ -97,6 +97,9 @@ MainActivity SortMode enum   Relevance | Newest | Oldest
 MainActivity ShowFilter enum All | Favorites | Screenshots
 MainActivity: ensureDefaultPins()/albumRelevanceScore(name)        // auto-pin 4 most relevant albums on first run
 MainActivity: appendJustifiedRows(cells,dayItems,rowWidthPx)        // justified-rows collage builder
+MainActivity: startSearchHintCycle()/stopSearchHintCycle()/cycleSearchHint() // "alive" search bar: crossfades AI/metadata/indexing hints while empty
+MainActivity: searchHints(): List<CharSequence>                    // AI(sparkle) + Metadata + live "Indexing • N%" when a pass runs
+MainActivity: hintWithSparkle(text)                                // prepends accent ic_fluent_sparkle ImageSpan to a hint
 MainActivity: ensureEncodersLoaded(warmupDelayMs): CompletableDeferred<Boolean> // idempotent lazy CLIP load; awaited by search paths
 MainActivity: shouldRunBackgroundIndexing(): Boolean               // true when index pass should run (also gates eager encoder warm-up)
 MainActivity: renderPagedTimeline(items,emptyText,contextKey,prefix) // incremental browse grid — first page fast, rest on scroll
