@@ -42,13 +42,17 @@ object PhotoEditOps {
     /**
      * Perspective-corrects [src] using four source corners (in bitmap pixels, order TL, TR, BR, BL)
      * and warps the enclosed quad into an upright rectangle — deskews documents / photos of screens.
+     *
+     * Uses a [BitmapShader] (inverse per-pixel sampling) rather than `drawBitmap(src, matrix)`:
+     * forward-drawing a perspective matrix folds/smears the pixels beyond the vanishing line across
+     * the whole output; inverse sampling samples only inside the quad and clips cleanly to the rect.
      */
     fun perspective(src: Bitmap, corners: FloatArray): Bitmap {
         require(corners.size == 8)
-        val (tlx, tly) = corners[0] to corners[1]
-        val (trx, tryy) = corners[2] to corners[3]
-        val (brx, bry) = corners[4] to corners[5]
-        val (blx, bly) = corners[6] to corners[7]
+        val tlx = corners[0]; val tly = corners[1]
+        val trx = corners[2]; val tryy = corners[3]
+        val brx = corners[4]; val bry = corners[5]
+        val blx = corners[6]; val bly = corners[7]
 
         val widthTop = hypot((trx - tlx).toDouble(), (tryy - tly).toDouble())
         val widthBottom = hypot((brx - blx).toDouble(), (bry - bly).toDouble())
@@ -64,11 +68,22 @@ object PhotoEditOps {
             outW.toFloat(), outH.toFloat(),
             0f, outH.toFloat()
         )
+        // Map source quad -> output rect. If the quad is degenerate, fall back to a bounding crop.
         val m = Matrix()
-        m.setPolyToPoly(corners, 0, dst, 0, 4)
+        if (!m.setPolyToPoly(corners, 0, dst, 0, 4)) {
+            val left = minOf(tlx, trx, brx, blx)
+            val top = minOf(tly, tryy, bry, bly)
+            val right = maxOf(tlx, trx, brx, blx)
+            val bottom = maxOf(tly, tryy, bry, bly)
+            return crop(src, Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt()))
+        }
 
         val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
-        Canvas(out).drawBitmap(src, m, paint())
+        val shader = android.graphics.BitmapShader(
+            src, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP
+        ).apply { setLocalMatrix(m) }
+        val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { this.shader = shader }
+        Canvas(out).drawRect(0f, 0f, outW.toFloat(), outH.toFloat(), p)
         return out
     }
 
