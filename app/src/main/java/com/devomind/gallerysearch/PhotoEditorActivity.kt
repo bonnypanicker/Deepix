@@ -300,12 +300,14 @@ class PhotoEditorActivity : AppCompatActivity() {
                 binding.panelCrop.visibility = View.VISIBLE
                 binding.cropView.setAspect(null)
                 binding.cropView.setImageBounds(bounds)
+                binding.cropView.magnifierSource = working
                 binding.cropView.visibility = View.VISIBLE
             }
             Tool.PERSPECTIVE -> {
                 binding.toolTitle.text = "Perspective"
                 binding.panelPerspective.visibility = View.VISIBLE
                 binding.quadView.setImageBounds(bounds)
+                binding.quadView.magnifierSource = working
                 binding.quadView.visibility = View.VISIBLE
             }
             Tool.DRAW -> {
@@ -329,6 +331,8 @@ class PhotoEditorActivity : AppCompatActivity() {
 
     private fun exitTool() {
         tool = null
+        binding.cropView.magnifierSource = null
+        binding.quadView.magnifierSource = null
         binding.cropView.visibility = View.GONE
         binding.quadView.visibility = View.GONE
         binding.drawView.visibility = View.GONE
@@ -373,17 +377,21 @@ class PhotoEditorActivity : AppCompatActivity() {
     }
 
     private fun rotateWorking(degrees: Float) {
+        binding.cropView.magnifierSource = null   // old working is about to be recycled
         addOp(EditOp.Rotate(degrees))
         if (tool == Tool.CROP) binding.editImage.post {
             binding.cropView.setAspect(null)
             binding.cropView.setImageBounds(imageDisplayRect())
+            binding.cropView.magnifierSource = working
         }
     }
 
     private fun flipWorking() {
+        binding.cropView.magnifierSource = null
         addOp(EditOp.Flip)
         if (tool == Tool.CROP) binding.editImage.post {
             binding.cropView.setImageBounds(imageDisplayRect())
+            binding.cropView.magnifierSource = working
         }
     }
 

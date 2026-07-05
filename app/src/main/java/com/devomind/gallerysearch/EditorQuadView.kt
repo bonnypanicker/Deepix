@@ -1,6 +1,7 @@
 package com.devomind.gallerysearch
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
@@ -32,6 +33,9 @@ class EditorQuadView @JvmOverloads constructor(
 
     private val touchSlop = dp(28f)
     private val knobRadius = dp(8f)
+
+    /** Source bitmap for the magnifier loupe shown while dragging a corner. */
+    var magnifierSource: Bitmap? = null
 
     fun setImageBounds(r: RectF) {
         bounds.set(r)
@@ -70,6 +74,12 @@ class EditorQuadView @JvmOverloads constructor(
         for (p in pts) {
             canvas.drawCircle(p.x, p.y, knobRadius, knob)
             canvas.drawCircle(p.x, p.y, knobRadius, knobRing)
+        }
+
+        val src = magnifierSource
+        if (src != null && dragging in 0..3) {
+            val p = pts[dragging]
+            EditorMagnifier.draw(canvas, src, bounds, p.x, p.y, resources.displayMetrics.density)
         }
     }
 

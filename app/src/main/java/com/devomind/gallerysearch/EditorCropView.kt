@@ -1,6 +1,7 @@
 package com.devomind.gallerysearch
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
@@ -38,6 +39,9 @@ class EditorCropView @JvmOverloads constructor(
     private var active = H.NONE
     private var lastX = 0f
     private var lastY = 0f
+
+    /** Source bitmap for the magnifier loupe shown while dragging a corner. */
+    var magnifierSource: Bitmap? = null
 
     fun setImageBounds(r: RectF) {
         bounds.set(r)
@@ -95,6 +99,20 @@ class EditorCropView @JvmOverloads constructor(
         corner(canvas, sel.right, sel.top, -1, 1)
         corner(canvas, sel.left, sel.bottom, 1, -1)
         corner(canvas, sel.right, sel.bottom, -1, -1)
+
+        val src = magnifierSource
+        if (src != null) {
+            val focus = activeCorner() ?: return
+            EditorMagnifier.draw(canvas, src, bounds, focus.first, focus.second, resources.displayMetrics.density)
+        }
+    }
+
+    private fun activeCorner(): Pair<Float, Float>? = when (active) {
+        H.TL -> sel.left to sel.top
+        H.TR -> sel.right to sel.top
+        H.BL -> sel.left to sel.bottom
+        H.BR -> sel.right to sel.bottom
+        else -> null
     }
 
     private fun corner(c: Canvas, x: Float, y: Float, sx: Int, sy: Int) {
