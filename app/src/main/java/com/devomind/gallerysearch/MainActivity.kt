@@ -11,6 +11,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.text.Spannable
+import android.text.SpannableStringBuilder
+import android.text.style.ImageSpan
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
@@ -110,6 +113,12 @@ class MainActivity : AppCompatActivity() {
     private var lastSearchStatusText = ""
     private var imageSearchActive = false
     private var suppressSearchInput = false
+    // "Alive" search bar: the empty-state hint crossfades through what search can do
+    // (AI image search, metadata search) plus live indexing progress when a pass is running.
+    private var searchHintIndex = 0
+    private var indexProgressCurrent = 0
+    private var indexProgressTotal = 0
+    private val searchHintRunnable = Runnable { cycleSearchHint() }
     private val activeFilters = LinkedHashSet<String>()
 
     // Incremental (paged) loading of the browse timeline grid so large libraries render fast.
@@ -340,12 +349,14 @@ class MainActivity : AppCompatActivity() {
                 false
             }
         }
-        binding.searchInput.doAfterTextChanged {
+        binding.searchInput.doAfterTextChanged { editable ->
             if (suppressSearchInput) return@doAfterTextChanged
             if (imageSearchActive) {
                 imageSearchActive = false
                 clearImageSearchThumb()
             }
+            // Pause the rotating hint while typing; resume it once the field is empty again.
+            if (editable.isNullOrEmpty()) startSearchHintCycle() else stopSearchHintCycle()
             updateSearchPillState()
             if (currentMode == Mode.Search && binding.searchPanel.visibility == View.VISIBLE) {
                 searchDebounceJob?.cancel()
@@ -1049,7 +1060,12 @@ class MainActivity : AppCompatActivity() {
         binding.resultCount.text = ""
         binding.imageGrid.removeCallbacks(fastScrollVisibilityRunnable)
         binding.fastScrollIndicator.visibility = View.GONE
-        binding.searchInput.hint = if (imageSearchActive) "Photos similar to this image" else "Search photos"
+        if (imageSearchActive) {
+            stopSearchHintCycle()
+            binding.searchInput.hint = "Photos similar to this image"
+        } else {
+            startSearchHintCycle()
+        }
         updateSearchTrailingIcon()
         binding.searchInput.requestFocus()
         updateSearchMetaText()
@@ -1087,8 +1103,8 @@ class MainActivity : AppCompatActivity() {
         imageSearchActive = false
         clearImageSearchThumb()
         binding.searchInput.clearFocus()
-        binding.searchInput.hint = "Search albums, photos…"
         currentMode = if (currentAlbum != null) Mode.AlbumDetail else Mode.Browse
+        startSearchHintCycle()
         updateSearchTrailingIcon()
         renderCurrentState()
     }
@@ -1103,6 +1119,71 @@ class MainActivity : AppCompatActivity() {
             activeSection == Section.Favorites -> "Search favorite photos"
             else -> "Search photos"
         }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // "Alive" search bar — rotating hints
+    // ---------------------------------------------------------------------------------------------
+
+    /** The rotating hints shown while the field is empty. Indexing progress joins in only while a pass runs. */
+    private fun searchHints(): List<CharSequence> {
+        val hints = ArrayList<CharSequence>(3)
+        hints += hintWithSparkle("AI image search")
+        hints += "Metadata search"
+        if (indexRunning && indexProgressTotal > 0) {
+            val pct = (indexProgressCurrent * 100 / indexProgressTotal).coerceIn(0, 100)
+            hints += "Indexing your library • $pct%"
+        }
+        return hints
+    }
+
+    /** Prepends the accent sparkle glyph to a hint so the AI capability reads at a glance. */
+    private fun hintWithSparkle(text: String): CharSequence {
+        val icon = ContextCompat.getDrawable(this, R.drawable.ic_fluent_sparkle_24_regular)
+            ?: return text
+        val size = (binding.searchInput.textSize * 1.05f).toInt().coerceAtLeast(1)
+        icon.setBounds(0, 0, size, size)
+        icon.setTint(ContextCompat.getColor(this, R.color.metroAccent))
+        val builder = SpannableStringBuilder("  ").append(text)
+        builder.setSpan(ImageSpan(icon, ImageSpan.ALIGN_BASELINE), 0, 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        return builder
+    }
+
+    /** True only when the empty-state hint is actually visible and worth animating. */
+    private fun canCycleSearchHint(): Boolean =
+        !imageSearchActive && binding.searchInput.text.isNullOrEmpty()
+
+    /** Starts (or restarts) the rotating hint. Cheap: one delayed Runnable on the view's own handler. */
+    private fun startSearchHintCycle() {
+        stopSearchHintCycle()
+        if (!canCycleSearchHint()) return
+        searchHintIndex = 0
+        cycleSearchHint()
+    }
+
+    private fun stopSearchHintCycle() {
+        binding.searchInput.removeCallbacks(searchHintRunnable)
+        binding.searchInput.animate().cancel()
+        binding.searchInput.alpha = 1f
+    }
+
+    private fun cycleSearchHint() {
+        if (!canCycleSearchHint()) return
+        val hints = searchHints()
+        if (hints.isEmpty()) return
+        val next = hints[searchHintIndex % hints.size]
+        searchHintIndex = (searchHintIndex + 1) % hints.size
+        val input = binding.searchInput
+        // Crossfade the hint. The field is empty here, so fading the view only affects the hint text.
+        input.animate()
+            .alpha(0f)
+            .setDuration(SEARCH_HINT_FADE_MS)
+            .withEndAction {
+                input.hint = next
+                input.animate().alpha(1f).setDuration(SEARCH_HINT_FADE_MS).start()
+            }
+            .start()
+        input.postDelayed(searchHintRunnable, SEARCH_HINT_INTERVAL_MS)
     }
 
     private fun submitSearch() {
@@ -2140,6 +2221,7 @@ class MainActivity : AppCompatActivity() {
     private fun showImageSearchThumb(uri: Uri, cropRect: FloatArray? = null) {
         binding.searchImageThumb.visibility = View.VISIBLE
         binding.searchImageThumb.setOnClickListener { clearImageSearch() }
+        stopSearchHintCycle()
         binding.searchInput.hint = if (cropRect != null) "Photos similar to this region" else "Photos similar to this image"
 
         if (cropRect == null || cropRect.size < 4) {
@@ -2170,7 +2252,7 @@ class MainActivity : AppCompatActivity() {
         binding.searchImageThumb.visibility = View.GONE
         binding.searchImageThumb.setOnClickListener(null)
         com.bumptech.glide.Glide.with(this).clear(binding.searchImageThumb)
-        binding.searchInput.hint = "Search albums, photos…"
+        startSearchHintCycle()
     }
 
     private fun clearImageSearch() {
@@ -2786,6 +2868,8 @@ class MainActivity : AppCompatActivity() {
                     WorkInfo.State.RUNNING -> {
                         val current = work.progress.getInt(IndexWorker.ProgressCurrentKey, 0)
                         val total = work.progress.getInt(IndexWorker.ProgressTotalKey, 0)
+                        indexProgressCurrent = current
+                        indexProgressTotal = total
                         binding.statusText.text = "Indexing: $current / $total"
                         maybeRefreshLiveIndex(current)
                     }
@@ -3042,8 +3126,19 @@ class MainActivity : AppCompatActivity() {
         if (hasFocus) hideStatusBar()
     }
 
+    override fun onResume() {
+        super.onResume()
+        startSearchHintCycle()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopSearchHintCycle()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        stopSearchHintCycle()
         searchDebounceJob?.cancel()
         searchJob?.cancel()
         renderJob?.cancel()
@@ -3066,6 +3161,9 @@ class MainActivity : AppCompatActivity() {
         private const val BROWSE_PAGE_SIZE = 120
         private const val BROWSE_PAGE_MAX = 320
         private const val PAGE_PREFETCH_CELLS = 12
+        // "Alive" search-bar hint rotation.
+        private const val SEARCH_HINT_INTERVAL_MS = 2800L
+        private const val SEARCH_HINT_FADE_MS = 220L
     }
 
     private enum class SearchMode {
