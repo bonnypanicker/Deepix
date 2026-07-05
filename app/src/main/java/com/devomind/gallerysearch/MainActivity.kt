@@ -199,7 +199,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
-        installSplashScreen()
+        val splashScreen = installSplashScreen()
+        // Hold the splash until the first gallery content is laid out (keepSplash
+        // flips false in dismissLoadingOverlay), with a hard timeout as a safety net.
+        splashScreen.setKeepOnScreenCondition { keepSplash }
         super.onCreate(savedInstanceState)
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -208,6 +211,7 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        binding.root.postDelayed({ keepSplash = false }, SPLASH_MAX_HOLD_MS)
         configureEdgeToEdge()
         favoritesStore = FavoritesStore(this)
         albumPinStore = AlbumPinStore(this)
@@ -2303,8 +2307,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var loadingOverlayDismissed = false
+    private var keepSplash = true
 
     private fun dismissLoadingOverlay() {
+        keepSplash = false
         if (loadingOverlayDismissed) return
         loadingOverlayDismissed = true
         binding.loadingOverlay.animate()
@@ -3190,6 +3196,8 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val INDEX_WORK_NAME = "gallery_background_index"
+        // Safety cap: never hold the launch splash longer than this even if content stalls.
+        private const val SPLASH_MAX_HOLD_MS = 2500L
         // Let a cold start render + settle before the background index worker loads the ONNX
         // models and starts processing, so the heavy work doesn't jank the launch.
         private const val INDEX_STARTUP_DELAY_SECONDS = 6L
