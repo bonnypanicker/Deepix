@@ -6,8 +6,8 @@
     <group
         android:pivotX="54"
         android:pivotY="54"
-        android:scaleX="1.08"
-        android:scaleY="1.08">
+        android:scaleX="0.96"
+        android:scaleY="0.96">
     <!-- Photo frame (ring, even-odd cut-out) -->
     <path
         android:fillColor="#FFFFFF"
