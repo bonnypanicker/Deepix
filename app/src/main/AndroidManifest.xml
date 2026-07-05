@@ -38,6 +38,11 @@
             android:exported="false" />
 
         <activity
+            android:name=".PhotoEditorActivity"
+            android:exported="false"
+            android:theme="@style/Theme.GallerySearch" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>

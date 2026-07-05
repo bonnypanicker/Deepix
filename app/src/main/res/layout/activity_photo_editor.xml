@@ -1,0 +1,335 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/editorRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- Top bar -->
+        <LinearLayout
+            android:id="@+id/topBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:baselineAligned="false"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="6dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp">
+
+            <ImageButton
+                android:id="@+id/closeBtn"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Close"
+                android:padding="10dp"
+                android:src="@drawable/ic_fluent_dismiss_24_regular"
+                android:tint="#FFFFFF" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:text="Edit"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp" />
+
+            <ImageButton
+                android:id="@+id/undoBtn"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Undo"
+                android:padding="10dp"
+                android:src="@drawable/ic_fluent_arrow_undo_24_regular"
+                android:tint="#FFFFFF" />
+
+            <TextView
+                android:id="@+id/saveBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/crop_search_pill"
+                android:clickable="true"
+                android:focusable="true"
+                android:paddingStart="20dp"
+                android:paddingTop="9dp"
+                android:paddingEnd="20dp"
+                android:paddingBottom="9dp"
+                android:text="Save"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Image + overlays -->
+        <FrameLayout
+            android:id="@+id/editArea"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <ImageView
+                android:id="@+id/editImage"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@null"
+                android:scaleType="fitCenter" />
+
+            <com.devomind.gallerysearch.EditorCropView
+                android:id="@+id/cropView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
+            <com.devomind.gallerysearch.EditorQuadView
+                android:id="@+id/quadView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
+            <com.devomind.gallerysearch.EditorDrawView
+                android:id="@+id/drawView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <!-- Per-tool control panel -->
+        <FrameLayout
+            android:id="@+id/toolPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/metroBgSecondary">
+
+            <!-- Crop -->
+            <LinearLayout
+                android:id="@+id/panelCrop"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="12dp"
+                android:visibility="gone">
+
+                <TextView android:id="@+id/cropFree" style="@style/EditorChip" android:text="Free" />
+                <TextView android:id="@+id/cropSquare" style="@style/EditorChip" android:text="1:1" />
+                <TextView android:id="@+id/crop43" style="@style/EditorChip" android:text="4:3" />
+                <TextView android:id="@+id/crop169" style="@style/EditorChip" android:text="16:9" />
+
+                <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+
+                <ImageButton
+                    android:id="@+id/rotateLeftBtn"
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Rotate"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_fluent_rotate_left_24_regular"
+                    android:tint="#FFFFFF" />
+
+                <ImageButton
+                    android:id="@+id/flipBtn"
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Flip"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_fluent_flip_horizontal_24_regular"
+                    android:tint="#FFFFFF" />
+            </LinearLayout>
+
+            <!-- Adjust -->
+            <LinearLayout
+                android:id="@+id/panelAdjust"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:visibility="gone">
+
+                <TextView style="@style/EditorSliderLabel" android:text="Brightness" />
+                <SeekBar android:id="@+id/seekBrightness" style="@style/EditorSeek" android:max="200" android:progress="100" />
+
+                <TextView style="@style/EditorSliderLabel" android:text="Contrast" />
+                <SeekBar android:id="@+id/seekContrast" style="@style/EditorSeek" android:max="200" android:progress="100" />
+
+                <TextView style="@style/EditorSliderLabel" android:text="Saturation" />
+                <SeekBar android:id="@+id/seekSaturation" style="@style/EditorSeek" android:max="200" android:progress="100" />
+
+                <TextView
+                    android:id="@+id/documentBtn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="start"
+                    android:layout_marginTop="6dp"
+                    android:background="@drawable/search_filter_chip_bg"
+                    android:clickable="true"
+                    android:drawableStart="@drawable/ic_fluent_sparkle_24_regular"
+                    android:drawablePadding="6dp"
+                    android:drawableTint="#FFFFFF"
+                    android:focusable="true"
+                    android:paddingStart="14dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="16dp"
+                    android:paddingBottom="8dp"
+                    android:text="Document"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <!-- Draw -->
+            <LinearLayout
+                android:id="@+id/panelDraw"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="12dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/swatchRow"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal" />
+
+                <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+
+                <SeekBar
+                    android:id="@+id/seekBrush"
+                    android:layout_width="120dp"
+                    android:layout_height="wrap_content"
+                    android:max="48"
+                    android:progress="10"
+                    android:progressTint="@color/metroAccent"
+                    android:thumbTint="@color/metroAccent" />
+
+                <ImageButton
+                    android:id="@+id/undoStrokeBtn"
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
+                    android:layout_marginStart="4dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Undo stroke"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_fluent_arrow_undo_24_regular"
+                    android:tint="#FFFFFF" />
+            </LinearLayout>
+
+            <!-- Perspective -->
+            <TextView
+                android:id="@+id/panelPerspective"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:paddingTop="16dp"
+                android:paddingBottom="16dp"
+                android:text="Drag the corners to the edges of the document, then apply"
+                android:textColor="#9A9A9A"
+                android:textSize="13sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <!-- Bottom bar (tools) / action bar (apply-cancel) -->
+        <FrameLayout
+            android:id="@+id/bottomArea"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:background="@color/metroBgPrimary">
+
+            <LinearLayout
+                android:id="@+id/toolBar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal">
+
+                <LinearLayout android:id="@+id/toolCrop" style="@style/EditorToolTab">
+                    <ImageView style="@style/EditorToolIcon" android:src="@drawable/ic_fluent_crop_24_regular" />
+                    <TextView style="@style/EditorToolLabel" android:text="Crop" />
+                </LinearLayout>
+
+                <LinearLayout android:id="@+id/toolPerspective" style="@style/EditorToolTab">
+                    <ImageView style="@style/EditorToolIcon" android:src="@drawable/ic_fluent_perspective_24_regular" />
+                    <TextView style="@style/EditorToolLabel" android:text="Perspective" />
+                </LinearLayout>
+
+                <LinearLayout android:id="@+id/toolDraw" style="@style/EditorToolTab">
+                    <ImageView style="@style/EditorToolIcon" android:src="@drawable/ic_fluent_brush_24_regular" />
+                    <TextView style="@style/EditorToolLabel" android:text="Draw" />
+                </LinearLayout>
+
+                <LinearLayout android:id="@+id/toolAdjust" style="@style/EditorToolTab">
+                    <ImageView style="@style/EditorToolIcon" android:src="@drawable/ic_fluent_options_24_regular" />
+                    <TextView style="@style/EditorToolLabel" android:text="Adjust" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/toolActionBar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:visibility="gone">
+
+                <ImageButton
+                    android:id="@+id/toolCancelBtn"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Cancel"
+                    android:padding="12dp"
+                    android:src="@drawable/ic_fluent_dismiss_24_regular"
+                    android:tint="#FFFFFF" />
+
+                <TextView
+                    android:id="@+id/toolTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp" />
+
+                <ImageButton
+                    android:id="@+id/toolApplyBtn"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Apply"
+                    android:padding="12dp"
+                    android:src="@drawable/ic_fluent_checkmark_24_regular"
+                    android:tint="@color/metroAccent" />
+            </LinearLayout>
+        </FrameLayout>
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/editorLoading"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:indeterminateTint="@color/metroAccent"
+        android:visibility="gone" />
+</FrameLayout>

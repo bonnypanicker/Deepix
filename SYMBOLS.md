@@ -23,6 +23,10 @@ IndexControlReceiver      IndexControlReceiver.kt  ActionPause/ActionResume broa
 IndexPreferences          IndexPreferences.kt      save/loadLastIndexedTime; isIndexPaused/setIndexPaused; getGridColumnCount
 IndexScopeStore           IndexScopeStore.kt       getFolderIds/setFolderIds/isAllFolders (empty=all); AI-index folder scope, independent of gallery view
 IndexedFoldersActivity    IndexedFoldersActivity.kt  Settings folder picker → IndexScopeStore + IndexController.rescan
+PhotoEditorActivity       PhotoEditorActivity.kt   in-app editor (crop/perspective/draw/adjust); Save + Save a copy; ExtraUri/ExtraName/ExtraEdited
+PhotoEditOps              PhotoEditOps.kt          rotate/flip/crop/perspective(setPolyToPoly)/colorMatrix/documentMatrix/composite
+MediaImageSaver           MediaImageSaver.kt       overwrite(uri) [RecoverableSecurityException/createWriteRequest] + saveCopy → Pictures/Deepix
+EditorCropView / EditorQuadView / EditorDrawView   crop rect+aspect / 4-corner perspective quad / freehand draw overlays
 AlbumPinStore             AlbumPinStore.kt         pin/unpin/isPinned/getPinnedAlbumIds/setPinnedOrder/cleanup/isInitialized/markInitialized
 SmartAlbumStore           SmartAlbumStore.kt       getAll(); get(id); upsert(album); delete(id); isSmartId(id)
   SmartAlbum              SmartAlbumStore.kt       data class: id,name,prompt,searchMode,memberUris,coverUri,createdAt,updatedAt; toAlbum(): Album

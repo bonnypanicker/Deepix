@@ -100,6 +100,13 @@ class ViewerActivity : AppCompatActivity() {
         }
     }
 
+    private val editorLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val edited = result.data?.getBooleanExtra(PhotoEditorActivity.ExtraEdited, false) == true
+        if (edited) onImageEdited()
+    }
+
     private var previousPosition = -1
 
     private val pageChangeCallback = object : androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
@@ -1129,26 +1136,22 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     private fun edit(uri: Uri) {
-        val mimeType = contentResolver.getType(uri) ?: "image/*"
-        val editIntent = Intent(Intent.ACTION_EDIT).apply {
-            setDataAndType(uri, mimeType)
-            clipData = ClipData.newUri(contentResolver, "photo", uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        val item = items.getOrNull(currentPosition)
+        val intent = Intent(this, PhotoEditorActivity::class.java).apply {
+            putExtra(PhotoEditorActivity.ExtraUri, uri.toString())
+            putExtra(PhotoEditorActivity.ExtraName, item?.displayName)
         }
-        val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mimeType)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
+        editorLauncher.launch(intent)
+    }
 
-        try {
-            startActivity(Intent.createChooser(editIntent, "Edit photo"))
-        } catch (missingEditor: ActivityNotFoundException) {
-            Log.d(Tag, "No edit activity available; falling back to view.", missingEditor)
-            try {
-                startActivity(fallbackIntent)
-            } catch (error: ActivityNotFoundException) {
-                Log.w(Tag, "No viewer fallback available for edit action.", error)
-                Toast.makeText(this, "No editor available for this photo.", Toast.LENGTH_SHORT).show()
+    /** After an edit is saved, refresh the current page (bust Glide cache) and mark content changed. */
+    private fun onImageEdited() {
+        contentChanged = true
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { com.bumptech.glide.Glide.get(this@ViewerActivity).clearDiskCache() }
+            withContext(Dispatchers.Main) {
+                com.bumptech.glide.Glide.get(this@ViewerActivity).clearMemory()
+                adapter.notifyItemChanged(currentPosition)
             }
         }
     }
