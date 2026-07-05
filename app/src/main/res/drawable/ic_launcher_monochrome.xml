@@ -1,0 +1,19 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Photo frame (ring, even-odd cut-out) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M34,26h40a8,8 0,0 1,8 8v40a8,8 0,0 1,-8 8h-40a8,8 0,0 1,-8 -8v-40a8,8 0,0 1,8 -8zM38,33a5,5 0,0 0,-5 5v32a5,5 0,0 0,5 5h32a5,5 0,0 0,5 -5v-32a5,5 0,0 0,-5 -5z" />
+    <!-- Mountain ridge -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M33,73l17,-22l9,11l5,-5l11,16z" />
+    <!-- Sun -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M65,40m-5,0a5,5 0,1 0,10 0a5,5 0,1 0,-10 0" />
+</vector>
