@@ -178,7 +178,10 @@ class IndexWorker(
          * (initial start, resume, settings re-apply, notification action) honors the
          * "index only while charging" preference. Reads the pref at build time.
          */
-        fun buildWorkRequest(context: Context): androidx.work.OneTimeWorkRequest {
+        fun buildWorkRequest(
+            context: Context,
+            initialDelaySeconds: Long = 0
+        ): androidx.work.OneTimeWorkRequest {
             val constraints = androidx.work.Constraints.Builder()
                 .apply {
                     if (IndexPreferences.isChargingOnlyIndexing(context)) setRequiresCharging(true)
@@ -186,6 +189,13 @@ class IndexWorker(
                 .build()
             return androidx.work.OneTimeWorkRequestBuilder<IndexWorker>()
                 .setConstraints(constraints)
+                // Delay the (heavy) model load + indexing so a cold start renders and becomes
+                // interactive first, instead of the worker competing for CPU/RAM during launch.
+                .apply {
+                    if (initialDelaySeconds > 0) {
+                        setInitialDelay(initialDelaySeconds, java.util.concurrent.TimeUnit.SECONDS)
+                    }
+                }
                 .setBackoffCriteria(
                     androidx.work.BackoffPolicy.LINEAR,
                     DesignTokens.INDEX_BACKOFF_SECONDS,

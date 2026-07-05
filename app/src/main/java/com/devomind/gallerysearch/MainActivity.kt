@@ -493,6 +493,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadEncodersInBackground() {
         lifecycleScope.launch {
+            // Yield to the first frames so the ONNX model load (~135 MB) doesn't compete with the
+            // cold-start UI. Search that needs the models shows its own loading state meanwhile.
+            kotlinx.coroutines.delay(ENCODER_WARMUP_DELAY_MS)
             val sharedEncoders = (application as GallerySearchApp).sharedEncoders
             val encoders = withContext(Dispatchers.IO) {
                 val imageAsync = async { runCatching { sharedEncoders.getImageEncoder() }.getOrNull() }
@@ -537,7 +540,7 @@ class MainActivity : AppCompatActivity() {
         }
         // First run: auto-start indexing (delayed, in background) and tell the user once.
         if (!IndexPreferences.wasIndexConsentAsked(applicationContext)) {
-            enqueueBackgroundIndexing(showToast = false)
+            enqueueBackgroundIndexing(showToast = false, initialDelaySeconds = INDEX_STARTUP_DELAY_SECONDS)
             showIndexingStartedDialog()
         }
     }
@@ -591,9 +594,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun enqueueIndexWork(policy: ExistingWorkPolicy) {
+    private fun enqueueIndexWork(policy: ExistingWorkPolicy, initialDelaySeconds: Long = 0) {
         IndexWorker.cancelStatusNotification(this)
-        val request = IndexWorker.buildWorkRequest(this)
+        val request = IndexWorker.buildWorkRequest(this, initialDelaySeconds)
         WorkManager.getInstance(this).enqueueUniqueWork(INDEX_WORK_NAME, policy, request)
     }
 
@@ -2646,11 +2649,18 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, label, Toast.LENGTH_SHORT).show()
     }
 
-    private fun enqueueBackgroundIndexing(showToast: Boolean = true, replace: Boolean = false) {
+    private fun enqueueBackgroundIndexing(
+        showToast: Boolean = true,
+        replace: Boolean = false,
+        initialDelaySeconds: Long = 0
+    ) {
         IndexPreferences.setIndexPaused(this, false)
         IndexPreferences.setIndexStopped(this, false)
         IndexPreferences.setIndexConsentGiven(this, true)
-        enqueueIndexWork(if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP)
+        enqueueIndexWork(
+            if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
+            initialDelaySeconds
+        )
         updateIndexDrawerLabel()
         if (showToast) {
             Toast.makeText(this, "Indexing started.", Toast.LENGTH_SHORT).show()
@@ -2745,7 +2755,8 @@ class MainActivity : AppCompatActivity() {
             updateIndexDrawerLabel()
             return
         }
-        enqueueIndexWork(ExistingWorkPolicy.KEEP)
+        // Delay so a cold start finishes rendering before the heavy model load + indexing begins.
+        enqueueIndexWork(ExistingWorkPolicy.KEEP, INDEX_STARTUP_DELAY_SECONDS)
         binding.statusText.text =
             "Background indexing queued · ${indexedSummary(repo.indexedCount)}"
     }
@@ -2924,6 +2935,10 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val INDEX_WORK_NAME = "gallery_background_index"
+        // Let a cold start render + settle before the background index worker loads the ONNX
+        // models and starts processing, so the heavy work doesn't jank the launch.
+        private const val INDEX_STARTUP_DELAY_SECONDS = 6L
+        private const val ENCODER_WARMUP_DELAY_MS = 1200L
         // Show the fast-scroll bar once content exceeds ~1.5 viewports.
         private const val FAST_SCROLL_MIN_RATIO = 1.5f
         private const val SEARCH_PAGE_SIZE = 30
