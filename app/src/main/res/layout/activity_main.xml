@@ -306,6 +306,35 @@
                 </LinearLayout>
 
                 <LinearLayout
+                    android:id="@+id/safeSelectionBtn"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:contentDescription="Move to Safe"
+                        android:src="@drawable/ic_fluent_lock_closed_24_regular"
+                        android:tint="@color/metroTextPrimary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:includeFontPadding="false"
+                        android:letterSpacing="0.04"
+                        android:text="safe"
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
+                <LinearLayout
                     android:id="@+id/deleteSelectionBtn"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
@@ -483,6 +512,11 @@
             android:id="@+id/drawerFolders"
             style="@style/MetroDrawerItem"
             android:text="folders" />
+
+        <TextView
+            android:id="@+id/drawerSafe"
+            style="@style/MetroDrawerItem"
+            android:text="safe" />
 
         <TextView
             android:id="@+id/drawerSmartCleanup"

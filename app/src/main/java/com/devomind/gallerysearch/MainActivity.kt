@@ -180,6 +180,17 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { applyDisplaySettings() }
 
+    private val safeLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        // Photos successfully moved into the Safe: delete the originals via the normal consent flow.
+        @Suppress("DEPRECATION")
+        val imported = result.data?.getParcelableArrayListExtra<Uri>(SafeActivity.ExtraImportedUris)
+        if (result.resultCode == RESULT_OK && !imported.isNullOrEmpty()) {
+            deleteUris(imported)
+        }
+    }
+
     private val deleteRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
@@ -325,6 +336,10 @@ class MainActivity : AppCompatActivity() {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             navigateToSection(Section.Folders)
         }
+        binding.drawerSafe.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            openSafe()
+        }
         binding.drawerSmartCleanup.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             startSmartCleanup()
@@ -381,6 +396,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.selectAllBtn.setOnClickListener { adapter.selectAll() }
         binding.shareSelectionBtn.setOnClickListener { shareSelected() }
+        binding.safeSelectionBtn.setOnClickListener { moveSelectedToSafe() }
         binding.deleteSelectionBtn.setOnClickListener { confirmDeleteSelected() }
     }
 
@@ -2735,6 +2751,30 @@ class MainActivity : AppCompatActivity() {
                 Section.Folders -> "folders"
             }
         }
+    }
+
+    private fun openSafe() {
+        safeLauncher.launch(Intent(this, SafeActivity::class.java))
+    }
+
+    private fun moveSelectedToSafe() {
+        val selected = adapter.selectedUris()
+        if (selected.isEmpty()) return
+        // Only still images can be locked; the Safe stores encrypted image zips.
+        val images = selected.filter { uri ->
+            val type = contentResolver.getType(uri)
+            type == null || type.startsWith("image/")
+        }
+        if (images.isEmpty()) {
+            Toast.makeText(this, "Only photos can be moved to the Safe", Toast.LENGTH_SHORT).show()
+            return
+        }
+        adapter.clearSelection()
+        // SafeActivity encrypts them, then returns the originals to delete via our consent flow.
+        safeLauncher.launch(
+            Intent(this, SafeActivity::class.java)
+                .putParcelableArrayListExtra(SafeActivity.ExtraImportUris, ArrayList(images))
+        )
     }
 
     private fun shareSelected() {

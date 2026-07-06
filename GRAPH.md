@@ -104,6 +104,19 @@ Album-detail (smart):
   albumDetailItems  → SmartAlbumStore.get(id)  → memberUris resolved from collectionItems
 ```
 
+### Safe (encrypted photo locker) Pipeline
+```
+MainActivity drawer "safe" / multi-select "safe" → SafeActivity (safeLauncher, StartActivityForResult)
+  ├── SafeManager  (session password in-memory; single-archive vault orchestration)
+  │     ├── SafeStore  (SharedPrefs: salt+verifier, SAF tree uri, biometric blob/iv)
+  │     ├── SafeCrypto (zip4j AES-256 add/list/extract/remove/verify; PBKDF2; AES-GCM thumbs)
+  │     ├── SafeKeystore (biometric-gated Keystore key → wraps password)
+  │     └── DocumentFile / SAF tree  (DeepixSafe.zip master; session mirror in cacheDir)
+  ├── BiometricPrompt (CryptoObject) → recover password → unlock
+  ├── SafeItemAdapter (grid of decrypted thumbnails; async bindThumb)
+  └── returns ExtraImportedUris → MainActivity.deleteUris() (delete originals = "move")
+```
+
 ### UI Layer
 ```
 MainActivity
@@ -213,6 +226,10 @@ item_cleanup_tile.xml   → SmartCleanupActivity (Metro category tile)
 sheet_search_filter.xml → MainActivity (Sort & filter bottom sheet; 20dp inset)
 item_info_row.xml       → ViewerActivity (Info sheet key-value row, via <include>)
 activity_settings.xml   → SettingsActivity (Metro preferences screen)
+activity_safe.xml       → SafeActivity (lock overlay + decrypted thumbnail grid + add-photos bar)
+item_safe_photo.xml     → SafeItemAdapter (decrypted vault thumbnail cell)
+dialog_safe_setup.xml   → SafeActivity (password create + confirm + warning)
+dialog_safe_password.xml → SafeActivity ("Show password" reveal + copy)
 ```
 
 ## Selected Drawables
@@ -220,4 +237,7 @@ activity_settings.xml   → SettingsActivity (Metro preferences screen)
 search_filter_chip_bg.xml / search_filter_chip_active_bg.xml → search/quick/onboarding pills (6dp rounded-square; active = solid accent)
 onboarding_card_bg.xml / onboarding_button_bg.xml → albums onboarding card + smart-album dialog Create button
 dialog_metro_bg.xml     → Metro dialog window background (smart album dialog)
+selection_badge_bg.xml  → multi-select tick chip (3dp rounded-square accent + black hairline; holds vector checkmark) → item_image.xml / item_collage.xml
+selection_frame.xml     → 3dp accent frame over a selected thumbnail (item_image.xml / item_collage.xml)
+pill_bg.xml             → rounded pill; now used only by activity_settings.xml (no longer the selection bar)
 ```

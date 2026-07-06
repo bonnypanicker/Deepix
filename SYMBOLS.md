@@ -46,7 +46,7 @@ OnnxSessionOptions        OnnxSessionOptions.kt    create(tag,threadCount=4): Or
 DesignTokens              DesignTokens.kt          (see CONTEXT.md for key values)
 StickyHeaderDecoration    StickyHeaderDecoration.kt  RecyclerView.ItemDecoration
 ThumbnailScaleGestureListener  ThumbnailScaleGestureListener.kt  pinch-to-resize; emits onZoom(zoomIn) step (grid columns OR collage scale)
-ImageAdapter              ImageAdapter.kt          RecyclerView.Adapter; useCollageLayout; gridColumnCount; spanSizeAt(); replaceCells(); ctor cb onCreateSmartAlbum
+ImageAdapter              ImageAdapter.kt          RecyclerView.Adapter; useCollageLayout; gridColumnCount; spanSizeAt(); replaceCells(); ctor cb onCreateSmartAlbum; selection: setSelection/toggle/selectAll/clearSelection/selectedUris; bindSelectionVisual() = accent frame + squared vector tick (highlight-selected-only, animate only on real toggle)
   GalleryCell             ImageAdapter.kt          sealed: Header|Photo(collageSpan,collageHeightPx)|Collage|AlbumCell|FolderCell|PinnedAlbumsHeader|SmartAlbumOnboarding|Empty
 FastScrollIndicator       FastScrollIndicator.kt   attach(RecyclerView, ImageAdapter); tracks all scrolls; drag → scrollToPositionWithOffset
 MediaPagerAdapter         MediaPagerAdapter.kt     RecyclerView.Adapter for ViewPager2; ctor cb: onInitialImageLoaded/onMediaTap/onMediaLongClick/onVideoCompleted/onScrubbingChanged; releaseAll()
@@ -82,6 +82,7 @@ GalleryRepository.regionThumbnail(uri, RectF): Bitmap?             // oriented c
 GalleryRepository.searchByEmbedding(query, excludeUri, floor=0.5, limit=500): List<SemanticSearchHit>  // image-to-image
 ImageAdapter.setSelection(uris)                                     // pre-select a set
 ImageAdapter.toggle(uri)                                            // public selection toggle (cleanup tap)
+MainActivity.renderSelectionState(count)                            // long-press select: top bar "N selected" + back; toggles selectionBar (Metro command bar: select all/share/delete) ↔ bottomPanel nav
 MediaPagerAdapter ctor cb += onPlayStateChanged(position, playing)  // play/pause/replay + mute sync
 MediaPagerAdapter.PageViewHolder.togglePlayback()/setVideoControlsVisible()
 StructuredSearch.ScreenshotFilter                                   // is=screenshot (name/path heuristic)
