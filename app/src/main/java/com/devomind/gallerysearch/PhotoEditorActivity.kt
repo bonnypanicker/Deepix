@@ -21,6 +21,7 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.doOnPreDraw
 import androidx.core.view.WindowCompat
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.lifecycleScope
@@ -293,30 +294,21 @@ class PhotoEditorActivity : AppCompatActivity() {
         binding.panelDraw.visibility = View.GONE
         binding.panelAdjust.visibility = View.GONE
 
-        val bounds = imageDisplayRect()
         when (t) {
             Tool.CROP -> {
                 binding.toolTitle.text = "Crop"
                 binding.panelCrop.visibility = View.VISIBLE
                 binding.cropView.setAspect(null)
-                binding.cropView.setImageBounds(bounds)
-                binding.cropView.magnifierSource = working
-                binding.cropView.visibility = View.VISIBLE
             }
             Tool.PERSPECTIVE -> {
                 binding.toolTitle.text = "Perspective"
                 binding.panelPerspective.visibility = View.VISIBLE
-                binding.quadView.setImageBounds(bounds)
-                binding.quadView.magnifierSource = working
-                binding.quadView.visibility = View.VISIBLE
             }
             Tool.DRAW -> {
                 binding.toolTitle.text = "Draw"
                 binding.panelDraw.visibility = View.VISIBLE
                 binding.drawView.clear()
                 binding.drawView.strokeWidth = dp((binding.seekBrush.progress + 2).toFloat())
-                binding.drawView.setImageBounds(bounds)
-                binding.drawView.visibility = View.VISIBLE
             }
             Tool.ADJUST -> {
                 binding.toolTitle.text = "Adjust"
@@ -326,6 +318,33 @@ class PhotoEditorActivity : AppCompatActivity() {
                 binding.seekSaturation.progress = 100
                 updateAdjustPreview()
             }
+        }
+        syncActiveToolBoundsAfterLayout()
+    }
+
+    private fun syncActiveToolBoundsAfterLayout() {
+        binding.editArea.doOnPreDraw { syncActiveToolBounds() }
+    }
+
+    private fun syncActiveToolBounds() {
+        val bounds = imageDisplayRect()
+        when (tool) {
+            Tool.CROP -> {
+                binding.cropView.setImageBounds(bounds)
+                binding.cropView.magnifierSource = working
+                binding.cropView.visibility = View.VISIBLE
+            }
+            Tool.PERSPECTIVE -> {
+                binding.quadView.setImageBounds(bounds)
+                binding.quadView.magnifierSource = working
+                binding.quadView.visibility = View.VISIBLE
+            }
+            Tool.DRAW -> {
+                binding.drawView.setImageBounds(bounds)
+                binding.drawView.visibility = View.VISIBLE
+            }
+            Tool.ADJUST,
+            null -> Unit
         }
     }
 
@@ -379,19 +398,17 @@ class PhotoEditorActivity : AppCompatActivity() {
     private fun rotateWorking(degrees: Float) {
         binding.cropView.magnifierSource = null   // old working is about to be recycled
         addOp(EditOp.Rotate(degrees))
-        if (tool == Tool.CROP) binding.editImage.post {
+        if (tool == Tool.CROP) {
             binding.cropView.setAspect(null)
-            binding.cropView.setImageBounds(imageDisplayRect())
-            binding.cropView.magnifierSource = working
+            syncActiveToolBoundsAfterLayout()
         }
     }
 
     private fun flipWorking() {
         binding.cropView.magnifierSource = null
         addOp(EditOp.Flip)
-        if (tool == Tool.CROP) binding.editImage.post {
-            binding.cropView.setImageBounds(imageDisplayRect())
-            binding.cropView.magnifierSource = working
+        if (tool == Tool.CROP) {
+            syncActiveToolBoundsAfterLayout()
         }
     }
 
@@ -522,9 +539,22 @@ class PhotoEditorActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------------ helpers
 
-    /** On-screen rect of the fitCenter image inside the ImageView. */
+    /** On-screen rect of the actual ImageView drawable, in editArea/overlay coordinates. */
     private fun imageDisplayRect(): RectF {
         val bmp = working ?: return RectF()
+        val drawable = binding.editImage.drawable
+        if (drawable != null && drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0) {
+            val rect = RectF(
+                0f,
+                0f,
+                drawable.intrinsicWidth.toFloat(),
+                drawable.intrinsicHeight.toFloat()
+            )
+            binding.editImage.imageMatrix.mapRect(rect)
+            rect.offset(binding.editImage.left.toFloat(), binding.editImage.top.toFloat())
+            return rect
+        }
+
         val vw = binding.editImage.width.toFloat()
         val vh = binding.editImage.height.toFloat()
         if (vw <= 0f || vh <= 0f) return RectF(0f, 0f, vw, vh)
