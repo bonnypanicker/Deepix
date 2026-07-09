@@ -18,10 +18,10 @@
 | `SmartCleanupActivity` | Dedicated Metro screen: CLIP-detected clutter tiles + storage summary, per-category selectable grid, MediaStore delete. Reads `CleanupResultStore`, observes `CleanupWorker`; progress bar + pause/resume/stop |
 | `SettingsActivity` | Metro preferences screen: Collage layout, **Collage thumbnail size**, Grid columns, Pinned-in-collections, Index-only-while-charging, Clear cleanup cache, About. Writes `IndexPreferences`; MainActivity re-applies on return |
 | `SafeActivity` | Encrypted photo locker ("Safe"). Lock screen (biometric-first, password fallback) → grid of decrypted thumbnails → overflow (Show password / Add photos / fingerprint toggle / Lock / Remove Safe). `FLAG_SECURE`, relocks on background. Launched with `ExtraImportUris` to move gallery photos in; returns `ExtraImportedUris` for the caller to delete originals |
-| `SafeManager` | Session + storage orchestration for the Safe. Holds the unlocked password in-memory; brokers vault I/O via a local session mirror of the single AES-256 archive (`DeepixSafe.zip`) in the SAF folder: `setUpVault` (create/adopt), `unlock`, `listItems`, `importPhotos`, `decryptToBitmap`/`decryptToTemp`, `restoreToGallery`, `removeItem`, `lock` |
+| `SafeManager` | Session + storage orchestration for the Safe. Holds the unlocked password in-memory; reads/writes the single AES-256 archive (`DeepixSafe.zip`) directly at a fixed public path (`Pictures/Deepix Safe/`) via All-files access — no session mirror: `setUpVault` (create/adopt), `unlock`, `listItems`/`listFolder`, `importPhotos`, `decryptToBitmap`/`decryptToTemp`, `restoreToGallery`, `removeItem`, `lock`; `thumbnail` decodes straight from the encrypted entry stream |
 | `SafeCrypto` | Crypto/format: zip4j **AES-256 password zip** add/list/extract/remove/verify (the vault is one standard archive, openable in any zip tool with the password); PBKDF2; AES-GCM thumbnail-cache encryption; downscaled thumbnail JPEGs |
 | `SafeKeystore` | Android Keystore AES/GCM key gated by `setUserAuthenticationRequired(true)`; encrypts/decrypts the vault password behind `BiometricPrompt` (fingerprint-in, no typing). Invalidated by new biometric enrollment |
-| `SafeStore` | SharedPrefs for the Safe: PBKDF2 salt + password verifier, SAF vault tree uri, biometric-enabled flag + Keystore-encrypted password blob/iv. Holds no photos/keys — the vault is recoverable from the password alone |
+| `SafeStore` | SharedPrefs for the Safe: PBKDF2 salt + password verifier, biometric-enabled flag + Keystore-encrypted password blob/iv. Holds no photos/keys — the vault is recoverable from the password alone |
 | `SafeItemAdapter` | RecyclerView grid of decrypted vault thumbnails (async decrypt via `bindThumb`, tag-guarded against recycling) |
 | `CleanupAnalyzer` | Pure logic: near-dup + similar grouping (embeddings), zero-shot category classify, blur/dark/bright via `ImageStats`, low-res via metadata. Resumable (scannedUris) + streaming (onPartial) |
 | `CleanupWorker` | `CoroutineWorker` (foreground, parallel to `IndexWorker`). Full-library scan, writes `CleanupResultStore` incrementally, resumes from scanned set, pausable via `IndexPreferences.isCleanupPaused` |
@@ -170,31 +170,32 @@ Refresh: re-runs runSearchPipeline, updates stored memberUris + cover
 ### Safe (encrypted photo locker) Flow
 ```
 Drawer "safe" (or multi-select "safe" command) → SafeActivity
-  Not configured → setup dialog (password + confirm + "keep it safe" warning) → SAF folder pick
-    → SafeManager.setUpVault(password, treeUri):
-        CREATED  (empty folder)      → savePasswordVerifier + open session
-        ADOPTED  (folder has archive)→ verify password against the zip, then save verifier + open
+  Not configured → setup dialog (password + confirm + "keep it safe" warning) → All-files access prompt
+    → SafeManager.setUpVault(password):           [NO_ACCESS until StoragePermissions.hasAllFilesAccess]
+        CREATED  (no archive yet)    → savePasswordVerifier + open session
+        ADOPTED  (archive present)   → verify password against the zip, then save verifier + open
         WRONG_PASSWORD               → reject, re-prompt   [recovery-after-reinstall path]
     → offer to enable fingerprint (BiometricPrompt + Keystore-wrapped password)
   Configured → lock screen: BiometricPrompt first (recovers password from Keystore blob),
                password fallback → SafeManager.unlock() (verifier or archive check)
 
 Storage model (all safe photos in ONE encrypted "folder"):
-  - The vault is a single standard AES-256 password zip `DeepixSafe.zip` in the user-picked SAF
-    folder (survives uninstall; openable in any zip tool with the password → not app-dependent).
-  - zip4j needs a real File, so SafeManager keeps a local session mirror in cacheDir: synced DOWN
-    on unlock, pushed UP after every mutation (import/remove). Extracted plaintext previews go to
-    temp dirs wiped after use; the mirror + temps are cleared on lock().
-  - Grid thumbnails: app-private AES-GCM cache in filesDir/safe_thumbs (key = PBKDF2(password)),
-    regenerated by decrypting the archive once after a fresh install.
+  - The vault is a single standard AES-256 password zip `DeepixSafe.zip` at a FIXED public path
+    `Pictures/Deepix Safe/` (survives uninstall; openable in any zip tool with the password). With
+    All-files access SafeManager reads/writes it directly via java.io.File — no session mirror.
+  - Sub-folders are path prefixes inside the archive (`Trip/beach.jpg`); empty folders keep a
+    `.dpixkeep` marker. Extracted plaintext previews go to cacheDir temp dirs wiped after use.
+  - Grid thumbnails: app-private AES-GCM cache in filesDir/safe_thumbs (key = PBKDF2(password, salt)).
+    Cache hit returns the decrypted bitmap; a corrupt/undecodable entry is deleted + rebuilt. Rebuild
+    decodes straight from the encrypted zip entry stream (no temp file), then encrypts + writes.
 
 Move-in flow (true locker): MainActivity multi-select "safe" → SafeActivity with ExtraImportUris
   → encrypt into archive → returns ExtraImportedUris → MainActivity.deleteUris() (normal consent).
 In-Safe "add photos" uses the system photo picker (copy-in; picker uris aren't deletable).
 Item tap = decrypt → fullscreen PhotoView (FLAG_SECURE). Long-press = Save back to gallery / Remove.
 
-Recovery after uninstall: reinstall → drawer "safe" → enter original password → pick the same
-  folder → setUpVault ADOPTS it (verifies against the zip). Thumbnails rebuild lazily.
+Recovery after uninstall: reinstall → drawer "safe" → enter original password (archive is still at
+  the fixed public path) → setUpVault ADOPTS it (verifies against the zip). Thumbnails rebuild lazily.
 
 Key derivation & biometric:
   - Encryption key = the zip's AES password (PBKDF2 inside zip4j). Password alone is the recovery root.
@@ -348,6 +349,6 @@ SAF tree grant (`takePersistableUriPermission`). `SafeActivity` is `excludeFromR
 
 **Lazy encoder warm-up — complete.** The ~135 MB CLIP encoders are no longer loaded on every launch. `loadEncodersInBackground` now only warms them eagerly when a background index pass will actually run (`shouldRunBackgroundIndexing()`); otherwise they load lazily on the first search via `ensureEncodersLoaded()` (idempotent, returns a `CompletableDeferred<Boolean>` that `submitSearch`/`searchSimilarImage` await). Fixes the symptom where a paused-indexing cold start opened slower than a running-indexing (warm-process) reopen — the models used to reload against the first frames even when nothing needed them.
 
-**Safe (encrypted photo locker) — complete.** New `SafeActivity` reached via drawer "safe" or the multi-select "safe" command. All safe photos live inside a single standard AES-256 password zip (`DeepixSafe.zip`) in a user-picked SAF folder that survives uninstall and opens in any zip tool with the password (not app-dependent). Biometric-first lock screen (`BiometricPrompt` + Keystore-wrapped password) with password fallback; "Show password" in the overflow after fingerprint login. Moving photos in deletes the originals via the normal delete-consent flow. `FLAG_SECURE`, relocks on background. Recoverable after reinstall by re-picking the folder + password. See `SafeManager`/`SafeCrypto`/`SafeKeystore`/`SafeStore`. Adds deps `zip4j` + `androidx.biometric`.
+**Safe (encrypted photo locker) — complete.** New `SafeActivity` reached via drawer "safe" or the multi-select "safe" command. All safe photos live inside a single standard AES-256 password zip (`DeepixSafe.zip`) at a fixed public path (`Pictures/Deepix Safe/`, via All-files access) that survives uninstall and opens in any zip tool with the password (not app-dependent). Biometric-first lock screen (`BiometricPrompt` + Keystore-wrapped password) with password fallback; "Show password" in the overflow after fingerprint login. Moving photos in deletes the originals via the normal delete-consent flow. `FLAG_SECURE`, relocks on background. Recoverable after reinstall by re-entering the password (archive stays at the fixed path). Thumbnails decode straight from the encrypted entry stream (cache + rebuild-on-failure). See `SafeManager`/`SafeCrypto`/`SafeKeystore`/`SafeStore`. Adds deps `zip4j` + `androidx.biometric`.
 
 **Last commit:** Production-grade Metro multi-select — flat command bar (replaces bottom nav) + squared vector selection tick with accent frame, highlight-selected-only (no dim)

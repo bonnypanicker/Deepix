@@ -68,25 +68,52 @@ object SafeCrypto {
 
     /** Downscaled JPEG bytes for the grid, or null if the source can't be decoded. */
     fun makeThumbnailJpeg(context: Context, source: Uri): ByteArray? =
-        makeThumbnailJpeg { context.contentResolver.openInputStream(source) }
+        decodeScaledJpeg { context.contentResolver.openInputStream(source) }
 
-    /** Downscaled JPEG bytes from a decrypted temp file (avoids the ContentResolver). */
-    fun makeThumbnailJpeg(file: File): ByteArray? =
-        makeThumbnailJpeg { file.inputStream() }
+    /**
+     * Downscaled JPEG bytes decoded straight from one encrypted zip entry, skipping the
+     * extract-to-temp step so there's no extracted-file path to mismatch — the decrypted stream
+     * is fed straight to the decoder. Each pass opens its own [ZipFile] to keep stream lifetimes
+     * self-contained (bounds, then sampled decode).
+     */
+    fun makeThumbnailJpeg(zip: File, innerName: String, password: CharArray): ByteArray? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        decodeZipEntry(zip, innerName, password, bounds)
+        val longest = max(bounds.outWidth, bounds.outHeight)
+        if (longest <= 0) return null
+        var sample = 1
+        while (longest / sample > ThumbMaxPx * 2) sample *= 2
+        val decoded = decodeZipEntry(
+            zip, innerName, password,
+            BitmapFactory.Options().apply { inSampleSize = sample }
+        ) ?: return null
+        return scaleToThumbnailJpeg(decoded)
+    }
 
-    private inline fun makeThumbnailJpeg(openStream: () -> java.io.InputStream?): ByteArray? {
+    private fun decodeZipEntry(
+        zip: File, innerName: String, password: CharArray, opts: BitmapFactory.Options
+    ): Bitmap? = runCatching {
+        ZipFile(zip, password).use { zf ->
+            val header = zf.fileHeaders.firstOrNull { it.fileName == innerName }
+                ?: return@runCatching null
+            zf.getInputStream(header).use { BitmapFactory.decodeStream(it, null, opts) }
+        }
+    }.getOrNull()
+
+    private inline fun decodeScaledJpeg(openStream: () -> java.io.InputStream?): ByteArray? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         openStream()?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: return null
         val longest = max(bounds.outWidth, bounds.outHeight)
         if (longest <= 0) return null
         var sample = 1
         while (longest / sample > ThumbMaxPx * 2) sample *= 2
-
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
         val decoded = openStream()?.use {
-            BitmapFactory.decodeStream(it, null, opts)
+            BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
         } ?: return null
+        return scaleToThumbnailJpeg(decoded)
+    }
 
+    private fun scaleToThumbnailJpeg(decoded: Bitmap): ByteArray {
         val scale = ThumbMaxPx.toFloat() / max(decoded.width, decoded.height).toFloat()
         val bitmap = if (scale < 1f) {
             Bitmap.createScaledBitmap(

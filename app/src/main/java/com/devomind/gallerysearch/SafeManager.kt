@@ -211,20 +211,18 @@ object SafeManager {
         val key = thumbKey ?: return null
         val cache = thumbFile(context, item.entryName)
         if (cache.exists()) {
-            runCatching {
+            val cached = runCatching {
                 val bytes = SafeCrypto.decryptBytes(key, cache.readBytes())
-                return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-            }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            }.getOrNull()
+            if (cached != null) return cached
             cache.delete() // corrupt/stale — rebuild below
         }
-        val temp = runCatching { decryptToTemp(context, item) }.getOrNull() ?: return null
-        return try {
-            val jpeg = SafeCrypto.makeThumbnailJpeg(temp) ?: return null
-            writeThumb(context, item.entryName, jpeg)
-            BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
-        } finally {
-            temp.parentFile?.deleteRecursively()
-        }
+        val password = sessionPassword ?: return null
+        val jpeg = SafeCrypto.makeThumbnailJpeg(masterZip(), item.entryName, password.toCharArray())
+            ?: return null
+        writeThumb(context, item.entryName, jpeg)
+        return BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
     }
 
     // ---- View / restore / remove ----

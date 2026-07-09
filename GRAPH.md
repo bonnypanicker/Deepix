@@ -108,10 +108,11 @@ Album-detail (smart):
 ```
 MainActivity drawer "safe" / multi-select "safe" → SafeActivity (safeLauncher, StartActivityForResult)
   ├── SafeManager  (session password in-memory; single-archive vault orchestration)
-  │     ├── SafeStore  (SharedPrefs: salt+verifier, SAF tree uri, biometric blob/iv)
-  │     ├── SafeCrypto (zip4j AES-256 add/list/extract/remove/verify; PBKDF2; AES-GCM thumbs)
+  │     ├── SafeStore  (SharedPrefs: salt+verifier, biometric blob/iv)
+  │     ├── SafeCrypto (zip4j AES-256 add/list/extract/remove/verify; PBKDF2; AES-GCM thumbs;
+  │     │              thumbnail decode straight from encrypted entry stream)
   │     ├── SafeKeystore (biometric-gated Keystore key → wraps password)
-  │     └── DocumentFile / SAF tree  (DeepixSafe.zip master; session mirror in cacheDir)
+  │     └── java.io.File  (DeepixSafe.zip at fixed Pictures/Deepix Safe/ path via All-files access)
   ├── BiometricPrompt (CryptoObject) → recover password → unlock
   ├── SafeItemAdapter (grid of decrypted thumbnails; async bindThumb)
   └── returns ExtraImportedUris → MainActivity.deleteUris() (delete originals = "move")
@@ -186,7 +187,7 @@ CleanupResultStore  (JSON file: filesDir/cleanup_results.json)
 | `MetadataIndexMagic` / `MetadataIndexVersion` | Will invalidate metadata indexes |
 | `OnnxSessionOptions.DefaultThreadCount` (4) | Benchmark in `ThreadBenchmark.kt` determines optimal count |
 | `ViewerActivity` gesture logic | Test all 6 gesture scenarios: diagonal swipes, info panel tap-close, fast swiping captions, panel drag smoothness, paging disabled while panel open |
-| `SafeManager` MasterName (`DeepixSafe.zip`) | Vault archive filename in the SAF folder — changing it orphans existing vaults on device |
+| `SafeManager` MasterName (`DeepixSafe.zip`) / VaultFolderName | Vault archive path in public `Pictures/Deepix Safe/` — changing it orphans existing vaults on device |
 | `SafeStore` SharedPrefs keys / `SafeKeystore` KeyAlias | Stored on device — renaming breaks existing Safe config + biometric unlock |
 | `SafeCrypto` zip params (AES-256 / STORE) | Interop contract — the vault must stay a standard AES zip openable by external tools |
 | `GestureDirection` enum values | Update `handleViewerTouch()` classification logic and `onMediaTap` callback |
