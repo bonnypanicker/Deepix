@@ -11,9 +11,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
-import android.text.Spannable
-import android.text.SpannableStringBuilder
-import android.text.style.ImageSpan
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
@@ -31,8 +28,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.app.ActivityOptionsCompat
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.GravityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -183,11 +180,19 @@ class MainActivity : AppCompatActivity() {
     private val safeLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        // Photos successfully moved into the Safe: delete the originals via the normal consent flow.
+        // Photos successfully moved into the Safe: remove the originals. They're already encrypted in
+        // the vault, so delete permanently (not to the bin) — silently when we have direct access.
         @Suppress("DEPRECATION")
         val imported = result.data?.getParcelableArrayListExtra<Uri>(SafeActivity.ExtraImportedUris)
         if (result.resultCode == RESULT_OK && !imported.isNullOrEmpty()) {
-            deleteUris(imported)
+            if (DeleteCoordinator.canDeleteDirectly(this)) {
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) { imported.forEach { MediaFileOps.deleteFileDirect(this@MainActivity, it) } }
+                    refreshVisibleItems()
+                }
+            } else {
+                deleteUris(imported)
+            }
         }
     }
 
@@ -339,6 +344,10 @@ class MainActivity : AppCompatActivity() {
         binding.drawerSafe.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             openSafe()
+        }
+        binding.drawerBin.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            startActivity(Intent(this, BinActivity::class.java))
         }
         binding.drawerSmartCleanup.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
@@ -1145,27 +1154,18 @@ class MainActivity : AppCompatActivity() {
 
     /** The rotating hints shown while the field is empty. Indexing progress joins in only while a pass runs. */
     private fun searchHints(): List<CharSequence> {
-        val hints = ArrayList<CharSequence>(3)
-        hints += hintWithSparkle("AI image search")
-        hints += "Metadata search"
+        val hints = ArrayList<CharSequence>(5)
         if (indexRunning && indexProgressTotal > 0) {
             val pct = (indexProgressCurrent * 100 / indexProgressTotal).coerceIn(0, 100)
-            hints += "Indexing your library • $pct%"
+            hints += "AI Learning Photos\u2026 $pct%"
         }
+        hints += "Search with AI"
+        hints += "Beach at sunset"
+        hints += "Documents"
+        hints += "Search metadata"
         return hints
     }
 
-    /** Prepends the accent sparkle glyph to a hint so the AI capability reads at a glance. */
-    private fun hintWithSparkle(text: String): CharSequence {
-        val icon = ContextCompat.getDrawable(this, R.drawable.ic_fluent_sparkle_24_regular)
-            ?: return text
-        val size = (binding.searchInput.textSize * 1.05f).toInt().coerceAtLeast(1)
-        icon.setBounds(0, 0, size, size)
-        icon.setTint(ContextCompat.getColor(this, R.color.metroAccent))
-        val builder = SpannableStringBuilder("  ").append(text)
-        builder.setSpan(ImageSpan(icon, ImageSpan.ALIGN_BASELINE), 0, 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-        return builder
-    }
 
     /** True only when the empty-state hint is actually visible and worth animating. */
     private fun canCycleSearchHint(): Boolean =
@@ -2791,17 +2791,57 @@ class MainActivity : AppCompatActivity() {
     private fun confirmDeleteSelected() {
         val selected = adapter.selectedUris()
         if (selected.isEmpty()) return
-        val message = if (selected.size == 1) {
-            "Delete the selected item from this device?"
-        } else {
-            "Delete ${selected.size} selected items from this device?"
+        requestDelete(selected)
+    }
+
+    /**
+     * Entry point for deleting from the gallery. Routes through [DeleteCoordinator] (Recycle Bin or
+     * direct permanent delete) when All-files access is granted, showing the app's own confirmation
+     * unless the user opted out. Falls back to the platform delete request otherwise.
+     */
+    private fun requestDelete(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        if (!DeleteCoordinator.canDeleteDirectly(this)) {
+            deleteUris(uris) // system consent flow (permanent)
+            return
         }
-        AlertDialog.Builder(this)
-            .setTitle("Delete items?")
+        if (IndexPreferences.isSkipDeleteConfirm(this)) {
+            performManagedDelete(uris)
+            return
+        }
+        val toBin = DeleteCoordinator.usesBin(this)
+        val n = uris.size
+        val message = when {
+            toBin && n == 1 -> "Move this photo to the Recycle Bin? You can restore it within 30 days."
+            toBin -> "Move $n photos to the Recycle Bin? You can restore them within 30 days."
+            n == 1 -> "Permanently delete this photo? This can't be undone."
+            else -> "Permanently delete $n photos? This can't be undone."
+        }
+        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
+            .setTitle(if (toBin) "Move to Recycle Bin?" else "Delete permanently?")
             .setMessage(message)
-            .setPositiveButton("Delete") { _, _ -> deleteUris(selected) }
+            .setPositiveButton(if (toBin) "Move" else "Delete") { _, _ -> performManagedDelete(uris) }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    private fun performManagedDelete(uris: List<Uri>) {
+        lifecycleScope.launch {
+            val outcome = withContext(Dispatchers.IO) { DeleteCoordinator.delete(this@MainActivity, uris) }
+            when (outcome) {
+                is DeleteCoordinator.Outcome.NeedsSystemDelete -> deleteUris(uris)
+                is DeleteCoordinator.Outcome.Done -> {
+                    adapter.clearSelection()
+                    refreshVisibleItems()
+                    val verb = if (outcome.toBin) "moved to Recycle Bin" else "deleted"
+                    val msg = buildString {
+                        append("${outcome.succeeded} $verb")
+                        if (outcome.failed > 0) append(" · ${outcome.failed} failed")
+                    }
+                    Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     private fun refreshVisibleItems() {
@@ -3253,7 +3293,7 @@ class MainActivity : AppCompatActivity() {
         private const val BROWSE_PAGE_MAX = 320
         private const val PAGE_PREFETCH_CELLS = 12
         // "Alive" search-bar hint rotation.
-        private const val SEARCH_HINT_INTERVAL_MS = 2800L
+        private const val SEARCH_HINT_INTERVAL_MS = 4200L
         private const val SEARCH_HINT_FADE_MS = 220L
     }
 

@@ -470,6 +470,27 @@ class SmartCleanupActivity : AppCompatActivity() {
     private fun confirmDeleteSelected() {
         val selected = adapter.selectedUris()
         if (selected.isEmpty()) return
+        // Prefer the app-managed path (Recycle Bin / direct delete) when we have all-files access.
+        if (DeleteCoordinator.canDeleteDirectly(this)) {
+            if (IndexPreferences.isSkipDeleteConfirm(this)) {
+                performManagedDelete(selected)
+                return
+            }
+            val toBin = DeleteCoordinator.usesBin(this)
+            val message = when {
+                toBin && selected.size == 1 -> "Move this photo to the Recycle Bin? You can restore it within 30 days."
+                toBin -> "Move ${selected.size} photos to the Recycle Bin? You can restore them within 30 days."
+                selected.size == 1 -> "Permanently delete this photo? This can't be undone."
+                else -> "Permanently delete ${selected.size} photos? This can't be undone."
+            }
+            AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
+                .setTitle(if (toBin) "Move to Recycle Bin?" else "Delete permanently?")
+                .setMessage(message)
+                .setPositiveButton(if (toBin) "Move" else "Delete") { _, _ -> performManagedDelete(selected) }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+            return
+        }
         val message = if (selected.size == 1) {
             "Delete the selected item from this device?"
         } else {
@@ -481,6 +502,16 @@ class SmartCleanupActivity : AppCompatActivity() {
             .setPositiveButton("Delete") { _, _ -> deleteUris(selected) }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    private fun performManagedDelete(uris: List<Uri>) {
+        lifecycleScope.launch {
+            val outcome = withContext(Dispatchers.IO) { DeleteCoordinator.delete(this@SmartCleanupActivity, uris) }
+            when (outcome) {
+                is DeleteCoordinator.Outcome.NeedsSystemDelete -> deleteUris(uris)
+                is DeleteCoordinator.Outcome.Done -> onDeleted(uris)
+            }
+        }
     }
 
     @Suppress("InstanceOfCheckForException")

@@ -66,6 +66,15 @@ CleanupWorker             CleanupWorker.kt          CoroutineWorker; WorkName="g
 CleanupResultStore        CleanupResultStore.kt     save()/load()/clear(); Result(categoryUris,suggestedUris,scannedUris,done,total,complete,updatedAt) → cleanup_results.json
 CleanupHandoff            CleanupHandoff.kt         object; items, indexedCount, release() — hand-off to SmartCleanupActivity
 SettingsActivity          SettingsActivity.kt       prefs screen: collage/grid columns/pinned/charging-only/clear cleanup/about; writes IndexPreferences
+SafeActivity              SafeActivity.kt           encrypted photo locker; biometric-first lock → decrypted thumb grid → overflow (show password/add/fingerprint/lock/remove); FLAG_SECURE; ExtraImportUris/ExtraImportedUris
+SafeManager               SafeManager.kt            object; session password + single-archive vault ops: setUpVault/unlock/lock/listItems/importPhotos/decryptToBitmap/decryptToTemp/restoreToGallery/removeItem/thumbnail; hasVaultAccess/linkVault
+  VaultItem               SafeManager.kt            data class: entryName (name inside the zip)
+  ImportResult            SafeManager.kt            data class: imported, failed, importedSources
+  SetupOutcome            SafeManager.kt            enum: CREATED | ADOPTED | WRONG_PASSWORD
+SafeCrypto                SafeCrypto.kt             object; zip4j AES-256 addFileToZip/listEntryNames/extractEntry/removeEntry/verifyPassword; pbkdf2/thumbKey; encryptBytes/decryptBytes (AES-GCM); makeThumbnailJpeg
+SafeKeystore              SafeKeystore.kt           object; biometric-gated Keystore key: encryptCipher()/decryptCipher(iv)/deleteKey(); setUserAuthenticationRequired + setInvalidatedByBiometricEnrollment
+SafeStore                 SafeStore.kt              object; SharedPrefs: savePasswordVerifier/verifyPassword, saltOrNull, get/setTreeUri, isBiometricEnabled/saveBiometricPassword/getBiometricBlob/getBiometricIv/clearBiometric, reset
+SafeItemAdapter           SafeItemAdapter.kt        RecyclerView.Adapter; submit(list)/itemAt(pos); async bindThumb, tag-guarded
 ```
 
 ## Search / cleanup additions (this session)
@@ -188,6 +197,12 @@ MAX_SMART_MEMBERS = 800
 // OnnxSessionOptions.kt
 DefaultThreadCount = 4
 
+// Safe (encrypted photo locker)
+SafeStore.PbkdfIterations = 120_000   SafeStore.SaltBytes = 16
+SafeCrypto.ThumbMaxPx = 320   SafeCrypto.VaultExtension = ".zip"   // AES-256, STORE
+SafeManager.MasterName = "DeepixSafe.zip"   // single vault archive in the SAF folder
+SafeKeystore.KeyAlias = "photo_safe_biometric_key"   // AES/GCM, user-auth-required
+
 // WordNetExpansionDictionary.kt
 WeightOriginal    = 1.00f
 WeightSynonym     = 0.85f
@@ -230,6 +245,8 @@ IndexControlReceiver.ActionResume = "com.devomind.gallerysearch.action.RESUME_IN
 
 ```kotlin
 ViewerActivity.ExtraContentChanged  // Boolean — returned to MainActivity on result
+SafeActivity.ExtraImportUris        // ArrayList<Uri> — photos to move into the Safe
+SafeActivity.ExtraImportedUris      // ArrayList<Uri> — originals successfully locked → MainActivity deletes
 ```
 
 ---

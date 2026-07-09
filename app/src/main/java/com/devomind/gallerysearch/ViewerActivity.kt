@@ -493,11 +493,18 @@ class ViewerActivity : AppCompatActivity() {
         val item = items.getOrNull(currentPosition) ?: return
         val menu = androidx.appcompat.widget.PopupMenu(this, anchor)
         menu.menu.add(0, MENU_TAGS, 0, "Add tags")
-        menu.menu.add(0, MENU_INFO, 1, "Info")
+        if (item.mediaType != GalleryRepository.MediaType.Video) {
+            menu.menu.add(0, MENU_GOOGLE_LENS, 1, "Open in Google Lens")
+        }
+        menu.menu.add(0, MENU_INFO, 2, "Info")
         menu.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
                 MENU_TAGS -> {
                     openTagPicker(item)
+                    true
+                }
+                MENU_GOOGLE_LENS -> {
+                    openInGoogleLens(item)
                     true
                 }
                 MENU_INFO -> {
@@ -508,6 +515,51 @@ class ViewerActivity : AppCompatActivity() {
             }
         }
         menu.show()
+    }
+
+    private fun openInGoogleLens(item: GalleryRepository.MediaItem) {
+        if (item.mediaType == GalleryRepository.MediaType.Video) {
+            Toast.makeText(this, "Google Lens is available for photos only.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val mimeType = contentResolver.getType(item.uri) ?: "image/*"
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            setPackage(GOOGLE_LENS_PACKAGE)
+            putExtra(Intent.EXTRA_STREAM, item.uri)
+            clipData = ClipData.newUri(contentResolver, "Deepix photo", item.uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        runCatching {
+            startActivity(intent)
+        }.onFailure { error ->
+            Log.d(Tag, "Google Lens unavailable; opening Play Store.", error)
+            openGoogleLensPlayStore()
+        }
+    }
+
+    private fun openGoogleLensPlayStore() {
+        val marketIntent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("market://details?id=$GOOGLE_LENS_PACKAGE")
+        ).apply {
+            setPackage(GOOGLE_PLAY_STORE_PACKAGE)
+        }
+        runCatching {
+            startActivity(marketIntent)
+        }.onFailure { marketError ->
+            Log.d(Tag, "Play Store app unavailable; opening browser listing.", marketError)
+            val webIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://play.google.com/store/apps/details?id=$GOOGLE_LENS_PACKAGE")
+            )
+            runCatching {
+                startActivity(webIntent)
+            }.onFailure { webError ->
+                Log.w(Tag, "Unable to open Google Lens install page.", webError)
+                Toast.makeText(this, "Google Lens isn't available on this phone.", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun openTagPicker(item: GalleryRepository.MediaItem) {
@@ -1317,6 +1369,9 @@ class ViewerActivity : AppCompatActivity() {
         private const val MENU_INFO = 2
         private const val MENU_SIMILAR_WHOLE = 3
         private const val MENU_SIMILAR_REGION = 4
+        private const val MENU_GOOGLE_LENS = 5
+        private const val GOOGLE_LENS_PACKAGE = "com.google.ar.lens"
+        private const val GOOGLE_PLAY_STORE_PACKAGE = "com.android.vending"
         const val ExtraContentChanged = "content_changed"
         const val ExtraItems = "items"
         const val ExtraPosition = "position"

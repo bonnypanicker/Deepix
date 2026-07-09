@@ -39,6 +39,7 @@ class SettingsActivity : AppCompatActivity() {
         bindGridColumns()
         bindCollageSize()
         bindActions()
+        bindStorage()
         bindIndexing()
         bindAbout()
     }
@@ -46,6 +47,7 @@ class SettingsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         updateIndexedFoldersSubtitle()
+        updateStorageSubtitles()
     }
 
     private fun applyInsets() {
@@ -150,6 +152,59 @@ class SettingsActivity : AppCompatActivity() {
         }
         binding.rowIndexedFolders.setOnClickListener {
             startActivity(android.content.Intent(this, IndexedFoldersActivity::class.java))
+        }
+    }
+
+    private fun bindStorage() {
+        binding.switchRecycleBin.isChecked = IndexPreferences.isRecycleBinEnabled(this)
+        binding.rowRecycleBin.setOnClickListener {
+            val newValue = !binding.switchRecycleBin.isChecked
+            binding.switchRecycleBin.isChecked = newValue
+            IndexPreferences.setRecycleBinEnabled(this, newValue)
+        }
+
+        binding.switchDirectDelete.isChecked = IndexPreferences.isSkipDeleteConfirm(this)
+        binding.rowDirectDelete.setOnClickListener {
+            if (!StoragePermissions.hasAllFilesAccess(this) && !binding.switchDirectDelete.isChecked) {
+                promptAllFilesAccess()
+                return@setOnClickListener
+            }
+            val newValue = !binding.switchDirectDelete.isChecked
+            binding.switchDirectDelete.isChecked = newValue
+            IndexPreferences.setSkipDeleteConfirm(this, newValue)
+        }
+
+        binding.rowOpenBin.setOnClickListener {
+            startActivity(android.content.Intent(this, BinActivity::class.java))
+        }
+
+        binding.rowAllFilesAccess.setOnClickListener { promptAllFilesAccess() }
+    }
+
+    private fun promptAllFilesAccess() {
+        if (StoragePermissions.hasAllFilesAccess(this)) {
+            Toast.makeText(this, "All-files access is already granted.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching { startActivity(StoragePermissions.manageAllFilesIntent(this)) }
+            .onFailure { Toast.makeText(this, "Couldn't open settings.", Toast.LENGTH_SHORT).show() }
+    }
+
+    private fun updateStorageSubtitles() {
+        val granted = StoragePermissions.hasAllFilesAccess(this)
+        binding.allFilesSubtitle.text =
+            if (granted) "Granted · powers the recycle bin and instant deletion"
+            else "Not granted · tap to allow the recycle bin and instant deletion"
+        val count = BinManager.count(this)
+        binding.binCountSubtitle.text = when (count) {
+            0 -> "Restore or permanently remove deleted photos"
+            1 -> "1 photo in the bin"
+            else -> "$count photos in the bin"
+        }
+        // Keep the direct-delete toggle honest if access was revoked outside the app.
+        if (!granted && binding.switchDirectDelete.isChecked) {
+            binding.switchDirectDelete.isChecked = false
+            IndexPreferences.setSkipDeleteConfirm(this, false)
         }
     }
 

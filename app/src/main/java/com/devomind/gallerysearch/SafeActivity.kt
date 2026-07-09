@@ -62,16 +62,16 @@ class SafeActivity : AppCompatActivity() {
     private var pendingSetupPassword: String? = null
     private var pendingImportUris: List<Uri> = emptyList()
     private val importedForDeletion = ArrayList<Uri>()
-    /** Set before launching the picker/folder-picker so onStop doesn't relock mid-flow. */
+    /** Set before launching external system UI so onStop doesn't relock mid-flow. */
     private var suppressRelock = false
-
-    private val openTreeLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri -> onFolderPicked(uri) }
 
     private val pickPhotosLauncher = registerForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris -> if (uris.isNotEmpty()) runImport(uris, isMove = false) }
+
+    private val storageAccessLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { finishPendingSetupIfPossible() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -101,7 +101,7 @@ class SafeActivity : AppCompatActivity() {
 
         binding.backBtn.setOnClickListener { finish() }
         binding.overflowBtn.setOnClickListener { showOverflow() }
-        binding.addPhotosBtn.setOnClickListener { onAddPhotos() }
+        binding.addPhotosBtn.visibility = View.GONE
         binding.fingerprintBtn.setOnClickListener { authenticateToUnlock() }
         binding.unlockBtn.setOnClickListener { onPasswordUnlock() }
         binding.lockPasswordInput.setOnEditorActionListener { _, _, _ -> onPasswordUnlock(); true }
@@ -166,62 +166,59 @@ class SafeActivity : AppCompatActivity() {
                 else -> {
                     pendingSetupPassword = password
                     dialog.dismiss()
-                    launchFolderPicker()
+                    finishPendingSetupIfPossible()
                 }
             }
         }
         dialog.show()
     }
 
-    private fun launchFolderPicker() {
-        suppressRelock = true
-        openTreeLauncher.launch(null)
-    }
-
-    private fun onFolderPicked(uri: Uri?) {
-        if (uri == null) {
-            // Setup flow needs a folder; recovery/relink can be retried from the menu.
-            val setupPassword = pendingSetupPassword
-            if (setupPassword != null && !SafeManager.isConfigured(this)) {
-                Toast.makeText(this, "A folder is required to store your Safe", Toast.LENGTH_LONG).show()
-                startSetup()
-            }
+    private fun finishPendingSetupIfPossible() {
+        val setupPassword = pendingSetupPassword
+        if (setupPassword == null || SafeManager.isConfigured(this)) return
+        if (!StoragePermissions.hasAllFilesAccess(this)) {
+            suppressRelock = true
+            Toast.makeText(
+                this,
+                "Allow all-files access to create ${SafeManager.vaultLocationLabel()}",
+                Toast.LENGTH_LONG
+            ).show()
+            storageAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this))
             return
         }
-        val setupPassword = pendingSetupPassword
-        if (setupPassword != null && !SafeManager.isConfigured(this)) {
-            pendingSetupPassword = null
-            binding.busySpinner.visibility = View.VISIBLE
-            lifecycleScope.launch {
-                val outcome = withContext(Dispatchers.IO) {
-                    SafeManager.setUpVault(this@SafeActivity, setupPassword, uri)
+        pendingSetupPassword = null
+        binding.busySpinner.visibility = View.VISIBLE
+        lifecycleScope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                SafeManager.setUpVault(this@SafeActivity, setupPassword)
+            }
+            binding.busySpinner.visibility = View.GONE
+            when (outcome) {
+                SafeManager.SetupOutcome.NO_ACCESS -> {
+                    pendingSetupPassword = setupPassword
+                    Toast.makeText(this@SafeActivity, "All-files access is required for Safe", Toast.LENGTH_LONG)
+                        .show()
+                    finishPendingSetupIfPossible()
                 }
-                binding.busySpinner.visibility = View.GONE
-                when (outcome) {
-                    SafeManager.SetupOutcome.WRONG_PASSWORD -> {
-                        Toast.makeText(
-                            this@SafeActivity,
-                            "That password doesn't match the Safe in this folder",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        startSetup()
-                    }
-                    SafeManager.SetupOutcome.ADOPTED -> {
-                        Toast.makeText(this@SafeActivity, "Safe unlocked", Toast.LENGTH_SHORT).show()
-                        showContent()
-                        offerBiometricEnroll { processPendingImport() }
-                    }
-                    SafeManager.SetupOutcome.CREATED -> {
-                        Toast.makeText(this@SafeActivity, "Safe created", Toast.LENGTH_SHORT).show()
-                        showContent()
-                        offerBiometricEnroll { processPendingImport() }
-                    }
+                SafeManager.SetupOutcome.WRONG_PASSWORD -> {
+                    Toast.makeText(
+                        this@SafeActivity,
+                        "That password doesn't match the Safe archive",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    startSetup()
+                }
+                SafeManager.SetupOutcome.ADOPTED -> {
+                    Toast.makeText(this@SafeActivity, "Safe unlocked", Toast.LENGTH_SHORT).show()
+                    showContent()
+                    offerBiometricEnroll { processPendingImport() }
+                }
+                SafeManager.SetupOutcome.CREATED -> {
+                    Toast.makeText(this@SafeActivity, "Safe created", Toast.LENGTH_SHORT).show()
+                    showContent()
+                    offerBiometricEnroll { processPendingImport() }
                 }
             }
-        } else {
-            // Relink an existing vault folder (e.g. recovery after reinstall), then ask to unlock.
-            SafeManager.linkVault(this, uri)
-            showLock()
         }
     }
 

@@ -11,6 +11,13 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <!-- Recycle bin + Safe move originals into an app-managed store, then delete the source file
+         directly (the app shows its own confirmation, no per-item system delete dialog). On R+ that
+         requires All-files access (requested at runtime); pre-Q needs the legacy write permission. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <application
         android:name=".GallerySearchApp"
@@ -52,6 +59,19 @@
             android:exported="false"
             android:theme="@style/Theme.GallerySearch" />
 
+        <!-- Full-screen swipeable viewer for decrypted Safe photos. FLAG_SECURE at runtime. -->
+        <activity
+            android:name=".SafeViewerActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/Theme.GallerySearch" />
+
+        <!-- Recycle bin (deleted photos, 30-day retention). -->
+        <activity
+            android:name=".BinActivity"
+            android:exported="false"
+            android:theme="@style/Theme.GallerySearch" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -65,6 +85,16 @@
         <receiver
             android:name=".IndexControlReceiver"
             android:exported="false" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.binprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_provider_paths" />
+        </provider>
 
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"

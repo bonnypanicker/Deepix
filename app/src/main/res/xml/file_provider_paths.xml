@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Recycle Bin storage (app-private). -->
+    <files-path
+        name="bin"
+        path="bin/" />
+    <!-- Decrypted Safe previews (app cache; wiped after viewing). -->
+    <cache-path
+        name="safe_view"
+        path="/" />
+</paths>

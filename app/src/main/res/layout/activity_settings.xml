@@ -357,6 +357,100 @@
                     android:text="STORAGE" />
 
                 <LinearLayout
+                    android:id="@+id/rowRecycleBin"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Recycle bin" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Deleted photos are kept for 30 days before removal" />
+                    </LinearLayout>
+
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/switchRecycleBin"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clickable="false"
+                        android:focusable="false" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout
+                    android:id="@+id/rowOpenBin"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Open recycle bin" />
+
+                        <TextView
+                            android:id="@+id/binCountSubtitle"
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Restore or permanently remove deleted photos" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_fluent_chevron_right_24_regular"
+                        android:tint="#6F6F6F" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout
+                    android:id="@+id/rowDirectDelete"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Delete without asking" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Skip the confirmation dialog when deleting. Requires all-files access." />
+                    </LinearLayout>
+
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/switchDirectDelete"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clickable="false"
+                        android:focusable="false" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout
+                    android:id="@+id/rowAllFilesAccess"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="All-files access" />
+
+                        <TextView
+                            android:id="@+id/allFilesSubtitle"
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Needed for the recycle bin and instant deletion" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_fluent_chevron_right_24_regular"
+                        android:tint="#6F6F6F" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout
                     android:id="@+id/rowClearCleanup"
                     style="@style/SettingsRow">
 

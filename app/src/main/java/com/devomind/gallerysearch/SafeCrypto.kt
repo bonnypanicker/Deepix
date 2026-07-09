@@ -67,18 +67,23 @@ object SafeCrypto {
     }
 
     /** Downscaled JPEG bytes for the grid, or null if the source can't be decoded. */
-    fun makeThumbnailJpeg(context: Context, source: Uri): ByteArray? {
+    fun makeThumbnailJpeg(context: Context, source: Uri): ByteArray? =
+        makeThumbnailJpeg { context.contentResolver.openInputStream(source) }
+
+    /** Downscaled JPEG bytes from a decrypted temp file (avoids the ContentResolver). */
+    fun makeThumbnailJpeg(file: File): ByteArray? =
+        makeThumbnailJpeg { file.inputStream() }
+
+    private inline fun makeThumbnailJpeg(openStream: () -> java.io.InputStream?): ByteArray? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        context.contentResolver.openInputStream(source)?.use {
-            BitmapFactory.decodeStream(it, null, bounds)
-        } ?: return null
+        openStream()?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: return null
         val longest = max(bounds.outWidth, bounds.outHeight)
         if (longest <= 0) return null
         var sample = 1
         while (longest / sample > ThumbMaxPx * 2) sample *= 2
 
         val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        val decoded = context.contentResolver.openInputStream(source)?.use {
+        val decoded = openStream()?.use {
             BitmapFactory.decodeStream(it, null, opts)
         } ?: return null
 

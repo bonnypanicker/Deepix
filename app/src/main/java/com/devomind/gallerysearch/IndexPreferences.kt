@@ -19,6 +19,8 @@ object IndexPreferences {
     private const val KeySmartAlbumOnboardingDismissed = "smart_album_onboarding_dismissed"
     private const val KeyIndexProgressPercent = "index_progress_percent"
     private const val KeyBlurSensitive = "blur_sensitive_content"
+    private const val KeyRecycleBinEnabled = "recycle_bin_enabled"
+    private const val KeySkipDeleteConfirm = "skip_delete_confirm"
 
     fun saveLastIndexedTime(context: Context) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
@@ -81,6 +83,36 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KeyCleanupPaused, paused)
+            .apply()
+    }
+
+    /** When on, deletes go to the 30-day Recycle Bin instead of being removed immediately. */
+    fun isRecycleBinEnabled(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyRecycleBinEnabled, true)
+    }
+
+    fun setRecycleBinEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyRecycleBinEnabled, enabled)
+            .apply()
+    }
+
+    /**
+     * When on (and All-files access is granted), skip the app's own confirmation dialog and delete
+     * directly. Independent of the Recycle Bin toggle — "direct" refers to the confirmation, the
+     * destination (bin vs permanent) is [isRecycleBinEnabled].
+     */
+    fun isSkipDeleteConfirm(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeySkipDeleteConfirm, false)
+    }
+
+    fun setSkipDeleteConfirm(context: Context, skip: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeySkipDeleteConfirm, skip)
             .apply()
     }
 

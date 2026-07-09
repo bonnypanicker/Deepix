@@ -186,6 +186,9 @@ CleanupResultStore  (JSON file: filesDir/cleanup_results.json)
 | `MetadataIndexMagic` / `MetadataIndexVersion` | Will invalidate metadata indexes |
 | `OnnxSessionOptions.DefaultThreadCount` (4) | Benchmark in `ThreadBenchmark.kt` determines optimal count |
 | `ViewerActivity` gesture logic | Test all 6 gesture scenarios: diagonal swipes, info panel tap-close, fast swiping captions, panel drag smoothness, paging disabled while panel open |
+| `SafeManager` MasterName (`DeepixSafe.zip`) | Vault archive filename in the SAF folder — changing it orphans existing vaults on device |
+| `SafeStore` SharedPrefs keys / `SafeKeystore` KeyAlias | Stored on device — renaming breaks existing Safe config + biometric unlock |
+| `SafeCrypto` zip params (AES-256 / STORE) | Interop contract — the vault must stay a standard AES zip openable by external tools |
 | `GestureDirection` enum values | Update `handleViewerTouch()` classification logic and `onMediaTap` callback |
 
 ---

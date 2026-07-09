@@ -1,10 +1,17 @@
 package com.devomind.gallerysearch
 
 import android.app.Application
+import kotlin.concurrent.thread
 
 class GallerySearchApp : Application() {
     val sharedEncoders: SharedEncoders by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         SharedEncoders(applicationContext)
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        // Enforce the Recycle Bin's 30-day retention off the main thread on each cold start.
+        thread(isDaemon = true) { runCatching { BinManager.purgeExpired(applicationContext) } }
     }
 }
 

@@ -106,7 +106,7 @@
                     android:layout_height="match_parent"
                     android:layout_weight="1"
                     android:background="@android:color/transparent"
-                    android:hint="Search albums, photos…"
+                    android:hint="Search with AI"
                     android:imeOptions="actionSearch"
                     android:inputType="text"
                     android:paddingStart="8dp"
@@ -517,6 +517,11 @@
             android:id="@+id/drawerSafe"
             style="@style/MetroDrawerItem"
             android:text="safe" />
+
+        <TextView
+            android:id="@+id/drawerBin"
+            style="@style/MetroDrawerItem"
+            android:text="recycle bin" />
 
         <TextView
             android:id="@+id/drawerSmartCleanup"
