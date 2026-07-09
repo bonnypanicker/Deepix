@@ -100,6 +100,15 @@
                     android:scaleType="centerCrop"
                     android:visibility="gone" />
 
+                <ImageView
+                    android:id="@+id/searchSparkle"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_marginStart="6dp"
+                    android:contentDescription="AI search"
+                    android:src="@drawable/ic_fluent_sparkle_24_regular"
+                    android:tint="@color/metroAccent" />
+
                 <EditText
                     android:id="@+id/searchInput"
                     android:layout_width="0dp"

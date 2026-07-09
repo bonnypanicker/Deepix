@@ -1160,8 +1160,8 @@ class MainActivity : AppCompatActivity() {
             hints += "AI Learning Photos\u2026 $pct%"
         }
         hints += "Search with AI"
-        hints += "Beach at sunset"
-        hints += "Documents"
+        hints += "\"Beach at sunset\""
+        hints += "\"Documents\""
         hints += "Search metadata"
         return hints
     }
@@ -2239,6 +2239,7 @@ class MainActivity : AppCompatActivity() {
     private fun showImageSearchThumb(uri: Uri, cropRect: FloatArray? = null) {
         binding.searchImageThumb.visibility = View.VISIBLE
         binding.searchImageThumb.setOnClickListener { clearImageSearch() }
+        binding.searchSparkle.visibility = View.GONE
         stopSearchHintCycle()
         binding.searchInput.hint = if (cropRect != null) "Photos similar to this region" else "Photos similar to this image"
 
@@ -2270,6 +2271,7 @@ class MainActivity : AppCompatActivity() {
         binding.searchImageThumb.visibility = View.GONE
         binding.searchImageThumb.setOnClickListener(null)
         com.bumptech.glide.Glide.with(this).clear(binding.searchImageThumb)
+        binding.searchSparkle.visibility = View.VISIBLE
         startSearchHintCycle()
     }
 
