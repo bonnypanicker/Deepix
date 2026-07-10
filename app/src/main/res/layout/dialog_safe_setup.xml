@@ -42,9 +42,19 @@
         android:layout_marginTop="10dp"
         android:includeFontPadding="false"
         android:lineSpacingExtra="2dp"
-        android:text="Choose a password to encrypt your Safe. Next you'll pick the folder where the encrypted file is stored."
+        android:text="Choose a password to encrypt your Safe. The encrypted file survives uninstall — keep your password safe, it can't be recovered."
         android:textColor="@color/metroTextSecondary"
         android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/safeSetupLocation"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:fontFamily="sans-serif-medium"
+        android:includeFontPadding="false"
+        android:textColor="@color/metroAccent"
+        android:textSize="12sp" />
 
     <TextView
         android:layout_width="wrap_content"

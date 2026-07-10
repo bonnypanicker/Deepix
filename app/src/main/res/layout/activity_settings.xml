@@ -351,6 +351,50 @@
                         android:focusable="false" />
                 </LinearLayout>
 
+                <!-- ===================== SAFE ===================== -->
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="SAFE" />
+
+                <LinearLayout
+                    android:id="@+id/rowSafeLocation"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Safe storage location" />
+
+                        <TextView
+                            android:id="@+id/safeLocationSubtitle"
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Where the encrypted Safe file is stored" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_fluent_chevron_right_24_regular"
+                        android:tint="#6F6F6F" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout
+                    android:id="@+id/rowSafePath"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Safe file" />
+
+                        <TextView
+                            android:id="@+id/safePathSubtitle"
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Not set up" />
+                    </LinearLayout>
+                </LinearLayout>
+
                 <!-- ===================== STORAGE ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"

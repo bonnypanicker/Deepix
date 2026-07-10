@@ -112,7 +112,11 @@ MainActivity drawer "safe" / multi-select "safe" → SafeActivity (safeLauncher,
   │     ├── SafeCrypto (zip4j AES-256 add/list/extract/remove/verify; PBKDF2; AES-GCM thumbs;
   │     │              thumbnail decode straight from encrypted entry stream)
   │     ├── SafeKeystore (biometric-gated Keystore key → wraps password)
-  │     └── java.io.File  (DeepixSafe.zip at fixed Pictures/Deepix Safe/ path via All-files access)
+  │     ├── IndexPreferences.getSafeStorageRoot (pictures|documents) → vaultDir/masterZip path
+  │     └── java.io.File  (DeepixSafe.zip at Pictures|Documents /Deepix Safe/ via All-files access)
+  ├── WRONG_PASSWORD (orphaned zip / forgotten pw) → offerResetOrphanedVault → SafeManager.purgeVault
+  │     (deletes zip across all roots + SafeStore.reset + thumbs) → fresh CREATED setup
+  ├── Settings › Safe storage location → SafeManager.moveVault (relocate existing vault on root change)
   ├── BiometricPrompt (CryptoObject) → recover password → unlock
   ├── SafeItemAdapter (grid of decrypted thumbnails; async bindThumb)
   └── returns ExtraImportedUris → MainActivity.deleteUris() (delete originals = "move")
@@ -187,7 +191,8 @@ CleanupResultStore  (JSON file: filesDir/cleanup_results.json)
 | `MetadataIndexMagic` / `MetadataIndexVersion` | Will invalidate metadata indexes |
 | `OnnxSessionOptions.DefaultThreadCount` (4) | Benchmark in `ThreadBenchmark.kt` determines optimal count |
 | `ViewerActivity` gesture logic | Test all 6 gesture scenarios: diagonal swipes, info panel tap-close, fast swiping captions, panel drag smoothness, paging disabled while panel open |
-| `SafeManager` MasterName (`DeepixSafe.zip`) / VaultFolderName | Vault archive path in public `Pictures/Deepix Safe/` — changing it orphans existing vaults on device |
+| `SafeManager` MasterName (`DeepixSafe.zip`) / VaultFolderName | Vault archive name/folder; root dir is `IndexPreferences.getSafeStorageRoot` (pictures\|documents). Changing the root via Settings **moves** the existing vault (`moveVault`); `purgeVault` wipes it across all roots |
+| `IndexPreferences` safe_storage_root (`pictures`\|`documents`) | Stored in `index_prefs` (survives `SafeStore.reset`); drives `SafeManager.vaultDir`/`masterZip`/`archiveExists`/`vaultLocationLabel` |
 | `SafeStore` SharedPrefs keys / `SafeKeystore` KeyAlias | Stored on device — renaming breaks existing Safe config + biometric unlock |
 | `SafeCrypto` zip params (AES-256 / STORE) | Interop contract — the vault must stay a standard AES zip openable by external tools |
 | `GestureDirection` enum values | Update `handleViewerTouch()` classification logic and `onMediaTap` callback |
@@ -229,10 +234,10 @@ activity_smart_cleanup.xml → SmartCleanupActivity (overview tiles + progress +
 item_cleanup_tile.xml   → SmartCleanupActivity (Metro category tile)
 sheet_search_filter.xml → MainActivity (Sort & filter bottom sheet; 20dp inset)
 item_info_row.xml       → ViewerActivity (Info sheet key-value row, via <include>)
-activity_settings.xml   → SettingsActivity (Metro preferences screen)
-activity_safe.xml       → SafeActivity (lock overlay + decrypted thumbnail grid + add-photos bar)
+activity_settings.xml   → SettingsActivity (Metro preferences screen; incl. SAFE section: storage location + file-path)
+activity_safe.xml       → SafeActivity (lock overlay + forgotPasswordBtn + decrypted thumbnail grid + add-photos bar)
 item_safe_photo.xml     → SafeItemAdapter (decrypted vault thumbnail cell)
-dialog_safe_setup.xml   → SafeActivity (password create + confirm + warning)
+dialog_safe_setup.xml   → SafeActivity (password create + confirm + warning + resolved storage path)
 dialog_safe_password.xml → SafeActivity ("Show password" reveal + copy)
 ```
 

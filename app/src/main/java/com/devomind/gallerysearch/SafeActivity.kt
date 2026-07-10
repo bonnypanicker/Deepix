@@ -105,6 +105,7 @@ class SafeActivity : AppCompatActivity() {
         binding.fingerprintBtn.setOnClickListener { authenticateToUnlock() }
         binding.unlockBtn.setOnClickListener { onPasswordUnlock() }
         binding.lockPasswordInput.setOnEditorActionListener { _, _, _ -> onPasswordUnlock(); true }
+        binding.forgotPasswordBtn.setOnClickListener { offerResetOrphanedVault() }
 
         if (!SafeManager.isConfigured(this)) startSetup() else showLock()
     }
@@ -142,6 +143,7 @@ class SafeActivity : AppCompatActivity() {
         binding.lockDivider.visibility = View.GONE
         binding.lockPasswordInput.visibility = View.GONE
         binding.unlockBtn.visibility = View.GONE
+        binding.forgotPasswordBtn.visibility = View.GONE
 
         val view = layoutInflater.inflate(R.layout.dialog_safe_setup, null)
         val pw = view.findViewById<EditText>(R.id.safePassword)
@@ -150,6 +152,9 @@ class SafeActivity : AppCompatActivity() {
             .setView(view)
             .setCancelable(false)
             .create()
+
+        view.findViewById<TextView>(R.id.safeSetupLocation).text =
+            "Stored at: ${SafeManager.vaultLocationLabel(this)}"
 
         view.findViewById<TextView>(R.id.safeSetupCancel).setOnClickListener {
             dialog.dismiss()
@@ -180,7 +185,7 @@ class SafeActivity : AppCompatActivity() {
             suppressRelock = true
             Toast.makeText(
                 this,
-                "Allow all-files access to create ${SafeManager.vaultLocationLabel()}",
+                "Allow all-files access to create ${SafeManager.vaultLocationLabel(this)}",
                 Toast.LENGTH_LONG
             ).show()
             storageAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this))
@@ -201,12 +206,7 @@ class SafeActivity : AppCompatActivity() {
                     finishPendingSetupIfPossible()
                 }
                 SafeManager.SetupOutcome.WRONG_PASSWORD -> {
-                    Toast.makeText(
-                        this@SafeActivity,
-                        "That password doesn't match the Safe archive",
-                        Toast.LENGTH_LONG
-                    ).show()
-                    startSetup()
+                    offerResetOrphanedVault()
                 }
                 SafeManager.SetupOutcome.ADOPTED -> {
                     Toast.makeText(this@SafeActivity, "Safe unlocked", Toast.LENGTH_SHORT).show()
@@ -222,6 +222,35 @@ class SafeActivity : AppCompatActivity() {
         }
     }
 
+    // ---- Reset (forgotten password / orphaned vault) ----
+
+    /**
+     * Shown when an existing encrypted vault can't be opened with the entered password (reinstall
+     * with a leftover zip, or a forgotten password). Offers to delete the vault and start fresh —
+     * the only escape from the WRONG_PASSWORD setup loop.
+     */
+    private fun offerResetOrphanedVault() {
+        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
+            .setTitle("Safe already exists")
+            .setMessage(
+                "An encrypted Safe file exists at ${SafeManager.vaultLocationLabel(this)} but the " +
+                    "password doesn't match. If you've forgotten the password, you can delete it " +
+                    "and create a new Safe. This permanently erases all photos inside it."
+            )
+            .setPositiveButton("Delete & start over") { _, _ ->
+                binding.busySpinner.visibility = View.VISIBLE
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) { SafeManager.purgeVault(this@SafeActivity) }
+                    binding.busySpinner.visibility = View.GONE
+                    Toast.makeText(this@SafeActivity, "Old Safe deleted", Toast.LENGTH_SHORT).show()
+                    startSetup()
+                }
+            }
+            .setNegativeButton("Try another password") { _, _ -> startSetup() }
+            .setCancelable(false)
+            .show()
+    }
+
     // ---- Unlock ----
 
     private fun showLock() {
@@ -232,6 +261,7 @@ class SafeActivity : AppCompatActivity() {
         binding.lockPasswordInput.visibility = View.VISIBLE
         binding.lockPasswordInput.text?.clear()
         binding.unlockBtn.visibility = View.VISIBLE
+        binding.forgotPasswordBtn.visibility = View.VISIBLE
 
         val useBiometric = canUseBiometric()
         binding.fingerprintBtn.visibility = if (useBiometric) View.VISIBLE else View.GONE

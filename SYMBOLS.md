@@ -20,7 +20,7 @@ GalleryRepository         GalleryRepository.kt     loadSnapshot(); search(); bui
 DbRepository              DbRepository.kt          upsertMedia(); toggleFavorite(); upsertExif(); addTag(); setTagsForMedia()
 IndexWorker               IndexWorker.kt           CoroutineWorker; WorkName="gallery_background_index"; BatchSize via GalleryRepository
 IndexControlReceiver      IndexControlReceiver.kt  ActionPause/ActionResume broadcasts; pendingIntent()
-IndexPreferences          IndexPreferences.kt      save/loadLastIndexedTime; isIndexPaused/setIndexPaused; getGridColumnCount
+IndexPreferences          IndexPreferences.kt      save/loadLastIndexedTime; isIndexPaused/setIndexPaused; getGridColumnCount; getSafeStorageRoot/setSafeStorageRoot (SAFE_ROOT_PICTURES|SAFE_ROOT_DOCUMENTS)
 IndexScopeStore           IndexScopeStore.kt       getFolderIds/setFolderIds/isAllFolders (empty=all); AI-index folder scope, independent of gallery view
 IndexedFoldersActivity    IndexedFoldersActivity.kt  Settings folder picker → IndexScopeStore + IndexController.rescan
 PhotoEditorActivity       PhotoEditorActivity.kt   in-app editor (crop/perspective/draw/adjust); Save + Save a copy; ExtraUri/ExtraName/ExtraEdited
@@ -65,9 +65,9 @@ CleanupAnalyzer           CleanupAnalyzer.kt        object; analyze(items,embedd
 CleanupWorker             CleanupWorker.kt          CoroutineWorker; WorkName="gallery_smart_cleanup"; foreground; full scan → CleanupResultStore; resumable; ProgressCurrent/TotalKey
 CleanupResultStore        CleanupResultStore.kt     save()/load()/clear(); Result(categoryUris,suggestedUris,scannedUris,done,total,complete,updatedAt) → cleanup_results.json
 CleanupHandoff            CleanupHandoff.kt         object; items, indexedCount, release() — hand-off to SmartCleanupActivity
-SettingsActivity          SettingsActivity.kt       prefs screen: collage/grid columns/pinned/charging-only/clear cleanup/about; writes IndexPreferences
-SafeActivity              SafeActivity.kt           encrypted photo locker; biometric-first lock → decrypted thumb grid → overflow (show password/add/fingerprint/lock/remove); FLAG_SECURE; ExtraImportUris/ExtraImportedUris
-SafeManager               SafeManager.kt            object; session password + single-archive vault ops at fixed public path (All-files access): setUpVault(ctx,pw)/unlock/lock/listItems/listFolder/createFolder/importPhotos/decryptToBitmap/decryptToTemp/restoreToGallery/removeItem/thumbnail; archiveExists/hasAccess/isConfigured; thumbnail decodes from encrypted entry stream
+SettingsActivity          SettingsActivity.kt       prefs screen: collage/grid columns/pinned/charging-only/clear cleanup/about + SAFE section (storage location Pictures|Documents → moveVault; file-path subtitle); writes IndexPreferences
+SafeActivity              SafeActivity.kt           encrypted photo locker; biometric-first lock → decrypted thumb grid → overflow (show password/add/fingerprint/lock/remove); lock-screen "Forgot password?" → offerResetOrphanedVault; FLAG_SECURE; ExtraImportUris/ExtraImportedUris
+SafeManager               SafeManager.kt            object; session password + single-archive vault ops at CONFIGURABLE public path (Pictures|Documents via IndexPreferences.getSafeStorageRoot; All-files access): setUpVault(ctx,pw)/unlock/lock/listItems/listFolder/createFolder/importPhotos/decryptToBitmap/decryptToTemp/restoreToGallery/removeItem/thumbnail; moveVault(ctx,oldRoot,newRoot)/purgeVault(ctx) [hard delete — forgotten-password escape]/archiveExists(ctx)/vaultLocationLabel(ctx)/hasAccess/isConfigured; thumbnail decodes from encrypted entry stream
   VaultItem               SafeManager.kt            data class: entryName (full path within the zip), displayName
   VaultFolder             SafeManager.kt            data class: path (ends '/'), name
   FolderListing           SafeManager.kt            data class: folders, photos
@@ -202,7 +202,7 @@ DefaultThreadCount = 4
 // Safe (encrypted photo locker)
 SafeStore.PbkdfIterations = 120_000   SafeStore.SaltBytes = 16
 SafeCrypto.ThumbMaxPx = 320   SafeCrypto.VaultExtension = ".zip"   // AES-256, STORE
-SafeManager.MasterName = "DeepixSafe.zip"   // single vault archive at Pictures/Deepix Safe/ (All-files access)
+SafeManager.MasterName = "DeepixSafe.zip"   // single vault archive at Pictures|Documents /Deepix Safe/ (root via IndexPreferences.getSafeStorageRoot; All-files access)
 SafeKeystore.KeyAlias = "photo_safe_biometric_key"   // AES/GCM, user-auth-required
 
 // WordNetExpansionDictionary.kt

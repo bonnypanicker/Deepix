@@ -6,15 +6,20 @@ import android.os.Bundle
 import android.view.View
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
+import androidx.lifecycle.lifecycleScope
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.devomind.gallerysearch.databinding.ActivitySettingsBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Metro-styled preferences screen. All toggles write to [IndexPreferences] immediately; MainActivity
@@ -40,6 +45,7 @@ class SettingsActivity : AppCompatActivity() {
         bindCollageSize()
         bindActions()
         bindStorage()
+        bindSafe()
         bindIndexing()
         bindAbout()
     }
@@ -48,6 +54,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onResume()
         updateIndexedFoldersSubtitle()
         updateStorageSubtitles()
+        updateSafeSubtitles()
     }
 
     private fun applyInsets() {
@@ -180,6 +187,73 @@ class SettingsActivity : AppCompatActivity() {
 
         binding.rowAllFilesAccess.setOnClickListener { promptAllFilesAccess() }
     }
+
+    // ------------------------------------------------------------------
+    // Safe (encrypted locker) storage location
+    // ------------------------------------------------------------------
+
+    private fun bindSafe() {
+        updateSafeSubtitles()
+        binding.rowSafeLocation.setOnClickListener { showSafeLocationDialog() }
+    }
+
+    private fun showSafeLocationDialog() {
+        val current = IndexPreferences.getSafeStorageRoot(this)
+        val options = arrayOf("Pictures", "Documents")
+        val checked = if (current == IndexPreferences.SAFE_ROOT_DOCUMENTS) 1 else 0
+        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
+            .setTitle("Safe storage location")
+            .setSingleChoiceItems(options, checked) { dialog, which ->
+                val newRoot =
+                    if (which == 1) IndexPreferences.SAFE_ROOT_DOCUMENTS else IndexPreferences.SAFE_ROOT_PICTURES
+                dialog.dismiss()
+                if (newRoot != current) changeSafeRoot(current, newRoot)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun changeSafeRoot(oldRoot: String, newRoot: String) {
+        if (SafeStore.isConfigured(this)) {
+            if (!StoragePermissions.hasAllFilesAccess(this)) {
+                Toast.makeText(this, "All-files access is needed to move the Safe", Toast.LENGTH_LONG).show()
+                return
+            }
+            lifecycleScope.launch {
+                val moved = withContext(Dispatchers.IO) {
+                    SafeManager.moveVault(this@SettingsActivity, oldRoot, newRoot)
+                }
+                if (!moved) {
+                    Toast.makeText(
+                        this@SettingsActivity,
+                        "Couldn't move the Safe file to the new location",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@launch
+                }
+                IndexPreferences.setSafeStorageRoot(this@SettingsActivity, newRoot)
+                updateSafeSubtitles()
+                Toast.makeText(this@SettingsActivity, "Safe moved to ${rootLabel(newRoot)}", Toast.LENGTH_LONG).show()
+            }
+        } else {
+            IndexPreferences.setSafeStorageRoot(this, newRoot)
+            updateSafeSubtitles()
+            Toast.makeText(this, "New Safe will be created in ${rootLabel(newRoot)}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun updateSafeSubtitles() {
+        val root = IndexPreferences.getSafeStorageRoot(this)
+        binding.safeLocationSubtitle.text = "${rootLabel(root)}/Deepix Safe/"
+        binding.safePathSubtitle.text = when {
+            SafeManager.archiveExists(this) -> SafeManager.vaultLocationLabel(this)
+            SafeStore.isConfigured(this) -> "Configured · no file yet"
+            else -> "Not set up"
+        }
+    }
+
+    private fun rootLabel(root: String): String =
+        if (root == IndexPreferences.SAFE_ROOT_DOCUMENTS) "Documents" else "Pictures"
 
     private fun promptAllFilesAccess() {
         if (StoragePermissions.hasAllFilesAccess(this)) {

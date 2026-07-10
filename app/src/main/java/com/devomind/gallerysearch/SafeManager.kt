@@ -64,15 +64,68 @@ object SafeManager {
         }
     }
 
-    // ---- Storage location (fixed public folder, direct file I/O) ----
+    // ---- Storage location (public folder, direct file I/O) ----
 
-    private fun vaultDir(): File =
-        File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), VaultFolderName)
+    /** Roots the vault can live under; the folder survives uninstall and opens in any zip tool. */
+    private val knownRoots = listOf(IndexPreferences.SAFE_ROOT_PICTURES, IndexPreferences.SAFE_ROOT_DOCUMENTS)
 
-    private fun masterZip(): File = File(vaultDir(), MasterName)
+    private fun baseDir(root: String): File =
+        File(
+            Environment.getExternalStoragePublicDirectory(
+                if (root == IndexPreferences.SAFE_ROOT_DOCUMENTS) Environment.DIRECTORY_DOCUMENTS
+                else Environment.DIRECTORY_PICTURES
+            ),
+            VaultFolderName
+        )
+
+    private fun vaultDir(context: Context): File =
+        baseDir(IndexPreferences.getSafeStorageRoot(context))
+
+    private fun masterZip(context: Context): File = File(vaultDir(context), MasterName)
 
     /** Human-readable location shown to the user (for the "keep it safe" messaging). */
-    fun vaultLocationLabel(): String = "Pictures/$VaultFolderName/$MasterName"
+    fun vaultLocationLabel(context: Context): String {
+        val root = IndexPreferences.getSafeStorageRoot(context)
+        val parent = if (root == IndexPreferences.SAFE_ROOT_DOCUMENTS) "Documents" else "Pictures"
+        return "$parent/$VaultFolderName/$MasterName"
+    }
+
+    /**
+     * Moves the vault zip from [oldRoot] to [newRoot]. Returns `true` when there is nothing to move
+     * or the move succeeds; `false` if an existing vault couldn't be moved or the target already
+     * holds one (so the caller can abort without losing data).
+     */
+    fun moveVault(context: Context, oldRoot: String, newRoot: String): Boolean {
+        if (oldRoot == newRoot) return true
+        val oldZip = File(baseDir(oldRoot), MasterName)
+        if (!oldZip.exists()) return true
+        val newDir = baseDir(newRoot).apply { mkdirs() }
+        val newZip = File(newDir, MasterName)
+        if (newZip.exists()) return false // don't clobber a vault already at the target
+        return if (oldZip.renameTo(newZip)) {
+            true
+        } else {
+            runCatching {
+                oldZip.copyTo(newZip, overwrite = false)
+                oldZip.delete()
+                true
+            }.getOrDefault(false)
+        }
+    }
+
+    /**
+     * Hard reset: deletes the encrypted vault across every known root, plus app config and the
+     * thumbnail cache. Use only when the password is lost — everything inside the vault is erased.
+     */
+    fun purgeVault(context: Context) {
+        for (root in knownRoots) {
+            runCatching { File(baseDir(root), MasterName).delete() }
+            runCatching { baseDir(root).delete() } // removes the now-empty folder
+        }
+        SafeStore.reset(context)
+        lock(context)
+        runCatching { File(context.filesDir, "safe_thumbs").deleteRecursively() }
+    }
 
     // ---- Configuration ----
 
@@ -82,8 +135,10 @@ object SafeManager {
         SafeStore.isConfigured(context) && hasAccess(context)
 
     /** True when an encrypted archive already exists on disk (recovery/adopt path). */
-    fun archiveExists(): Boolean =
-        masterZip().exists() && SafeCrypto.listEntryNames(masterZip()).isNotEmpty()
+    fun archiveExists(context: Context): Boolean {
+        val zip = masterZip(context)
+        return zip.exists() && SafeCrypto.listEntryNames(zip).isNotEmpty()
+    }
 
     /**
      * First-time setup / recovery. Requires All-files access. Creates the fixed vault folder and,
@@ -92,8 +147,8 @@ object SafeManager {
      */
     fun setUpVault(context: Context, password: String): SetupOutcome {
         if (!hasAccess(context)) return SetupOutcome.NO_ACCESS
-        vaultDir().mkdirs()
-        val zip = masterZip()
+        vaultDir(context).mkdirs()
+        val zip = masterZip(context)
         val hasExisting = zip.exists() && SafeCrypto.listEntryNames(zip).isNotEmpty()
         if (hasExisting && !SafeCrypto.verifyPassword(zip, password.toCharArray())) {
             return SetupOutcome.WRONG_PASSWORD
@@ -111,7 +166,7 @@ object SafeManager {
         val ok = if (SafeStore.isConfigured(context)) {
             SafeStore.verifyPassword(context, password)
         } else {
-            SafeCrypto.verifyPassword(masterZip(), password.toCharArray())
+            SafeCrypto.verifyPassword(masterZip(context), password.toCharArray())
         }
         if (!ok) return false
         if (!SafeStore.isConfigured(context)) SafeStore.savePasswordVerifier(context, password)
@@ -129,7 +184,7 @@ object SafeManager {
     /** Lists the immediate sub-folders and photos under [folderPath] ("" = root). */
     fun listFolder(context: Context, folderPath: String = ""): FolderListing {
         val prefix = folderPath
-        val names = SafeCrypto.listEntryNames(masterZip())
+        val names = SafeCrypto.listEntryNames(masterZip(context))
         val folders = linkedSetOf<String>()
         val photos = mutableListOf<VaultItem>()
         for (name in names) {
@@ -151,7 +206,7 @@ object SafeManager {
 
     /** Flat list of every photo in the vault (used where folders don't matter). */
     fun listItems(context: Context): List<VaultItem> =
-        SafeCrypto.listEntryNames(masterZip())
+        SafeCrypto.listEntryNames(masterZip(context))
             .filterNot { it.substringAfterLast('/') == FolderMarker }
             .sortedDescending()
             .map { VaultItem(it) }
@@ -164,7 +219,7 @@ object SafeManager {
         return runCatching {
             val work = File(context.cacheDir, "safe_work").apply { mkdirs() }
             val marker = File(work, FolderMarker).apply { writeText("") }
-            SafeCrypto.addFileToZip(masterZip(), marker, markerEntry, password.toCharArray())
+            SafeCrypto.addFileToZip(masterZip(context), marker, markerEntry, password.toCharArray())
             marker.delete()
             true
         }.getOrDefault(false)
@@ -174,8 +229,8 @@ object SafeManager {
 
     fun importPhotos(context: Context, sources: List<Uri>, folderPath: String = ""): ImportResult {
         val password = sessionPassword ?: return ImportResult(0, sources.size, emptyList())
-        vaultDir().mkdirs()
-        val zip = masterZip()
+        vaultDir(context).mkdirs()
+        val zip = masterZip(context)
         val existing = SafeCrypto.listEntryNames(zip).toMutableSet()
         val work = File(context.cacheDir, "safe_work").apply { mkdirs() }
         var imported = 0
@@ -219,7 +274,7 @@ object SafeManager {
             cache.delete() // corrupt/stale — rebuild below
         }
         val password = sessionPassword ?: return null
-        val jpeg = SafeCrypto.makeThumbnailJpeg(masterZip(), item.entryName, password.toCharArray())
+        val jpeg = SafeCrypto.makeThumbnailJpeg(masterZip(context), item.entryName, password.toCharArray())
             ?: return null
         writeThumb(context, item.entryName, jpeg)
         return BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
@@ -246,7 +301,7 @@ object SafeManager {
     fun decryptToTemp(context: Context, item: VaultItem): File {
         val password = sessionPassword ?: error("Safe is locked")
         val work = File(context.cacheDir, "safe_view_${System.nanoTime()}").apply { mkdirs() }
-        return SafeCrypto.extractEntry(masterZip(), item.entryName, password.toCharArray(), work)
+        return SafeCrypto.extractEntry(masterZip(context), item.entryName, password.toCharArray(), work)
     }
 
     /** Decrypts back into the public gallery (Pictures/Deepix). Returns the new media uri or null. */
@@ -284,7 +339,7 @@ object SafeManager {
     fun removeItem(context: Context, item: VaultItem): Boolean {
         val password = sessionPassword ?: return false
         return runCatching {
-            SafeCrypto.removeEntry(masterZip(), item.entryName, password.toCharArray())
+            SafeCrypto.removeEntry(masterZip(context), item.entryName, password.toCharArray())
             thumbFile(context, item.entryName).delete()
             true
         }.getOrDefault(false)

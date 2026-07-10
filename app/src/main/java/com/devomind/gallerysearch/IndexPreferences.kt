@@ -21,6 +21,11 @@ object IndexPreferences {
     private const val KeyBlurSensitive = "blur_sensitive_content"
     private const val KeyRecycleBinEnabled = "recycle_bin_enabled"
     private const val KeySkipDeleteConfirm = "skip_delete_confirm"
+    private const val KeySafeStorageRoot = "safe_storage_root"
+
+    /** Public directory the encrypted Safe zip lives under. */
+    const val SAFE_ROOT_PICTURES = "pictures"
+    const val SAFE_ROOT_DOCUMENTS = "documents"
 
     fun saveLastIndexedTime(context: Context) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
@@ -242,6 +247,19 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KeyCollageLayout, enabled)
+            .apply()
+    }
+
+    /** Which public folder the Safe vault is stored under (see [SAFE_ROOT_*]). */
+    fun getSafeStorageRoot(context: Context): String {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getString(KeySafeStorageRoot, SAFE_ROOT_PICTURES)!!
+    }
+
+    fun setSafeStorageRoot(context: Context, root: String) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KeySafeStorageRoot, root)
             .apply()
     }
 }
