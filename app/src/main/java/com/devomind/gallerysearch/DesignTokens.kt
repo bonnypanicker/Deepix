@@ -37,7 +37,7 @@ object DesignTokens {
     const val GRID_SPAN_COUNT = 6
     const val GRID_MIN_COLUMNS = 2
     const val GRID_MAX_COLUMNS = 6
-    const val GRID_DEFAULT_COLUMNS = 4
+    const val GRID_DEFAULT_COLUMNS = 3
     const val GRID_THUMBNAIL_SPACING_DP = 2
 
     // Collage (justified rows) layout
