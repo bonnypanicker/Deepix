@@ -242,18 +242,13 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"
-            android:background="@color/metroBgPrimary"
+            android:background="@drawable/bottom_nav_bg"
             android:orientation="vertical"
             android:visibility="gone">
 
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="@color/metroBgSurface" />
-
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="60dp"
+                android:layout_height="64dp"
                 android:orientation="horizontal">
 
                 <LinearLayout
@@ -268,8 +263,8 @@
                     android:orientation="vertical">
 
                     <ImageView
-                        android:layout_width="22dp"
-                        android:layout_height="22dp"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
                         android:contentDescription="Select all"
                         android:src="@drawable/ic_fluent_select_all_24_regular"
                         android:tint="@color/metroTextPrimary" />
@@ -297,8 +292,8 @@
                     android:orientation="vertical">
 
                     <ImageView
-                        android:layout_width="22dp"
-                        android:layout_height="22dp"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
                         android:contentDescription="Share selected"
                         android:src="@drawable/ic_fluent_share_24_regular"
                         android:tint="@color/metroTextPrimary" />
@@ -326,10 +321,10 @@
                     android:orientation="vertical">
 
                     <ImageView
-                        android:layout_width="22dp"
-                        android:layout_height="22dp"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
                         android:contentDescription="Move to Safe"
-                        android:src="@drawable/ic_fluent_lock_closed_24_regular"
+                        android:src="@drawable/ic_deepix_safe_24_regular"
                         android:tint="@color/metroTextPrimary" />
 
                     <TextView
@@ -355,8 +350,8 @@
                     android:orientation="vertical">
 
                     <ImageView
-                        android:layout_width="22dp"
-                        android:layout_height="22dp"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
                         android:contentDescription="Delete selected"
                         android:src="@drawable/ic_fluent_delete_24_regular"
                         android:tint="@color/metroTextPrimary" />
@@ -384,9 +379,9 @@
         <LinearLayout
             android:id="@+id/bottomPanel"
             android:layout_width="match_parent"
-            android:layout_height="60dp"
+            android:layout_height="64dp"
             android:layout_gravity="bottom"
-            android:background="@color/metroBgPrimary"
+            android:background="@drawable/bottom_nav_bg"
             android:orientation="horizontal">
 
             <LinearLayout
@@ -400,10 +395,10 @@
 
                 <ImageView
                     android:id="@+id/bottomCollectionsIcon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:contentDescription="@null"
-                    android:src="@drawable/ic_fluent_image_24_regular"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:contentDescription="Collection"
+                    android:src="@drawable/ic_deepix_collections_24_regular"
                     android:tint="@color/metroAccent" />
             </LinearLayout>
 
@@ -418,10 +413,10 @@
 
                 <ImageView
                     android:id="@+id/bottomVideosIcon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:contentDescription="@null"
-                    android:src="@drawable/ic_fluent_video_24_regular"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:contentDescription="Videos"
+                    android:src="@drawable/ic_deepix_video_24_regular"
                     android:tint="@color/metroTextSecondary" />
             </LinearLayout>
 
@@ -436,10 +431,10 @@
 
                 <ImageView
                     android:id="@+id/bottomAlbumsIcon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:contentDescription="@null"
-                    android:src="@drawable/ic_fluent_album_24_regular"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:contentDescription="Albums"
+                    android:src="@drawable/ic_deepix_albums_24_regular"
                     android:tint="@color/metroTextSecondary" />
             </LinearLayout>
 
@@ -454,10 +449,10 @@
 
                 <ImageView
                     android:id="@+id/bottomFavoritesIcon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:contentDescription="@null"
-                    android:src="@drawable/ic_fluent_heart_24_regular"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:contentDescription="Favorites"
+                    android:src="@drawable/ic_deepix_favorite_24_regular"
                     android:tint="@color/metroTextSecondary" />
             </LinearLayout>
         </LinearLayout>
