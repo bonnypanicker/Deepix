@@ -10,6 +10,7 @@ object IndexPreferences {
     private const val KeyGridColumnCount = "grid_column_count"
     private const val KeyCollageScale = "collage_scale_level"
     private const val KeyCollageLayout = "use_collage_layout"
+    private const val KeyShowAlbumFolderSize = "show_album_folder_size"
     private const val KeyIndexPaused = "index_paused"
     private const val KeyIndexStopped = "index_stopped"
     private const val KeyCleanupPaused = "cleanup_paused"
@@ -247,6 +248,19 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KeyCollageLayout, enabled)
+            .apply()
+    }
+
+    /** Albums page option: append each real device album's total storage size to its subtitle. */
+    fun isShowAlbumFolderSize(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyShowAlbumFolderSize, false)
+    }
+
+    fun setShowAlbumFolderSize(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyShowAlbumFolderSize, enabled)
             .apply()
     }
 

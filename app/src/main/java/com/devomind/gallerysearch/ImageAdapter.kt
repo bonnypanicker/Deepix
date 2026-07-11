@@ -666,10 +666,16 @@ class ImageAdapter(
                 height = coverHeight
             }
             binding.albumName.text = album.name
-            binding.albumCount.text = when {
+            val countText = when {
                 album.isSmart -> "CLIP search"
                 album.count == 1 -> "1 item"
                 else -> "${album.count} items"
+            }
+            val showSize = !album.isSmart && IndexPreferences.isShowAlbumFolderSize(binding.root.context)
+            binding.albumCount.text = if (showSize && album.sizeBytes > 0L) {
+                "$countText \u00b7 ${formatStorageSize(album.sizeBytes)}"
+            } else {
+                countText
             }
             binding.smartBadge.visibility = if (album.isSmart) View.VISIBLE else View.GONE
             Glide.with(binding.albumCover.context)
@@ -683,6 +689,23 @@ class ImageAdapter(
             binding.root.setOnLongClickListener {
                 onAlbumLongClick(album, binding.root)
                 true
+            }
+        }
+
+        private fun formatStorageSize(bytes: Long): String {
+            if (bytes <= 0L) return "0 KB"
+            val units = arrayOf("B", "KB", "MB", "GB", "TB")
+            var value = bytes.toDouble()
+            var unit = 0
+            while (value >= 1024.0 && unit < units.lastIndex) {
+                value /= 1024.0
+                unit++
+            }
+            return if (unit == 0) {
+                "${bytes} B"
+            } else {
+                val pattern = if (value >= 10.0) "%.0f %s" else "%.1f %s"
+                String.format(java.util.Locale.getDefault(), pattern, value, units[unit])
             }
         }
     }

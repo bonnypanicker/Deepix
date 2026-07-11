@@ -191,6 +191,29 @@
                         android:focusable="false" />
                 </LinearLayout>
 
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout
+                    android:id="@+id/rowAlbumFolderSize"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="Album folder size" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="Show storage size beside item count on the Albums page" />
+                    </LinearLayout>
+
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/switchAlbumFolderSize"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clickable="false"
+                        android:focusable="false" />
+                </LinearLayout>
+
                 <!-- ===================== INDEXING ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"
