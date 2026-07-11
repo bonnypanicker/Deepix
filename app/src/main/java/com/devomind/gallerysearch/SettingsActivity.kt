@@ -80,6 +80,13 @@ class SettingsActivity : AppCompatActivity() {
             IndexPreferences.setShowPinnedInCollections(this, newValue)
         }
 
+        binding.switchAlbumFolderSize.isChecked = IndexPreferences.isShowAlbumFolderSize(this)
+        binding.rowAlbumFolderSize.setOnClickListener {
+            val newValue = !binding.switchAlbumFolderSize.isChecked
+            binding.switchAlbumFolderSize.isChecked = newValue
+            IndexPreferences.setShowAlbumFolderSize(this, newValue)
+        }
+
         binding.switchCharging.isChecked = IndexPreferences.isChargingOnlyIndexing(this)
         binding.rowCharging.setOnClickListener {
             val newValue = !binding.switchCharging.isChecked
