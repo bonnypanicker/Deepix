@@ -102,6 +102,8 @@ class ImageAdapter(
     private val revealedUris = mutableSetOf<String>()
 
     private val selected = linkedSetOf<Uri>()
+    private var selectionAnchor: Uri? = null
+    private var selectionGestureActive = false
 
     /** Updates the blur toggle + the set of flagged uris and refreshes affected tiles. */
     fun setSensitiveState(enabled: Boolean, flagged: Set<String>) {
@@ -131,6 +133,8 @@ class ImageAdapter(
     val selectionCount: Int
         get() = selected.size
 
+    fun hasActiveSelectionGesture(): Boolean = selectionGestureActive && selectionAnchor != null
+
     fun selectAll() {
         val allUris = cells.asSequence()
             .flatMap { cell ->
@@ -144,6 +148,10 @@ class ImageAdapter(
 
         val added = allUris - selected
         selected.addAll(allUris)
+        if (selectionAnchor !in selected) {
+            selectionAnchor = selected.firstOrNull()
+        }
+        selectionGestureActive = false
         if (added.isNotEmpty()) {
             notifySelectionChanged(added, selectionModeChanged = selected.size == added.size)
             onSelectionChanged(selected.size)
@@ -169,7 +177,12 @@ class ImageAdapter(
         val inflater = LayoutInflater.from(parent.context)
         return when (viewType) {
             ViewTypeHeader -> HeaderViewHolder(ItemTimelineHeaderBinding.inflate(inflater, parent, false))
-            ViewTypeCollage -> CollageViewHolder(ItemCollageBinding.inflate(inflater, parent, false), onPhotoClick, ::toggleSelection)
+            ViewTypeCollage -> CollageViewHolder(
+                ItemCollageBinding.inflate(inflater, parent, false),
+                onPhotoClick,
+                ::handleSelectionTap,
+                ::beginSelectionGesture
+            )
             ViewTypeAlbum -> AlbumViewHolder(ItemAlbumBinding.inflate(inflater, parent, false), onAlbumClick, onAlbumLongClick)
             ViewTypeFolder -> FolderViewHolder(ItemFolderBinding.inflate(inflater, parent, false), onFolderClick, onFolderExpandClick)
             ViewTypePinnedAlbumsHeader -> PinnedAlbumsHeaderViewHolder(
@@ -185,7 +198,8 @@ class ImageAdapter(
             else -> PhotoViewHolder(
                 ItemImageBinding.inflate(inflater, parent, false),
                 onPhotoClick,
-                ::toggleSelection,
+                ::handleSelectionTap,
+                ::beginSelectionGesture,
                 ::isBlurred,
                 ::revealSensitive
             )
@@ -256,6 +270,8 @@ class ImageAdapter(
             }
             .toSet()
         selected.retainAll(newUris)
+        if (selectionAnchor !in selected) selectionAnchor = selected.firstOrNull()
+        if (selected.isEmpty()) selectionGestureActive = false
 
         val oldCells = cells.toList()
         val diff = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
@@ -288,6 +304,8 @@ class ImageAdapter(
             }
             .toSet()
         selected.retainAll(newUris)
+        if (selectionAnchor !in selected) selectionAnchor = selected.firstOrNull()
+        if (selected.isEmpty()) selectionGestureActive = false
         cells.clear()
         cells.addAll(newCells)
         notifyDataSetChanged()
@@ -298,6 +316,8 @@ class ImageAdapter(
         if (selected.isEmpty()) return
         val previous = selected.toSet()
         selected.clear()
+        selectionAnchor = null
+        selectionGestureActive = false
         notifySelectionChanged(previous, selectionModeChanged = true)
         onSelectionChanged(0)
     }
@@ -320,8 +340,99 @@ class ImageAdapter(
             .toSet()
         selected.clear()
         selected.addAll(uris.filter { it in present })
+        selectionAnchor = selected.firstOrNull()
+        selectionGestureActive = false
         notifyDataSetChanged()
         onSelectionChanged(selected.size)
+    }
+
+    fun beginSelectionGesture(uri: Uri) {
+        selectionGestureActive = true
+        ensureSelected(uri)
+        selectionAnchor = uri
+    }
+
+    fun extendSelectionGestureTo(uri: Uri): Boolean {
+        val anchor = selectionAnchor ?: return false
+        if (!selectionGestureActive) return false
+        return selectRange(anchor, uri)
+    }
+
+    fun endSelectionGesture() {
+        selectionGestureActive = false
+    }
+
+    fun mediaUriAt(recyclerView: RecyclerView, x: Float, y: Float): Uri? {
+        val child = recyclerView.findChildViewUnder(x, y) ?: return null
+        val holder = recyclerView.getChildViewHolder(child)
+        val cell = cells.getOrNull(holder.bindingAdapterPosition) ?: return null
+        return when {
+            cell is GalleryCell.Photo -> cell.item.uri
+            cell is GalleryCell.Collage && holder is CollageViewHolder -> {
+                val localX = x - child.left
+                val localY = y - child.top
+                holder.uriAt(localX, localY, cell)
+            }
+            else -> null
+        }
+    }
+
+    private fun handleSelectionTap(uri: Uri) {
+        selectionGestureActive = false
+        when {
+            selected.isEmpty() -> {
+                toggleSelection(uri)
+                selectionAnchor = uri
+            }
+            uri !in selected && selectionAnchor != null -> selectRange(selectionAnchor!!, uri)
+            else -> {
+                toggleSelection(uri)
+                if (uri in selected) {
+                    selectionAnchor = uri
+                } else if (selectionAnchor == uri) {
+                    selectionAnchor = selected.firstOrNull()
+                }
+            }
+        }
+    }
+
+    private fun ensureSelected(uri: Uri) {
+        val hadSelection = selected.isNotEmpty()
+        if (selected.add(uri)) {
+            notifySelectionChanged(setOf(uri), selectionModeChanged = !hadSelection)
+            onSelectionChanged(selected.size)
+        }
+    }
+
+    private fun selectRange(anchorUri: Uri, targetUri: Uri): Boolean {
+        val ordered = orderedMediaUris()
+        val anchorIndex = ordered.indexOf(anchorUri)
+        val targetIndex = ordered.indexOf(targetUri)
+        if (anchorIndex == -1 || targetIndex == -1) return false
+        val start = minOf(anchorIndex, targetIndex)
+        val end = maxOf(anchorIndex, targetIndex)
+        val hadSelection = selected.isNotEmpty()
+        val added = linkedSetOf<Uri>()
+        for (index in start..end) {
+            val uri = ordered[index]
+            if (selected.add(uri)) {
+                added += uri
+            }
+        }
+        if (added.isEmpty()) return false
+        notifySelectionChanged(added, selectionModeChanged = !hadSelection)
+        onSelectionChanged(selected.size)
+        return true
+    }
+
+    private fun orderedMediaUris(): List<Uri> {
+        return cells.flatMap { cell ->
+            when (cell) {
+                is GalleryCell.Photo -> listOf(cell.item.uri)
+                is GalleryCell.Collage -> cell.items.map { it.uri }
+                else -> emptyList()
+            }
+        }
     }
 
     private fun toggleSelection(uri: Uri) {
@@ -330,6 +441,12 @@ class ImageAdapter(
             selected -= uri
         } else {
             selected += uri
+        }
+        if (selected.isEmpty()) {
+            selectionAnchor = null
+            selectionGestureActive = false
+        } else if (uri in selected) {
+            selectionAnchor = uri
         }
         notifySelectionChanged(setOf(uri), selectionModeChanged = hadSelection != selected.isNotEmpty())
         onSelectionChanged(selected.size)
@@ -382,7 +499,8 @@ class ImageAdapter(
     class PhotoViewHolder(
         private val binding: ItemImageBinding,
         private val onPhotoClick: (GalleryRepository.MediaItem, android.widget.ImageView) -> Unit,
-        private val onSelectionToggle: (Uri) -> Unit,
+        private val onSelectionTap: (Uri) -> Unit,
+        private val onSelectionGestureStart: (Uri) -> Unit,
         private val isBlurred: (GalleryRepository.MediaItem) -> Boolean = { false },
         private val onReveal: (Uri) -> Unit = {}
     ) : RecyclerView.ViewHolder(binding.root) {
@@ -467,13 +585,13 @@ class ImageAdapter(
             binding.videoBadge.visibility = if (cell.item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
             binding.root.setOnClickListener {
                 when {
-                    selectionMode -> onSelectionToggle(cell.item.uri)
+                    selectionMode -> onSelectionTap(cell.item.uri)
                     blurred -> onReveal(cell.item.uri)
                     else -> onPhotoClick(cell.item, binding.thumbnail)
                 }
             }
             binding.root.setOnLongClickListener {
-                onSelectionToggle(cell.item.uri)
+                onSelectionGestureStart(cell.item.uri)
                 true
             }
         }
@@ -492,7 +610,8 @@ class ImageAdapter(
     class CollageViewHolder(
         private val binding: ItemCollageBinding,
         private val onPhotoClick: (GalleryRepository.MediaItem, android.widget.ImageView) -> Unit,
-        private val onSelectionToggle: (Uri) -> Unit
+        private val onSelectionTap: (Uri) -> Unit,
+        private val onSelectionGestureStart: (Uri) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(cell: GalleryCell.Collage, selected: Set<Uri>) {
@@ -644,12 +763,25 @@ class ImageAdapter(
             }
 
             container.setOnClickListener {
-                if (selectionMode) onSelectionToggle(item.uri) else onPhotoClick(item, thumbnail)
+                if (selectionMode) onSelectionTap(item.uri) else onPhotoClick(item, thumbnail)
             }
             container.setOnLongClickListener {
-                onSelectionToggle(item.uri)
+                onSelectionGestureStart(item.uri)
                 true
             }
+        }
+
+        fun uriAt(localX: Float, localY: Float, cell: GalleryCell.Collage): Uri? {
+            return when {
+                isPointInside(binding.leadTile, localX, localY) -> cell.items.getOrNull(0)?.uri
+                isPointInside(binding.topRightTile, localX, localY) -> cell.items.getOrNull(1)?.uri
+                isPointInside(binding.bottomRightTile, localX, localY) -> cell.items.getOrNull(2)?.uri
+                else -> null
+            }
+        }
+
+        private fun isPointInside(view: View, localX: Float, localY: Float): Boolean {
+            return localX >= view.left && localX <= view.right && localY >= view.top && localY <= view.bottom
         }
     }
 

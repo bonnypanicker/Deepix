@@ -7,8 +7,6 @@ import android.view.MotionEvent
 import android.view.animation.DecelerateInterpolator
 import com.github.chrisbanes.photoview.PhotoView
 import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
@@ -86,30 +84,11 @@ class RotatablePhotoView @JvmOverloads constructor(
         engaged = false
         gestureAccumulation = 0f
         rotation = 0f
-        scaleX = 1f
-        scaleY = 1f
     }
 
-    /**
-     * Rotates the view and simultaneously scales it down just enough that the rotated content stays
-     * fully visible (contained / letterboxed) instead of overflowing the screen. At 0°/180° the
-     * scale is 1; at 90°/270° it's shortEdge/longEdge, interpolated smoothly in between.
-     */
+    /** Rotates the view at its natural size — no containment scaling. */
     private fun applyRotation(degrees: Float) {
         rotation = degrees
-        val fit = containmentScale(degrees)
-        scaleX = fit
-        scaleY = fit
-    }
-
-    private fun containmentScale(degrees: Float): Float {
-        val w = width
-        val h = height
-        if (w == 0 || h == 0) return 1f
-        val minFit = min(w, h).toFloat() / max(w, h).toFloat()
-        // |sin| is 0 at 0°/180° and 1 at 90°/270°, giving a smooth contain during the twist.
-        val t = abs(kotlin.math.sin(Math.toRadians(degrees.toDouble()))).toFloat()
-        return 1f - (1f - minFit) * t
     }
 
     private fun snapToNearestRightAngle() {

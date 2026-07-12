@@ -266,6 +266,20 @@ class MainActivity : AppCompatActivity() {
         @android.annotation.SuppressLint("ClickableViewAccessibility")
         val touchListener = android.view.View.OnTouchListener { _, event ->
             scaleGestureDetector.onTouchEvent(event)
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    if (event.pointerCount > 1) {
+                        adapter.endSelectionGesture()
+                    } else if (adapter.hasActiveSelectionGesture()) {
+                        val uri = adapter.mediaUriAt(binding.imageGrid, event.x, event.y)
+                        if (uri != null) adapter.extendSelectionGestureTo(uri)
+                    }
+                }
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> {
+                    adapter.endSelectionGesture()
+                }
+            }
             false
         }
         binding.imageGrid.setOnTouchListener(touchListener)
