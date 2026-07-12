@@ -971,9 +971,11 @@ class ViewerActivity : AppCompatActivity() {
                             0, 0, 0
                         )
                     )
-                    val chromeAlpha = (1f - (progress * 0.8f)).coerceIn(0f, 1f)
-                    binding.topBar.alpha = chromeAlpha
-                    binding.bottomControls.alpha = chromeAlpha
+                    if (controlsVisible) {
+                        val chromeAlpha = (1f - (progress * 0.8f)).coerceIn(0f, 1f)
+                        binding.topBar.alpha = chromeAlpha
+                        binding.bottomControls.alpha = chromeAlpha
+                    }
                 }
             }
             MotionEvent.ACTION_CANCEL,
