@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.recyclerview.widget.DiffUtil
@@ -635,6 +636,7 @@ class ImageAdapter(
                 selectionFrame = binding.leadSelectionFrame,
                 checkBadge = binding.leadCheckBadge,
                 videoBadge = binding.leadVideoBadge,
+                durationText = binding.leadDurationText,
                 item = cell.items[0],
                 overrideWidth = leadSize,
                 overrideHeight = leadSize,
@@ -650,6 +652,7 @@ class ImageAdapter(
                 selectionFrame = binding.topRightSelectionFrame,
                 checkBadge = binding.topRightCheckBadge,
                 videoBadge = binding.topRightVideoBadge,
+                durationText = binding.topRightDurationText,
                 item = cell.items[1],
                 overrideWidth = regularSize,
                 overrideHeight = regularSize,
@@ -665,6 +668,7 @@ class ImageAdapter(
                 selectionFrame = binding.bottomRightSelectionFrame,
                 checkBadge = binding.bottomRightCheckBadge,
                 videoBadge = binding.bottomRightVideoBadge,
+                durationText = binding.bottomRightDurationText,
                 item = cell.items[2],
                 overrideWidth = regularSize,
                 overrideHeight = regularSize,
@@ -687,6 +691,7 @@ class ImageAdapter(
                 selectionFrame = binding.leadSelectionFrame,
                 checkBadge = binding.leadCheckBadge,
                 videoBadge = binding.leadVideoBadge,
+                durationText = binding.leadDurationText,
                 item = cell.items[0],
                 overrideWidth = leadSize,
                 overrideHeight = leadSize,
@@ -702,6 +707,7 @@ class ImageAdapter(
                 selectionFrame = binding.topRightSelectionFrame,
                 checkBadge = binding.topRightCheckBadge,
                 videoBadge = binding.topRightVideoBadge,
+                durationText = binding.topRightDurationText,
                 item = cell.items[1],
                 overrideWidth = regularSize,
                 overrideHeight = regularSize,
@@ -717,6 +723,7 @@ class ImageAdapter(
                 selectionFrame = binding.bottomRightSelectionFrame,
                 checkBadge = binding.bottomRightCheckBadge,
                 videoBadge = binding.bottomRightVideoBadge,
+                durationText = binding.bottomRightDurationText,
                 item = cell.items[2],
                 overrideWidth = regularSize,
                 overrideHeight = regularSize,
@@ -734,6 +741,7 @@ class ImageAdapter(
             selectionFrame: View,
             checkBadge: View,
             videoBadge: LinearLayout,
+            durationText: TextView,
             item: GalleryRepository.MediaItem,
             overrideWidth: Int,
             overrideHeight: Int,
@@ -746,7 +754,7 @@ class ImageAdapter(
             bindSelectionVisual(dimScrim, selectionFrame, checkBadge, isSelected, animate)
             if (item.mediaType == GalleryRepository.MediaType.Video) {
                 videoBadge.visibility = View.VISIBLE
-                videoBadge.findViewById<TextView>(R.id.durationText)?.text = formatDuration(item.durationMillis)
+                durationText.text = formatDuration(item.durationMillis)
             } else {
                 videoBadge.visibility = View.GONE
             }

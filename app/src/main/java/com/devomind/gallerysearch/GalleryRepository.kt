@@ -29,6 +29,8 @@ class GalleryRepository(
     @Volatile private var imageEncoder: ImageEncoder? = null,
     @Volatile private var textEncoder: TextEncoder? = null
 ) {
+    private val albumCoverStore = AlbumCoverStore(context)
+
     data class SemanticSearchHit(val uri: Uri, val score: Float)
 
     /** Attaches the MobileCLIP encoders once they finish loading on a background thread. */
@@ -663,7 +665,20 @@ class GalleryRepository(
                 )
             }
         }
-        return buckets.values.sortedByDescending { it.count }
+        albumCoverStore.cleanup(buckets.keys)
+        val itemByUri = items.associateBy { it.uri.toString() }
+        val albumsWithOverrides = buckets.values.map { album ->
+            val overrideUri = albumCoverStore.getCoverUri(album.id)
+            val validOverride = overrideUri?.takeIf { uri ->
+                itemByUri[uri.toString()]?.bucketId == album.id
+            }
+            if (validOverride != null) {
+                album.copy(coverUri = validOverride)
+            } else {
+                album
+            }
+        }
+        return albumsWithOverrides.sortedByDescending { it.count }
     }
 
     private fun sanitizeDate(dateTakenMs: Long, dateAddedMs: Long): Long {

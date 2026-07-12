@@ -54,6 +54,7 @@ class ViewerActivity : AppCompatActivity() {
     private lateinit var binding: ActivityViewerBinding
     private lateinit var adapter: MediaPagerAdapter
     private lateinit var favoritesStore: FavoritesStore
+    private lateinit var albumCoverStore: AlbumCoverStore
     private lateinit var dbRepository: DbRepository
     private var items = mutableListOf<GalleryRepository.MediaItem>()
     private var currentPosition = 0
@@ -190,6 +191,7 @@ class ViewerActivity : AppCompatActivity() {
         }
 
         favoritesStore = FavoritesStore(this)
+        albumCoverStore = AlbumCoverStore(this)
         dbRepository = DbRepository(this)
 
         if (transitionName != null) {
@@ -482,12 +484,16 @@ class ViewerActivity : AppCompatActivity() {
 
     private fun showOverflowMenu(anchor: View) {
         val item = items.getOrNull(currentPosition) ?: return
+        val albumId = intent.getStringExtra(ExtraAlbumId)
         val menu = androidx.appcompat.widget.PopupMenu(this, anchor)
         menu.menu.add(0, MENU_TAGS, 0, "Add tags")
         if (item.mediaType != GalleryRepository.MediaType.Video) {
             menu.menu.add(0, MENU_GOOGLE_LENS, 1, "Open in Google Lens")
+            if (!albumId.isNullOrBlank()) {
+                menu.menu.add(0, MENU_SET_AS_ALBUM_COVER, 2, "Set as album cover")
+            }
         }
-        menu.menu.add(0, MENU_INFO, 2, "Info")
+        menu.menu.add(0, MENU_INFO, 3, "Info")
         menu.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
                 MENU_TAGS -> {
@@ -498,6 +504,10 @@ class ViewerActivity : AppCompatActivity() {
                     openInGoogleLens(item)
                     true
                 }
+                MENU_SET_AS_ALBUM_COVER -> {
+                    setAsAlbumCover(item)
+                    true
+                }
                 MENU_INFO -> {
                     if (!infoVisible) toggleInfoPanel()
                     true
@@ -506,6 +516,18 @@ class ViewerActivity : AppCompatActivity() {
             }
         }
         menu.show()
+    }
+
+    private fun setAsAlbumCover(item: GalleryRepository.MediaItem) {
+        val albumId = intent.getStringExtra(ExtraAlbumId)
+        val albumName = intent.getStringExtra(ExtraAlbumName).orEmpty()
+        if (item.mediaType == GalleryRepository.MediaType.Video || albumId.isNullOrBlank()) {
+            return
+        }
+        albumCoverStore.setCover(albumId, item.uri)
+        contentChanged = true
+        val label = albumName.ifBlank { "album" }
+        Toast.makeText(this, "Set as cover for $label.", Toast.LENGTH_SHORT).show()
     }
 
     private fun openInGoogleLens(item: GalleryRepository.MediaItem) {
@@ -1363,12 +1385,15 @@ class ViewerActivity : AppCompatActivity() {
         private const val MENU_SIMILAR_WHOLE = 3
         private const val MENU_SIMILAR_REGION = 4
         private const val MENU_GOOGLE_LENS = 5
+        private const val MENU_SET_AS_ALBUM_COVER = 6
         private const val GOOGLE_LENS_PACKAGE = "com.google.ar.lens"
         private const val GOOGLE_PLAY_STORE_PACKAGE = "com.android.vending"
         const val ExtraContentChanged = "content_changed"
         const val ExtraItems = "items"
         const val ExtraPosition = "position"
         const val ExtraTransitionName = "transition_name"
+        const val ExtraAlbumId = "album_id"
+        const val ExtraAlbumName = "album_name"
         const val ExtraMarker = "marker_uri"
         const val ExtraFindSimilarUri = "find_similar_uri"
         const val ExtraFindSimilarCrop = "find_similar_crop"

@@ -72,7 +72,7 @@
                 android:tint="@color/metroTextPrimary"
                 android:contentDescription="Video" />
             <TextView
-                android:id="@+id/durationText"
+                android:id="@+id/leadDurationText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp"
@@ -154,7 +154,7 @@
                     android:tint="@color/metroTextPrimary"
                     android:contentDescription="Video" />
                 <TextView
-                    android:id="@+id/durationText"
+                    android:id="@+id/topRightDurationText"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="4dp"
@@ -229,7 +229,7 @@
                     android:tint="@color/metroTextPrimary"
                     android:contentDescription="Video" />
                 <TextView
-                    android:id="@+id/durationText"
+                    android:id="@+id/bottomRightDurationText"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="4dp"

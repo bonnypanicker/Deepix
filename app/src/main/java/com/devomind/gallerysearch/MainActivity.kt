@@ -2706,6 +2706,12 @@ class MainActivity : AppCompatActivity() {
             putExtra(ViewerActivity.ExtraMarker, item.uri.toString())
             putExtra(ViewerActivity.ExtraPosition, position)
             putExtra(ViewerActivity.ExtraTransitionName, transitionName)
+            currentAlbum
+                ?.takeIf { !smartAlbumStore.isSmartId(it.id) }
+                ?.let { album ->
+                    putExtra(ViewerActivity.ExtraAlbumId, album.id)
+                    putExtra(ViewerActivity.ExtraAlbumName, album.name)
+                }
         }
 
         val options = ActivityOptionsCompat.makeSceneTransitionAnimation(this, sharedView, transitionName)
