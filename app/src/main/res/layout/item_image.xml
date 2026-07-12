@@ -103,7 +103,7 @@
         android:tint="@color/metroTextPrimary"
         android:visibility="gone" />
 
-    <TextView
+    <LinearLayout
         android:id="@+id/videoBadge"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -111,15 +111,29 @@
         android:layout_marginEnd="8dp"
         android:layout_marginBottom="8dp"
         android:background="@drawable/video_badge_bg"
-        android:fontFamily="sans-serif"
-        android:includeFontPadding="false"
-        android:paddingStart="8dp"
-        android:paddingTop="4dp"
-        android:paddingEnd="8dp"
-        android:paddingBottom="4dp"
-        android:text="VIDEO"
-        android:textAllCaps="true"
-        android:textColor="@color/metroTextPrimary"
-        android:textSize="11sp"
-        android:visibility="gone" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="6dp"
+        android:paddingTop="3dp"
+        android:paddingEnd="6dp"
+        android:paddingBottom="3dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:src="@drawable/ic_fluent_play_24_regular"
+            android:tint="@color/metroTextPrimary"
+            android:contentDescription="Video" />
+
+        <TextView
+            android:id="@+id/durationText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:fontFamily="sans-serif-medium"
+            android:includeFontPadding="false"
+            android:textColor="@color/metroTextPrimary"
+            android:textSize="11sp" />
+    </LinearLayout>
 </FrameLayout>

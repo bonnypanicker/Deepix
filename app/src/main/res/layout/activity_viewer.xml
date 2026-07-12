@@ -183,7 +183,7 @@
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/actionWallpaper"
+            android:id="@+id/actionOrientation"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -198,8 +198,8 @@
             <ImageView
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:contentDescription="Set as wallpaper"
-                android:src="@drawable/ic_fluent_image_24_regular"
+                android:contentDescription="Rotate"
+                android:src="@drawable/ic_fluent_screen_rotate_24_regular"
                 android:tint="#FFFFFF" />
 
             <TextView
@@ -207,7 +207,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:includeFontPadding="false"
-                android:text="Wallpaper"
+                android:text="Rotate"
                 android:textColor="#D6D6D6"
                 android:textSize="11sp" />
         </LinearLayout>

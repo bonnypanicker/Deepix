@@ -582,7 +582,12 @@ class ImageAdapter(
                 animate = animate
             )
             bindSearchBadges(cell.searchSources)
-            binding.videoBadge.visibility = if (cell.item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
+            if (cell.item.mediaType == GalleryRepository.MediaType.Video) {
+                binding.videoBadge.visibility = View.VISIBLE
+                binding.videoBadge.findViewById<TextView>(R.id.durationText)?.text = formatDuration(cell.item.durationMillis)
+            } else {
+                binding.videoBadge.visibility = View.GONE
+            }
             binding.root.setOnClickListener {
                 when {
                     selectionMode -> onSelectionTap(cell.item.uri)
@@ -728,7 +733,7 @@ class ImageAdapter(
             dimScrim: View,
             selectionFrame: View,
             checkBadge: View,
-            videoBadge: TextView,
+            videoBadge: LinearLayout,
             item: GalleryRepository.MediaItem,
             overrideWidth: Int,
             overrideHeight: Int,
@@ -739,8 +744,12 @@ class ImageAdapter(
         ) {
             ViewCompat.setTransitionName(thumbnail, "media_${item.uri}")
             bindSelectionVisual(dimScrim, selectionFrame, checkBadge, isSelected, animate)
-            videoBadge.visibility =
-                if (item.mediaType == GalleryRepository.MediaType.Video) View.VISIBLE else View.GONE
+            if (item.mediaType == GalleryRepository.MediaType.Video) {
+                videoBadge.visibility = View.VISIBLE
+                videoBadge.findViewById<TextView>(R.id.durationText)?.text = formatDuration(item.durationMillis)
+            } else {
+                videoBadge.visibility = View.GONE
+            }
 
             if (loadImage) {
                 val request = if (item.mediaType == GalleryRepository.MediaType.Video) {
@@ -962,5 +971,12 @@ class ImageAdapter(
         const val ViewTypePinnedAlbumsHeader = 6
         const val ViewTypeFolder = 7
         const val ViewTypeSmartOnboarding = 8
+
+        private fun formatDuration(durationMs: Long): String {
+            val totalSeconds = durationMs / 1000
+            val minutes = totalSeconds / 60
+            val seconds = totalSeconds % 60
+            return String.format("%d:%02d", minutes, seconds)
+        }
     }
 }

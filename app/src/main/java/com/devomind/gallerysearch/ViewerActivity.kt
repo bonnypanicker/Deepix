@@ -345,27 +345,22 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     private fun setEditAction(isVideo: Boolean, playing: Boolean) {
-        val iconRes = when {
-            !isVideo -> R.drawable.ic_fluent_edit_24_regular
-            playing -> R.drawable.ic_fluent_pause_24_regular
-            else -> R.drawable.ic_fluent_play_24_regular
-        }
-        binding.editIcon.setImageResource(iconRes)
-        val label = when {
-            !isVideo -> "Edit"
-            playing -> "Pause"
-            else -> "Play"
-        }
-        binding.editLabel.text = label
-        binding.editIcon.contentDescription = label
+        // Edit icon is always "Edit", regardless of media type or playback state.
+        binding.editIcon.setImageResource(R.drawable.ic_fluent_edit_24_regular)
+        binding.editLabel.text = "Edit"
+        binding.editIcon.contentDescription = "Edit"
     }
 
     private fun bindGlobalActions() {
         binding.backBtn.setOnClickListener { supportFinishAfterTransition() }
         binding.actionShare.setOnClickListener { shareCurrent() }
-        binding.actionWallpaper.setOnClickListener {
-            val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
-            setAsWallpaper(item)
+        binding.actionOrientation.setOnClickListener {
+            val currentOrientation = resources.configuration.orientation
+            requestedOrientation = if (currentOrientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            } else {
+                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            }
         }
         binding.favoriteBtn.setOnClickListener {
             val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
@@ -375,11 +370,7 @@ class ViewerActivity : AppCompatActivity() {
         }
         binding.actionEdit.setOnClickListener {
             val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
-            if (item.mediaType == GalleryRepository.MediaType.Video) {
-                toggleVideoPlayback()
-            } else {
-                edit(item.uri)
-            }
+            edit(item.uri)
         }
         binding.actionDelete.setOnClickListener {
             val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
