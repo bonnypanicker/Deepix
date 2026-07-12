@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -41,8 +42,7 @@ class SettingsActivity : AppCompatActivity() {
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
 
         bindToggles()
-        bindGridColumns()
-        bindCollageSize()
+        bindThumbnailSize()
         bindActions()
         bindStorage()
         bindSafe()
@@ -108,55 +108,45 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun bindGridColumns() {
-        updateColumnLabel()
-        binding.colMinus.setOnClickListener { changeColumns(-1) }
-        binding.colPlus.setOnClickListener { changeColumns(+1) }
+    /**
+     * One slider that sets thumbnail size for both grid and collage layouts in lockstep. The slider
+     * is a 5-position index (0..4); grid columns and collage scale are derived as mirror images so a
+     * higher position always means bigger thumbnails:
+     *   gridColumns  = GRID_MAX_COLUMNS  - position   (6..2)
+     *   collageScale = COLLAGE_SCALE_MAX - position   (5..1)
+     */
+    private fun bindThumbnailSize() {
+        val slider = binding.thumbnailSizeSlider
+        slider.max = DesignTokens.GRID_MAX_COLUMNS - DesignTokens.GRID_MIN_COLUMNS
+        slider.progress = sliderPositionFromGrid(IndexPreferences.getGridColumnCount(this))
+        updateThumbnailSizeLabel(slider.progress)
+
+        slider.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seeker: SeekBar, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val grid = DesignTokens.GRID_MAX_COLUMNS - progress
+                val collage = DesignTokens.COLLAGE_SCALE_MAX - progress
+                IndexPreferences.setGridColumnCount(this@SettingsActivity, grid)
+                IndexPreferences.setCollageScale(this@SettingsActivity, collage)
+                updateThumbnailSizeLabel(progress)
+            }
+
+            override fun onStartTrackingTouch(seeker: SeekBar) {}
+            override fun onStopTrackingTouch(seeker: SeekBar) {}
+        })
     }
 
-    private fun changeColumns(delta: Int) {
-        val current = IndexPreferences.getGridColumnCount(this)
-        val next = (current + delta).coerceIn(DesignTokens.GRID_MIN_COLUMNS, DesignTokens.GRID_MAX_COLUMNS)
-        if (next == current) return
-        IndexPreferences.setGridColumnCount(this, next)
-        updateColumnLabel()
-    }
+    private fun sliderPositionFromGrid(gridColumns: Int): Int =
+        (DesignTokens.GRID_MAX_COLUMNS - gridColumns)
+            .coerceIn(0, DesignTokens.GRID_MAX_COLUMNS - DesignTokens.GRID_MIN_COLUMNS)
 
-    private fun updateColumnLabel() {
-        binding.colValue.text = IndexPreferences.getGridColumnCount(this).toString()
-        val count = IndexPreferences.getGridColumnCount(this)
-        binding.colMinus.isEnabled = count > DesignTokens.GRID_MIN_COLUMNS
-        binding.colPlus.isEnabled = count < DesignTokens.GRID_MAX_COLUMNS
-        binding.colMinus.alpha = if (binding.colMinus.isEnabled) 1f else 0.35f
-        binding.colPlus.alpha = if (binding.colPlus.isEnabled) 1f else 0.35f
-    }
-
-    private fun bindCollageSize() {
-        updateCollageSizeLabel()
-        // "+" grows tiles (fewer per row), "−" shrinks them (more per row).
-        binding.collagePlus.setOnClickListener { changeCollageSize(+1) }
-        binding.collageMinus.setOnClickListener { changeCollageSize(-1) }
-    }
-
-    private fun changeCollageSize(sizeDelta: Int) {
-        val current = IndexPreferences.getCollageScale(this)
-        // A larger displayed size maps to a lower scale level (fewer, bigger tiles).
-        val next = (current - sizeDelta)
-            .coerceIn(DesignTokens.COLLAGE_SCALE_MIN, DesignTokens.COLLAGE_SCALE_MAX)
-        if (next == current) return
-        IndexPreferences.setCollageScale(this, next)
-        updateCollageSizeLabel()
-    }
-
-    private fun updateCollageSizeLabel() {
-        val level = IndexPreferences.getCollageScale(this)
-        // Show an intuitive size number: higher = bigger tiles (inverse of the internal level).
-        val displaySize = DesignTokens.COLLAGE_SCALE_MAX + DesignTokens.COLLAGE_SCALE_MIN - level
-        binding.collageValue.text = displaySize.toString()
-        binding.collagePlus.isEnabled = level > DesignTokens.COLLAGE_SCALE_MIN
-        binding.collageMinus.isEnabled = level < DesignTokens.COLLAGE_SCALE_MAX
-        binding.collagePlus.alpha = if (binding.collagePlus.isEnabled) 1f else 0.35f
-        binding.collageMinus.alpha = if (binding.collageMinus.isEnabled) 1f else 0.35f
+    private fun updateThumbnailSizeLabel(position: Int) {
+        val total = DesignTokens.GRID_MAX_COLUMNS - DesignTokens.GRID_MIN_COLUMNS
+        binding.thumbnailSizeValue.text = when (position) {
+            0 -> "Smallest"
+            total -> "Largest"
+            else -> "Medium"
+        }
     }
 
     private fun bindActions() {

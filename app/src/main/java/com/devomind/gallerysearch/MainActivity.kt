@@ -3166,6 +3166,10 @@ class MainActivity : AppCompatActivity() {
         val layoutManager = binding.imageGrid.layoutManager as GridLayoutManager
         layoutManager.spanCount = if (adapter.useCollageLayout) DesignTokens.COLLAGE_SPAN_COUNT else adapter.gridColumnCount
         layoutManager.spanSizeLookup.invalidateSpanIndexCache()
+        // Rebuild the current view's cells synchronously so display-only toggles (e.g. the albums
+        // folder-size subtitle, which only changes on rebind) take effect immediately instead of
+        // waiting on the async library reload below. Mirrors adjustCollageScale().
+        rerenderForDisplayChange()
         updateDrawerState()
         // If the "only while charging" preference changed while indexing is active, re-apply it.
         if (indexRunning && IndexPreferences.isChargingOnlyIndexing(this) != chargingPrefSnapshot) {
