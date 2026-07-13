@@ -43,6 +43,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".IndexingActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".IndexedFoldersActivity"
             android:exported="false" />
 

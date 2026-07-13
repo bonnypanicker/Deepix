@@ -27,6 +27,18 @@ class IndexWorker(
             return Result.success()
         }
 
+        // Night-charging-only runtime guard: if the worker fires outside the night window (e.g. a
+        // delayed retry), reschedule it for the next window rather than running the heavy scan now.
+        if (IndexPreferences.isChargingOnlyIndexing(applicationContext) &&
+            IndexPreferences.isNightChargingOnly(applicationContext)
+        ) {
+            val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+            if (!IndexPreferences.isNightChargeHour(hour)) {
+                Log.i(Tag, "Outside night charging window — deferring index run.")
+                return Result.retry()
+            }
+        }
+
         try {
             setForeground(createForegroundInfo(0, 1))
             foregroundActive = true
@@ -177,6 +189,9 @@ class IndexWorker(
          * Single source of truth for the index work request so every enqueue path
          * (initial start, resume, settings re-apply, notification action) honors the
          * "index only while charging" preference. Reads the pref at build time.
+         *
+         * When "night charging only" is also on, the request is additionally delayed until the next
+         * start of the night window (22:00 device-local) so the heavy scan runs overnight.
          */
         fun buildWorkRequest(
             context: Context,
@@ -187,13 +202,15 @@ class IndexWorker(
                     if (IndexPreferences.isChargingOnlyIndexing(context)) setRequiresCharging(true)
                 }
                 .build()
+            val totalDelaySeconds = maxOf(initialDelaySeconds, nightChargeDelaySeconds(context))
             return androidx.work.OneTimeWorkRequestBuilder<IndexWorker>()
                 .setConstraints(constraints)
                 // Delay the (heavy) model load + indexing so a cold start renders and becomes
                 // interactive first, instead of the worker competing for CPU/RAM during launch.
+                // When night-charging-only is on, push the start to the next night window.
                 .apply {
-                    if (initialDelaySeconds > 0) {
-                        setInitialDelay(initialDelaySeconds, java.util.concurrent.TimeUnit.SECONDS)
+                    if (totalDelaySeconds > 0) {
+                        setInitialDelay(totalDelaySeconds, java.util.concurrent.TimeUnit.SECONDS)
                     }
                 }
                 .setBackoffCriteria(
@@ -202,6 +219,26 @@ class IndexWorker(
                     java.util.concurrent.TimeUnit.SECONDS
                 )
                 .build()
+        }
+
+        /**
+         * Seconds until the next start of the night charging window (22:00 device-local), or 0 when
+         * night-charging-only is off / charging-only is off / already inside the window.
+         */
+        private fun nightChargeDelaySeconds(context: Context): Long {
+            if (!IndexPreferences.isChargingOnlyIndexing(context)) return 0
+            if (!IndexPreferences.isNightChargingOnly(context)) return 0
+            val now = java.util.Calendar.getInstance()
+            if (IndexPreferences.isNightChargeHour(now.get(java.util.Calendar.HOUR_OF_DAY))) return 0
+            // Next 22:00 today (or tomorrow if already past it within the day).
+            val nextStart = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.HOUR_OF_DAY, IndexPreferences.NIGHT_CHARGE_START_HOUR)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+                if (before(now)) add(java.util.Calendar.DAY_OF_YEAR, 1)
+            }
+            return maxOf(0L, (nextStart.timeInMillis - now.timeInMillis) / 1000)
         }
 
         fun showPausedNotification(context: Context) {

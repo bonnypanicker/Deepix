@@ -93,7 +93,7 @@ class IndexedFoldersActivity : AppCompatActivity() {
             row.root.setOnClickListener {
                 if (allFolders) return@setOnClickListener
                 if (!selected.add(folder.id)) selected.remove(folder.id)
-                row.folderSwitch.isChecked = folder.id in selected
+                row.folderCheck.isChecked = folder.id in selected
             }
             row.root.tag = folder.id
             binding.foldersContainer.addView(row.root)
@@ -106,8 +106,8 @@ class IndexedFoldersActivity : AppCompatActivity() {
         for (i in 0 until container.childCount) {
             val child = container.getChildAt(i)
             val id = child.tag as? String ?: continue
-            val sw = child.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.folderSwitch)
-            sw.isChecked = allFolders || id in selected
+            val cb = child.findViewById<android.widget.CheckBox>(R.id.folderCheck)
+            cb.isChecked = allFolders || id in selected
             child.isEnabled = !allFolders
             child.alpha = if (allFolders) 0.5f else 1f
         }

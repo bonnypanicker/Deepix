@@ -17,6 +17,7 @@ object IndexPreferences {
     private const val KeyIndexConsentGiven = "index_consent_given"
     private const val KeyIndexConsentAsked = "index_consent_asked"
     private const val KeyChargingOnly = "index_charging_only"
+    private const val KeyNightChargingOnly = "index_night_charging_only"
     private const val KeySmartAlbumOnboardingDismissed = "smart_album_onboarding_dismissed"
     private const val KeyIndexProgressPercent = "index_progress_percent"
     private const val KeyBlurSensitive = "blur_sensitive_content"
@@ -160,6 +161,36 @@ object IndexPreferences {
             .edit()
             .putBoolean(KeyChargingOnly, enabled)
             .apply()
+    }
+
+    /**
+     * Sub-option of "index only while charging": further restrict indexing to night-time hours
+     * (roughly 22:00–07:00 device local time) so the heavy scan runs when the phone is least used.
+     * Only meaningful when [isChargingOnlyIndexing] is also on.
+     */
+    fun isNightChargingOnly(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyNightChargingOnly, false)
+    }
+
+    fun setNightChargingOnly(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyNightChargingOnly, enabled)
+            .apply()
+    }
+
+    /**
+     * Night charging window in device-local 24h hour-of-day: 22:00 (inclusive) through 07:00
+     * (exclusive). Used by [IndexWorker] when [isNightChargingOnly] is on so the heavy scan runs
+     * overnight instead of as soon as the phone is plugged in.
+     */
+    const val NIGHT_CHARGE_START_HOUR = 22
+    const val NIGHT_CHARGE_END_HOUR = 7
+
+    /** True if the given hour-of-day (0..23) falls inside the night charging window. */
+    fun isNightChargeHour(hourOfDay: Int): Boolean {
+        return hourOfDay >= NIGHT_CHARGE_START_HOUR || hourOfDay < NIGHT_CHARGE_END_HOUR
     }
 
     /** Whether the user dismissed the "Create a smart album" onboarding card. */

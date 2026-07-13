@@ -35,11 +35,12 @@
             android:textSize="12sp" />
     </LinearLayout>
 
-    <androidx.appcompat.widget.SwitchCompat
-        android:id="@+id/folderSwitch"
+    <CheckBox
+        android:id="@+id/folderCheck"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="12dp"
+        android:buttonTint="@color/metroAccent"
         android:clickable="false"
         android:focusable="false" />
 </LinearLayout>
