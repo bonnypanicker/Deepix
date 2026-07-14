@@ -21,6 +21,7 @@ object IndexController {
         IndexPreferences.setIndexStopped(context, false)
         IndexPreferences.setIndexPaused(context, true)
         WorkManager.getInstance(context).cancelUniqueWork(IndexWorker.WorkName)
+        IndexWorker.cancelStatusNotification(context)
         IndexWorker.showPausedNotification(context)
     }
 

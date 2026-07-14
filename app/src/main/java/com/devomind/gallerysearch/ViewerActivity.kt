@@ -975,7 +975,8 @@ class ViewerActivity : AppCompatActivity() {
                     val progress = (dragDistance / binding.viewerRoot.height).coerceIn(0f, 1f)
                     val mediaView = getCurrentMediaView()
                     mediaView?.translationY = dragDistance
-                    val scale = 1f - (progress * 0.08f)
+                    val baseScale = (mediaView as? RotatablePhotoView)?.viewportFitScale ?: 1f
+                    val scale = baseScale * (1f - (progress * 0.08f))
                     mediaView?.scaleX = scale
                     mediaView?.scaleY = scale
                     binding.viewerRoot.setBackgroundColor(
@@ -1049,12 +1050,13 @@ class ViewerActivity : AppCompatActivity() {
             spring.stiffness = SpringForce.STIFFNESS_MEDIUM
             start()
         }
-        SpringAnimation(mediaView, DynamicAnimation.SCALE_X, 1f).apply {
+        val baseScale = (mediaView as? RotatablePhotoView)?.viewportFitScale ?: 1f
+        SpringAnimation(mediaView, DynamicAnimation.SCALE_X, baseScale).apply {
             spring.dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
             spring.stiffness = SpringForce.STIFFNESS_MEDIUM
             start()
         }
-        SpringAnimation(mediaView, DynamicAnimation.SCALE_Y, 1f).apply {
+        SpringAnimation(mediaView, DynamicAnimation.SCALE_Y, baseScale).apply {
             spring.dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
             spring.stiffness = SpringForce.STIFFNESS_MEDIUM
             start()

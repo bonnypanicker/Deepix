@@ -24,13 +24,19 @@ class IndexWorker(
     private var lastForegroundPercent = -1
     private var foregroundActive = false
 
-    /** True if the device is currently on AC power (the charging constraint is not a runtime gate). */
+    /** True if the device is currently connected to power. */
     private fun isCurrentlyCharging(): Boolean {
         return runCatching {
             val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
             val battery = applicationContext.registerReceiver(null, filter) ?: return false
             val status = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-            status == BatteryManager.BATTERY_STATUS_CHARGING ||
+            val plugged = battery.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
+            val hasPowerCable =
+                plugged == BatteryManager.BATTERY_PLUGGED_AC ||
+                    plugged == BatteryManager.BATTERY_PLUGGED_USB ||
+                    plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS
+            hasPowerCable ||
+                status == BatteryManager.BATTERY_STATUS_CHARGING ||
                 status == BatteryManager.BATTERY_STATUS_FULL
         }.getOrDefault(false)
     }
@@ -85,12 +91,10 @@ class IndexWorker(
                 if (IndexPreferences.isIndexPaused(applicationContext)) {
                     throw IndexPausedException()
                 }
-                // Honor "index only while charging" at runtime: the WorkManager constraint only gates
-                // the *start*, so if the user unplugs mid-scan we pause (not stop) so it resumes from
-                // where it left off once plugged in again.
+                // Honor "index only while charging" at runtime. This is a constraint wait, not a
+                // user pause: keep the work retryable so WorkManager can continue when power returns.
                 if (IndexPreferences.isChargingOnlyIndexing(applicationContext) && !isCurrentlyCharging()) {
-                    IndexPreferences.setIndexPaused(applicationContext, true)
-                    throw IndexPausedException()
+                    throw IndexWaitingForChargeException()
                 }
                 val bounded = current.coerceAtMost(total)
                 val progressPercent = (bounded * 100) / total
@@ -121,6 +125,10 @@ class IndexWorker(
             IndexPreferences.setIndexProgressPercent(applicationContext, 100)
 
             Result.success()
+        } catch (waiting: IndexWaitingForChargeException) {
+            Log.i(Tag, "Index worker waiting for charger.")
+            showWaitingForChargeNotification(applicationContext)
+            Result.retry()
         } catch (paused: IndexPausedException) {
             Log.i(Tag, "Index worker paused by notification action.")
             showPausedNotification(applicationContext)
@@ -285,6 +293,29 @@ class IndexWorker(
             manager.notify(PausedNotificationId, notification)
         }
 
+        fun showWaitingForChargeNotification(context: Context) {
+            ensureChannel(context)
+            val notification = NotificationCompat.Builder(context, ChannelId)
+                .setContentTitle("Photo indexing waiting to charge")
+                .setContentText("Plug in to continue building your AI search index.")
+                .setSmallIcon(android.R.drawable.stat_notify_sync)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .addAction(
+                    android.R.drawable.ic_media_pause,
+                    "Pause",
+                    IndexControlReceiver.pendingIntent(context, IndexControlReceiver.ActionPause)
+                )
+                .addAction(
+                    android.R.drawable.ic_menu_close_clear_cancel,
+                    "Stop",
+                    IndexControlReceiver.pendingIntent(context, IndexControlReceiver.ActionStop)
+                )
+                .build()
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(NotificationId, notification)
+        }
+
         fun cancelStatusNotification(context: Context) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.cancel(NotificationId)
@@ -305,3 +336,4 @@ class IndexWorker(
 }
 
 private class IndexPausedException : RuntimeException()
+private class IndexWaitingForChargeException : RuntimeException()
