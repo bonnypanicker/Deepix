@@ -148,6 +148,72 @@
                     </LinearLayout>
                 </LinearLayout>
 
+                <!-- ===================== MEDIA PROCESSING INFO ===================== -->
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="MEDIA PROCESSING" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/onboarding_card_bg"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:lineSpacingExtra="3dp"
+                        android:text="Your photos never leave your device. Everything is processed locally using on-device AI to enrich your library with intelligent metadata — no internet connection required."
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="During the initial scan, you may notice:"
+                        android:textColor="@color/metroTextPrimary"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:lineSpacingExtra="3dp"
+                        android:text="• Increased battery usage\n• Additional storage being used for the search index\n• Slightly slower performance while processing"
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:lineSpacingExtra="3dp"
+                        android:text="This is a one-time process that analyzes your existing library."
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:lineSpacingExtra="3dp"
+                        android:text="After the initial scan is complete, new photos are processed automatically as they are added, usually only a few items at a time. This keeps your library up to date with minimal impact on battery and performance."
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:lineSpacingExtra="3dp"
+                        android:text="Processing time depends on the size of your photo collection and may take from a few minutes to several hours."
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
                 <!-- ===================== POWER ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"
@@ -248,72 +314,6 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical" />
-
-                <!-- ===================== MEDIA PROCESSING INFO ===================== -->
-                <TextView
-                    style="@style/SettingsSectionHeader"
-                    android:text="MEDIA PROCESSING" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:background="@drawable/onboarding_card_bg"
-                    android:padding="16dp">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:lineSpacingExtra="3dp"
-                        android:text="Your photos never leave your device. Everything is processed locally using on-device AI to enrich your library with intelligent metadata — no internet connection required."
-                        android:textColor="@color/metroTextSecondary"
-                        android:textSize="13sp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="During the initial scan, you may notice:"
-                        android:textColor="@color/metroTextPrimary"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:lineSpacingExtra="3dp"
-                        android:text="• Increased battery usage\n• Additional storage being used for the search index\n• Slightly slower performance while processing"
-                        android:textColor="@color/metroTextSecondary"
-                        android:textSize="13sp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:lineSpacingExtra="3dp"
-                        android:text="This is a one-time process that analyzes your existing library."
-                        android:textColor="@color/metroTextSecondary"
-                        android:textSize="13sp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:lineSpacingExtra="3dp"
-                        android:text="After the initial scan is complete, new photos are processed automatically as they are added, usually only a few items at a time. This keeps your library up to date with minimal impact on battery and performance."
-                        android:textColor="@color/metroTextSecondary"
-                        android:textSize="13sp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:lineSpacingExtra="3dp"
-                        android:text="Processing time depends on the size of your photo collection and may take from a few minutes to several hours."
-                        android:textColor="@color/metroTextSecondary"
-                        android:textSize="13sp" />
-                </LinearLayout>
             </LinearLayout>
         </ScrollView>
     </LinearLayout>

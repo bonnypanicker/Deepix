@@ -1005,7 +1005,7 @@ class ViewerActivity : AppCompatActivity() {
 
                 if (draggingToDismiss) {
                     if (shouldDismiss) {
-                        finish()
+                        finishSwipeDismiss()
                     } else {
                         animateDismissReset()
                     }
@@ -1032,6 +1032,14 @@ class ViewerActivity : AppCompatActivity() {
             }
         }
         return false
+    }
+
+    private fun finishSwipeDismiss() {
+        finish()
+        // The drag gesture already supplies the transition. Suppress the platform's default
+        // activity close animation so the gallery underneath does not slide sideways.
+        @Suppress("DEPRECATION")
+        overridePendingTransition(0, 0)
     }
 
     private fun animateDismissReset() {

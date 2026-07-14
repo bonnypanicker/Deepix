@@ -349,8 +349,19 @@ class ImageAdapter(
 
     fun beginSelectionGesture(uri: Uri) {
         selectionGestureActive = true
-        ensureSelected(uri)
-        selectionAnchor = uri
+        val anchor = selectionAnchor
+        when {
+            selected.isEmpty() || anchor == null -> {
+                ensureSelected(uri)
+                selectionAnchor = uri
+            }
+            anchor == uri -> ensureSelected(uri)
+            else -> {
+                val changed = selectRange(anchor, uri)
+                if (!changed) ensureSelected(uri)
+                selectionAnchor = uri
+            }
+        }
     }
 
     fun extendSelectionGestureTo(uri: Uri): Boolean {
@@ -380,20 +391,11 @@ class ImageAdapter(
 
     private fun handleSelectionTap(uri: Uri) {
         selectionGestureActive = false
-        when {
-            selected.isEmpty() -> {
-                toggleSelection(uri)
-                selectionAnchor = uri
-            }
-            uri !in selected && selectionAnchor != null -> selectRange(selectionAnchor!!, uri)
-            else -> {
-                toggleSelection(uri)
-                if (uri in selected) {
-                    selectionAnchor = uri
-                } else if (selectionAnchor == uri) {
-                    selectionAnchor = selected.firstOrNull()
-                }
-            }
+        toggleSelection(uri)
+        if (uri in selected) {
+            selectionAnchor = uri
+        } else if (selectionAnchor == uri) {
+            selectionAnchor = selected.firstOrNull()
         }
     }
 

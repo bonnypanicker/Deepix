@@ -4,6 +4,9 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -20,6 +23,17 @@ class IndexWorker(
     private var lastForegroundUpdateAt = -1
     private var lastForegroundPercent = -1
     private var foregroundActive = false
+
+    /** True if the device is currently on AC power (the charging constraint is not a runtime gate). */
+    private fun isCurrentlyCharging(): Boolean {
+        return runCatching {
+            val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+            val battery = applicationContext.registerReceiver(null, filter) ?: return false
+            val status = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL
+        }.getOrDefault(false)
+    }
 
     override suspend fun doWork(): Result {
         if (IndexPreferences.isIndexPaused(applicationContext)) {
@@ -69,6 +83,13 @@ class IndexWorker(
 
             repository.buildIndex(uris) { current, _ ->
                 if (IndexPreferences.isIndexPaused(applicationContext)) {
+                    throw IndexPausedException()
+                }
+                // Honor "index only while charging" at runtime: the WorkManager constraint only gates
+                // the *start*, so if the user unplugs mid-scan we pause (not stop) so it resumes from
+                // where it left off once plugged in again.
+                if (IndexPreferences.isChargingOnlyIndexing(applicationContext) && !isCurrentlyCharging()) {
+                    IndexPreferences.setIndexPaused(applicationContext, true)
                     throw IndexPausedException()
                 }
                 val bounded = current.coerceAtMost(total)

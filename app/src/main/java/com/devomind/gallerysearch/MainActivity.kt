@@ -270,9 +270,6 @@ class MainActivity : AppCompatActivity() {
                 MotionEvent.ACTION_MOVE -> {
                     if (event.pointerCount > 1) {
                         adapter.endSelectionGesture()
-                    } else if (adapter.hasActiveSelectionGesture()) {
-                        val uri = adapter.mediaUriAt(binding.imageGrid, event.x, event.y)
-                        if (uri != null) adapter.extendSelectionGestureTo(uri)
                     }
                 }
                 MotionEvent.ACTION_UP,
