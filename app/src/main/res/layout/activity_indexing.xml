@@ -248,11 +248,11 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="Night charging only" />
+                        <TextView style="@style/SettingsRowTitle" android:text="Overnight only" />
 
                         <TextView
                             style="@style/SettingsRowSubtitle"
-                            android:text="Only run overnight (10 PM – 7 AM) while plugged in" />
+                            android:text="Only index between 10 PM and 7 AM while plugged in" />
                     </LinearLayout>
 
                     <androidx.appcompat.widget.SwitchCompat
