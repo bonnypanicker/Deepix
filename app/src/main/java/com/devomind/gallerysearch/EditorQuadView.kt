@@ -16,6 +16,7 @@ import kotlin.math.hypot
 class EditorQuadView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyle: Int = 0
 ) : View(context, attrs, defStyle) {
+    private val accentColor = DesignTokens.accent(context)
 
     private val bounds = RectF()
     private val pts = Array(4) { PointF() }
@@ -23,10 +24,10 @@ class EditorQuadView @JvmOverloads constructor(
     private var dragging = -1
 
     private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ACCENT; style = Paint.Style.STROKE; strokeWidth = dp(2f)
+        color = accentColor; style = Paint.Style.STROKE; strokeWidth = dp(2f)
     }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x22FFFFFF }
-    private val knob = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ACCENT; style = Paint.Style.FILL }
+    private val knob = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accentColor; style = Paint.Style.FILL }
     private val knobRing = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = 0xFFFFFFFF.toInt(); style = Paint.Style.STROKE; strokeWidth = dp(2f)
     }
@@ -79,7 +80,7 @@ class EditorQuadView @JvmOverloads constructor(
         val src = magnifierSource
         if (src != null && dragging in 0..3) {
             val p = pts[dragging]
-            EditorMagnifier.draw(canvas, src, bounds, p.x, p.y, resources.displayMetrics.density)
+            EditorMagnifier.draw(canvas, src, bounds, p.x, p.y, resources.displayMetrics.density, accentColor)
         }
     }
 
@@ -118,5 +119,4 @@ class EditorQuadView @JvmOverloads constructor(
 
     private fun dp(v: Float) = v * resources.displayMetrics.density
 
-    private companion object { const val ACCENT = 0xFF3B9EFF.toInt() }
 }

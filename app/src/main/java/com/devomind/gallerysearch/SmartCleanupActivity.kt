@@ -73,6 +73,7 @@ class SmartCleanupActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        AccentPalette.apply(this)
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
@@ -581,7 +582,7 @@ class SmartCleanupActivity : AppCompatActivity() {
     // ---------------------------------------------------------------------------------------------
 
     private fun tileColor(category: CleanupAnalyzer.Category): Int = when (category) {
-        CleanupAnalyzer.Category.DUPLICATES -> Color.parseColor("#3B9EFF")
+        CleanupAnalyzer.Category.DUPLICATES -> DesignTokens.accent(this)
         CleanupAnalyzer.Category.SIMILAR -> Color.parseColor("#2E7FD6")
         CleanupAnalyzer.Category.LIKELY_CLUTTER -> Color.parseColor("#E0823D")
         CleanupAnalyzer.Category.SCREENSHOTS -> Color.parseColor("#2FA968")

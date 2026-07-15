@@ -14,6 +14,7 @@ import kotlin.math.abs
 class EditorCropView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyle: Int = 0
 ) : View(context, attrs, defStyle) {
+    private val accentColor = DesignTokens.accent(context)
 
     private val bounds = RectF()
     private val sel = RectF()
@@ -22,13 +23,13 @@ class EditorCropView @JvmOverloads constructor(
 
     private val scrim = Paint().apply { color = 0x99000000.toInt() }
     private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ACCENT; style = Paint.Style.STROKE; strokeWidth = dp(2f)
+        color = accentColor; style = Paint.Style.STROKE; strokeWidth = dp(2f)
     }
     private val grid = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = 0x55FFFFFF; style = Paint.Style.STROKE; strokeWidth = dp(1f)
     }
     private val handle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ACCENT; style = Paint.Style.STROKE; strokeWidth = dp(3f); strokeCap = Paint.Cap.ROUND
+        color = accentColor; style = Paint.Style.STROKE; strokeWidth = dp(3f); strokeCap = Paint.Cap.ROUND
     }
 
     private val touchSlop = dp(26f)
@@ -103,7 +104,15 @@ class EditorCropView @JvmOverloads constructor(
         val src = magnifierSource
         if (src != null) {
             val focus = activeCorner() ?: return
-            EditorMagnifier.draw(canvas, src, bounds, focus.first, focus.second, resources.displayMetrics.density)
+            EditorMagnifier.draw(
+                canvas,
+                src,
+                bounds,
+                focus.first,
+                focus.second,
+                resources.displayMetrics.density,
+                accentColor
+            )
         }
     }
 
@@ -176,5 +185,4 @@ class EditorCropView @JvmOverloads constructor(
 
     private fun dp(v: Float) = v * resources.displayMetrics.density
 
-    private companion object { const val ACCENT = 0xFF3B9EFF.toInt() }
 }

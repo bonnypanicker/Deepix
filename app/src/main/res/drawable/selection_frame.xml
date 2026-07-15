@@ -5,5 +5,5 @@
     <solid android:color="@android:color/transparent" />
     <stroke
         android:width="3dp"
-        android:color="@color/metroAccent" />
+        android:color="?attr/accentColor" />
 </shape>

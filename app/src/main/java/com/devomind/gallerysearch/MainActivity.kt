@@ -175,7 +175,10 @@ class MainActivity : AppCompatActivity() {
 
     private val settingsLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { applyDisplaySettings() }
+    ) { result ->
+        val accentChanged = result.data?.getBooleanExtra(SettingsActivity.ExtraAccentChanged, false) == true
+        if (accentChanged) recreate() else applyDisplaySettings()
+    }
 
     private val safeLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -218,6 +221,7 @@ class MainActivity : AppCompatActivity() {
         // Hold the splash until the first gallery content is laid out (keepSplash
         // flips false in dismissLoadingOverlay), with a hard timeout as a safety net.
         splashScreen.setKeepOnScreenCondition { keepSplash }
+        AccentPalette.apply(this)
         super.onCreate(savedInstanceState)
         // No requestWindowFeature() here: installSplashScreen() has already added
         // window content, and the theme (windowNoTitle=true) covers the title bar.
@@ -1904,12 +1908,12 @@ class MainActivity : AppCompatActivity() {
             text = label
             textSize = 15f
             includeFontPadding = false
-            setTextColor(if (selected) Color.parseColor("#3B9EFF") else Color.WHITE)
+            setTextColor(if (selected) DesignTokens.accent(this@MainActivity) else Color.WHITE)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         row.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_fluent_checkmark_24_regular)
-            imageTintList = ColorStateList.valueOf(Color.parseColor("#3B9EFF"))
+            imageTintList = ColorStateList.valueOf(DesignTokens.accent(this@MainActivity))
             layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
             visibility = if (selected) View.VISIBLE else View.INVISIBLE
         })
@@ -3254,7 +3258,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateBottomTab(tab: View, icon: android.widget.ImageView, active: Boolean) {
         tab.alpha = if (active) 1f else 0.72f
         icon.imageTintList = ColorStateList.valueOf(
-            if (active) ContextCompat.getColor(this, R.color.metroAccent) else Color.parseColor("#6F6F6F")
+            if (active) DesignTokens.accent(this) else Color.parseColor("#6F6F6F")
         )
         icon.scaleX = if (active) 1f else 0.92f
         icon.scaleY = if (active) 1f else 0.92f

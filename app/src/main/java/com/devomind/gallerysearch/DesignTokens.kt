@@ -8,9 +8,19 @@ object DesignTokens {
     @ColorInt fun background(context: Context) = ContextCompat.getColor(context, R.color.metroBgPrimary)
     @ColorInt fun surface(context: Context) = ContextCompat.getColor(context, R.color.metroBgSecondary)
     @ColorInt fun card(context: Context) = ContextCompat.getColor(context, R.color.metroBgCard)
-    @ColorInt fun accent(context: Context) = ContextCompat.getColor(context, R.color.metroAccent)
-    @ColorInt fun accentLight(context: Context) = ContextCompat.getColor(context, R.color.metroAccentLight)
-    @ColorInt fun accentMuted(context: Context) = ContextCompat.getColor(context, R.color.metroAccentMuted)
+    @ColorInt fun accent(context: Context) = resolveColor(context, R.attr.accentColor, R.color.metroAccent)
+    @ColorInt fun accentLight(context: Context) = resolveColor(context, R.attr.accentColorLight, R.color.metroAccentLight)
+    @ColorInt fun accentMuted(context: Context) = resolveColor(context, R.attr.accentColor, R.color.metroAccent)
+
+    private fun resolveColor(context: Context, attr: Int, fallbackRes: Int): Int {
+        val ta = context.obtainStyledAttributes(intArrayOf(attr))
+        return try {
+            if (ta.hasValue(0)) ta.getColor(0, ContextCompat.getColor(context, fallbackRes))
+            else ContextCompat.getColor(context, fallbackRes)
+        } finally {
+            ta.recycle()
+        }
+    }
     @ColorInt fun textPrimary(context: Context) = ContextCompat.getColor(context, R.color.metroTextPrimary)
     @ColorInt fun textSecondary(context: Context) = ContextCompat.getColor(context, R.color.metroTextSecondary)
     @ColorInt fun textDisabled(context: Context) = ContextCompat.getColor(context, R.color.metroTextDisabled)

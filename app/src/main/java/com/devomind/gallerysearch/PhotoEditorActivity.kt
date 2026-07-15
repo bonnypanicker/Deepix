@@ -41,6 +41,7 @@ import kotlinx.coroutines.withContext
 class PhotoEditorActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPhotoEditorBinding
+    private var accentColor: Int = 0
 
     private lateinit var sourceUri: Uri
     private var displayName: String = "image"
@@ -76,7 +77,9 @@ class PhotoEditorActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        AccentPalette.apply(this)
         super.onCreate(savedInstanceState)
+        accentColor = DesignTokens.accent(this)
         WindowCompat.setDecorFitsSystemWindows(window, true)
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
@@ -280,7 +283,7 @@ class PhotoEditorActivity : AppCompatActivity() {
         GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(color)
-            setStroke(dp(if (selected) 3f else 1f).toInt(), if (selected) 0xFF3B9EFF.toInt() else 0x55FFFFFF)
+            setStroke(dp(if (selected) 3f else 1f).toInt(), if (selected) accentColor else 0x55FFFFFF)
         }
 
     // ------------------------------------------------------------------ tools

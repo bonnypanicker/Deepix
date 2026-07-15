@@ -33,6 +33,7 @@ class IndexedFoldersActivity : AppCompatActivity() {
     private var originalScope: Set<String> = emptySet()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        AccentPalette.apply(this)
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT

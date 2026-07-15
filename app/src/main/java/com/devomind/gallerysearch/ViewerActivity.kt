@@ -163,6 +163,7 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        AccentPalette.apply(this)
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
@@ -975,8 +976,9 @@ class ViewerActivity : AppCompatActivity() {
                     val progress = (dragDistance / binding.viewerRoot.height).coerceIn(0f, 1f)
                     val mediaView = getCurrentMediaView()
                     mediaView?.translationY = dragDistance
-                    val baseScale = (mediaView as? RotatablePhotoView)?.viewportFitScale ?: 1f
-                    val scale = baseScale * (1f - (progress * 0.08f))
+                    // Rotation is baked into the bitmap (RotatablePhotoView), so the resting
+                    // view scale is always 1 — shrink slightly from there while dragging.
+                    val scale = 1f - (progress * 0.08f)
                     mediaView?.scaleX = scale
                     mediaView?.scaleY = scale
                     binding.viewerRoot.setBackgroundColor(
@@ -1050,7 +1052,8 @@ class ViewerActivity : AppCompatActivity() {
             spring.stiffness = SpringForce.STIFFNESS_MEDIUM
             start()
         }
-        val baseScale = (mediaView as? RotatablePhotoView)?.viewportFitScale ?: 1f
+        // Bitmap-baked rotation keeps the resting view transform identity, so snap back to 1f.
+        val baseScale = 1f
         SpringAnimation(mediaView, DynamicAnimation.SCALE_X, baseScale).apply {
             spring.dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
             spring.stiffness = SpringForce.STIFFNESS_MEDIUM

@@ -18,6 +18,7 @@ class FastScrollIndicator @JvmOverloads constructor(
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
+    private val accentColor = DesignTokens.accent(context)
 
     private val thumbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = 0xBB8A8A8A.toInt()
@@ -27,7 +28,7 @@ class FastScrollIndicator @JvmOverloads constructor(
         color = 0x00000000.toInt()
     }
     private val bubblePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xEE3B9EFF.toInt()
+        color = accentColor
     }
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
@@ -108,7 +109,7 @@ class FastScrollIndicator @JvmOverloads constructor(
         if (isDragging) {
             val cy = thumbY.coerceIn(trackTop(), trackBottom())
             thumbRadius = dip(12f)
-            thumbPaint.color = 0xEE3B9EFF.toInt()
+            thumbPaint.color = accentColor
 
             if (showBubble && bubbleText.isNotEmpty()) {
                 val bw = textPaint.measureText(bubbleText) + dip(32f)

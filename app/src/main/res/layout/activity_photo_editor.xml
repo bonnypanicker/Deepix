@@ -220,8 +220,8 @@
                     android:layout_height="wrap_content"
                     android:max="48"
                     android:progress="10"
-                    android:progressTint="@color/metroAccent"
-                    android:thumbTint="@color/metroAccent" />
+                    android:progressTint="?attr/accentColor"
+                    android:thumbTint="?attr/accentColor" />
 
                 <ImageButton
                     android:id="@+id/undoStrokeBtn"
@@ -320,7 +320,7 @@
                     android:contentDescription="Apply"
                     android:padding="12dp"
                     android:src="@drawable/ic_fluent_checkmark_24_regular"
-                    android:tint="@color/metroAccent" />
+                    android:tint="?attr/accentColor" />
             </LinearLayout>
         </FrameLayout>
     </LinearLayout>
@@ -330,6 +330,6 @@
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:layout_gravity="center"
-        android:indeterminateTint="@color/metroAccent"
+        android:indeterminateTint="?attr/accentColor"
         android:visibility="gone" />
 </FrameLayout>

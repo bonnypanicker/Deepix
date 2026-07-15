@@ -104,7 +104,7 @@
                                 android:focusable="true"
                                 android:padding="8dp"
                                 android:text="Pause"
-                                android:textColor="#3B9EFF"
+                                android:textColor="?attr/accentColor"
                                 android:textSize="13sp"
                                 android:textStyle="bold" />
 
@@ -131,7 +131,7 @@
                             android:layout_marginTop="8dp"
                             android:max="100"
                             android:progress="0"
-                            android:progressTint="#3B9EFF" />
+                            android:progressTint="?attr/accentColor" />
                     </LinearLayout>
 
                     <!-- Indexing-incomplete notice -->
@@ -195,7 +195,7 @@
                             android:fontFamily="sans-serif-light"
                             android:includeFontPadding="false"
                             android:paddingTop="2dp"
-                            android:textColor="#3B9EFF"
+                            android:textColor="?attr/accentColor"
                             android:textSize="34sp" />
 
                         <TextView
@@ -264,7 +264,7 @@
                         android:focusable="true"
                         android:padding="8dp"
                         android:text="Select all"
-                        android:textColor="#3B9EFF"
+                        android:textColor="?attr/accentColor"
                         android:textSize="14sp" />
                 </FrameLayout>
 

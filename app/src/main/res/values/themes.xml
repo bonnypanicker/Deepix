@@ -7,6 +7,65 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
         <item name="colorAccent">@color/metroAccent</item>
+        <!-- Default accent values (Azure). Overridden at runtime by AccentPalette overlays. -->
+        <item name="accentColor">@color/metroAccent</item>
+        <item name="accentColorLight">@color/metroAccentLight</item>
+        <item name="accentColorAlpha14">#243B9EFF</item>
+        <item name="accentColorAlpha80">#CC3B9EFF</item>
+    </style>
+
+    <!-- ===================== Accent color overlays =====================
+         Applied at runtime via AccentPalette.apply(activity). Each sets the accentColor
+         family + colorAccent so SwitchCompat / CheckBox / SeekBar tints follow too. -->
+    <!-- Empty base: dotted children (Accent.Azure etc.) implicitly inherit from it. -->
+    <style name="Accent" />
+
+    <style name="Accent.Azure">
+        <item name="accentColor">#FF3B9EFF</item>
+        <item name="accentColorLight">#FF6DB8FF</item>
+        <item name="accentColorAlpha14">#243B9EFF</item>
+        <item name="accentColorAlpha80">#CC3B9EFF</item>
+        <item name="colorAccent">#FF3B9EFF</item>
+    </style>
+
+    <style name="Accent.Violet">
+        <item name="accentColor">#FF8B5CF6</item>
+        <item name="accentColorLight">#FFA78BFA</item>
+        <item name="accentColorAlpha14">#248B5CF6</item>
+        <item name="accentColorAlpha80">#CC8B5CF6</item>
+        <item name="colorAccent">#FF8B5CF6</item>
+    </style>
+
+    <style name="Accent.Teal">
+        <item name="accentColor">#FF14B8A6</item>
+        <item name="accentColorLight">#FF2DD4BF</item>
+        <item name="accentColorAlpha14">#2414B8A6</item>
+        <item name="accentColorAlpha80">#CC14B8A6</item>
+        <item name="colorAccent">#FF14B8A6</item>
+    </style>
+
+    <style name="Accent.Emerald">
+        <item name="accentColor">#FF22C55E</item>
+        <item name="accentColorLight">#FF4ADE80</item>
+        <item name="accentColorAlpha14">#2422C55E</item>
+        <item name="accentColorAlpha80">#CC22C55E</item>
+        <item name="colorAccent">#FF22C55E</item>
+    </style>
+
+    <style name="Accent.Amber">
+        <item name="accentColor">#FFF59E0B</item>
+        <item name="accentColorLight">#FFFBBF24</item>
+        <item name="accentColorAlpha14">#24F59E0B</item>
+        <item name="accentColorAlpha80">#CCF59E0B</item>
+        <item name="colorAccent">#FFF59E0B</item>
+    </style>
+
+    <style name="Accent.Rose">
+        <item name="accentColor">#FFF43F5E</item>
+        <item name="accentColorLight">#FFFB7185</item>
+        <item name="accentColorAlpha14">#24F43F5E</item>
+        <item name="accentColorAlpha80">#CCF43F5E</item>
+        <item name="colorAccent">#FFF43F5E</item>
     </style>
 
     <!-- Launch splash (AndroidX core-splashscreen; backported to minSdk) -->
@@ -41,7 +100,7 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:paddingTop">26dp</item>
         <item name="android:paddingBottom">6dp</item>
-        <item name="android:textColor">@color/metroAccent</item>
+        <item name="android:textColor">?attr/accentColor</item>
         <item name="android:textSize">12sp</item>
         <item name="android:textStyle">bold</item>
         <item name="android:letterSpacing">0.08</item>
@@ -97,7 +156,7 @@
         <item name="android:backgroundDimAmount">0.62</item>
         <item name="android:windowMinWidthMajor">88%</item>
         <item name="android:windowMinWidthMinor">92%</item>
-        <item name="colorAccent">@color/metroAccent</item>
+        <!-- Inherit the active accent overlay from the host activity instead of forcing Azure. -->
         <item name="android:textColorPrimary">@color/metroTextPrimary</item>
         <item name="android:fontFamily">sans-serif</item>
     </style>
@@ -156,17 +215,17 @@
     <style name="EditorSeek">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:progressTint">@color/metroAccent</item>
-        <item name="android:thumbTint">@color/metroAccent</item>
+        <item name="android:progressTint">?attr/colorAccent</item>
+        <item name="android:thumbTint">?attr/colorAccent</item>
     </style>
 
     <!-- Settings list slider: accent track + thumb on the AMOLED surface. -->
     <style name="SettingsSlider">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:progressTint">@color/metroAccent</item>
+        <item name="android:progressTint">?attr/colorAccent</item>
         <item name="android:progressBackgroundTint">@color/metroBgCard</item>
-        <item name="android:thumbTint">@color/metroAccent</item>
+        <item name="android:thumbTint">?attr/colorAccent</item>
         <item name="android:splitTrack">false</item>
     </style>
 </resources>

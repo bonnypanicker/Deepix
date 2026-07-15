@@ -40,7 +40,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="12dp"
-        android:buttonTint="@color/metroAccent"
+        android:buttonTint="?attr/colorAccent"
         android:clickable="false"
         android:focusable="false" />
 </LinearLayout>

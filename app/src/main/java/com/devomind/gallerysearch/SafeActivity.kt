@@ -74,6 +74,7 @@ class SafeActivity : AppCompatActivity() {
     ) { finishPendingSetupIfPossible() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        AccentPalette.apply(this)
         super.onCreate(savedInstanceState)
         window.setFlags(
             WindowManager.LayoutParams.FLAG_SECURE,

@@ -390,7 +390,7 @@
             android:paddingTop="20dp"
             android:paddingBottom="20dp"
             android:text="CLOSE"
-            android:textColor="#3B9EFF"
+            android:textColor="?attr/accentColor"
             android:textSize="14sp"
             android:textStyle="bold" />
     </LinearLayout>

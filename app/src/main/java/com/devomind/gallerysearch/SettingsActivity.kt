@@ -29,8 +29,10 @@ import kotlinx.coroutines.withContext
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySettingsBinding
+    private var accentChanged = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        AccentPalette.apply(this)
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
@@ -43,6 +45,7 @@ class SettingsActivity : AppCompatActivity() {
 
         bindToggles()
         bindThumbnailSize()
+        bindAccentColor()
         bindActions()
         bindStorage()
         bindSafe()
@@ -52,6 +55,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        binding.accentColorSubtitle.text = AccentPalette.current(this).displayName
         updateIndexedFoldersSubtitle()
         updateStorageSubtitles()
         updateSafeSubtitles()
@@ -127,6 +131,33 @@ class SettingsActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seeker: SeekBar) {}
             override fun onStopTrackingTouch(seeker: SeekBar) {}
         })
+    }
+
+    private fun bindAccentColor() {
+        binding.accentColorSubtitle.text = AccentPalette.current(this).displayName
+        binding.rowAccentColor.setOnClickListener { showAccentColorDialog() }
+    }
+
+    private fun showAccentColorDialog() {
+        val choices = AccentPalette.choices
+        val labels = choices.map { it.displayName }.toTypedArray()
+        val current = AccentPalette.current(this)
+        val checked = choices.indexOfFirst { it == current }.coerceAtLeast(0)
+        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
+            .setTitle("Accent color")
+            .setSingleChoiceItems(labels, checked) { dialog, which ->
+                val choice = choices[which]
+                if (choice != current) {
+                    IndexPreferences.setAccentColor(this, choice.key)
+                    accentChanged = true
+                    binding.accentColorSubtitle.text = choice.displayName
+                    setResult(RESULT_OK, intent.putExtra(ExtraAccentChanged, true))
+                    recreate()
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun sliderPositionFromGrid(gridColumns: Int): Int =
@@ -328,4 +359,8 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    companion object {
+        const val ExtraAccentChanged = "extra_accent_changed"
+    }
 }

@@ -21,7 +21,7 @@
             android:layout_height="24dp"
             android:contentDescription="@null"
             android:src="@drawable/ic_fluent_sparkle_24_regular"
-            android:tint="@color/metroAccent" />
+            android:tint="?attr/accentColor" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -55,7 +55,7 @@
         android:includeFontPadding="false"
         android:letterSpacing="0.08"
         android:text="NAME"
-        android:textColor="@color/metroAccent"
+        android:textColor="?attr/accentColor"
         android:textSize="11sp" />
 
     <EditText
@@ -81,7 +81,7 @@
         android:includeFontPadding="false"
         android:letterSpacing="0.08"
         android:text="WHAT TO FIND"
-        android:textColor="@color/metroAccent"
+        android:textColor="?attr/accentColor"
         android:textSize="11sp" />
 
     <EditText

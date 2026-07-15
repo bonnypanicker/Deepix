@@ -13,19 +13,17 @@ import android.graphics.RectF
  * with a crosshair — shared by the crop and perspective overlays so corner placement is precise.
  */
 object EditorMagnifier {
-
-    private const val ACCENT = 0xFF3B9EFF.toInt()
     private const val ZOOM = 1.9f
 
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; color = ACCENT
+        style = Paint.Style.STROKE
     }
     private val ringInner = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; color = 0x66FFFFFF
     }
     private val cross = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; color = ACCENT
+        style = Paint.Style.STROKE
     }
 
     /**
@@ -38,9 +36,12 @@ object EditorMagnifier {
         bounds: RectF,
         focusX: Float,
         focusY: Float,
-        density: Float
+        density: Float,
+        accentColor: Int
     ) {
         if (source.isRecycled || bounds.width() <= 0f || source.width <= 0) return
+        ring.color = accentColor
+        cross.color = accentColor
 
         val radius = 58f * density
         val pad = 10f * density

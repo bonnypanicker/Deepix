@@ -34,6 +34,7 @@ class BinActivity : AppCompatActivity() {
     private lateinit var adapter: BinAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        AccentPalette.apply(this)
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT

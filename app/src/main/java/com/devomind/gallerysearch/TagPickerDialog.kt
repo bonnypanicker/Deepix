@@ -24,7 +24,7 @@ class TagPickerDialog(
     private val onTagsChanged: () -> Unit
 ) {
     private val presetColors = listOf(
-        Color.parseColor("#3B9EFF"),
+        DesignTokens.accent(context),
         Color.parseColor("#34C759"),
         Color.parseColor("#FF9500"),
         Color.parseColor("#FF6B8A"),

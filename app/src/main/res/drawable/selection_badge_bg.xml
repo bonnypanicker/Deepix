@@ -2,6 +2,6 @@
 <!-- Metro/WP10 selection tick: accent rounded-square chip with no dark outline. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="@color/metroAccent" />
+    <solid android:color="?attr/accentColor" />
     <corners android:radius="3dp" />
 </shape>

@@ -107,7 +107,7 @@
                     android:layout_marginStart="6dp"
                     android:contentDescription="AI search"
                     android:src="@drawable/ic_fluent_sparkle_24_regular"
-                    android:tint="@color/metroAccent" />
+                    android:tint="?attr/accentColor" />
 
                 <EditText
                     android:id="@+id/searchInput"
@@ -399,7 +399,7 @@
                     android:layout_height="26dp"
                     android:contentDescription="Collection"
                     android:src="@drawable/ic_deepix_collections_24_regular"
-                    android:tint="@color/metroAccent" />
+                    android:tint="?attr/accentColor" />
             </LinearLayout>
 
             <LinearLayout
@@ -472,7 +472,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:indeterminate="true"
-                android:indeterminateTint="@color/metroAccent" />
+                android:indeterminateTint="?attr/accentColor" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -564,7 +564,7 @@
             android:layout_marginTop="10dp"
             android:layout_marginEnd="24dp"
             android:indeterminate="true"
-            android:indeterminateTint="@color/metroAccentMuted"
+            android:indeterminateTint="?attr/accentColor"
             android:visibility="gone" />
 
         <TextView
@@ -575,7 +575,7 @@
             android:paddingStart="24dp"
             android:paddingTop="14dp"
             android:paddingEnd="24dp"
-            android:textColor="@color/metroAccentLight"
+            android:textColor="?attr/accentColorLight"
             android:textSize="12sp" />
     </LinearLayout>
 </androidx.drawerlayout.widget.DrawerLayout>

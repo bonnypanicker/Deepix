@@ -2,7 +2,11 @@ package com.devomind.gallerysearch
 
 import android.animation.ValueAnimator
 import android.content.Context
-import android.graphics.RectF
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Matrix
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.animation.DecelerateInterpolator
@@ -11,12 +15,19 @@ import kotlin.math.abs
 import kotlin.math.hypot
 
 /**
- * PhotoView with a two-finger twist trigger.
+ * PhotoView with a two-finger twist trigger that rotates the photo in 90-degree steps.
  *
- * The twist is intentionally not a continuous rotation control. Once the accumulated twist crosses
- * a threshold, the photo rotates by one 90-degree step, like a toolbar rotate button. The transform
- * pivots around the view center and applies an extra contain scale for 90/270-degree states so the
- * rotated fitted image remains inside the visible frame.
+ * The rotation is applied to the BITMAP, not the view: the twist plays a short view-level
+ * rotate+contain animation purely as a visual, then swaps in a losslessly rotated copy of the
+ * bitmap and resets every view transform. PhotoView then treats the rotated image as the image —
+ * pinch-zoom, pan, fling and the viewer's swipe-to-dismiss all behave exactly as for an unrotated
+ * photo (no rotated viewport, no clipping rectangle, no transformed touch coordinates).
+ *
+ * Gesture arbitration:
+ *  - Twist only arms while the photo is at fit scale — once zoomed, two fingers always mean zoom.
+ *  - A gesture is permanently disqualified the moment pinch movement dominates, so a zoom that
+ *    drifts angularly can never fire a surprise rotation.
+ *  - The twist must cross [TRIGGER_DEGREES] with the fingers a sensible distance apart.
  */
 class RotatablePhotoView @JvmOverloads constructor(
     context: Context,
@@ -24,92 +35,117 @@ class RotatablePhotoView @JvmOverloads constructor(
     defStyle: Int = 0
 ) : PhotoView(context, attrs, defStyle) {
 
-    var viewportFitScale: Float = 1f
-        private set
-
-    private var visualRotation = 0f
     private var twistStartAngle = 0f
     private var twistStartSpan = 0f
-    private var accumulatedTwist = 0f
     private var twistActive = false
+    private var twistDisqualified = false
     private var rotationTriggered = false
     private var snapAnimator: ValueAnimator? = null
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_POINTER_DOWN -> {
+                if (rotationTriggered) return true
                 if (event.pointerCount >= 2) {
                     parent?.requestDisallowInterceptTouchEvent(true)
                     beginTwist(event)
                 }
             }
             MotionEvent.ACTION_MOVE -> {
-                if (twistActive && !rotationTriggered && event.pointerCount >= 2) {
-                    updateTwist(event)
+                if (rotationTriggered) return true // eat the rest of the gesture post-rotation
+                if (twistActive && !twistDisqualified && event.pointerCount >= 2) {
+                    val step = detectTwistStep(event)
+                    if (step != null) {
+                        rotationTriggered = true
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                        // Reset PhotoView's in-flight pinch/drag state before transforming, so the
+                        // ongoing fingers can't zoom/pan the freshly rotated image.
+                        val cancel = MotionEvent.obtain(event)
+                        cancel.action = MotionEvent.ACTION_CANCEL
+                        super.dispatchTouchEvent(cancel)
+                        cancel.recycle()
+                        rotateOneStep(step)
+                        return true
+                    }
                 }
             }
-            MotionEvent.ACTION_POINTER_UP,
+            MotionEvent.ACTION_POINTER_UP -> {
+                if (rotationTriggered) return true
+                endTwist()
+            }
             MotionEvent.ACTION_UP,
-            MotionEvent.ACTION_CANCEL -> endTwist()
+            MotionEvent.ACTION_CANCEL -> {
+                val consume = rotationTriggered
+                endTwist()
+                if (consume) return true
+            }
         }
         return super.dispatchTouchEvent(event)
     }
 
-    /** Clears any temporary rotation. Call when a new image is bound into this view. */
+    /** Clears any in-flight snap animation and view transforms. Call when a new image is bound. */
     fun resetRotation() {
         snapAnimator?.cancel()
         snapAnimator = null
         twistActive = false
+        twistDisqualified = false
         rotationTriggered = false
-        accumulatedTwist = 0f
-        visualRotation = 0f
-        viewportFitScale = 1f
-        pivotX = width / 2f
-        pivotY = height / 2f
         rotation = 0f
         scaleX = 1f
         scaleY = 1f
     }
 
     private fun beginTwist(event: MotionEvent) {
-        snapAnimator?.cancel()
-        twistStartAngle = angleBetweenFirstTwoPointers(event) ?: return
-        twistStartSpan = spanBetweenFirstTwoPointers(event) ?: return
-        accumulatedTwist = 0f
-        twistActive = true
-        rotationTriggered = false
-    }
-
-    private fun updateTwist(event: MotionEvent) {
+        if (snapAnimator?.isRunning == true) return
         val angle = angleBetweenFirstTwoPointers(event) ?: return
         val span = spanBetweenFirstTwoPointers(event) ?: return
-        accumulatedTwist = shortestAngleDelta(twistStartAngle, angle)
+        twistStartAngle = angle
+        twistStartSpan = span
+        rotationTriggered = false
+        // Fingers too close produce jittery angles; a zoomed photo reserves two fingers for zoom.
+        twistDisqualified = span < minTwistSpanPx() || isZoomedIn()
+        twistActive = true
+    }
 
+    /** Returns +90/-90 once the twist threshold is crossed cleanly, else null. */
+    private fun detectTwistStep(event: MotionEvent): Float? {
+        val angle = angleBetweenFirstTwoPointers(event) ?: return null
+        val span = spanBetweenFirstTwoPointers(event) ?: return null
+
+        // Once the gesture reads as a pinch (or the photo zooms), rotation is off until fingers lift.
         val pinchRatio = if (twistStartSpan > 0f) abs(span - twistStartSpan) / twistStartSpan else 0f
-        if (pinchRatio > PINCH_DOMINANCE_RATIO) return
-        if (abs(accumulatedTwist) < TRIGGER_DEGREES) return
+        if (pinchRatio > PINCH_DOMINANCE_RATIO || isZoomedIn()) {
+            twistDisqualified = true
+            return null
+        }
 
-        rotationTriggered = true
-        parent?.requestDisallowInterceptTouchEvent(true)
-        rotateOneStep(if (accumulatedTwist > 0f) 90f else -90f)
+        val twist = shortestAngleDelta(twistStartAngle, angle)
+        if (abs(twist) < TRIGGER_DEGREES) return null
+        return if (twist > 0f) 90f else -90f
     }
 
     private fun endTwist() {
         twistActive = false
+        twistDisqualified = false
         rotationTriggered = false
-        accumulatedTwist = 0f
     }
 
+    private fun isZoomedIn(): Boolean =
+        runCatching { scale > minimumScale * ZOOM_TOLERANCE }.getOrDefault(false)
+
+    /**
+     * Animates a 90-degree turn at view level, then commits it by swapping in a rotated bitmap and
+     * clearing the view transforms. The animation's end scale is the exact FIT_CENTER scale of the
+     * rotated image, so the swap is seamless.
+     */
     private fun rotateOneStep(stepDegrees: Float) {
-        // Re-apply FIT_CENTER before rotating so a zoomed/panned image does not keep an old pan
-        // offset as the pivot. PhotoView will center the drawable inside its fixed viewport.
+        if (snapAnimator?.isRunning == true) return
+        val bitmap = currentBitmap() ?: return
+
+        // Drop any pan/zoom so the pivot is the visual center of the fitted photo.
         runCatching { setScale(minimumScale, false) }
 
-        val startRotation = visualRotation
-        val targetRotation = normalizeDegrees(visualRotation + stepDegrees)
-        val startScale = viewportFitScale
-        val targetScale = computeViewportFitScale(targetRotation)
-
+        val targetScale = rotatedContainScale()
         pivotX = width / 2f
         pivotY = height / 2f
         snapAnimator?.cancel()
@@ -118,35 +154,62 @@ class RotatablePhotoView @JvmOverloads constructor(
             interpolator = DecelerateInterpolator()
             addUpdateListener { animator ->
                 val t = animator.animatedValue as Float
-                val interpolatedRotation = interpolateRotation(startRotation, targetRotation, stepDegrees, t)
-                val interpolatedScale = startScale + ((targetScale - startScale) * t)
-                rotation = interpolatedRotation
-                scaleX = interpolatedScale
-                scaleY = interpolatedScale
+                rotation = stepDegrees * t
+                val s = 1f + ((targetScale - 1f) * t)
+                scaleX = s
+                scaleY = s
             }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
-                    visualRotation = targetRotation
-                    viewportFitScale = targetScale
-                    rotation = visualRotation
-                    scaleX = viewportFitScale
-                    scaleY = viewportFitScale
+                    commitRotation(bitmap, stepDegrees)
                 }
             })
             start()
         }
     }
 
-    private fun computeViewportFitScale(rotationDegrees: Float): Float {
-        val rect = displayRect ?: drawable?.let {
-            RectF(0f, 0f, it.intrinsicWidth.toFloat(), it.intrinsicHeight.toFloat())
-        } ?: return 1f
-        val quarterTurn = isQuarterTurn(rotationDegrees)
-        val rotatedWidth = if (quarterTurn) rect.height() else rect.width()
-        val rotatedHeight = if (quarterTurn) rect.width() else rect.height()
-        if (rotatedWidth <= 0f || rotatedHeight <= 0f || width <= 0 || height <= 0) return 1f
-        return minOf(width / rotatedWidth, height / rotatedHeight, 1f)
+    /** Bakes the step into the bitmap and restores a clean, unrotated view. */
+    private fun commitRotation(source: Bitmap, stepDegrees: Float) {
+        val rotated = runCatching {
+            val matrix = Matrix().apply { postRotate(stepDegrees) }
+            Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+        }.getOrNull()
+        rotation = 0f
+        scaleX = 1f
+        scaleY = 1f
+        if (rotated != null) {
+            setImageBitmap(rotated) // resets PhotoView's matrix → FIT_CENTER of the rotated image
+        }
     }
+
+    /**
+     * View scale that makes the 90-degree-rotated fitted photo land exactly on the FIT_CENTER size
+     * the swapped bitmap will get (uncapped: narrow images may scale up, matching FIT_CENTER).
+     */
+    private fun rotatedContainScale(): Float {
+        val rect = displayRect ?: return 1f
+        if (rect.width() <= 0f || rect.height() <= 0f || width <= 0 || height <= 0) return 1f
+        return minOf(width / rect.height(), height / rect.width())
+    }
+
+    /** The currently displayed bitmap (fast path), or the drawable rendered into one. */
+    private fun currentBitmap(): Bitmap? {
+        val d: Drawable = drawable ?: return null
+        (d as? BitmapDrawable)?.bitmap?.let { return it }
+        val w = d.intrinsicWidth
+        val h = d.intrinsicHeight
+        if (w <= 0 || h <= 0) return null
+        return runCatching {
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val saved = android.graphics.Rect(d.bounds)
+            d.setBounds(0, 0, w, h)
+            d.draw(Canvas(bmp))
+            d.bounds = saved
+            bmp
+        }.getOrNull()
+    }
+
+    private fun minTwistSpanPx(): Float = MIN_TWIST_SPAN_DP * resources.displayMetrics.density
 
     private fun angleBetweenFirstTwoPointers(event: MotionEvent): Float? {
         if (event.pointerCount < 2) return null
@@ -167,21 +230,11 @@ class RotatablePhotoView @JvmOverloads constructor(
         return delta
     }
 
-    private fun interpolateRotation(start: Float, target: Float, step: Float, t: Float): Float {
-        val end = if (step > 0f && target < start) target + 360f else if (step < 0f && target > start) target - 360f else target
-        return start + ((end - start) * t)
-    }
-
-    private fun normalizeDegrees(degrees: Float): Float = ((degrees % 360f) + 360f) % 360f
-
-    private fun isQuarterTurn(degrees: Float): Boolean {
-        val normalized = normalizeDegrees(degrees).toInt()
-        return normalized == 90 || normalized == 270
-    }
-
     private companion object {
         const val TRIGGER_DEGREES = 35f
         const val PINCH_DOMINANCE_RATIO = 0.16f
+        const val ZOOM_TOLERANCE = 1.05f
+        const val MIN_TWIST_SPAN_DP = 64f
         const val SNAP_DURATION_MS = 220L
     }
 }

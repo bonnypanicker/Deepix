@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Dynamic accent colors. These are resolved via a theme overlay (see themes.xml
+      Accent.* styles) applied at runtime by AccentPalette.apply(activity), so the whole
+      app — drawables, layouts, Canvas paints, checkboxes, sliders — picks up the user's
+      chosen accent without a process restart.
+
+      - accentColor        : the solid accent (replaces @color/metroAccent)
+      - accentColorLight   : a lighter tint of the accent (replaces @color/metroAccentLight)
+      - accentColorAlpha14 : accent at ~14% alpha (card strokes, e.g. #243B9EFF)
+      - accentColorAlpha80 : accent at ~80% alpha (badge fills, e.g. #CC3B9EFF)
+    -->
+    <attr name="accentColor" format="color" />
+    <attr name="accentColorLight" format="color" />
+    <attr name="accentColorAlpha14" format="color" />
+    <attr name="accentColorAlpha80" format="color" />
+</resources>

@@ -24,6 +24,7 @@ object IndexPreferences {
     private const val KeyRecycleBinEnabled = "recycle_bin_enabled"
     private const val KeySkipDeleteConfirm = "skip_delete_confirm"
     private const val KeySafeStorageRoot = "safe_storage_root"
+    private const val KeyAccentColor = "accent_color"
 
     /** Public directory the encrypted Safe zip lives under. */
     const val SAFE_ROOT_PICTURES = "pictures"
@@ -305,6 +306,19 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putString(KeySafeStorageRoot, root)
+            .apply()
+    }
+
+    /** The selected accent color key (see [AccentPalette.Choice]); null/missing = Azure default. */
+    fun getAccentColor(context: Context): String {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getString(KeyAccentColor, null) ?: "azure"
+    }
+
+    fun setAccentColor(context: Context, key: String) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KeyAccentColor, key)
             .apply()
     }
 }

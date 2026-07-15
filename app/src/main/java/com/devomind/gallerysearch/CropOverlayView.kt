@@ -25,13 +25,15 @@ class CropOverlayView @JvmOverloads constructor(
     defStyle: Int = 0
 ) : View(context, attrs, defStyle) {
 
+    private val accentColor = DesignTokens.accent(context)
+
     private val imageBounds = RectF()
     private val selection = RectF()
     private var hasSelection = false
 
     private val scrimPaint = Paint().apply { color = 0x99000000.toInt() }
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ACCENT
+        color = accentColor
         style = Paint.Style.STROKE
         strokeWidth = dp(2f)
     }
@@ -41,7 +43,7 @@ class CropOverlayView @JvmOverloads constructor(
         strokeWidth = dp(1f)
     }
     private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ACCENT
+        color = accentColor
         style = Paint.Style.STROKE
         strokeWidth = dp(3f)
         strokeCap = Paint.Cap.ROUND
@@ -220,7 +222,6 @@ class CropOverlayView @JvmOverloads constructor(
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
 
     private companion object {
-        const val ACCENT = 0xFF3B9EFF.toInt()
         const val DEFAULT_COVERAGE = 0.7f
     }
 }
