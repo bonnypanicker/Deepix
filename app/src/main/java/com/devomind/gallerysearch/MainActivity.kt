@@ -96,6 +96,7 @@ class MainActivity : AppCompatActivity() {
     private var lastProgressRefresh = -1
     private var indexRunning = false
     private var chargingPrefSnapshot = false
+    private var settingsLaunchAccentKey: String? = null
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
     private var topInsetPx = 0
@@ -176,7 +177,13 @@ class MainActivity : AppCompatActivity() {
     private val settingsLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        val accentChanged = result.data?.getBooleanExtra(SettingsActivity.ExtraAccentChanged, false) == true
+        val accentChangedByResult =
+            result.data?.getBooleanExtra(SettingsActivity.ExtraAccentChanged, false) == true
+        val accentChangedByPreference =
+            settingsLaunchAccentKey != null &&
+                settingsLaunchAccentKey != IndexPreferences.getAccentColor(this)
+        settingsLaunchAccentKey = null
+        val accentChanged = accentChangedByResult || accentChangedByPreference
         if (accentChanged) recreate() else applyDisplaySettings()
     }
 
@@ -376,6 +383,7 @@ class MainActivity : AppCompatActivity() {
         binding.drawerSettings.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             chargingPrefSnapshot = IndexPreferences.isChargingOnlyIndexing(this)
+            settingsLaunchAccentKey = IndexPreferences.getAccentColor(this)
             settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
         }
 

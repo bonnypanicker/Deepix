@@ -23,10 +23,14 @@ import kotlin.math.hypot
  * pinch-zoom, pan, fling and the viewer's swipe-to-dismiss all behave exactly as for an unrotated
  * photo (no rotated viewport, no clipping rectangle, no transformed touch coordinates).
  *
- * Gesture arbitration:
+ * Gesture arbitration (single mode per gesture, locked until all fingers lift):
  *  - Twist only arms while the photo is at fit scale — once zoomed, two fingers always mean zoom.
- *  - A gesture is permanently disqualified the moment pinch movement dominates, so a zoom that
- *    drifts angularly can never fire a surprise rotation.
+ *  - The moment pinch movement dominates, the gesture is disqualified for rotation — and the
+ *    disqualification is sticky across finger re-lands within the same gesture, so a zoom that
+ *    drifts angularly can never fire a surprise rotation mid-stream.
+ *  - While the snap animation runs it is the only writer of the view transform: all touch input
+ *    is swallowed until it completes, so PhotoView can never zoom against a mid-rotation view
+ *    (whose focal point would be computed in unrotated screen coordinates).
  *  - The twist must cross [TRIGGER_DEGREES] with the fingers a sensible distance apart.
  */
 class RotatablePhotoView @JvmOverloads constructor(
@@ -43,6 +47,18 @@ class RotatablePhotoView @JvmOverloads constructor(
     private var snapAnimator: ValueAnimator? = null
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // While the snap animation owns the view transform, swallow ALL input. Letting events
+        // through would have PhotoView pinch-zooming its matrix while the animator interpolates
+        // rotation/scale on the same view (two writers per frame), and the pinch focal point
+        // would be computed in unrotated coordinates against a mid-rotation view.
+        if (snapAnimator?.isRunning == true) {
+            if (event.actionMasked == MotionEvent.ACTION_UP ||
+                event.actionMasked == MotionEvent.ACTION_CANCEL
+            ) {
+                endTwist()
+            }
+            return true
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_POINTER_DOWN -> {
                 if (rotationTriggered) return true
@@ -71,7 +87,10 @@ class RotatablePhotoView @JvmOverloads constructor(
             }
             MotionEvent.ACTION_POINTER_UP -> {
                 if (rotationTriggered) return true
-                endTwist()
+                // A finger lifted but the gesture continues: drop the twist baselines (they're
+                // re-measured if a second finger returns) but KEEP the mode lock. Once scale has
+                // won a gesture, it stays won until every finger is up.
+                twistActive = false
             }
             MotionEvent.ACTION_UP,
             MotionEvent.ACTION_CANCEL -> {
@@ -96,14 +115,14 @@ class RotatablePhotoView @JvmOverloads constructor(
     }
 
     private fun beginTwist(event: MotionEvent) {
-        if (snapAnimator?.isRunning == true) return
         val angle = angleBetweenFirstTwoPointers(event) ?: return
         val span = spanBetweenFirstTwoPointers(event) ?: return
         twistStartAngle = angle
         twistStartSpan = span
-        rotationTriggered = false
+        // Sticky mode lock: once this gesture was claimed by scale (pinch dominated, photo was/is
+        // zoomed) it stays disqualified — a finger re-landing mid-gesture must NOT re-arm rotation.
         // Fingers too close produce jittery angles; a zoomed photo reserves two fingers for zoom.
-        twistDisqualified = span < minTwistSpanPx() || isZoomedIn()
+        twistDisqualified = twistDisqualified || span < minTwistSpanPx() || isZoomedIn()
         twistActive = true
     }
 
@@ -160,8 +179,16 @@ class RotatablePhotoView @JvmOverloads constructor(
                 scaleY = s
             }
             addListener(object : android.animation.AnimatorListenerAdapter() {
+                private var cancelled = false
+
+                override fun onAnimationCancel(animation: android.animation.Animator) {
+                    cancelled = true
+                }
+
                 override fun onAnimationEnd(animation: android.animation.Animator) {
-                    commitRotation(bitmap, stepDegrees)
+                    // cancel() also fires onAnimationEnd; a cancelled snap (view recycled /
+                    // new image bound) must not bake-and-swap the stale bitmap.
+                    if (!cancelled) commitRotation(bitmap, stepDegrees)
                 }
             })
             start()

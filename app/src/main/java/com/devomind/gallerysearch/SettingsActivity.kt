@@ -34,6 +34,8 @@ class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         AccentPalette.apply(this)
         super.onCreate(savedInstanceState)
+        accentChanged = savedInstanceState?.getBoolean(StateAccentChanged, false) ?: false
+        updateAccentResult()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.BLACK
@@ -151,13 +153,30 @@ class SettingsActivity : AppCompatActivity() {
                     IndexPreferences.setAccentColor(this, choice.key)
                     accentChanged = true
                     binding.accentColorSubtitle.text = choice.displayName
-                    setResult(RESULT_OK, intent.putExtra(ExtraAccentChanged, true))
+                    updateAccentResult()
                     recreate()
                 }
                 dialog.dismiss()
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean(StateAccentChanged, accentChanged)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun finish() {
+        updateAccentResult()
+        super.finish()
+    }
+
+    private fun updateAccentResult() {
+        setResult(
+            if (accentChanged) RESULT_OK else RESULT_CANCELED,
+            android.content.Intent().putExtra(ExtraAccentChanged, accentChanged)
+        )
     }
 
     private fun sliderPositionFromGrid(gridColumns: Int): Int =
@@ -362,5 +381,6 @@ class SettingsActivity : AppCompatActivity() {
 
     companion object {
         const val ExtraAccentChanged = "extra_accent_changed"
+        private const val StateAccentChanged = "state_accent_changed"
     }
 }
