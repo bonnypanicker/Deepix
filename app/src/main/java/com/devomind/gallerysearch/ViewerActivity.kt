@@ -731,7 +731,7 @@ class ViewerActivity : AppCompatActivity() {
             setPadding(dp(10), dp(6), dp(10), dp(6))
             background = android.content.res.ColorStateList.valueOf(color).let { _ ->
                 android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = dp(16).toFloat()
+                    cornerRadius = dp(2).toFloat()
                     setStroke(dp(1), color)
                     setColor(android.graphics.Color.parseColor("#0A0A0A"))
                 }
@@ -1114,7 +1114,7 @@ class ViewerActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this).setView(container).create()
         dialog.window?.setBackgroundDrawable(
             GradientDrawable().apply {
-                cornerRadius = dp(16).toFloat()
+                cornerRadius = dp(3).toFloat() // match dialog_metro_bg
                 setColor(Color.parseColor("#0A0A0A"))
                 setStroke(dp(1), Color.parseColor("#2A2A2A"))
             }

@@ -141,7 +141,7 @@ class TagPickerDialog(
             setTextColor(if (selected) Color.BLACK else color)
             setPadding(dp(12), dp(8), dp(12), dp(8))
             background = GradientDrawable().apply {
-                cornerRadius = dp(16).toFloat()
+                cornerRadius = dp(2).toFloat()
                 setColor(if (selected) color else Color.parseColor("#0A0A0A"))
                 setStroke(dp(1), color)
             }

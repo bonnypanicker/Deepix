@@ -182,7 +182,6 @@
                     android:clickable="true"
                     android:drawableStart="@drawable/ic_fluent_sparkle_24_regular"
                     android:drawablePadding="6dp"
-                    android:drawableTint="#FFFFFF"
                     android:focusable="true"
                     android:paddingStart="14dp"
                     android:paddingTop="8dp"

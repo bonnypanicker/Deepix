@@ -73,7 +73,6 @@
             android:contentDescription="AI match"
             android:padding="4dp"
             android:src="@drawable/ic_fluent_sparkle_24_regular"
-            android:tint="#FFFFFF"
             android:visibility="gone" />
 
         <ImageView

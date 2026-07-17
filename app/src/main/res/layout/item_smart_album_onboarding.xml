@@ -31,8 +31,7 @@
                 android:layout_width="26dp"
                 android:layout_height="26dp"
                 android:contentDescription="@null"
-                android:src="@drawable/ic_fluent_sparkle_24_regular"
-                android:tint="?attr/accentColor" />
+                android:src="@drawable/ic_fluent_sparkle_24_regular" />
 
             <TextView
                 android:layout_width="0dp"
