@@ -83,6 +83,84 @@
         <item name="android:windowContentTransitions">true</item>
     </style>
 
+    <!-- ===================== Typography ramp =====================
+         The named Metro text roles. New text should reference one of these via
+         android:textAppearance instead of raw textSize/fontFamily attributes. -->
+    <style name="TextAppearance.Metro" parent="android:TextAppearance">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textColor">@color/metroTextPrimary</item>
+    </style>
+
+    <!-- Large screen headline (Settings, Safe, Cleanup landing titles). -->
+    <style name="TextAppearance.Metro.ScreenTitleLarge">
+        <item name="android:fontFamily">sans-serif-light</item>
+        <item name="android:textSize">40sp</item>
+        <item name="android:letterSpacing">-0.02</item>
+    </style>
+
+    <!-- Main top-bar title ("collections", album names). -->
+    <style name="TextAppearance.Metro.ScreenTitle">
+        <item name="android:fontFamily">sans-serif-light</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.04</item>
+    </style>
+
+    <!-- Month/date group headers in the browse timeline. -->
+    <style name="TextAppearance.Metro.TimelineHeader">
+        <item name="android:fontFamily">sans-serif-light</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:letterSpacing">-0.02</item>
+    </style>
+
+    <!-- Small all-caps section labels (PINNED ALBUMS, timeline subtitles). -->
+    <style name="TextAppearance.Metro.SectionLabel">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.06</item>
+        <item name="android:textColor">@color/metroTextSecondary</item>
+    </style>
+
+    <!-- Dialog headline (thin uppercase, per dialog_smart_album.xml). -->
+    <style name="TextAppearance.Metro.DialogTitle">
+        <item name="android:fontFamily">sans-serif-light</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.06</item>
+    </style>
+
+    <!-- Tiny accent field label above an input (NAME, PASSWORD). -->
+    <style name="TextAppearance.Metro.FieldLabel">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textColor">?attr/accentColor</item>
+    </style>
+
+    <style name="TextAppearance.Metro.Body">
+        <item name="android:textSize">16sp</item>
+    </style>
+
+    <style name="TextAppearance.Metro.BodySecondary">
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">@color/metroTextSecondary</item>
+    </style>
+
+    <style name="TextAppearance.Metro.Caption">
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/metroTextTertiary</item>
+    </style>
+
+    <!-- Flat footer button label (CANCEL / CREATE / DELETE). -->
+    <style name="TextAppearance.Metro.ButtonLabel">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.04</item>
+    </style>
+
     <style name="MetroDrawerItem">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">60dp</item>
@@ -92,7 +170,7 @@
         <item name="android:textColor">@color/metroTextPrimary</item>
         <item name="android:textSize">18sp</item>
         <item name="android:fontFamily">sans-serif</item>
-        <item name="android:background">@color/metroBgSecondary</item>
+        <item name="android:background">@drawable/drawer_item_bg</item>
     </style>
 
     <style name="SettingsSectionHeader">
@@ -147,7 +225,7 @@
     <style name="SettingsDivider">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">1dp</item>
-        <item name="android:background">#1A1A1A</item>
+        <item name="android:background">@color/metroDivider</item>
     </style>
 
     <style name="Theme.GallerySearch.Dialog" parent="Theme.AppCompat.Dialog">

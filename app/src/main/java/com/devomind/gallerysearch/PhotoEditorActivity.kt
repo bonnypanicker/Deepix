@@ -19,7 +19,6 @@ import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.WindowCompat
@@ -532,12 +531,14 @@ class PhotoEditorActivity : AppCompatActivity() {
 
     private fun confirmDiscardAndExit() {
         if (!edited) { finish(); return }
-        AlertDialog.Builder(this)
-            .setTitle("Discard changes?")
-            .setMessage("Your edits haven't been saved.")
-            .setPositiveButton("Discard") { _, _ -> finish() }
-            .setNegativeButton("Keep editing", null)
-            .show()
+        MetroDialog.confirm(
+            this,
+            title = "Discard changes?",
+            message = "Your edits haven't been saved.",
+            positive = "Discard",
+            negative = "Keep editing",
+            danger = true
+        ) { finish() }
     }
 
     // ------------------------------------------------------------------ helpers

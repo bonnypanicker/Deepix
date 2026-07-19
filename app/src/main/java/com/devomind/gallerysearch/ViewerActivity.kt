@@ -745,7 +745,7 @@ class ViewerActivity : AppCompatActivity() {
                 android.graphics.drawable.GradientDrawable().apply {
                     cornerRadius = dp(2).toFloat()
                     setStroke(dp(1), color)
-                    setColor(android.graphics.Color.parseColor("#0A0A0A"))
+                    setColor(androidx.core.content.ContextCompat.getColor(this@ViewerActivity, R.color.metroBgSecondary))
                 }
             }
             layoutParams = LinearLayout.LayoutParams(

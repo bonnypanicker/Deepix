@@ -13,13 +13,9 @@
         android:id="@+id/pinnedAlbumsLabel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:fontFamily="sans-serif-medium"
         android:includeFontPadding="false"
-        android:letterSpacing="0.05"
         android:text="Pinned Albums"
-        android:textAllCaps="true"
-        android:textColor="@color/metroTextSecondary"
-        android:textSize="13sp"
+        android:textAppearance="@style/TextAppearance.Metro.SectionLabel"
         android:paddingEnd="16dp"
         android:paddingBottom="12dp" />
 

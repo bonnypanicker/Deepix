@@ -3,7 +3,7 @@
     android:id="@+id/indexingRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="@color/metroBgPrimary">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -27,7 +27,7 @@
                 android:contentDescription="Back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
         </FrameLayout>
 
         <ScrollView
@@ -49,7 +49,7 @@
                     android:fontFamily="sans-serif-light"
                     android:includeFontPadding="false"
                     android:text="indexing"
-                    android:textColor="#FFFFFF"
+                    android:textColor="@color/metroTextPrimary"
                     android:textSize="40sp" />
 
                 <!-- ===================== STATUS + CONTROLS ===================== -->
@@ -70,7 +70,7 @@
                         android:layout_height="wrap_content"
                         android:includeFontPadding="false"
                         android:text="Preparing…"
-                        android:textColor="#FFFFFF"
+                        android:textColor="@color/metroTextPrimary"
                         android:textSize="16sp" />
 
                     <TextView
@@ -80,7 +80,7 @@
                         android:includeFontPadding="false"
                         android:paddingTop="3dp"
                         android:text="On-device AI · nothing leaves your phone"
-                        android:textColor="#9A9A9A"
+                        android:textColor="@color/metroTextSecondary"
                         android:textSize="13sp" />
 
                     <TextView
@@ -124,7 +124,7 @@
                             android:paddingBottom="11dp"
                             android:text="Pause"
                             android:textAlignment="center"
-                            android:textColor="#FFFFFF"
+                            android:textColor="@color/metroTextPrimary"
                             android:textSize="14sp"
                             android:textStyle="bold" />
 
@@ -143,7 +143,7 @@
                             android:paddingBottom="11dp"
                             android:text="Stop"
                             android:textAlignment="center"
-                            android:textColor="#FFFFFF"
+                            android:textColor="@color/metroTextPrimary"
                             android:textSize="14sp" />
                     </LinearLayout>
                 </LinearLayout>
@@ -273,7 +273,7 @@
                     android:layout_height="wrap_content"
                     android:paddingBottom="8dp"
                     android:text="Choose which folders AI search indexes. This does not change your gallery — every photo still shows normally."
-                    android:textColor="#9A9A9A"
+                    android:textColor="@color/metroTextSecondary"
                     android:textSize="13sp" />
 
                 <LinearLayout

@@ -85,7 +85,7 @@
             android:includeFontPadding="false"
             android:letterSpacing="0.04"
             android:text="CREATE SMART ALBUM"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/metroTextPrimary"
             android:textSize="13sp" />
     </LinearLayout>
 </LinearLayout>

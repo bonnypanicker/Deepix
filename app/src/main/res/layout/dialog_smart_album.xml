@@ -26,36 +26,27 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="10dp"
-            android:fontFamily="sans-serif-light"
             android:includeFontPadding="false"
-            android:letterSpacing="0.06"
             android:text="New Smart Album"
-            android:textAllCaps="true"
-            android:textColor="@color/metroTextPrimary"
-            android:textSize="18sp" />
+            android:textAppearance="@style/TextAppearance.Metro.DialogTitle" />
     </LinearLayout>
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
-        android:fontFamily="sans-serif"
         android:includeFontPadding="false"
         android:lineSpacingExtra="2dp"
         android:text="Describe what you want to collect. Your phone finds the matching photos for you."
-        android:textColor="@color/metroTextSecondary"
-        android:textSize="13sp" />
+        android:textAppearance="@style/TextAppearance.Metro.BodySecondary" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="22dp"
-        android:fontFamily="sans-serif-medium"
         android:includeFontPadding="false"
-        android:letterSpacing="0.08"
         android:text="NAME"
-        android:textColor="?attr/accentColor"
-        android:textSize="11sp" />
+        android:textAppearance="@style/TextAppearance.Metro.FieldLabel" />
 
     <EditText
         android:id="@+id/smartAlbumName"
@@ -76,12 +67,9 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="18dp"
-        android:fontFamily="sans-serif-medium"
         android:includeFontPadding="false"
-        android:letterSpacing="0.08"
         android:text="WHAT TO FIND"
-        android:textColor="?attr/accentColor"
-        android:textSize="11sp" />
+        android:textAppearance="@style/TextAppearance.Metro.FieldLabel" />
 
     <EditText
         android:id="@+id/smartAlbumPrompt"
@@ -127,15 +115,13 @@
             android:background="?android:attr/selectableItemBackground"
             android:clickable="true"
             android:focusable="true"
-            android:fontFamily="sans-serif-medium"
             android:gravity="center"
-            android:letterSpacing="0.04"
             android:minWidth="88dp"
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
-            android:text="CANCEL"
-            android:textColor="@color/metroTextSecondary"
-            android:textSize="13sp" />
+            android:text="Cancel"
+            android:textAppearance="@style/TextAppearance.Metro.ButtonLabel"
+            android:textColor="@color/metroTextSecondary" />
 
         <TextView
             android:id="@+id/smartAlbumCreate"
@@ -145,14 +131,12 @@
             android:background="@drawable/onboarding_button_bg"
             android:clickable="true"
             android:focusable="true"
-            android:fontFamily="sans-serif-medium"
             android:gravity="center"
-            android:letterSpacing="0.04"
             android:minWidth="104dp"
             android:paddingStart="20dp"
             android:paddingEnd="20dp"
-            android:text="CREATE"
-            android:textColor="#FFFFFF"
-            android:textSize="13sp" />
+            android:text="Create"
+            android:textAppearance="@style/TextAppearance.Metro.ButtonLabel"
+            android:textColor="@color/metroTextPrimary" />
     </LinearLayout>
 </LinearLayout>

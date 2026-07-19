@@ -41,18 +41,14 @@
                     android:layout_height="wrap_content"
                     android:layout_gravity="start|center_vertical"
                     android:ellipsize="end"
-                    android:fontFamily="sans-serif-light"
                     android:gravity="start|center_vertical"
                     android:includeFontPadding="false"
-                    android:letterSpacing="0.04"
                     android:minHeight="44dp"
                     android:paddingStart="16dp"
                     android:paddingEnd="56dp"
                     android:singleLine="true"
                     android:text="collections"
-                    android:textAllCaps="true"
-                    android:textColor="@color/metroTextPrimary"
-                    android:textSize="20sp" />
+                    android:textAppearance="@style/TextAppearance.Metro.ScreenTitle" />
 
                 <ImageButton
                     android:id="@+id/addAlbumBtn"

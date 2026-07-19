@@ -3,7 +3,7 @@
     android:id="@+id/viewerRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="@color/metroBgPrimary">
 
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/viewPager"
@@ -43,7 +43,7 @@
                 android:contentDescription="Back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -60,7 +60,7 @@
                     android:ellipsize="middle"
                     android:includeFontPadding="false"
                     android:singleLine="true"
-                    android:textColor="#FFFFFF"
+                    android:textColor="@color/metroTextPrimary"
                     android:textSize="16sp" />
 
                 <TextView
@@ -71,7 +71,7 @@
                     android:includeFontPadding="false"
                     android:paddingTop="2dp"
                     android:singleLine="true"
-                    android:textColor="#9A9A9A"
+                    android:textColor="@color/metroTextSecondary"
                     android:textSize="12sp"
                     android:visibility="gone" />
             </LinearLayout>
@@ -84,7 +84,7 @@
                 android:contentDescription="Favorite"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_heart_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
 
             <ImageButton
                 android:id="@+id/similarBtn"
@@ -94,7 +94,7 @@
                 android:contentDescription="Search similar images"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_image_search_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
 
             <ImageButton
                 android:id="@+id/moreBtn"
@@ -104,7 +104,7 @@
                 android:contentDescription="More options"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_more_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
         </LinearLayout>
     </FrameLayout>
 
@@ -138,7 +138,7 @@
                 android:layout_height="24dp"
                 android:contentDescription="Share"
                 android:src="@drawable/ic_fluent_share_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -146,7 +146,7 @@
                 android:layout_marginTop="6dp"
                 android:includeFontPadding="false"
                 android:text="Share"
-                android:textColor="#D6D6D6"
+                android:textColor="@color/metroTextStrong"
                 android:textSize="11sp" />
         </LinearLayout>
 
@@ -169,7 +169,7 @@
                 android:layout_height="24dp"
                 android:contentDescription="Edit"
                 android:src="@drawable/ic_fluent_edit_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
 
             <TextView
                 android:id="@+id/editLabel"
@@ -178,7 +178,7 @@
                 android:layout_marginTop="6dp"
                 android:includeFontPadding="false"
                 android:text="Edit"
-                android:textColor="#D6D6D6"
+                android:textColor="@color/metroTextStrong"
                 android:textSize="11sp" />
         </LinearLayout>
 
@@ -200,7 +200,7 @@
                 android:layout_height="24dp"
                 android:contentDescription="Rotate"
                 android:src="@drawable/ic_fluent_screen_rotate_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -208,7 +208,7 @@
                 android:layout_marginTop="6dp"
                 android:includeFontPadding="false"
                 android:text="Rotate"
-                android:textColor="#D6D6D6"
+                android:textColor="@color/metroTextStrong"
                 android:textSize="11sp" />
         </LinearLayout>
 
@@ -230,7 +230,7 @@
                 android:layout_height="24dp"
                 android:contentDescription="Delete"
                 android:src="@drawable/ic_fluent_delete_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -238,7 +238,7 @@
                 android:layout_marginTop="6dp"
                 android:includeFontPadding="false"
                 android:text="Delete"
-                android:textColor="#D6D6D6"
+                android:textColor="@color/metroTextStrong"
                 android:textSize="11sp" />
         </LinearLayout>
     </LinearLayout>
@@ -249,7 +249,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:alpha="0"
-        android:background="#000000"
+        android:background="@color/metroBgPrimary"
         android:visibility="gone" />
 
     <!-- Info bottom sheet -->
@@ -288,7 +288,7 @@
                 android:includeFontPadding="false"
                 android:paddingBottom="8dp"
                 android:text="Info"
-                android:textColor="#FFFFFF"
+                android:textColor="@color/metroTextPrimary"
                 android:textSize="30sp" />
         </LinearLayout>
 
@@ -360,7 +360,7 @@
                         android:layout_height="wrap_content"
                         android:includeFontPadding="false"
                         android:text="Tags"
-                        android:textColor="#8A8A8A"
+                        android:textColor="@color/metroTextSecondary"
                         android:textSize="15sp" />
 
                     <HorizontalScrollView
@@ -429,7 +429,7 @@
             android:paddingEnd="14dp"
             android:paddingBottom="10dp"
             android:text="Cancel"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/metroTextPrimary"
             android:textSize="14sp" />
 
         <TextView
@@ -438,7 +438,7 @@
             android:layout_weight="1"
             android:gravity="center"
             android:text="Drag to select a region"
-            android:textColor="#9A9A9A"
+            android:textColor="@color/metroTextSecondary"
             android:textSize="13sp" />
 
         <TextView
@@ -453,7 +453,7 @@
             android:paddingEnd="22dp"
             android:paddingBottom="10dp"
             android:text="Search"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/metroTextPrimary"
             android:textSize="14sp"
             android:textStyle="bold" />
     </LinearLayout>

@@ -13,6 +13,7 @@
 
     <!-- Text colors -->
     <color name="metroTextPrimary">#FFFFFFFF</color>
+    <color name="metroTextStrong">#FFD6D6D6</color>
     <color name="metroTextSecondary">#FF8A8A8A</color>
     <color name="metroTextTertiary">#FF6F6F6F</color>
     <color name="metroTextDisabled">#FF484848</color>
@@ -21,10 +22,12 @@
     <!-- Status bar / chrome -->
     <color name="metroStatusBar">#FF0A0A0A</color>
     <color name="metroNavBar">#FF000000</color>
+    <color name="metroDivider">#FF1A1A1A</color>
 
     <!-- Semantic -->
-    <color name="metroSelectionBackground">#CC5B4FE8</color>
     <color name="metroDimScrim">#66000000</color>
+    <color name="metroDanger">#FFE5484D</color>
+    <color name="metroWarning">#FFFFC24B</color>
 
     <!-- Legacy alias kept for compatibility -->
     <color name="black">#FF000000</color>

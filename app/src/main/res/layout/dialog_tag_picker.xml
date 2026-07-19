@@ -2,41 +2,76 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="#0A0A0A"
+    android:layout_margin="16dp"
+    android:background="@drawable/dialog_metro_bg"
     android:orientation="vertical"
-    android:padding="24dp">
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:fontFamily="sans-serif-light"
-        android:includeFontPadding="false"
-        android:text="Tags"
-        android:textColor="#FFFFFF"
-        android:textSize="26sp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:includeFontPadding="false"
-        android:text="Tap to select or create a new tag"
-        android:textColor="#8A8A8A"
-        android:textSize="13sp" />
+    android:paddingStart="24dp"
+    android:paddingTop="24dp"
+    android:paddingEnd="24dp"
+    android:paddingBottom="16dp">
 
     <LinearLayout
-        android:id="@+id/existingTagsContainer"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        android:orientation="horizontal" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_fluent_tag_24_regular"
+            android:tint="?attr/accentColor" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:includeFontPadding="false"
+            android:text="Tags"
+            android:textAppearance="@style/TextAppearance.Metro.DialogTitle" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:includeFontPadding="false"
+        android:lineSpacingExtra="2dp"
+        android:text="Tap to select or create a new tag"
+        android:textAppearance="@style/TextAppearance.Metro.BodySecondary" />
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:overScrollMode="never"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/existingTagsContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="22dp"
+        android:includeFontPadding="false"
+        android:text="New tag"
+        android:textAppearance="@style/TextAppearance.Metro.FieldLabel" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/search_bg"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="14dp"
+        android:paddingEnd="4dp">
 
         <View
             android:id="@+id/newTagColorDot"
@@ -48,30 +83,33 @@
         <EditText
             android:id="@+id/newTagInput"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:layout_weight="1"
             android:background="@android:color/transparent"
-            android:hint="New tag"
+            android:hint="Name your tag"
             android:imeOptions="actionDone"
+            android:importantForAutofill="no"
             android:inputType="text"
             android:maxLines="1"
             android:singleLine="true"
-            android:textColor="#FFFFFF"
-            android:textColorHint="#484848"
+            android:textColor="@color/metroTextPrimary"
+            android:textColorHint="@color/metroTextDisabled"
             android:textSize="16sp" />
 
         <TextView
             android:id="@+id/addTagBtn"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
             android:includeFontPadding="false"
             android:paddingStart="12dp"
-            android:paddingTop="8dp"
             android:paddingEnd="12dp"
-            android:paddingBottom="8dp"
-            android:text="ADD"
-            android:textColor="?attr/accentColor"
-            android:textSize="13sp" />
+            android:text="Add"
+            android:textAppearance="@style/TextAppearance.Metro.ButtonLabel"
+            android:textColor="?attr/accentColor" />
     </LinearLayout>
 
     <LinearLayout
@@ -80,4 +118,43 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:orientation="horizontal" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:gravity="end"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tagCancelBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:minWidth="88dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:text="Cancel"
+            android:textAppearance="@style/TextAppearance.Metro.ButtonLabel"
+            android:textColor="@color/metroTextSecondary" />
+
+        <TextView
+            android:id="@+id/tagSaveBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/onboarding_button_bg"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:minWidth="104dp"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:text="Save"
+            android:textAppearance="@style/TextAppearance.Metro.ButtonLabel"
+            android:textColor="@color/metroTextPrimary" />
+    </LinearLayout>
 </LinearLayout>

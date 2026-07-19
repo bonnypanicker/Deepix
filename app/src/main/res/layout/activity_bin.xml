@@ -27,7 +27,7 @@
                 android:contentDescription="Back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
 
             <TextView
                 android:id="@+id/emptyBinBtn"
@@ -40,7 +40,7 @@
                 android:focusable="true"
                 android:padding="8dp"
                 android:text="Empty bin"
-                android:textColor="#E2444A"
+                android:textColor="@color/metroDanger"
                 android:textSize="14sp" />
         </FrameLayout>
 
@@ -51,7 +51,7 @@
             android:fontFamily="sans-serif-light"
             android:includeFontPadding="false"
             android:text="recycle bin"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/metroTextPrimary"
             android:textSize="40sp" />
 
         <TextView

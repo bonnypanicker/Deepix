@@ -7,7 +7,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -73,14 +72,16 @@ class BinActivity : AppCompatActivity() {
     }
 
     private fun showOptions(entry: BinManager.BinEntry) {
-        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
-            .setItems(arrayOf("Restore", "Delete forever")) { _, which ->
-                when (which) {
-                    0 -> restore(entry)
-                    1 -> confirmDeleteForever(entry)
-                }
+        MetroDialog.items(
+            this,
+            options = listOf("Restore", "Delete forever"),
+            dangerIndices = setOf(1)
+        ) { which ->
+            when (which) {
+                0 -> restore(entry)
+                1 -> confirmDeleteForever(entry)
             }
-            .show()
+        }
     }
 
     private fun restore(entry: BinManager.BinEntry) {
@@ -96,31 +97,33 @@ class BinActivity : AppCompatActivity() {
     }
 
     private fun confirmDeleteForever(entry: BinManager.BinEntry) {
-        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
-            .setTitle("Delete forever?")
-            .setMessage("This permanently removes the photo. It can't be recovered.")
-            .setPositiveButton("Delete") { _, _ ->
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) { BinManager.deleteForever(this@BinActivity, entry) }
-                    refresh()
-                }
+        MetroDialog.confirm(
+            this,
+            title = "Delete forever?",
+            message = "This permanently removes the photo. It can't be recovered.",
+            positive = "Delete",
+            danger = true
+        ) {
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) { BinManager.deleteForever(this@BinActivity, entry) }
+                refresh()
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        }
     }
 
     private fun confirmEmpty() {
-        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
-            .setTitle("Empty recycle bin?")
-            .setMessage("Permanently deletes everything in the bin. This can't be undone.")
-            .setPositiveButton("Empty") { _, _ ->
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) { BinManager.emptyBin(this@BinActivity) }
-                    refresh()
-                }
+        MetroDialog.confirm(
+            this,
+            title = "Empty recycle bin?",
+            message = "Permanently deletes everything in the bin. This can't be undone.",
+            positive = "Empty",
+            danger = true
+        ) {
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) { BinManager.emptyBin(this@BinActivity) }
+                refresh()
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        }
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()

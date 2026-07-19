@@ -7,7 +7,6 @@ import android.view.View
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.view.ViewCompat
@@ -143,21 +142,20 @@ class SettingsActivity : AppCompatActivity() {
         val labels = choices.map { it.displayName }.toTypedArray()
         val current = AccentPalette.current(this)
         val checked = choices.indexOfFirst { it == current }.coerceAtLeast(0)
-        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
-            .setTitle("Accent color")
-            .setSingleChoiceItems(labels, checked) { dialog, which ->
-                val choice = choices[which]
-                if (choice != current) {
-                    IndexPreferences.setAccentColor(this, choice.key)
-                    accentChanged = true
-                    binding.accentColorSubtitle.text = choice.displayName
-                    updateAccentResult()
-                    recreate()
-                }
-                dialog.dismiss()
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        MetroDialog.singleChoice(
+            this,
+            title = "Accent color",
+            options = labels.toList(),
+            checkedIndex = checked,
+            swatches = choices.map { it.solid }
+        ) { which ->
+            val choice = choices[which]
+            IndexPreferences.setAccentColor(this, choice.key)
+            accentChanged = true
+            binding.accentColorSubtitle.text = choice.displayName
+            updateAccentResult()
+            recreate()
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -212,16 +210,16 @@ class SettingsActivity : AppCompatActivity() {
         val current = IndexPreferences.getSafeStorageRoot(this)
         val options = arrayOf("Pictures", "Documents")
         val checked = if (current == IndexPreferences.SAFE_ROOT_DOCUMENTS) 1 else 0
-        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
-            .setTitle("Safe storage location")
-            .setSingleChoiceItems(options, checked) { dialog, which ->
-                val newRoot =
-                    if (which == 1) IndexPreferences.SAFE_ROOT_DOCUMENTS else IndexPreferences.SAFE_ROOT_PICTURES
-                dialog.dismiss()
-                if (newRoot != current) changeSafeRoot(current, newRoot)
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        MetroDialog.singleChoice(
+            this,
+            title = "Safe storage location",
+            options = options.toList(),
+            checkedIndex = checked
+        ) { which ->
+            val newRoot =
+                if (which == 1) IndexPreferences.SAFE_ROOT_DOCUMENTS else IndexPreferences.SAFE_ROOT_PICTURES
+            changeSafeRoot(current, newRoot)
+        }
     }
 
     private fun changeSafeRoot(oldRoot: String, newRoot: String) {

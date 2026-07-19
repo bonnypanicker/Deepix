@@ -17,7 +17,7 @@
         android:fontFamily="sans-serif-light"
         android:includeFontPadding="false"
         android:text="0"
-        android:textColor="#FFFFFF"
+        android:textColor="@color/metroTextPrimary"
         android:textSize="40sp" />
 
     <TextView
@@ -26,7 +26,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|start"
         android:includeFontPadding="false"
-        android:textColor="#FFFFFF"
+        android:textColor="@color/metroTextPrimary"
         android:textSize="16sp" />
 
     <TextView
@@ -36,6 +36,6 @@
         android:layout_gravity="bottom|end"
         android:alpha="0.85"
         android:includeFontPadding="false"
-        android:textColor="#FFFFFF"
+        android:textColor="@color/metroTextPrimary"
         android:textSize="12sp" />
 </FrameLayout>

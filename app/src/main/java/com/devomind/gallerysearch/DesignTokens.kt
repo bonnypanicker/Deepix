@@ -26,7 +26,6 @@ object DesignTokens {
     @ColorInt fun textDisabled(context: Context) = ContextCompat.getColor(context, R.color.metroTextDisabled)
     @ColorInt fun statusBar(context: Context) = ContextCompat.getColor(context, R.color.metroStatusBar)
     @ColorInt fun navBar(context: Context) = ContextCompat.getColor(context, R.color.metroNavBar)
-    @ColorInt fun selectionBg(context: Context) = ContextCompat.getColor(context, R.color.metroSelectionBackground)
     @ColorInt fun dimScrim(context: Context) = ContextCompat.getColor(context, R.color.metroDimScrim)
 
     const val SCREEN_TITLE_SIZE = 40f

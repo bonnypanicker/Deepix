@@ -1,6 +1,5 @@
 package com.devomind.gallerysearch
 
-import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -9,6 +8,8 @@ import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.devomind.gallerysearch.db.TagEntity
@@ -51,18 +52,20 @@ class TagPickerDialog(
             renderColorPresets(binding)
             bindAddButton(binding)
 
-            AlertDialog.Builder(context)
+            val dialog = AlertDialog.Builder(context, R.style.Theme_GallerySearch_Dialog)
                 .setView(binding.root)
-                .setPositiveButton("Save") { _, _ ->
-                    lifecycleOwner.lifecycleScope.launch {
-                        withContext(Dispatchers.IO) {
-                            dbRepository.setTagsForMedia(mediaUri, selectedTagIds.toList())
-                        }
-                        onTagsChanged()
+                .create()
+            binding.tagCancelBtn.setOnClickListener { dialog.dismiss() }
+            binding.tagSaveBtn.setOnClickListener {
+                dialog.dismiss()
+                lifecycleOwner.lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        dbRepository.setTagsForMedia(mediaUri, selectedTagIds.toList())
                     }
+                    onTagsChanged()
                 }
-                .setNegativeButton("Cancel", null)
-                .show()
+            }
+            dialog.show()
         }
     }
 
@@ -72,7 +75,7 @@ class TagPickerDialog(
             val empty = TextView(context).apply {
                 text = "No tags yet"
                 textSize = 13f
-                setTextColor(Color.parseColor("#6F6F6F"))
+                setTextColor(ContextCompat.getColor(context, R.color.metroTextTertiary))
             }
             binding.existingTagsContainer.addView(empty)
             return
@@ -142,7 +145,7 @@ class TagPickerDialog(
             setPadding(dp(12), dp(8), dp(12), dp(8))
             background = GradientDrawable().apply {
                 cornerRadius = dp(2).toFloat()
-                setColor(if (selected) color else Color.parseColor("#0A0A0A"))
+                setColor(if (selected) color else ContextCompat.getColor(context, R.color.metroBgSecondary))
                 setStroke(dp(1), color)
             }
             layoutParams = LinearLayout.LayoutParams(

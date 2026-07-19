@@ -29,7 +29,7 @@
                 android:contentDescription="Back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
 
             <ImageButton
                 android:id="@+id/overflowBtn"
@@ -41,7 +41,7 @@
                 android:contentDescription="More"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_more_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
         </FrameLayout>
 
         <TextView
@@ -51,7 +51,7 @@
             android:fontFamily="sans-serif-light"
             android:includeFontPadding="false"
             android:text="safe"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/metroTextPrimary"
             android:textSize="40sp" />
 
         <FrameLayout
@@ -264,7 +264,7 @@
             android:gravity="center"
             android:letterSpacing="0.06"
             android:text="UNLOCK"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/metroTextPrimary"
             android:textSize="14sp" />
 
         <TextView

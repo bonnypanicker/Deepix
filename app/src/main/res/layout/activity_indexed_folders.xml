@@ -3,7 +3,7 @@
     android:id="@+id/foldersRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="@color/metroBgPrimary">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -27,7 +27,7 @@
                 android:contentDescription="Back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
         </FrameLayout>
 
         <ScrollView
@@ -49,7 +49,7 @@
                     android:fontFamily="sans-serif-light"
                     android:includeFontPadding="false"
                     android:text="indexed folders"
-                    android:textColor="#FFFFFF"
+                    android:textColor="@color/metroTextPrimary"
                     android:textSize="34sp" />
 
                 <TextView
@@ -58,7 +58,7 @@
                     android:paddingTop="8dp"
                     android:paddingBottom="4dp"
                     android:text="Choose which folders AI search indexes. This does not change your gallery — every photo still shows normally."
-                    android:textColor="#9A9A9A"
+                    android:textColor="@color/metroTextSecondary"
                     android:textSize="13sp" />
 
                 <LinearLayout

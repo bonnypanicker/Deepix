@@ -13,21 +13,13 @@
         android:id="@+id/headerTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:fontFamily="sans-serif-light"
-        android:letterSpacing="-0.02"
-        android:textAllCaps="false"
         android:includeFontPadding="false"
-        android:textColor="@color/metroTextPrimary"
-        android:textSize="22sp" />
+        android:textAppearance="@style/TextAppearance.Metro.TimelineHeader" />
 
     <TextView
         android:id="@+id/headerSubtitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:fontFamily="sans-serif"
         android:includeFontPadding="false"
-        android:letterSpacing="0.08"
-        android:textAllCaps="true"
-        android:textColor="@color/metroTextSecondary"
-        android:textSize="13sp" />
+        android:textAppearance="@style/TextAppearance.Metro.SectionLabel" />
 </LinearLayout>

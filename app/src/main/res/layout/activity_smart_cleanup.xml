@@ -3,7 +3,7 @@
     android:id="@+id/cleanupRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="@color/metroBgPrimary">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -27,7 +27,7 @@
                 android:contentDescription="Back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
 
             <ImageButton
                 android:id="@+id/refreshBtn"
@@ -39,7 +39,7 @@
                 android:contentDescription="Refresh"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_replay_24_regular"
-                android:tint="#FFFFFF" />
+                android:tint="@color/metroTextPrimary" />
         </FrameLayout>
 
         <FrameLayout
@@ -68,7 +68,7 @@
                         android:fontFamily="sans-serif-light"
                         android:includeFontPadding="false"
                         android:text="smart cleanup"
-                        android:textColor="#FFFFFF"
+                        android:textColor="@color/metroTextPrimary"
                         android:textSize="40sp" />
 
                     <!-- Analysis progress + controls -->
@@ -92,7 +92,7 @@
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
                                 android:text="Analyzing your library…"
-                                android:textColor="#CFCFCF"
+                                android:textColor="@color/metroTextStrong"
                                 android:textSize="13sp" />
 
                             <TextView
@@ -118,7 +118,7 @@
                                 android:focusable="true"
                                 android:padding="8dp"
                                 android:text="Stop"
-                                android:textColor="#9A9A9A"
+                                android:textColor="@color/metroTextSecondary"
                                 android:textSize="13sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
@@ -140,7 +140,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="20dp"
-                        android:background="#1A1A1A"
+                        android:background="@color/metroBgCard"
                         android:orientation="vertical"
                         android:paddingStart="16dp"
                         android:paddingTop="14dp"
@@ -153,7 +153,7 @@
                             android:layout_height="wrap_content"
                             android:includeFontPadding="false"
                             android:text="Indexing isn't finished"
-                            android:textColor="#FFC24B"
+                            android:textColor="@color/metroWarning"
                             android:textSize="14sp"
                             android:textStyle="bold" />
 
@@ -163,7 +163,7 @@
                             android:layout_height="wrap_content"
                             android:includeFontPadding="false"
                             android:paddingTop="6dp"
-                            android:textColor="#B8B8B8"
+                            android:textColor="@color/metroTextStrong"
                             android:textSize="13sp" />
                     </LinearLayout>
 
@@ -172,7 +172,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="24dp"
-                        android:background="#111111"
+                        android:background="@color/metroBgTertiary"
                         android:orientation="vertical"
                         android:paddingStart="18dp"
                         android:paddingTop="18dp"
@@ -185,7 +185,7 @@
                             android:layout_height="wrap_content"
                             android:includeFontPadding="false"
                             android:text="You can free approximately"
-                            android:textColor="#8A8A8A"
+                            android:textColor="@color/metroTextSecondary"
                             android:textSize="13sp" />
 
                         <TextView
@@ -204,7 +204,7 @@
                             android:layout_height="wrap_content"
                             android:includeFontPadding="false"
                             android:paddingTop="2dp"
-                            android:textColor="#B8B8B8"
+                            android:textColor="@color/metroTextStrong"
                             android:textSize="13sp" />
                     </LinearLayout>
 
@@ -222,7 +222,7 @@
                         android:layout_marginTop="48dp"
                         android:gravity="center"
                         android:text="Your library looks clean — nothing to remove."
-                        android:textColor="#8A8A8A"
+                        android:textColor="@color/metroTextSecondary"
                         android:textSize="14sp"
                         android:visibility="gone" />
                 </LinearLayout>
@@ -251,7 +251,7 @@
                         android:layout_gravity="start|center_vertical"
                         android:fontFamily="sans-serif-light"
                         android:includeFontPadding="false"
-                        android:textColor="#FFFFFF"
+                        android:textColor="@color/metroTextPrimary"
                         android:textSize="30sp" />
 
                     <TextView
@@ -276,7 +276,7 @@
                     android:paddingStart="20dp"
                     android:paddingEnd="20dp"
                     android:paddingBottom="10dp"
-                    android:textColor="#8A8A8A"
+                    android:textColor="@color/metroTextSecondary"
                     android:textSize="13sp" />
 
                 <androidx.recyclerview.widget.RecyclerView
@@ -291,14 +291,14 @@
                     android:id="@+id/deleteBar"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="#E2444A"
+                    android:background="@color/metroDanger"
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center"
                     android:paddingTop="18dp"
                     android:paddingBottom="18dp"
                     android:text="Delete"
-                    android:textColor="#FFFFFF"
+                    android:textColor="@color/metroTextPrimary"
                     android:textSize="15sp"
                     android:textStyle="bold" />
             </LinearLayout>

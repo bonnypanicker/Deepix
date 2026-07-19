@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Flat Metro press feedback for drawer rows: no ripple, just a brighter surface while pressed. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/metroBgCard" android:state_pressed="true" />
+    <item android:drawable="@color/metroBgSecondary" />
+</selector>

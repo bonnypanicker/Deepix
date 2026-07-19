@@ -677,11 +677,13 @@ class MainActivity : AppCompatActivity() {
                 "It works entirely offline — nothing ever leaves your phone. Indexing runs in the background " +
                 "and uses extra battery while it works; you can pause or stop it anytime from the side menu, " +
                 "Settings, or the notification."
-        AlertDialog.Builder(this)
-            .setTitle("✨ Local AI photo search")
-            .setMessage(message)
-            .setPositiveButton("Got it", null)
-            .show()
+        MetroDialog.message(
+            this,
+            title = "Local AI photo search",
+            message = message,
+            iconRes = R.drawable.ic_fluent_sparkle_24_regular,
+            positive = "Got it"
+        )
     }
 
     private fun onIndexDrawerAction() {
@@ -1889,7 +1891,7 @@ class MainActivity : AppCompatActivity() {
         }
         rebuild()
 
-        val dialog = AlertDialog.Builder(this).setView(view).create()
+        val dialog = AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog).setView(view).create()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         dialog.window?.setGravity(android.view.Gravity.BOTTOM)
         dialog.window?.setLayout(
@@ -1911,7 +1913,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 11f
             isAllCaps = true
             letterSpacing = 0.06f
-            setTextColor(Color.parseColor("#6F6F6F"))
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.metroTextTertiary))
             setPadding(dp(20), dp(16), dp(20), dp(6))
         })
     }
@@ -1920,7 +1922,7 @@ class MainActivity : AppCompatActivity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            background = ContextCompat.getDrawable(this@MainActivity, android.R.drawable.list_selector_background)
+            background = ContextCompat.getDrawable(this@MainActivity, R.drawable.metro_row_pressed)
             isClickable = true
             isFocusable = true
             setPadding(dp(20), dp(13), dp(20), dp(13))
@@ -2464,84 +2466,57 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showRenameSmartAlbumDialog(smart: SmartAlbum) {
-        val editText = EditText(this).apply {
-            setText(smart.name)
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.parseColor("#FF484848"))
-            background = android.graphics.drawable.ColorDrawable(Color.parseColor("#FF1A1A1A"))
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-        }
-        val container = android.widget.FrameLayout(this).apply {
-            setPadding(dp(20), dp(8), dp(20), dp(8))
-            addView(editText, android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT))
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Rename Album")
-            .setView(container)
-            .setPositiveButton("Rename") { _, _ ->
-                val newName = editText.text.toString().trim()
-                if (newName.isNotEmpty()) {
-                    smartAlbumStore.upsert(smart.copy(name = newName, updatedAt = System.currentTimeMillis()))
-                    smartAlbums = smartAlbumStore.getAll()
-                    if (currentMode == Mode.SmartAlbumDetail && currentSmartAlbum?.id == smart.id) {
-                        currentSmartAlbum = smartAlbumStore.get(smart.id)
-                    }
-                    renderCurrentSection()
-                }
+        MetroDialog.input(
+            this,
+            title = "Rename album",
+            label = "NAME",
+            positive = "Rename",
+            initial = smart.name,
+            iconRes = R.drawable.ic_fluent_sparkle_24_regular
+        ) { newName ->
+            smartAlbumStore.upsert(smart.copy(name = newName, updatedAt = System.currentTimeMillis()))
+            smartAlbums = smartAlbumStore.getAll()
+            if (currentMode == Mode.SmartAlbumDetail && currentSmartAlbum?.id == smart.id) {
+                currentSmartAlbum = smartAlbumStore.get(smart.id)
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+            renderCurrentSection()
+        }
     }
 
     private fun showEditPromptDialog(smart: SmartAlbum) {
-        val editText = EditText(this).apply {
-            setText(smart.prompt)
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.parseColor("#FF484848"))
-            background = android.graphics.drawable.ColorDrawable(Color.parseColor("#FF1A1A1A"))
-            setPadding(dp(16), dp(12), dp(16), dp(12))
+        MetroDialog.input(
+            this,
+            title = "Edit prompt",
+            label = "WHAT TO FIND",
+            positive = "Save & refresh",
+            initial = smart.prompt,
+            iconRes = R.drawable.ic_fluent_sparkle_24_regular
+        ) { newPrompt ->
+            val updated = smart.copy(prompt = newPrompt, updatedAt = System.currentTimeMillis())
+            smartAlbumStore.upsert(updated)
+            smartAlbums = smartAlbumStore.getAll()
+            handleSmartAlbumRefresh(updated)
         }
-        val container = android.widget.FrameLayout(this).apply {
-            setPadding(dp(20), dp(8), dp(20), dp(8))
-            addView(editText, android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT))
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Edit Prompt")
-            .setView(container)
-            .setPositiveButton("Save & Refresh") { _, _ ->
-                val newPrompt = editText.text.toString().trim()
-                if (newPrompt.isNotEmpty()) {
-                    val updated = smart.copy(prompt = newPrompt, updatedAt = System.currentTimeMillis())
-                    smartAlbumStore.upsert(updated)
-                    smartAlbums = smartAlbumStore.getAll()
-                    handleSmartAlbumRefresh(updated)
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
     }
 
     private fun confirmDeleteSmartAlbum(smart: SmartAlbum) {
-        AlertDialog.Builder(this)
-            .setTitle("Delete Smart Album?")
-            .setMessage("Delete \"${smart.name}\"? This won't delete any actual photos.")
-            .setPositiveButton("Delete") { _, _ ->
-                smartAlbumStore.delete(smart.id)
-                albumPinStore.unpin(smart.id)
-                smartAlbums = smartAlbumStore.getAll()
-                if (currentMode == Mode.SmartAlbumDetail && currentSmartAlbum?.id == smart.id) {
-                    currentSmartAlbum = null
-                    navigateToSection(activeSection)
-                } else {
-                    renderCurrentSection()
-                }
+        MetroDialog.confirm(
+            this,
+            title = "Delete smart album?",
+            message = "Delete \"${smart.name}\"? This won't delete any actual photos.",
+            positive = "Delete",
+            danger = true
+        ) {
+            smartAlbumStore.delete(smart.id)
+            albumPinStore.unpin(smart.id)
+            smartAlbums = smartAlbumStore.getAll()
+            if (currentMode == Mode.SmartAlbumDetail && currentSmartAlbum?.id == smart.id) {
+                currentSmartAlbum = null
+                navigateToSection(activeSection)
+            } else {
+                renderCurrentSection()
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        }
     }
 
     private fun renderSmartAlbumDetail(smart: SmartAlbum) {
@@ -3264,7 +3239,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateBottomTab(tab: View, icon: android.widget.ImageView, active: Boolean) {
         tab.alpha = if (active) 1f else 0.72f
         icon.imageTintList = ColorStateList.valueOf(
-            if (active) DesignTokens.accent(this) else Color.parseColor("#6F6F6F")
+            if (active) DesignTokens.accent(this) else ContextCompat.getColor(this, R.color.metroTextTertiary)
         )
         icon.scaleX = if (active) 1f else 0.92f
         icon.scaleY = if (active) 1f else 0.92f
@@ -3276,11 +3251,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun showFatalError(error: Throwable) {
         dismissLoadingOverlay()
-        AlertDialog.Builder(this)
-            .setTitle("Gallery Search Error")
-            .setMessage(error.stackTraceToString())
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
+        MetroDialog.message(
+            this,
+            title = "Something went wrong",
+            message = error.stackTraceToString(),
+            positive = "Close",
+            scrollableMessage = true
+        )
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

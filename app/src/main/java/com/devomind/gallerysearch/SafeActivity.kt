@@ -231,25 +231,27 @@ class SafeActivity : AppCompatActivity() {
      * the only escape from the WRONG_PASSWORD setup loop.
      */
     private fun offerResetOrphanedVault() {
-        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
-            .setTitle("Safe already exists")
-            .setMessage(
-                "An encrypted Safe file exists at ${SafeManager.vaultLocationLabel(this)} but the " +
-                    "password doesn't match. If you've forgotten the password, you can delete it " +
-                    "and create a new Safe. This permanently erases all photos inside it."
-            )
-            .setPositiveButton("Delete & start over") { _, _ ->
-                binding.busySpinner.visibility = View.VISIBLE
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) { SafeManager.purgeVault(this@SafeActivity) }
-                    binding.busySpinner.visibility = View.GONE
-                    Toast.makeText(this@SafeActivity, "Old Safe deleted", Toast.LENGTH_SHORT).show()
-                    startSetup()
-                }
+        MetroDialog.confirm(
+            this,
+            title = "Safe already exists",
+            message = "An encrypted Safe file exists at ${SafeManager.vaultLocationLabel(this)} but the " +
+                "password doesn't match. If you've forgotten the password, you can delete it " +
+                "and create a new Safe. This permanently erases all photos inside it.",
+            positive = "Delete & start over",
+            negative = "Try another password",
+            danger = true,
+            iconRes = R.drawable.ic_fluent_lock_closed_24_regular,
+            cancelable = false,
+            onNegative = { startSetup() }
+        ) {
+            binding.busySpinner.visibility = View.VISIBLE
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) { SafeManager.purgeVault(this@SafeActivity) }
+                binding.busySpinner.visibility = View.GONE
+                Toast.makeText(this@SafeActivity, "Old Safe deleted", Toast.LENGTH_SHORT).show()
+                startSetup()
             }
-            .setNegativeButton("Try another password") { _, _ -> startSetup() }
-            .setCancelable(false)
-            .show()
+        }
     }
 
     // ---- Unlock ----
@@ -438,14 +440,16 @@ class SafeActivity : AppCompatActivity() {
     }
 
     private fun showItemOptions(item: SafeManager.VaultItem) {
-        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
-            .setItems(arrayOf("Save back to gallery", "Remove from Safe")) { _, which ->
-                when (which) {
-                    0 -> restoreItem(item)
-                    1 -> confirmRemove(item)
-                }
+        MetroDialog.items(
+            this,
+            options = listOf("Save back to gallery", "Remove from Safe"),
+            dangerIndices = setOf(1)
+        ) { which ->
+            when (which) {
+                0 -> restoreItem(item)
+                1 -> confirmRemove(item)
             }
-            .show()
+        }
     }
 
     private fun restoreItem(item: SafeManager.VaultItem) {
@@ -466,22 +470,23 @@ class SafeActivity : AppCompatActivity() {
     }
 
     private fun confirmRemove(item: SafeManager.VaultItem) {
-        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
-            .setTitle("Remove from Safe?")
-            .setMessage("This permanently deletes the encrypted copy. Save it back to your gallery first if you want to keep it.")
-            .setPositiveButton("Remove") { _, _ ->
-                lifecycleScope.launch {
-                    val ok = withContext(Dispatchers.IO) { SafeManager.removeItem(this@SafeActivity, item) }
-                    if (ok) {
-                        thumbCache.remove(item.entryName)
-                        loadItems()
-                    } else {
-                        Toast.makeText(this@SafeActivity, "Couldn't remove", Toast.LENGTH_SHORT).show()
-                    }
+        MetroDialog.confirm(
+            this,
+            title = "Remove from Safe?",
+            message = "This permanently deletes the encrypted copy. Save it back to your gallery first if you want to keep it.",
+            positive = "Remove",
+            danger = true
+        ) {
+            lifecycleScope.launch {
+                val ok = withContext(Dispatchers.IO) { SafeManager.removeItem(this@SafeActivity, item) }
+                if (ok) {
+                    thumbCache.remove(item.entryName)
+                    loadItems()
+                } else {
+                    Toast.makeText(this@SafeActivity, "Couldn't remove", Toast.LENGTH_SHORT).show()
                 }
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        }
     }
 
     // ---- Overflow menu ----
@@ -535,13 +540,19 @@ class SafeActivity : AppCompatActivity() {
             next()
             return
         }
-        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
-            .setTitle("Enable fingerprint unlock?")
-            .setMessage("Open your Safe with a fingerprint instead of typing the password each time.")
-            .setPositiveButton("Enable") { _, _ -> enrollBiometric(); next() }
-            .setNegativeButton("Not now") { _, _ -> next() }
-            .setOnCancelListener { next() }
-            .show()
+        MetroDialog.confirm(
+            this,
+            title = "Enable fingerprint unlock?",
+            message = "Open your Safe with a fingerprint instead of typing the password each time.",
+            positive = "Enable",
+            negative = "Not now",
+            iconRes = R.drawable.ic_fluent_fingerprint_24_regular,
+            onNegative = { next() },
+            onCancel = { next() }
+        ) {
+            enrollBiometric()
+            next()
+        }
     }
 
     private fun turnOnFingerprint() {
@@ -595,18 +606,20 @@ class SafeActivity : AppCompatActivity() {
     }
 
     private fun confirmRemoveSafe() {
-        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
-            .setTitle("Remove Safe from this device?")
-            .setMessage("Your encrypted file stays in its folder — you can reopen it later with your password. Fingerprint and app settings are cleared from this device.")
-            .setPositiveButton("Remove") { _, _ ->
-                SafeStore.reset(this)
-                SafeManager.lock(this)
-                java.io.File(filesDir, "safe_thumbs").deleteRecursively()
-                Toast.makeText(this, "Safe removed from this device", Toast.LENGTH_LONG).show()
-                finish()
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        MetroDialog.confirm(
+            this,
+            title = "Remove Safe from this device?",
+            message = "Your encrypted file stays in its folder — you can reopen it later with your password. Fingerprint and app settings are cleared from this device.",
+            positive = "Remove",
+            danger = true,
+            iconRes = R.drawable.ic_fluent_lock_closed_24_regular
+        ) {
+            SafeStore.reset(this)
+            SafeManager.lock(this)
+            java.io.File(filesDir, "safe_thumbs").deleteRecursively()
+            Toast.makeText(this, "Safe removed from this device", Toast.LENGTH_LONG).show()
+            finish()
+        }
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
