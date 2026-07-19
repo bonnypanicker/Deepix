@@ -8,7 +8,6 @@ import android.content.ContentUris
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.location.Geocoder
 import android.net.Uri
 import android.os.Build
@@ -30,7 +29,6 @@ import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -73,6 +71,7 @@ class ViewerActivity : AppCompatActivity() {
     private var velocityTracker: VelocityTracker? = null
     private var pendingDeleteUri: Uri? = null
     private var pendingDeleteNeedsRetry = false
+    private var pendingAllFilesDeleteUri: Uri? = null
     private var currentExif: ExifData? = null
     private var currentTags: List<com.devomind.gallerysearch.db.TagEntity> = emptyList()
     private var gestureDirection = GestureDirection.UNDETERMINED
@@ -98,6 +97,19 @@ class ViewerActivity : AppCompatActivity() {
             deletePhoto(targetUri, afterApproval = true)
         } else {
             onDeleteCompleted(targetUri)
+        }
+    }
+
+    private val allFilesAccessLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        val uri = pendingAllFilesDeleteUri
+        pendingAllFilesDeleteUri = null
+        if (uri == null) return@registerForActivityResult
+        if (StoragePermissions.hasAllFilesAccess(this)) {
+            requestDelete(uri)
+        } else {
+            Toast.makeText(this, "All-files access is required to delete items.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -377,7 +389,7 @@ class ViewerActivity : AppCompatActivity() {
         }
         binding.actionDelete.setOnClickListener {
             val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
-            confirmDelete(item.uri)
+            requestDelete(item.uri)
         }
         binding.similarBtn.setOnClickListener { findSimilar() }
         binding.cropCancel.setOnClickListener { exitCropMode() }
@@ -1083,67 +1095,22 @@ class ViewerActivity : AppCompatActivity() {
         }
     }
 
-    private fun confirmDelete(uri: Uri) {
-        val isVideo = items.getOrNull(currentPosition)?.mediaType == GalleryRepository.MediaType.Video
-        val noun = if (isVideo) "video" else "photo"
-
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(28), dp(28), dp(28), dp(16))
+    private fun requestDelete(uri: Uri) {
+        if (!DeleteCoordinator.canDeleteDirectly(this)) {
+            pendingAllFilesDeleteUri = uri
+            runCatching { allFilesAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
+                .onFailure {
+                    pendingAllFilesDeleteUri = null
+                    Toast.makeText(this, "Couldn't open storage access settings.", Toast.LENGTH_LONG).show()
+                }
+            return
         }
-        val title = TextView(this).apply {
-            text = "Delete $noun?"
-            setTextColor(Color.WHITE)
-            textSize = 21f
-            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
-        }
-        val message = TextView(this).apply {
-            text = "This removes the $noun from your device."
-            setTextColor(Color.parseColor("#8A8A8A"))
-            textSize = 14f
-            setPadding(0, dp(12), 0, dp(22))
-        }
-        val buttonRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.END
-        }
-        container.addView(title)
-        container.addView(message)
-        container.addView(buttonRow)
-
-        val dialog = AlertDialog.Builder(this).setView(container).create()
-        dialog.window?.setBackgroundDrawable(
-            GradientDrawable().apply {
-                cornerRadius = dp(3).toFloat() // match dialog_metro_bg
-                setColor(Color.parseColor("#0A0A0A"))
-                setStroke(dp(1), Color.parseColor("#2A2A2A"))
+        lifecycleScope.launch {
+            when (val outcome = withContext(Dispatchers.IO) { DeleteCoordinator.delete(this@ViewerActivity, listOf(uri)) }) {
+                is DeleteCoordinator.Outcome.NeedsSystemDelete -> deletePhoto(uri)
+                is DeleteCoordinator.Outcome.Done -> onDeleteCompleted(uri)
             }
-        )
-
-        fun dialogButton(label: String, color: Int, onClick: () -> Unit): TextView =
-            TextView(this).apply {
-                text = label
-                setTextColor(color)
-                textSize = 14f
-                isAllCaps = true
-                typeface = Typeface.DEFAULT_BOLD
-                setPadding(dp(18), dp(10), dp(18), dp(10))
-                isClickable = true
-                isFocusable = true
-                setOnClickListener { onClick() }
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { marginStart = dp(8) }
-            }
-
-        buttonRow.addView(dialogButton("Cancel", Color.parseColor("#8A8A8A")) { dialog.dismiss() })
-        buttonRow.addView(dialogButton("Delete", Color.parseColor("#FF6B8A")) {
-            dialog.dismiss()
-            deletePhoto(uri)
-        })
-
-        dialog.show()
+        }
     }
 
     private fun setAsWallpaper(item: GalleryRepository.MediaItem) {

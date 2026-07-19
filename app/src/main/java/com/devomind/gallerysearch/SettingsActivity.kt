@@ -48,7 +48,6 @@ class SettingsActivity : AppCompatActivity() {
         bindToggles()
         bindThumbnailSize()
         bindAccentColor()
-        bindActions()
         bindStorage()
         bindSafe()
         bindIndexing()
@@ -59,7 +58,6 @@ class SettingsActivity : AppCompatActivity() {
         super.onResume()
         binding.accentColorSubtitle.text = AccentPalette.current(this).displayName
         updateIndexedFoldersSubtitle()
-        updateStorageSubtitles()
         updateSafeSubtitles()
     }
 
@@ -192,13 +190,6 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun bindActions() {
-        binding.rowClearCleanup.setOnClickListener {
-            CleanupResultStore(this).clear()
-            Toast.makeText(this, "Smart Cleanup cache cleared.", Toast.LENGTH_SHORT).show()
-        }
-    }
-
     private fun bindStorage() {
         binding.switchRecycleBin.isChecked = IndexPreferences.isRecycleBinEnabled(this)
         binding.rowRecycleBin.setOnClickListener {
@@ -206,23 +197,6 @@ class SettingsActivity : AppCompatActivity() {
             binding.switchRecycleBin.isChecked = newValue
             IndexPreferences.setRecycleBinEnabled(this, newValue)
         }
-
-        binding.switchDirectDelete.isChecked = IndexPreferences.isSkipDeleteConfirm(this)
-        binding.rowDirectDelete.setOnClickListener {
-            if (!StoragePermissions.hasAllFilesAccess(this) && !binding.switchDirectDelete.isChecked) {
-                promptAllFilesAccess()
-                return@setOnClickListener
-            }
-            val newValue = !binding.switchDirectDelete.isChecked
-            binding.switchDirectDelete.isChecked = newValue
-            IndexPreferences.setSkipDeleteConfirm(this, newValue)
-        }
-
-        binding.rowOpenBin.setOnClickListener {
-            startActivity(android.content.Intent(this, BinActivity::class.java))
-        }
-
-        binding.rowAllFilesAccess.setOnClickListener { promptAllFilesAccess() }
     }
 
     // ------------------------------------------------------------------
@@ -281,43 +255,11 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun updateSafeSubtitles() {
         val root = IndexPreferences.getSafeStorageRoot(this)
-        binding.safeLocationSubtitle.text = "${rootLabel(root)}/Deepix Safe/"
-        binding.safePathSubtitle.text = when {
-            SafeManager.archiveExists(this) -> SafeManager.vaultLocationLabel(this)
-            SafeStore.isConfigured(this) -> "Configured · no file yet"
-            else -> "Not set up"
-        }
+        binding.safeLocationSubtitle.text = rootLabel(root)
     }
 
     private fun rootLabel(root: String): String =
         if (root == IndexPreferences.SAFE_ROOT_DOCUMENTS) "Documents" else "Pictures"
-
-    private fun promptAllFilesAccess() {
-        if (StoragePermissions.hasAllFilesAccess(this)) {
-            Toast.makeText(this, "All-files access is already granted.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        runCatching { startActivity(StoragePermissions.manageAllFilesIntent(this)) }
-            .onFailure { Toast.makeText(this, "Couldn't open settings.", Toast.LENGTH_SHORT).show() }
-    }
-
-    private fun updateStorageSubtitles() {
-        val granted = StoragePermissions.hasAllFilesAccess(this)
-        binding.allFilesSubtitle.text =
-            if (granted) "Granted · powers the recycle bin and instant deletion"
-            else "Not granted · tap to allow the recycle bin and instant deletion"
-        val count = BinManager.count(this)
-        binding.binCountSubtitle.text = when (count) {
-            0 -> "Restore or permanently remove deleted photos"
-            1 -> "1 photo in the bin"
-            else -> "$count photos in the bin"
-        }
-        // Keep the direct-delete toggle honest if access was revoked outside the app.
-        if (!granted && binding.switchDirectDelete.isChecked) {
-            binding.switchDirectDelete.isChecked = false
-            IndexPreferences.setSkipDeleteConfirm(this, false)
-        }
-    }
 
     private fun updateIndexedFoldersSubtitle() {
         // Indexing status now lives on the dedicated Indexing page; show a one-line summary here.
@@ -361,7 +303,7 @@ class SettingsActivity : AppCompatActivity() {
             paused -> "Paused · $percent%"
             stopped && percent < 100 -> "Stopped · $percent%"
             percent >= 100 || state == WorkInfo.State.SUCCEEDED -> "Up to date"
-            else -> "Status, folders, charging & power options"
+            else -> "Manage indexing"
         }
     }
 

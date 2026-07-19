@@ -15,7 +15,6 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -48,6 +47,7 @@ class SmartCleanupActivity : AppCompatActivity() {
     private var currentCategory: CleanupAnalyzer.Category? = null
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
+    private var pendingAllFilesDeleteUris: List<Uri> = emptyList()
 
     private var scanRunning = false
     private var paused = false
@@ -70,6 +70,19 @@ class SmartCleanupActivity : AppCompatActivity() {
         pendingDeleteNeedsRetry = false
         if (result.resultCode != RESULT_OK || uris.isEmpty()) return@registerForActivityResult
         if (needsRetry) deleteUris(uris, afterApproval = true) else onDeleted(uris)
+    }
+
+    private val allFilesAccessLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        val uris = pendingAllFilesDeleteUris
+        pendingAllFilesDeleteUris = emptyList()
+        if (uris.isEmpty()) return@registerForActivityResult
+        if (StoragePermissions.hasAllFilesAccess(this)) {
+            performManagedDelete(uris)
+        } else {
+            Toast.makeText(this, "All-files access is required to delete items.", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -471,38 +484,16 @@ class SmartCleanupActivity : AppCompatActivity() {
     private fun confirmDeleteSelected() {
         val selected = adapter.selectedUris()
         if (selected.isEmpty()) return
-        // Prefer the app-managed path (Recycle Bin / direct delete) when we have all-files access.
-        if (DeleteCoordinator.canDeleteDirectly(this)) {
-            if (IndexPreferences.isSkipDeleteConfirm(this)) {
-                performManagedDelete(selected)
-                return
-            }
-            val toBin = DeleteCoordinator.usesBin(this)
-            val message = when {
-                toBin && selected.size == 1 -> "Move this photo to the Recycle Bin? You can restore it within 30 days."
-                toBin -> "Move ${selected.size} photos to the Recycle Bin? You can restore them within 30 days."
-                selected.size == 1 -> "Permanently delete this photo? This can't be undone."
-                else -> "Permanently delete ${selected.size} photos? This can't be undone."
-            }
-            AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
-                .setTitle(if (toBin) "Move to Recycle Bin?" else "Delete permanently?")
-                .setMessage(message)
-                .setPositiveButton(if (toBin) "Move" else "Delete") { _, _ -> performManagedDelete(selected) }
-                .setNegativeButton(android.R.string.cancel, null)
-                .show()
+        if (!DeleteCoordinator.canDeleteDirectly(this)) {
+            pendingAllFilesDeleteUris = selected
+            runCatching { allFilesAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
+                .onFailure {
+                    pendingAllFilesDeleteUris = emptyList()
+                    Toast.makeText(this, "Couldn't open storage access settings.", Toast.LENGTH_LONG).show()
+                }
             return
         }
-        val message = if (selected.size == 1) {
-            "Delete the selected item from this device?"
-        } else {
-            "Delete ${selected.size} selected items from this device?"
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Delete items?")
-            .setMessage(message)
-            .setPositiveButton("Delete") { _, _ -> deleteUris(selected) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        performManagedDelete(selected)
     }
 
     private fun performManagedDelete(uris: List<Uri>) {

@@ -99,6 +99,7 @@ class MainActivity : AppCompatActivity() {
     private var settingsLaunchAccentKey: String? = null
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
+    private var pendingAllFilesDeleteUris: List<Uri> = emptyList()
     private var topInsetPx = 0
     
     // Infinite scroll state for search results
@@ -219,6 +220,19 @@ class MainActivity : AppCompatActivity() {
             deleteUris(uris, afterApproval = true)
         } else {
             onDeleteCompleted(uris.size)
+        }
+    }
+
+    private val allFilesAccessLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        val uris = pendingAllFilesDeleteUris
+        pendingAllFilesDeleteUris = emptyList()
+        if (uris.isEmpty()) return@registerForActivityResult
+        if (StoragePermissions.hasAllFilesAccess(this)) {
+            requestDelete(uris)
+        } else {
+            Toast.makeText(this, "All-files access is required to delete items.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -2825,35 +2839,19 @@ class MainActivity : AppCompatActivity() {
         requestDelete(selected)
     }
 
-    /**
-     * Entry point for deleting from the gallery. Routes through [DeleteCoordinator] (Recycle Bin or
-     * direct permanent delete) when All-files access is granted, showing the app's own confirmation
-     * unless the user opted out. Falls back to the platform delete request otherwise.
-     */
+    /** Requests storage access on the first delete, then routes through the selected delete policy. */
     private fun requestDelete(uris: List<Uri>) {
         if (uris.isEmpty()) return
         if (!DeleteCoordinator.canDeleteDirectly(this)) {
-            deleteUris(uris) // system consent flow (permanent)
+            pendingAllFilesDeleteUris = uris
+            runCatching { allFilesAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
+                .onFailure {
+                    pendingAllFilesDeleteUris = emptyList()
+                    Toast.makeText(this, "Couldn't open storage access settings.", Toast.LENGTH_LONG).show()
+                }
             return
         }
-        if (IndexPreferences.isSkipDeleteConfirm(this)) {
-            performManagedDelete(uris)
-            return
-        }
-        val toBin = DeleteCoordinator.usesBin(this)
-        val n = uris.size
-        val message = when {
-            toBin && n == 1 -> "Move this photo to the Recycle Bin? You can restore it within 30 days."
-            toBin -> "Move $n photos to the Recycle Bin? You can restore them within 30 days."
-            n == 1 -> "Permanently delete this photo? This can't be undone."
-            else -> "Permanently delete $n photos? This can't be undone."
-        }
-        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
-            .setTitle(if (toBin) "Move to Recycle Bin?" else "Delete permanently?")
-            .setMessage(message)
-            .setPositiveButton(if (toBin) "Move" else "Delete") { _, _ -> performManagedDelete(uris) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        performManagedDelete(uris)
     }
 
     private fun performManagedDelete(uris: List<Uri>) {

@@ -112,15 +112,12 @@ object IndexPreferences {
      * directly. Independent of the Recycle Bin toggle — "direct" refers to the confirmation, the
      * destination (bin vs permanent) is [isRecycleBinEnabled].
      */
-    fun isSkipDeleteConfirm(context: Context): Boolean {
-        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .getBoolean(KeySkipDeleteConfirm, false)
-    }
+    fun isSkipDeleteConfirm(context: Context): Boolean = true
 
     fun setSkipDeleteConfirm(context: Context, skip: Boolean) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
-            .putBoolean(KeySkipDeleteConfirm, skip)
+            .putBoolean(KeySkipDeleteConfirm, true)
             .apply()
     }
 

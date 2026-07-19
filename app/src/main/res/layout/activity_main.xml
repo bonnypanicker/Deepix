@@ -106,7 +106,7 @@
                     android:layout_height="22dp"
                     android:layout_marginStart="6dp"
                     android:contentDescription="AI search"
-                    android:src="@drawable/ic_fluent_sparkle_24_regular" />
+                    android:src="@drawable/ic_deepix_ai_orb_24" />
 
                 <EditText
                     android:id="@+id/searchInput"

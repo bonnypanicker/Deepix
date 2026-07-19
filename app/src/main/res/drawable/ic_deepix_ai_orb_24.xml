@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="352"
+    android:viewportHeight="352">
+
+    <!-- Matches ai_icon.jpg: a 145px-radius outer ring around a 109px-radius inner orb. -->
+    <path
+        android:fillColor="?attr/accentColor"
+        android:fillType="evenOdd"
+        android:pathData="M176,31A145,145 0,1 0,176,321A145,145 0,1 0,176,31M176,58A118,118 0,1 1,176,294A118,118 0,1 1,176,58" />
+    <path
+        android:fillColor="?attr/accentColor"
+        android:pathData="M176,67A109,109 0,1 0,176,285A109,109 0,1 0,176,67" />
+</vector>
