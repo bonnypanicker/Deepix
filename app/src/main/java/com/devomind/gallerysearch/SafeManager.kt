@@ -227,7 +227,12 @@ object SafeManager {
 
     // ---- Import ----
 
-    fun importPhotos(context: Context, sources: List<Uri>, folderPath: String = ""): ImportResult {
+    fun importPhotos(
+        context: Context,
+        sources: List<Uri>,
+        folderPath: String = "",
+        onProgress: ((done: Int, total: Int) -> Unit)? = null
+    ): ImportResult {
         val password = sessionPassword ?: return ImportResult(0, sources.size, emptyList())
         vaultDir(context).mkdirs()
         val zip = masterZip(context)
@@ -237,6 +242,7 @@ object SafeManager {
         var failed = 0
         val importedSources = mutableListOf<Uri>()
         for (source in sources) {
+            onProgress?.invoke(imported + failed, sources.size)
             val plain = File(work, "in_${System.nanoTime()}")
             try {
                 val display = queryDisplayName(context, source) ?: "photo_${System.nanoTime()}.jpg"

@@ -25,7 +25,6 @@ import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -109,7 +108,7 @@ class ViewerActivity : AppCompatActivity() {
         if (StoragePermissions.hasAllFilesAccess(this)) {
             requestDelete(uri)
         } else {
-            Toast.makeText(this, "All-files access is required to delete items.", Toast.LENGTH_LONG).show()
+            MetroBanner.show(this, "All-files access is required to delete items")
         }
     }
 
@@ -270,6 +269,16 @@ class ViewerActivity : AppCompatActivity() {
         }
 
         scheduleAutoHide()
+
+        if (!IndexPreferences.wasHintShown(this, IndexPreferences.HINT_VIEWER_DISMISS)) {
+            IndexPreferences.setHintShown(this, IndexPreferences.HINT_VIEWER_DISMISS)
+            MetroBanner.show(
+                this,
+                "Swipe down to close · swipe up for details",
+                durationMs = 5000,
+                bottomMarginDp = 96
+            )
+        }
     }
 
     private fun configureEdgeToEdge() {
@@ -414,7 +423,7 @@ class ViewerActivity : AppCompatActivity() {
     private fun findSimilar() {
         val item = items.getOrNull(currentPosition) ?: return
         if (item.mediaType == GalleryRepository.MediaType.Video) {
-            Toast.makeText(this, "Similar search isn't available for videos.", Toast.LENGTH_SHORT).show()
+            MetroBanner.show(this, "Similar search isn't available for videos")
             return
         }
         val menu = androidx.appcompat.widget.PopupMenu(this, binding.similarBtn)
@@ -540,12 +549,12 @@ class ViewerActivity : AppCompatActivity() {
         albumCoverStore.setCover(albumId, item.uri)
         contentChanged = true
         val label = albumName.ifBlank { "album" }
-        Toast.makeText(this, "Set as cover for $label.", Toast.LENGTH_SHORT).show()
+        MetroBanner.show(this, "Set as cover for $label")
     }
 
     private fun openInGoogleLens(item: GalleryRepository.MediaItem) {
         if (item.mediaType == GalleryRepository.MediaType.Video) {
-            Toast.makeText(this, "Google Lens is available for photos only.", Toast.LENGTH_SHORT).show()
+            MetroBanner.show(this, "Google Lens is available for photos only")
             return
         }
         val mimeType = contentResolver.getType(item.uri) ?: "image/*"
@@ -583,7 +592,7 @@ class ViewerActivity : AppCompatActivity() {
                 startActivity(webIntent)
             }.onFailure { webError ->
                 Log.w(Tag, "Unable to open Google Lens install page.", webError)
-                Toast.makeText(this, "Google Lens isn't available on this phone.", Toast.LENGTH_SHORT).show()
+                MetroBanner.show(this, "Google Lens isn't available on this phone")
             }
         }
     }
@@ -1101,7 +1110,7 @@ class ViewerActivity : AppCompatActivity() {
             runCatching { allFilesAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
                 .onFailure {
                     pendingAllFilesDeleteUri = null
-                    Toast.makeText(this, "Couldn't open storage access settings.", Toast.LENGTH_LONG).show()
+                    MetroBanner.show(this, "Couldn't open storage access settings")
                 }
             return
         }
@@ -1115,7 +1124,7 @@ class ViewerActivity : AppCompatActivity() {
 
     private fun setAsWallpaper(item: GalleryRepository.MediaItem) {
         if (item.mediaType == GalleryRepository.MediaType.Video) {
-            Toast.makeText(this, "Wallpaper isn't available for videos.", Toast.LENGTH_SHORT).show()
+            MetroBanner.show(this, "Wallpaper isn't available for videos")
             return
         }
         val mimeType = contentResolver.getType(item.uri) ?: "image/*"
@@ -1135,7 +1144,7 @@ class ViewerActivity : AppCompatActivity() {
                 startActivity(Intent.createChooser(fallback, "Set as"))
             } catch (notFound: ActivityNotFoundException) {
                 Log.w(Tag, "No app available to set wallpaper.", notFound)
-                Toast.makeText(this, "No app available to set wallpaper.", Toast.LENGTH_SHORT).show()
+                MetroBanner.show(this, "No app available to set wallpaper")
             }
         }
     }
@@ -1159,7 +1168,7 @@ class ViewerActivity : AppCompatActivity() {
                     IntentSenderRequest.Builder(error.userAction.actionIntent.intentSender).build()
                 )
             } else {
-                Toast.makeText(this, "Delete failed: ${error.message}", Toast.LENGTH_LONG).show()
+                MetroBanner.show(this, "Delete failed: ${error.message}")
             }
         }
     }

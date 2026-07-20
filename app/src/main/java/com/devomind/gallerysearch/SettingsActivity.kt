@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.view.View
 import android.widget.SeekBar
 import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.view.ViewCompat
@@ -225,7 +224,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun changeSafeRoot(oldRoot: String, newRoot: String) {
         if (SafeStore.isConfigured(this)) {
             if (!StoragePermissions.hasAllFilesAccess(this)) {
-                Toast.makeText(this, "All-files access is needed to move the Safe", Toast.LENGTH_LONG).show()
+                MetroBanner.show(this, "All-files access is needed to move the Safe")
                 return
             }
             lifecycleScope.launch {
@@ -233,21 +232,17 @@ class SettingsActivity : AppCompatActivity() {
                     SafeManager.moveVault(this@SettingsActivity, oldRoot, newRoot)
                 }
                 if (!moved) {
-                    Toast.makeText(
-                        this@SettingsActivity,
-                        "Couldn't move the Safe file to the new location",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    MetroBanner.show(this@SettingsActivity, "Couldn't move the Safe file to the new location")
                     return@launch
                 }
                 IndexPreferences.setSafeStorageRoot(this@SettingsActivity, newRoot)
                 updateSafeSubtitles()
-                Toast.makeText(this@SettingsActivity, "Safe moved to ${rootLabel(newRoot)}", Toast.LENGTH_LONG).show()
+                MetroBanner.show(this@SettingsActivity, "Safe moved to ${rootLabel(newRoot)}")
             }
         } else {
             IndexPreferences.setSafeStorageRoot(this, newRoot)
             updateSafeSubtitles()
-            Toast.makeText(this, "New Safe will be created in ${rootLabel(newRoot)}", Toast.LENGTH_LONG).show()
+            MetroBanner.show(this, "New Safe will be created in ${rootLabel(newRoot)}")
         }
     }
 

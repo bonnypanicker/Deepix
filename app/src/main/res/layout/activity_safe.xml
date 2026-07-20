@@ -106,14 +106,32 @@
                     android:textSize="13sp" />
             </LinearLayout>
 
-            <ProgressBar
-                android:id="@+id/busySpinner"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+            <LinearLayout
+                android:id="@+id/busyPanel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:layout_gravity="center"
-                android:indeterminate="true"
-                android:indeterminateTint="?attr/accentColor"
-                android:visibility="gone" />
+                android:gravity="center"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <ProgressBar
+                    android:id="@+id/busySpinner"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:indeterminate="true"
+                    android:indeterminateTint="?attr/accentColor" />
+
+                <TextView
+                    android:id="@+id/busyLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:paddingTop="12dp"
+                    android:textColor="@color/metroTextSecondary"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+            </LinearLayout>
         </FrameLayout>
 
         <LinearLayout

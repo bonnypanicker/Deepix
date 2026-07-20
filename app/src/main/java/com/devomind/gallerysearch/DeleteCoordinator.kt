@@ -17,8 +17,16 @@ import android.net.Uri
 object DeleteCoordinator {
 
     sealed class Outcome {
-        /** Handled here. [toBin] distinguishes soft-delete from permanent for the confirmation copy. */
-        data class Done(val succeeded: Int, val failed: Int, val toBin: Boolean) : Outcome()
+        /**
+         * Handled here. [toBin] distinguishes soft-delete from permanent for the confirmation copy;
+         * when true, [binnedIds] identifies the created bin entries so the caller can offer UNDO.
+         */
+        data class Done(
+            val succeeded: Int,
+            val failed: Int,
+            val toBin: Boolean,
+            val binnedIds: List<String> = emptyList()
+        ) : Outcome()
 
         /** No All-files access — caller should launch the system delete request. */
         data object NeedsSystemDelete : Outcome()
@@ -39,7 +47,7 @@ object DeleteCoordinator {
 
         return if (IndexPreferences.isRecycleBinEnabled(context)) {
             val result = BinManager.moveToBin(context, uris)
-            Outcome.Done(result.binned, result.failed, toBin = true)
+            Outcome.Done(result.binned, result.failed, toBin = true, binnedIds = result.binnedIds)
         } else {
             var ok = 0
             var failed = 0

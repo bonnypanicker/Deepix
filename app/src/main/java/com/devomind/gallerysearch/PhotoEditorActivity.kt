@@ -416,7 +416,7 @@ class PhotoEditorActivity : AppCompatActivity() {
 
     private fun undo() {
         if (ops.isEmpty()) {
-            Toast.makeText(this, "Nothing to undo", Toast.LENGTH_SHORT).show()
+            MetroBanner.show(this, "Nothing to undo", bottomMarginDp = 120)
             return
         }
         if (tool != null) cancelTool()
@@ -467,7 +467,7 @@ class PhotoEditorActivity : AppCompatActivity() {
             else withContext(Dispatchers.IO) { runCatching { renderFullRes() }.getOrNull() }
             if (bmp == null) {
                 binding.editorLoading.visibility = View.GONE
-                Toast.makeText(this@PhotoEditorActivity, "Save failed", Toast.LENGTH_LONG).show()
+                MetroBanner.show(this@PhotoEditorActivity, "Save failed", bottomMarginDp = 120)
                 return@launch
             }
             val result = withContext(Dispatchers.IO) {
@@ -496,7 +496,7 @@ class PhotoEditorActivity : AppCompatActivity() {
                     else -> {
                         pendingSaveBitmap = null
                         bmp.recycle()
-                        Toast.makeText(this@PhotoEditorActivity, "Save failed: ${error.message}", Toast.LENGTH_LONG).show()
+                        MetroBanner.show(this@PhotoEditorActivity, "Save failed: ${error.message}", bottomMarginDp = 120)
                     }
                 }
             }
@@ -519,7 +519,7 @@ class PhotoEditorActivity : AppCompatActivity() {
                 Toast.makeText(this@PhotoEditorActivity, "Saved a copy", Toast.LENGTH_SHORT).show()
                 finishSaved()
             }.onFailure {
-                Toast.makeText(this@PhotoEditorActivity, "Save failed: ${it.message}", Toast.LENGTH_LONG).show()
+                MetroBanner.show(this@PhotoEditorActivity, "Save failed: ${it.message}", bottomMarginDp = 120)
             }
         }
     }

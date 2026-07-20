@@ -42,7 +42,7 @@ object BinManager {
 
     // ---- Move-in (delete) ----
 
-    data class BinResult(val binned: Int, val failed: Int)
+    data class BinResult(val binned: Int, val failed: Int, val binnedIds: List<String> = emptyList())
 
     /**
      * Copies each uri into the bin and deletes the original file directly. Requires All-files
@@ -53,6 +53,7 @@ object BinManager {
         val entries = loadEntries(context).toMutableList()
         var binned = 0
         var failed = 0
+        val binnedIds = mutableListOf<String>()
         for (uri in uris) {
             try {
                 val path = MediaFileOps.resolvePath(context, uri)
@@ -81,13 +82,25 @@ object BinManager {
                     )
                 )
                 binned++
+                binnedIds.add(id)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to bin $uri", e)
                 failed++
             }
         }
         saveEntries(context, entries)
-        return BinResult(binned, failed)
+        return BinResult(binned, failed, binnedIds)
+    }
+
+    /** Restores the given bin entries (by id) back to their original folders. Returns restored count. */
+    fun restoreByIds(context: Context, ids: Collection<String>): Int {
+        if (ids.isEmpty()) return 0
+        val wanted = ids.toSet()
+        var restored = 0
+        loadEntries(context).filter { it.id in wanted }.forEach { entry ->
+            if (restore(context, entry)) restored++
+        }
+        return restored
     }
 
     // ---- Restore / delete-forever ----

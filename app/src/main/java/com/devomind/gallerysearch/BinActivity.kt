@@ -6,7 +6,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -87,11 +86,10 @@ class BinActivity : AppCompatActivity() {
     private fun restore(entry: BinManager.BinEntry) {
         lifecycleScope.launch {
             val ok = withContext(Dispatchers.IO) { BinManager.restore(this@BinActivity, entry) }
-            Toast.makeText(
+            MetroBanner.show(
                 this@BinActivity,
-                if (ok) "Restored to gallery" else "Couldn't restore",
-                Toast.LENGTH_SHORT
-            ).show()
+                if (ok) "Restored to gallery" else "Couldn't restore"
+            )
             refresh()
         }
     }

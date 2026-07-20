@@ -81,7 +81,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         if (StoragePermissions.hasAllFilesAccess(this)) {
             performManagedDelete(uris)
         } else {
-            Toast.makeText(this, "All-files access is required to delete items.", Toast.LENGTH_LONG).show()
+            MetroBanner.show(this, "All-files access is required to delete items")
         }
     }
 
@@ -489,11 +489,26 @@ class SmartCleanupActivity : AppCompatActivity() {
             runCatching { allFilesAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
                 .onFailure {
                     pendingAllFilesDeleteUris = emptyList()
-                    Toast.makeText(this, "Couldn't open storage access settings.", Toast.LENGTH_LONG).show()
+                    MetroBanner.show(this, "Couldn't open storage access settings")
                 }
             return
         }
-        performManagedDelete(selected)
+        // Cleanup batches are large — always confirm, and be explicit about permanence when the
+        // Recycle Bin is off. The system consent dialog path confirms itself.
+        val toBin = DeleteCoordinator.usesBin(this)
+        val noun = if (selected.size == 1) "1 photo" else "${selected.size} photos"
+        MetroDialog.confirm(
+            context = this,
+            title = if (toBin) "Move to Bin?" else "Delete permanently?",
+            message = if (toBin) {
+                "$noun will move to the Recycle Bin. You can restore them for 30 days."
+            } else {
+                "Recycle Bin is off, so $noun will be deleted permanently. There's no undo."
+            },
+            positive = if (toBin) "Move to Bin" else "Delete",
+            danger = !toBin,
+            iconRes = R.drawable.ic_fluent_delete_24_regular
+        ) { performManagedDelete(selected) }
     }
 
     private fun performManagedDelete(uris: List<Uri>) {
@@ -510,7 +525,7 @@ class SmartCleanupActivity : AppCompatActivity() {
     private fun deleteUris(uris: List<Uri>, afterApproval: Boolean = false) {
         if (uris.isEmpty()) return
         if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q && uris.size > 1 && !afterApproval) {
-            Toast.makeText(this, "Bulk delete requires Android 11 or newer.", Toast.LENGTH_LONG).show()
+            MetroBanner.show(this, "Bulk delete requires Android 11 or newer")
             return
         }
         try {
@@ -531,7 +546,7 @@ class SmartCleanupActivity : AppCompatActivity() {
                 pendingDeleteNeedsRetry = true
                 launchConsent((error as RecoverableSecurityException).userAction.actionIntent.intentSender)
             } else {
-                Toast.makeText(this, "Delete failed: ${error.message}", Toast.LENGTH_LONG).show()
+                MetroBanner.show(this, "Delete failed: ${error.message}")
             }
         }
     }
@@ -548,7 +563,8 @@ class SmartCleanupActivity : AppCompatActivity() {
             categoryItems[category]!!.removeAll { it.uri in removed }
             suggested[category]!!.removeAll(removed)
         }
-        Toast.makeText(this, "${uris.size} item${if (uris.size == 1) "" else "s"} deleted.", Toast.LENGTH_SHORT).show()
+        val verb = if (DeleteCoordinator.usesBin(this)) "moved to Bin" else "deleted"
+        MetroBanner.show(this, "${uris.size} ${if (uris.size == 1) "photo" else "photos"} $verb")
         saveCurrentToStore()
 
         val category = currentCategory

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- View tag marking the active MetroBanner in the activity's content frame. -->
+    <item name="metro_banner_tag" type="id" />
+</resources>

@@ -4,12 +4,15 @@
     android:layout_height="360dp"
     android:background="@color/metroBgPrimary"
     android:gravity="center"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:paddingStart="40dp"
+    android:paddingEnd="40dp">
 
     <ImageView
         android:id="@+id/emptyIcon"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:contentDescription="@null"
         android:src="@drawable/ic_fluent_image_24_regular"
         android:tint="@color/metroTextDisabled" />
 
@@ -18,8 +21,40 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:fontFamily="sans-serif-light"
+        android:gravity="center"
         android:includeFontPadding="false"
         android:paddingTop="18dp"
         android:textColor="@color/metroTextSecondary"
         android:textSize="18sp" />
+
+    <TextView
+        android:id="@+id/emptyHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:lineSpacingExtra="2dp"
+        android:paddingTop="8dp"
+        android:textColor="@color/metroTextTertiary"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/emptyAction"
+        android:layout_width="wrap_content"
+        android:layout_height="44dp"
+        android:layout_marginTop="22dp"
+        android:background="@drawable/onboarding_button_bg"
+        android:clickable="true"
+        android:focusable="true"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="center"
+        android:letterSpacing="0.04"
+        android:minWidth="120dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:textAllCaps="true"
+        android:textColor="@color/metroTextStrong"
+        android:textSize="13sp"
+        android:visibility="gone" />
 </LinearLayout>

@@ -76,7 +76,18 @@ sealed class GalleryCell {
         val albums: List<GalleryRepository.Album>
     ) : GalleryCell()
     object SmartAlbumOnboarding : GalleryCell()
-    data class Empty(val text: String) : GalleryCell()
+
+    /**
+     * Full-span empty state: light headline, optional secondary hint, optional Fluent glyph
+     * override, and an optional accent pill action (e.g. "Start indexing").
+     */
+    data class Empty(
+        val text: String,
+        val hint: String? = null,
+        val iconRes: Int? = null,
+        val actionLabel: String? = null,
+        val onAction: (() -> Unit)? = null
+    ) : GalleryCell()
 }
 
 class ImageAdapter(
@@ -915,6 +926,13 @@ class ImageAdapter(
     class EmptyViewHolder(private val binding: ItemEmptyBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(cell: GalleryCell.Empty) {
             binding.emptyText.text = cell.text
+            binding.emptyIcon.setImageResource(cell.iconRes ?: R.drawable.ic_fluent_image_24_regular)
+            binding.emptyHint.visibility = if (cell.hint != null) View.VISIBLE else View.GONE
+            binding.emptyHint.text = cell.hint
+            val action = cell.actionLabel
+            binding.emptyAction.visibility = if (action != null) View.VISIBLE else View.GONE
+            binding.emptyAction.text = action
+            binding.emptyAction.setOnClickListener { cell.onAction?.invoke() }
         }
     }
 

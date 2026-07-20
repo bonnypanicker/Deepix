@@ -204,6 +204,25 @@ object IndexPreferences {
             .apply()
     }
 
+    // ---- One-time gesture hints (each shown once, then never again) ----
+
+    /** True if the one-shot hint identified by [key] has already been shown. */
+    fun wasHintShown(context: Context, key: String): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean("hint_$key", false)
+    }
+
+    fun setHintShown(context: Context, key: String) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("hint_$key", true)
+            .apply()
+    }
+
+    const val HINT_PINCH_GRID = "pinch_grid"
+    const val HINT_LONG_PRESS_SELECT = "long_press_select"
+    const val HINT_VIEWER_DISMISS = "viewer_dismiss"
+
     fun saveOptimalThreadCount(context: Context, count: Int) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()

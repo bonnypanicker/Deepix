@@ -20,7 +20,6 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -140,14 +139,14 @@ class MainActivity : AppCompatActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
-        if (grants.any { it.value }) {
+        if (grants.any { it.value } || hasPartialMediaAccess()) {
             initializeCore()
+            maybeShowPartialAccessNotice()
             // The storage dialog has just been dismissed, so chaining the notification request
             // here (rather than concurrently in onCreate) makes it show on first launch.
             ensureNotificationPermission()
         } else {
-            Toast.makeText(this, "Storage permission required", Toast.LENGTH_LONG).show()
-            finish()
+            showPermissionDeniedDialog()
         }
     }
 
@@ -232,7 +231,7 @@ class MainActivity : AppCompatActivity() {
         if (StoragePermissions.hasAllFilesAccess(this)) {
             requestDelete(uris)
         } else {
-            Toast.makeText(this, "All-files access is required to delete items.", Toast.LENGTH_LONG).show()
+            MetroBanner.show(this, "All-files access is required to delete items")
         }
     }
 
@@ -520,8 +519,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestGalleryPermission() {
         val permissions = requiredPermissions()
-        if (permissions.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) {
+        val fullAccess =
+            permissions.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
+        if (fullAccess || hasPartialMediaAccess()) {
+            // Partial (API 34 "Select photos") counts as granted — don't re-prompt every launch.
             initializeCore()
+            maybeShowPartialAccessNotice()
             // Storage already granted (no dialog shown) — safe to prompt for notifications now.
             ensureNotificationPermission()
         } else {
@@ -541,6 +544,58 @@ class MainActivity : AppCompatActivity() {
             )
             else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
+    }
+
+    /** API 34+ "Select photos": full media access denied but a user-selected subset granted. */
+    private fun hasPartialMediaAccess(): Boolean {
+        return Build.VERSION.SDK_INT >= 34 &&
+            ContextCompat.checkSelfPermission(
+                this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+            ) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(
+                this, Manifest.permission.READ_MEDIA_IMAGES
+            ) != PackageManager.PERMISSION_GRANTED
+    }
+
+    /** One-shot banner explaining that only selected photos are visible, with a fix action. */
+    private fun maybeShowPartialAccessNotice() {
+        if (!hasPartialMediaAccess()) return
+        MetroBanner.show(
+            this,
+            "Showing only the photos you selected",
+            actionLabel = "Manage",
+            durationMs = 8000
+        ) {
+            startActivity(
+                android.content.Intent(
+                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:$packageName")
+                )
+            )
+        }
+    }
+
+    /** Denied outright: explain why the app can't run instead of dying with a toast. */
+    private fun showPermissionDeniedDialog() {
+        MetroDialog.confirm(
+            context = this,
+            title = "Photo access needed",
+            message = "Deepix is a gallery — it can't show anything without permission to read " +
+                "your photos and videos. Nothing ever leaves your phone.",
+            positive = "Open settings",
+            negative = "Exit",
+            cancelable = false,
+            onNegative = { finish() },
+            onPositive = {
+                startActivity(
+                    android.content.Intent(
+                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:$packageName")
+                    )
+                )
+                finish()
+            }
+        )
     }
 
     private fun initializeCore() {
@@ -581,8 +636,26 @@ class MainActivity : AppCompatActivity() {
             // -------------------- TRACK C (index after first render) ----
             binding.root.post {
                 maybePromptIndexingConsent()
+                maybeShowGridGestureHint()
             }
         }
+    }
+
+    /**
+     * One-time discoverability hint for the grid gestures (pinch to resize, long-press to select).
+     * Shown once after the first successful library render, never again after dismissal/timeout.
+     */
+    private fun maybeShowGridGestureHint() {
+        if (IndexPreferences.wasHintShown(this, IndexPreferences.HINT_PINCH_GRID)) return
+        if (collectionItems.isEmpty()) return  // nothing to gesture on; keep the hint for later
+        IndexPreferences.setHintShown(this, IndexPreferences.HINT_PINCH_GRID)
+        IndexPreferences.setHintShown(this, IndexPreferences.HINT_LONG_PRESS_SELECT)
+        MetroBanner.show(
+            this,
+            "Pinch to resize the grid · long-press a photo to select",
+            actionLabel = "Got it",
+            durationMs = 8000
+        )
     }
 
     private fun loadEncodersInBackground() {
@@ -626,6 +699,12 @@ class MainActivity : AppCompatActivity() {
                 Log.w(TAG, "Vision encoder failed to load; semantic search disabled.")
                 encodersReady = null      // allow a retry on the next search
                 ready.complete(false)
+                // Metadata/filename search still works — say so instead of failing silently.
+                MetroBanner.show(
+                    this@MainActivity,
+                    "AI engine couldn't load — search by name and date still works",
+                    durationMs = 6000
+                )
                 return@launch
             }
             imageEncoder = image
@@ -663,7 +742,7 @@ class MainActivity : AppCompatActivity() {
         }
         // First run: auto-start indexing (delayed, in background) and tell the user once.
         if (!IndexPreferences.wasIndexConsentAsked(applicationContext)) {
-            enqueueBackgroundIndexing(showToast = false, initialDelaySeconds = INDEX_STARTUP_DELAY_SECONDS)
+            enqueueBackgroundIndexing(showBanner = false, initialDelaySeconds = INDEX_STARTUP_DELAY_SECONDS)
             showIndexingStartedDialog()
         }
     }
@@ -700,7 +779,7 @@ class MainActivity : AppCompatActivity() {
         indexRunning = false
         binding.statusText.text = "Indexing paused"
         updateIndexDrawerLabel()
-        Toast.makeText(this, "Indexing paused.", Toast.LENGTH_SHORT).show()
+        MetroBanner.show(this, "Indexing paused")
     }
 
     private fun resumeIndexing() {
@@ -708,7 +787,7 @@ class MainActivity : AppCompatActivity() {
         IndexPreferences.setIndexStopped(this, false)
         enqueueIndexWork(ExistingWorkPolicy.KEEP)
         updateIndexDrawerLabel()
-        Toast.makeText(this, "Indexing resumed.", Toast.LENGTH_SHORT).show()
+        MetroBanner.show(this, "Indexing resumed")
     }
 
     private fun updateIndexDrawerLabel() {
@@ -827,10 +906,33 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderCurrentSection() {
         when (activeSection) {
-            Section.Collection -> renderMediaSection(title = "collections", items = collectionItems, emptyText = "No media yet")
-            Section.Videos -> renderMediaSection(title = "videos", items = videoItems, emptyText = "No videos yet")
+            Section.Collection -> renderMediaSection(
+                title = "collections",
+                items = collectionItems,
+                emptyCell = GalleryCell.Empty(
+                    text = "No photos yet",
+                    hint = "Photos and videos on this device show up here automatically."
+                )
+            )
+            Section.Videos -> renderMediaSection(
+                title = "videos",
+                items = videoItems,
+                emptyCell = GalleryCell.Empty(
+                    text = "No videos yet",
+                    hint = "Videos you record or save appear here.",
+                    iconRes = R.drawable.ic_fluent_video_24_regular
+                )
+            )
             Section.Albums -> renderAlbums()
-            Section.Favorites -> renderMediaSection(title = "favorites", items = favoriteItems, emptyText = "No favorites yet")
+            Section.Favorites -> renderMediaSection(
+                title = "favorites",
+                items = favoriteItems,
+                emptyCell = GalleryCell.Empty(
+                    text = "No favorites yet",
+                    hint = "Tap the heart on any photo to keep it here.",
+                    iconRes = R.drawable.ic_fluent_heart_24_regular
+                )
+            )
             Section.Folders -> renderFolders()
         }
     }
@@ -850,7 +952,17 @@ class MainActivity : AppCompatActivity() {
         folderTreeRoots = roots
         val cells = flattenFolderNodes(roots)
         adapter.replaceCells(
-            if (cells.isEmpty()) listOf(GalleryCell.Empty("No folders yet")) else cells
+            if (cells.isEmpty()) {
+                listOf(
+                    GalleryCell.Empty(
+                        text = "No folders yet",
+                        hint = "Folders that contain photos or videos appear here.",
+                        iconRes = R.drawable.ic_fluent_folder_24_regular
+                    )
+                )
+            } else {
+                cells
+            }
         )
         resetGridToTop()
         updateFastScrollVisibility()
@@ -963,13 +1075,17 @@ class MainActivity : AppCompatActivity() {
         showBottomPanel()
 
         val sorted = items.sortedByDescending { it.dateMillis }
-        renderPagedTimeline(sorted, "No media in this folder", "folder:${folder.path}")
+        renderPagedTimeline(
+            sorted,
+            GalleryCell.Empty("Nothing in this folder", iconRes = R.drawable.ic_fluent_folder_24_regular),
+            "folder:${folder.path}"
+        )
     }
 
     private fun renderMediaSection(
         title: String?,
         items: List<GalleryRepository.MediaItem>,
-        emptyText: String
+        emptyCell: GalleryCell.Empty
     ) {
         renderJob?.cancel()
         currentMode = Mode.Browse
@@ -997,7 +1113,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        renderPagedTimeline(items, emptyText, "section:$expectedSection", prefix)
+        renderPagedTimeline(items, emptyCell, "section:$expectedSection", prefix)
     }
 
     private fun renderAlbums() {
@@ -1032,7 +1148,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         adapter.replaceCells(
-            if (cells.isEmpty()) listOf(GalleryCell.Empty("No albums yet"))
+            if (cells.isEmpty()) {
+                listOf(
+                    GalleryCell.Empty(
+                        text = "No albums yet",
+                        hint = "Device albums show up here. You can also create a smart album " +
+                            "that collects photos matching a description.",
+                        iconRes = R.drawable.ic_fluent_album_24_regular,
+                        actionLabel = "New smart album",
+                        onAction = { showCreateSmartAlbumDialog() }
+                    )
+                )
+            }
             else cells
         )
         resetGridToTop()
@@ -1090,7 +1217,11 @@ class MainActivity : AppCompatActivity() {
         updateBottomPanelState()
         showBottomPanel()
 
-        renderPagedTimeline(items, "No media in this album", "album:${album.id}")
+        renderPagedTimeline(
+            items,
+            GalleryCell.Empty("Nothing in this album", iconRes = R.drawable.ic_fluent_album_24_regular),
+            "album:${album.id}"
+        )
     }
 
     /**
@@ -1472,7 +1603,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun renderPagedTimeline(
         items: List<GalleryRepository.MediaItem>,
-        emptyText: String,
+        emptyCell: GalleryCell.Empty,
         contextKey: String,
         prefixCells: List<GalleryCell> = emptyList()
     ) {
@@ -1485,7 +1616,7 @@ class MainActivity : AppCompatActivity() {
         pagedPrefixCount = prefixCells.size
 
         if (items.isEmpty()) {
-            adapter.replaceCells(prefixCells + GalleryCell.Empty(emptyText))
+            adapter.replaceCells(prefixCells + emptyCell)
             pagedContext = null
             resetGridToTop()
             updateFastScrollVisibility()
@@ -1727,13 +1858,56 @@ class MainActivity : AppCompatActivity() {
 
         if (results.isEmpty()) {
             fullSearchResults = emptyList()
-            adapter.replaceCells(listOf(GalleryCell.Empty(emptyText)))
+            adapter.replaceCells(listOf(searchEmptyCell(emptyText)))
             resetGridToTop()
             binding.searchResultSummary.text = "No results"
             binding.statusText.text = statusText
             return
         }
         applySortAndShow()
+    }
+
+    /**
+     * No-results state for search. If the index is still building, says so (partial results are
+     * expected); otherwise nudges toward relaxing filters / trying different words.
+     */
+    private fun searchEmptyCell(emptyText: String): GalleryCell.Empty {
+        val progress = IndexPreferences.getIndexProgressPercent(this)
+        val stillIndexing = indexRunning || (progress in 1..99 && !IndexPreferences.isIndexStopped(this))
+        val indexIdle = !indexRunning && progress < 100 &&
+            (IndexPreferences.isIndexStopped(this) || IndexPreferences.isIndexPaused(this))
+        return when {
+            indexIdle -> GalleryCell.Empty(
+                text = "AI search isn't ready",
+                hint = "Indexing is ${if (progress > 0) "$progress% done and " else ""}paused, so AI " +
+                    "search only sees part of your library. Resume it to search everything.",
+                iconRes = R.drawable.ic_fluent_sparkle_24_regular,
+                actionLabel = "Resume indexing",
+                onAction = { resumeIndexing() }
+            )
+            stillIndexing -> GalleryCell.Empty(
+                text = emptyText,
+                hint = "Indexing is $progress% done — AI search only covers indexed photos yet. " +
+                    "Try again in a bit, or use different words.",
+                iconRes = R.drawable.ic_fluent_search_24_regular
+            )
+            activeFilters.isNotEmpty() -> GalleryCell.Empty(
+                text = emptyText,
+                hint = "Active filters narrow the results. Clear them or broaden the search.",
+                iconRes = R.drawable.ic_fluent_filter_24_regular,
+                actionLabel = "Clear filters",
+                onAction = {
+                    activeFilters.clear()
+                    onFiltersChanged()
+                }
+            )
+            else -> GalleryCell.Empty(
+                text = emptyText,
+                hint = "Try describing the scene differently — \"dog on the beach\", " +
+                    "\"birthday cake\", \"receipts\".",
+                iconRes = R.drawable.ic_fluent_search_24_regular
+            )
+        }
     }
 
     /**
@@ -2028,7 +2202,7 @@ class MainActivity : AppCompatActivity() {
             binding.progressBar.visibility = View.GONE
             if (!imageSearchActive || currentMode != Mode.Search) return@launch
             if (hits == null) {
-                Toast.makeText(this@MainActivity, "Couldn't analyze this image yet — try after indexing.", Toast.LENGTH_LONG).show()
+                MetroBanner.show(this@MainActivity, "Couldn't analyze this image yet — try after indexing")
                 renderSearchResults(emptyList(), "No similar photos", "Similar photos")
                 return@launch
             }
@@ -2542,7 +2716,16 @@ class MainActivity : AppCompatActivity() {
         }
         binding.progressBar.visibility = View.GONE
         binding.statusText.text = indexedSummary(repository?.indexedCount ?: 0)
-        renderPagedTimeline(items, "No results for this prompt yet", "smart:${smart.id}")
+        renderPagedTimeline(
+            items,
+            GalleryCell.Empty(
+                text = "No matches yet",
+                hint = "This smart album fills itself as matching photos are indexed. " +
+                    "Refresh it from the album menu, or broaden its description.",
+                iconRes = R.drawable.ic_fluent_sparkle_24_regular
+            ),
+            "smart:${smart.id}"
+        )
     }
 
     private fun showCreateSmartAlbumDialog() {
@@ -2580,7 +2763,7 @@ class MainActivity : AppCompatActivity() {
             val name = nameInput.text.toString().trim()
             val prompt = promptInput.text.toString().trim()
             if (name.isEmpty() || prompt.isEmpty()) {
-                Toast.makeText(this, "Album name and description are required", Toast.LENGTH_SHORT).show()
+                MetroBanner.show(this, "Album name and description are required")
                 return@setOnClickListener
             }
             dialog.dismiss()
@@ -2617,7 +2800,7 @@ class MainActivity : AppCompatActivity() {
             binding.progressBar.visibility = View.GONE
             binding.statusText.text = indexedSummary(repo.indexedCount)
             if (resultUris.isEmpty()) {
-                Toast.makeText(this@MainActivity, "No matches yet — you can refresh later", Toast.LENGTH_LONG).show()
+                MetroBanner.show(this@MainActivity, "No matches yet — you can refresh later")
             }
             renderCurrentSection()
         }
@@ -2672,12 +2855,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun startSmartCleanup() {
         val repo = repository ?: run {
-            Toast.makeText(this, "Still loading — try again in a moment.", Toast.LENGTH_SHORT).show()
+            MetroBanner.show(this, "Still loading — try again in a moment")
             return
         }
         val images = collectionItems.filter { it.mediaType == GalleryRepository.MediaType.Image }
         if (images.isEmpty()) {
-            Toast.makeText(this, "No photos to clean up yet.", Toast.LENGTH_SHORT).show()
+            MetroBanner.show(this, "No photos to clean up yet")
             return
         }
         CleanupHandoff.items = images
@@ -2786,7 +2969,7 @@ class MainActivity : AppCompatActivity() {
             type == null || type.startsWith("image/")
         }
         if (images.isEmpty()) {
-            Toast.makeText(this, "Only photos can be moved to the Safe", Toast.LENGTH_SHORT).show()
+            MetroBanner.show(this, "Only photos can be moved to the Safe")
             return
         }
         adapter.clearSelection()
@@ -2822,8 +3005,22 @@ class MainActivity : AppCompatActivity() {
             runCatching { allFilesAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
                 .onFailure {
                     pendingAllFilesDeleteUris = emptyList()
-                    Toast.makeText(this, "Couldn't open storage access settings.", Toast.LENGTH_LONG).show()
+                    MetroBanner.show(this, "Couldn't open storage access settings")
                 }
+            return
+        }
+        // Bin deletes are undoable (banner UNDO); direct permanent deletes are not — those get
+        // the one Metro confirm. The system consent dialog path confirms itself.
+        if (!DeleteCoordinator.usesBin(this)) {
+            val noun = if (uris.size == 1) "this photo" else "${uris.size} photos"
+            MetroDialog.confirm(
+                context = this,
+                title = "Delete permanently?",
+                message = "Recycle Bin is off, so $noun will be deleted permanently. There's no undo.",
+                positive = "Delete",
+                danger = true,
+                iconRes = R.drawable.ic_fluent_delete_24_regular
+            ) { performManagedDelete(uris) }
             return
         }
         performManagedDelete(uris)
@@ -2837,12 +3034,29 @@ class MainActivity : AppCompatActivity() {
                 is DeleteCoordinator.Outcome.Done -> {
                     adapter.clearSelection()
                     refreshVisibleItems()
-                    val verb = if (outcome.toBin) "moved to Recycle Bin" else "deleted"
+                    val noun = if (outcome.succeeded == 1) "photo" else "photos"
+                    val verb = if (outcome.toBin) "moved to Bin" else "deleted"
                     val msg = buildString {
-                        append("${outcome.succeeded} $verb")
+                        append("${outcome.succeeded} $noun $verb")
                         if (outcome.failed > 0) append(" · ${outcome.failed} failed")
                     }
-                    Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
+                    if (outcome.toBin && outcome.binnedIds.isNotEmpty()) {
+                        val undoIds = outcome.binnedIds
+                        MetroBanner.show(this@MainActivity, msg, actionLabel = "Undo", durationMs = 5000) {
+                            lifecycleScope.launch {
+                                val restored = withContext(Dispatchers.IO) {
+                                    BinManager.restoreByIds(this@MainActivity, undoIds)
+                                }
+                                refreshVisibleItems()
+                                MetroBanner.show(
+                                    this@MainActivity,
+                                    if (restored > 0) "$restored restored" else "Couldn't restore"
+                                )
+                            }
+                        }
+                    } else {
+                        MetroBanner.show(this@MainActivity, msg)
+                    }
                 }
             }
         }
@@ -2884,7 +3098,7 @@ class MainActivity : AppCompatActivity() {
     private fun deleteUris(uris: List<Uri>, afterApproval: Boolean = false) {
         if (uris.isEmpty()) return
         if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q && uris.size > 1 && !afterApproval) {
-            Toast.makeText(this, "Bulk delete requires Android 11 or newer.", Toast.LENGTH_LONG).show()
+            MetroBanner.show(this, "Bulk delete requires Android 11 or newer")
             return
         }
 
@@ -2907,7 +3121,7 @@ class MainActivity : AppCompatActivity() {
                 pendingDeleteNeedsRetry = true
                 launchDeleteConsent(error.userAction.actionIntent.intentSender)
             } else {
-                Toast.makeText(this, "Delete failed: ${error.message}", Toast.LENGTH_LONG).show()
+                MetroBanner.show(this, "Delete failed: ${error.message}")
             }
         }
     }
@@ -2919,12 +3133,12 @@ class MainActivity : AppCompatActivity() {
     private fun onDeleteCompleted(requestedCount: Int) {
         adapter.clearSelection()
         refreshVisibleItems()
-        val label = if (requestedCount == 1) "Item deleted." else "$requestedCount items deleted."
-        Toast.makeText(this, label, Toast.LENGTH_SHORT).show()
+        val label = if (requestedCount == 1) "1 photo deleted" else "$requestedCount photos deleted"
+        MetroBanner.show(this, label)
     }
 
     private fun enqueueBackgroundIndexing(
-        showToast: Boolean = true,
+        showBanner: Boolean = true,
         replace: Boolean = false,
         initialDelaySeconds: Long = 0
     ) {
@@ -2936,8 +3150,8 @@ class MainActivity : AppCompatActivity() {
             initialDelaySeconds
         )
         updateIndexDrawerLabel()
-        if (showToast) {
-            Toast.makeText(this, "Indexing started.", Toast.LENGTH_SHORT).show()
+        if (showBanner) {
+            MetroBanner.show(this, "Indexing started")
         }
     }
 
@@ -2971,7 +3185,7 @@ class MainActivity : AppCompatActivity() {
                         }
                         refreshVisibleItems()
                         refreshSensitiveBlur()
-                        Toast.makeText(this, "Indexing complete.", Toast.LENGTH_SHORT).show()
+                        MetroBanner.show(this, "Indexing complete — AI search is ready")
                     }
                     WorkInfo.State.FAILED -> {
                         binding.progressBar.visibility = View.GONE
@@ -3175,7 +3389,7 @@ class MainActivity : AppCompatActivity() {
         updateDrawerState()
         // If the "only while charging" preference changed while indexing is active, re-apply it.
         if (indexRunning && IndexPreferences.isChargingOnlyIndexing(this) != chargingPrefSnapshot) {
-            enqueueBackgroundIndexing(showToast = false, replace = true)
+            enqueueBackgroundIndexing(showBanner = false, replace = true)
         }
         refreshSensitiveBlur()
         refreshVisibleItems()

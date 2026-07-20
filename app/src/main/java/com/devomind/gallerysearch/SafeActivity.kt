@@ -166,9 +166,9 @@ class SafeActivity : AppCompatActivity() {
             val confirmText = confirm.text.toString()
             when {
                 password.length < 4 ->
-                    Toast.makeText(this, "Use at least 4 characters", Toast.LENGTH_SHORT).show()
+                    MetroBanner.show(this, "Use at least 4 characters")
                 password != confirmText ->
-                    Toast.makeText(this, "Passwords don't match", Toast.LENGTH_SHORT).show()
+                    MetroBanner.show(this, "Passwords don't match")
                 else -> {
                     pendingSetupPassword = password
                     dialog.dismiss()
@@ -184,38 +184,33 @@ class SafeActivity : AppCompatActivity() {
         if (setupPassword == null || SafeManager.isConfigured(this)) return
         if (!StoragePermissions.hasAllFilesAccess(this)) {
             suppressRelock = true
-            Toast.makeText(
-                this,
-                "Allow all-files access to create ${SafeManager.vaultLocationLabel(this)}",
-                Toast.LENGTH_LONG
-            ).show()
+            MetroBanner.show(this, "Allow all-files access to create ${SafeManager.vaultLocationLabel(this)}", durationMs = 6000)
             storageAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this))
             return
         }
         pendingSetupPassword = null
-        binding.busySpinner.visibility = View.VISIBLE
+        showBusy()
         lifecycleScope.launch {
             val outcome = withContext(Dispatchers.IO) {
                 SafeManager.setUpVault(this@SafeActivity, setupPassword)
             }
-            binding.busySpinner.visibility = View.GONE
+            hideBusy()
             when (outcome) {
                 SafeManager.SetupOutcome.NO_ACCESS -> {
                     pendingSetupPassword = setupPassword
-                    Toast.makeText(this@SafeActivity, "All-files access is required for Safe", Toast.LENGTH_LONG)
-                        .show()
+                    MetroBanner.show(this@SafeActivity, "All-files access is required for Safe")
                     finishPendingSetupIfPossible()
                 }
                 SafeManager.SetupOutcome.WRONG_PASSWORD -> {
                     offerResetOrphanedVault()
                 }
                 SafeManager.SetupOutcome.ADOPTED -> {
-                    Toast.makeText(this@SafeActivity, "Safe unlocked", Toast.LENGTH_SHORT).show()
+                    MetroBanner.show(this@SafeActivity, "Safe unlocked")
                     showContent()
                     offerBiometricEnroll { processPendingImport() }
                 }
                 SafeManager.SetupOutcome.CREATED -> {
-                    Toast.makeText(this@SafeActivity, "Safe created", Toast.LENGTH_SHORT).show()
+                    MetroBanner.show(this@SafeActivity, "Safe created")
                     showContent()
                     offerBiometricEnroll { processPendingImport() }
                 }
@@ -244,11 +239,11 @@ class SafeActivity : AppCompatActivity() {
             cancelable = false,
             onNegative = { startSetup() }
         ) {
-            binding.busySpinner.visibility = View.VISIBLE
+            showBusy()
             lifecycleScope.launch {
                 withContext(Dispatchers.IO) { SafeManager.purgeVault(this@SafeActivity) }
-                binding.busySpinner.visibility = View.GONE
-                Toast.makeText(this@SafeActivity, "Old Safe deleted", Toast.LENGTH_SHORT).show()
+                hideBusy()
+                MetroBanner.show(this@SafeActivity, "Old Safe deleted")
                 startSetup()
             }
         }
@@ -284,7 +279,7 @@ class SafeActivity : AppCompatActivity() {
                 showContent()
                 processPendingImport()
             } else if (fromTyping) {
-                Toast.makeText(this@SafeActivity, "Incorrect password", Toast.LENGTH_SHORT).show()
+                MetroBanner.show(this@SafeActivity, "Incorrect password")
             }
         }
     }
@@ -307,7 +302,7 @@ class SafeActivity : AppCompatActivity() {
         } catch (e: KeyPermanentlyInvalidatedException) {
             SafeStore.clearBiometric(this)
             binding.fingerprintBtn.visibility = View.GONE
-            Toast.makeText(this, "Fingerprint changed — enter your password", Toast.LENGTH_LONG).show()
+            MetroBanner.show(this, "Fingerprint changed — enter your password", durationMs = 6000)
             return
         } catch (e: Exception) {
             return
@@ -320,7 +315,7 @@ class SafeActivity : AppCompatActivity() {
                         val out = result.cryptoObject?.cipher?.doFinal(blob) ?: return
                         String(out)
                     }.getOrNull() ?: run {
-                        Toast.makeText(this@SafeActivity, "Couldn't read password", Toast.LENGTH_SHORT).show()
+                        MetroBanner.show(this@SafeActivity, "Couldn't read password")
                         return
                     }
                     unlockWith(recovered, fromTyping = false)
@@ -346,10 +341,10 @@ class SafeActivity : AppCompatActivity() {
     }
 
     private fun loadItems() {
-        binding.busySpinner.visibility = View.VISIBLE
+        showBusy()
         lifecycleScope.launch {
             val items = withContext(Dispatchers.IO) { SafeManager.listItems(this@SafeActivity) }
-            binding.busySpinner.visibility = View.GONE
+            hideBusy()
             adapter.submit(items)
             binding.emptyState.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
         }
@@ -388,15 +383,22 @@ class SafeActivity : AppCompatActivity() {
     }
 
     private fun runImport(uris: List<Uri>, isMove: Boolean) {
-        binding.busySpinner.visibility = View.VISIBLE
+        showBusy(if (uris.size > 1) "Encrypting 1 of ${uris.size}…" else "Encrypting…")
         lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) { SafeManager.importPhotos(this@SafeActivity, uris) }
-            binding.busySpinner.visibility = View.GONE
+            val result = withContext(Dispatchers.IO) {
+                SafeManager.importPhotos(this@SafeActivity, uris) { done, total ->
+                    if (total > 1) {
+                        runOnUiThread { binding.busyLabel.text = "Encrypting ${done + 1} of $total…" }
+                    }
+                }
+            }
+            hideBusy()
+            val noun = if (result.imported == 1) "photo" else "photos"
             val msg = buildString {
-                append("Added ${result.imported} to Safe")
+                append("${result.imported} $noun added to Safe")
                 if (result.failed > 0) append(" · ${result.failed} failed")
             }
-            Toast.makeText(this@SafeActivity, msg, Toast.LENGTH_SHORT).show()
+            MetroBanner.show(this@SafeActivity, msg)
             if (isMove && result.importedSources.isNotEmpty()) {
                 importedForDeletion.addAll(result.importedSources)
                 setResult(RESULT_OK, Intent().putParcelableArrayListExtra(ExtraImportedUris, importedForDeletion))
@@ -408,12 +410,12 @@ class SafeActivity : AppCompatActivity() {
     // ---- Item actions ----
 
     private fun showPhoto(item: SafeManager.VaultItem) {
-        binding.busySpinner.visibility = View.VISIBLE
+        showBusy()
         lifecycleScope.launch {
             val bmp = withContext(Dispatchers.IO) { SafeManager.decryptToBitmap(this@SafeActivity, item) }
-            binding.busySpinner.visibility = View.GONE
+            hideBusy()
             if (bmp == null) {
-                Toast.makeText(this@SafeActivity, "Couldn't open photo", Toast.LENGTH_SHORT).show()
+                MetroBanner.show(this@SafeActivity, "Couldn't open photo")
                 return@launch
             }
             openFullscreen(bmp)
@@ -453,18 +455,17 @@ class SafeActivity : AppCompatActivity() {
     }
 
     private fun restoreItem(item: SafeManager.VaultItem) {
-        binding.busySpinner.visibility = View.VISIBLE
+        showBusy("Decrypting…")
         lifecycleScope.launch {
             val ok = withContext(Dispatchers.IO) {
                 val restored = SafeManager.restoreToGallery(this@SafeActivity, item)
                 if (restored != null) SafeManager.removeItem(this@SafeActivity, item) else false
             }
-            binding.busySpinner.visibility = View.GONE
-            Toast.makeText(
+            hideBusy()
+            MetroBanner.show(
                 this@SafeActivity,
-                if (ok) "Saved back to gallery" else "Couldn't restore",
-                Toast.LENGTH_SHORT
-            ).show()
+                if (ok) "Saved back to gallery" else "Couldn't restore"
+            )
             if (ok) loadItems()
         }
     }
@@ -483,7 +484,7 @@ class SafeActivity : AppCompatActivity() {
                     thumbCache.remove(item.entryName)
                     loadItems()
                 } else {
-                    Toast.makeText(this@SafeActivity, "Couldn't remove", Toast.LENGTH_SHORT).show()
+                    MetroBanner.show(this@SafeActivity, "Couldn't remove")
                 }
             }
         }
@@ -528,7 +529,7 @@ class SafeActivity : AppCompatActivity() {
         view.findViewById<TextView>(R.id.copyPasswordBtn).setOnClickListener {
             val clip = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             clip.setPrimaryClip(ClipData.newPlainText("Safe password", password))
-            Toast.makeText(this, "Password copied", Toast.LENGTH_SHORT).show()
+            MetroBanner.show(this, "Password copied")
         }
         view.findViewById<TextView>(R.id.closePasswordBtn).setOnClickListener { dialog.dismiss() }
         dialog.show()
@@ -557,11 +558,11 @@ class SafeActivity : AppCompatActivity() {
 
     private fun turnOnFingerprint() {
         if (!SafeManager.isUnlocked) {
-            Toast.makeText(this, "Unlock the Safe first", Toast.LENGTH_SHORT).show()
+            MetroBanner.show(this, "Unlock the Safe first")
             return
         }
         if (!biometricAvailable()) {
-            Toast.makeText(this, "No fingerprint set up on this device", Toast.LENGTH_LONG).show()
+            MetroBanner.show(this, "No fingerprint set up on this device")
             return
         }
         enrollBiometric()
@@ -572,7 +573,7 @@ class SafeActivity : AppCompatActivity() {
         val cipher = try {
             SafeKeystore.encryptCipher()
         } catch (e: Exception) {
-            Toast.makeText(this, "Couldn't set up fingerprint", Toast.LENGTH_SHORT).show()
+            MetroBanner.show(this, "Couldn't set up fingerprint")
             return
         }
         val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this),
@@ -583,9 +584,9 @@ class SafeActivity : AppCompatActivity() {
                         val blob = c.doFinal(password.toByteArray())
                         SafeStore.saveBiometricPassword(this@SafeActivity, blob, c.iv)
                     }.onSuccess {
-                        Toast.makeText(this@SafeActivity, "Fingerprint unlock enabled", Toast.LENGTH_SHORT).show()
+                        MetroBanner.show(this@SafeActivity, "Fingerprint unlock enabled")
                     }.onFailure {
-                        Toast.makeText(this@SafeActivity, "Couldn't enable fingerprint", Toast.LENGTH_SHORT).show()
+                        MetroBanner.show(this@SafeActivity, "Couldn't enable fingerprint")
                     }
                 }
             })
@@ -602,7 +603,7 @@ class SafeActivity : AppCompatActivity() {
 
     private fun turnOffFingerprint() {
         SafeStore.clearBiometric(this)
-        Toast.makeText(this, "Fingerprint unlock turned off", Toast.LENGTH_SHORT).show()
+        MetroBanner.show(this, "Fingerprint unlock turned off")
     }
 
     private fun confirmRemoveSafe() {
@@ -620,6 +621,18 @@ class SafeActivity : AppCompatActivity() {
             Toast.makeText(this, "Safe removed from this device", Toast.LENGTH_LONG).show()
             finish()
         }
+    }
+
+    /** Shows the busy overlay; [label] adds a progress line ("Encrypting 3 of 12…"). */
+    private fun showBusy(label: String? = null) {
+        binding.busyPanel.visibility = View.VISIBLE
+        binding.busyLabel.visibility = if (label != null) View.VISIBLE else View.GONE
+        binding.busyLabel.text = label
+    }
+
+    private fun hideBusy() {
+        binding.busyPanel.visibility = View.GONE
+        binding.busyLabel.visibility = View.GONE
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
