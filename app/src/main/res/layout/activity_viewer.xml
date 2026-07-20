@@ -40,7 +40,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Back"
+                android:contentDescription="@string/back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
                 android:tint="@color/metroTextPrimary" />
@@ -81,7 +81,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Favorite"
+                android:contentDescription="@string/favorite"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_heart_24_regular"
                 android:tint="@color/metroTextPrimary" />
@@ -91,7 +91,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Search similar images"
+                android:contentDescription="@string/search_similar"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_image_search_24_regular"
                 android:tint="@color/metroTextPrimary" />
@@ -101,7 +101,7 @@
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="More options"
+                android:contentDescription="@string/more_options"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_more_24_regular"
                 android:tint="@color/metroTextPrimary" />
@@ -136,7 +136,7 @@
             <ImageView
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:contentDescription="Share"
+                android:contentDescription="@string/share"
                 android:src="@drawable/ic_fluent_share_24_regular"
                 android:tint="@color/metroTextPrimary" />
 
@@ -145,7 +145,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:includeFontPadding="false"
-                android:text="Share"
+                android:text="@string/share"
                 android:textColor="@color/metroTextStrong"
                 android:textSize="11sp" />
         </LinearLayout>
@@ -167,7 +167,7 @@
                 android:id="@+id/editIcon"
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:contentDescription="Edit"
+                android:contentDescription="@string/edit"
                 android:src="@drawable/ic_fluent_edit_24_regular"
                 android:tint="@color/metroTextPrimary" />
 
@@ -177,7 +177,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:includeFontPadding="false"
-                android:text="Edit"
+                android:text="@string/edit"
                 android:textColor="@color/metroTextStrong"
                 android:textSize="11sp" />
         </LinearLayout>
@@ -198,7 +198,7 @@
             <ImageView
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:contentDescription="Rotate"
+                android:contentDescription="@string/rotate"
                 android:src="@drawable/ic_fluent_screen_rotate_24_regular"
                 android:tint="@color/metroTextPrimary" />
 
@@ -207,7 +207,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:includeFontPadding="false"
-                android:text="Rotate"
+                android:text="@string/rotate"
                 android:textColor="@color/metroTextStrong"
                 android:textSize="11sp" />
         </LinearLayout>
@@ -228,7 +228,7 @@
             <ImageView
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:contentDescription="Delete"
+                android:contentDescription="@string/delete"
                 android:src="@drawable/ic_fluent_delete_24_regular"
                 android:tint="@color/metroTextPrimary" />
 
@@ -237,7 +237,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:includeFontPadding="false"
-                android:text="Delete"
+                android:text="@string/delete"
                 android:textColor="@color/metroTextStrong"
                 android:textSize="11sp" />
         </LinearLayout>
@@ -287,7 +287,7 @@
                 android:fontFamily="sans-serif-light"
                 android:includeFontPadding="false"
                 android:paddingBottom="8dp"
-                android:text="Info"
+                android:text="@string/info"
                 android:textColor="@color/metroTextPrimary"
                 android:textSize="30sp" />
         </LinearLayout>
@@ -359,7 +359,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:includeFontPadding="false"
-                        android:text="Tags"
+                        android:text="@string/tags"
                         android:textColor="@color/metroTextSecondary"
                         android:textSize="15sp" />
 
@@ -389,7 +389,7 @@
             android:gravity="center"
             android:paddingTop="20dp"
             android:paddingBottom="20dp"
-            android:text="CLOSE"
+            android:text="@string/close_caps"
             android:textColor="?attr/accentColor"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -428,7 +428,7 @@
             android:paddingTop="10dp"
             android:paddingEnd="14dp"
             android:paddingBottom="10dp"
-            android:text="Cancel"
+            android:text="@string/cancel"
             android:textColor="@color/metroTextPrimary"
             android:textSize="14sp" />
 
@@ -437,7 +437,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:gravity="center"
-            android:text="Drag to select a region"
+            android:text="@string/drag_select_region"
             android:textColor="@color/metroTextSecondary"
             android:textSize="13sp" />
 
@@ -452,7 +452,7 @@
             android:paddingTop="10dp"
             android:paddingEnd="22dp"
             android:paddingBottom="10dp"
-            android:text="Search"
+            android:text="@string/search"
             android:textColor="@color/metroTextPrimary"
             android:textSize="14sp"
             android:textStyle="bold" />

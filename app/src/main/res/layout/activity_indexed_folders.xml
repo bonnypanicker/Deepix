@@ -24,7 +24,7 @@
                 android:layout_gravity="start|center_vertical"
                 android:layout_marginStart="6dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Back"
+                android:contentDescription="@string/back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
                 android:tint="@color/metroTextPrimary" />
@@ -48,7 +48,7 @@
                     android:layout_height="wrap_content"
                     android:fontFamily="sans-serif-light"
                     android:includeFontPadding="false"
-                    android:text="indexed folders"
+                    android:text="@string/indexed_folders_title"
                     android:textColor="@color/metroTextPrimary"
                     android:textSize="34sp" />
 
@@ -57,7 +57,7 @@
                     android:layout_height="wrap_content"
                     android:paddingTop="8dp"
                     android:paddingBottom="4dp"
-                    android:text="Choose which folders AI search indexes. This does not change your gallery — every photo still shows normally."
+                    android:text="@string/indexed_folders_intro"
                     android:textColor="@color/metroTextSecondary"
                     android:textSize="13sp" />
 
@@ -67,11 +67,11 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="All folders" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/all_folders" />
 
                         <TextView
                             style="@style/SettingsRowSubtitle"
-                            android:text="Index every folder, including ones you add later" />
+                            android:text="@string/index_every_folder_subtitle" />
                     </LinearLayout>
 
                     <androidx.appcompat.widget.SwitchCompat
@@ -87,7 +87,7 @@
                 <TextView
                     android:id="@+id/foldersLabel"
                     style="@style/SettingsSectionHeader"
-                    android:text="FOLDERS" />
+                    android:text="@string/section_folders" />
 
                 <ProgressBar
                     android:id="@+id/loading"

@@ -22,7 +22,7 @@
         android:paddingStart="20dp"
         android:paddingEnd="20dp"
         android:paddingBottom="4dp"
-        android:text="Sort &amp; filter"
+        android:text="@string/sort_filter"
         android:textColor="@color/metroTextPrimary"
         android:textSize="24sp" />
 
@@ -68,7 +68,7 @@
             android:minWidth="88dp"
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
-            android:text="CANCEL"
+            android:text="@string/cancel_caps"
             android:textColor="@color/metroTextSecondary"
             android:textSize="13sp"
             android:textStyle="bold" />
@@ -86,7 +86,7 @@
             android:minWidth="104dp"
             android:paddingStart="20dp"
             android:paddingEnd="20dp"
-            android:text="APPLY"
+            android:text="@string/apply_caps"
             android:textColor="@color/metroTextPrimary"
             android:textSize="13sp"
             android:textStyle="bold" />

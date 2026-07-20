@@ -27,7 +27,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="10dp"
             android:includeFontPadding="false"
-            android:text="New Smart Album"
+            android:text="@string/new_smart_album"
             android:textAppearance="@style/TextAppearance.Metro.DialogTitle" />
     </LinearLayout>
 
@@ -37,7 +37,7 @@
         android:layout_marginTop="10dp"
         android:includeFontPadding="false"
         android:lineSpacingExtra="2dp"
-        android:text="Describe what you want to collect. Your phone finds the matching photos for you."
+        android:text="@string/smart_album_intro"
         android:textAppearance="@style/TextAppearance.Metro.BodySecondary" />
 
     <TextView
@@ -45,7 +45,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="22dp"
         android:includeFontPadding="false"
-        android:text="NAME"
+        android:text="@string/label_name"
         android:textAppearance="@style/TextAppearance.Metro.FieldLabel" />
 
     <EditText
@@ -54,7 +54,7 @@
         android:layout_height="50dp"
         android:layout_marginTop="8dp"
         android:background="@drawable/search_bg"
-        android:hint="e.g. Beach days"
+        android:hint="@string/smart_album_name_hint"
         android:inputType="textCapWords"
         android:paddingStart="14dp"
         android:paddingEnd="14dp"
@@ -68,7 +68,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="18dp"
         android:includeFontPadding="false"
-        android:text="WHAT TO FIND"
+        android:text="@string/label_what_to_find"
         android:textAppearance="@style/TextAppearance.Metro.FieldLabel" />
 
     <EditText
@@ -77,7 +77,7 @@
         android:layout_height="50dp"
         android:layout_marginTop="8dp"
         android:background="@drawable/search_bg"
-        android:hint="e.g. sunset at the beach"
+        android:hint="@string/smart_album_prompt_hint"
         android:imeOptions="actionDone"
         android:inputType="text"
         android:paddingStart="14dp"
@@ -119,7 +119,7 @@
             android:minWidth="88dp"
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
-            android:text="Cancel"
+            android:text="@string/cancel"
             android:textAppearance="@style/TextAppearance.Metro.ButtonLabel"
             android:textColor="@color/metroTextSecondary" />
 
@@ -135,7 +135,7 @@
             android:minWidth="104dp"
             android:paddingStart="20dp"
             android:paddingEnd="20dp"
-            android:text="Create"
+            android:text="@string/create"
             android:textAppearance="@style/TextAppearance.Metro.ButtonLabel"
             android:textColor="@color/metroTextPrimary" />
     </LinearLayout>

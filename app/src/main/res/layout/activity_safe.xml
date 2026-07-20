@@ -26,7 +26,7 @@
                 android:layout_gravity="start|center_vertical"
                 android:layout_marginStart="6dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Back"
+                android:contentDescription="@string/back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
                 android:tint="@color/metroTextPrimary" />
@@ -38,7 +38,7 @@
                 android:layout_gravity="end|center_vertical"
                 android:layout_marginEnd="6dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="More"
+                android:contentDescription="@string/more"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_more_24_regular"
                 android:tint="@color/metroTextPrimary" />
@@ -50,7 +50,7 @@
             android:layout_marginStart="20dp"
             android:fontFamily="sans-serif-light"
             android:includeFontPadding="false"
-            android:text="safe"
+            android:text="@string/safe_lower"
             android:textColor="@color/metroTextPrimary"
             android:textSize="40sp" />
 
@@ -91,7 +91,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
                     android:includeFontPadding="false"
-                    android:text="Your Safe is empty"
+                    android:text="@string/safe_empty_title"
                     android:textColor="@color/metroTextPrimary"
                     android:textSize="17sp" />
 
@@ -101,7 +101,7 @@
                     android:layout_marginTop="6dp"
                     android:gravity="center"
                     android:includeFontPadding="false"
-                    android:text="Add photos to lock them away. They are encrypted and hidden from your gallery."
+                    android:text="@string/safe_empty_subtitle"
                     android:textColor="@color/metroTextSecondary"
                     android:textSize="13sp" />
             </LinearLayout>
@@ -168,7 +168,7 @@
                     android:layout_marginStart="10dp"
                     android:includeFontPadding="false"
                     android:letterSpacing="0.04"
-                    android:text="add photos"
+                    android:text="@string/add_photos_lower"
                     android:textAllCaps="true"
                     android:textColor="?attr/accentColor"
                     android:textSize="13sp" />
@@ -201,7 +201,7 @@
             android:fontFamily="sans-serif-light"
             android:includeFontPadding="false"
             android:letterSpacing="0.04"
-            android:text="Safe"
+            android:text="@string/safe_title"
             android:textColor="@color/metroTextPrimary"
             android:textSize="26sp" />
 
@@ -211,7 +211,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:includeFontPadding="false"
-            android:text="Locked"
+            android:text="@string/locked"
             android:textAllCaps="true"
             android:textColor="@color/metroTextSecondary"
             android:textSize="12sp"
@@ -232,7 +232,7 @@
             <ImageView
                 android:layout_width="56dp"
                 android:layout_height="56dp"
-                android:contentDescription="Unlock with fingerprint"
+                android:contentDescription="@string/unlock_with_fingerprint"
                 android:src="@drawable/ic_fluent_fingerprint_24_regular"
                 android:tint="?attr/accentColor" />
 
@@ -241,7 +241,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:includeFontPadding="false"
-                android:text="Tap to unlock with fingerprint"
+                android:text="@string/tap_to_unlock_fingerprint"
                 android:textColor="@color/metroTextSecondary"
                 android:textSize="13sp" />
         </LinearLayout>
@@ -258,9 +258,9 @@
             android:layout_width="match_parent"
             android:layout_height="52dp"
             android:layout_marginTop="24dp"
-            android:autofillHints="password"
+            android:importantForAutofill="no"
             android:background="@drawable/search_bg"
-            android:hint="Enter password"
+            android:hint="@string/enter_password_hint"
             android:imeOptions="actionDone"
             android:inputType="textPassword"
             android:paddingStart="16dp"
@@ -281,7 +281,7 @@
             android:fontFamily="sans-serif-medium"
             android:gravity="center"
             android:letterSpacing="0.06"
-            android:text="UNLOCK"
+            android:text="@string/unlock_caps"
             android:textColor="@color/metroTextPrimary"
             android:textSize="14sp" />
 
@@ -298,7 +298,7 @@
             android:paddingTop="6dp"
             android:paddingEnd="12dp"
             android:paddingBottom="6dp"
-            android:text="Forgot password?"
+            android:text="@string/forgot_password"
             android:textColor="@color/metroTextSecondary"
             android:textSize="13sp"
             android:visibility="gone" />

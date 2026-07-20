@@ -24,7 +24,7 @@
                 android:layout_gravity="start|center_vertical"
                 android:layout_marginStart="6dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Back"
+                android:contentDescription="@string/back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
                 android:tint="@color/metroTextPrimary" />
@@ -36,7 +36,7 @@
                 android:layout_gravity="end|center_vertical"
                 android:layout_marginEnd="6dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Refresh"
+                android:contentDescription="@string/refresh"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_replay_24_regular"
                 android:tint="@color/metroTextPrimary" />
@@ -67,7 +67,7 @@
                         android:layout_height="wrap_content"
                         android:fontFamily="sans-serif-light"
                         android:includeFontPadding="false"
-                        android:text="smart cleanup"
+                        android:text="@string/smart_cleanup_title"
                         android:textColor="@color/metroTextPrimary"
                         android:textSize="40sp" />
 
@@ -91,7 +91,7 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
-                                android:text="Analyzing your library…"
+                                android:text="@string/analyzing_library"
                                 android:textColor="@color/metroTextStrong"
                                 android:textSize="13sp" />
 
@@ -103,7 +103,7 @@
                                 android:clickable="true"
                                 android:focusable="true"
                                 android:padding="8dp"
-                                android:text="Pause"
+                                android:text="@string/pause"
                                 android:textColor="?attr/accentColor"
                                 android:textSize="13sp"
                                 android:textStyle="bold" />
@@ -117,7 +117,7 @@
                                 android:clickable="true"
                                 android:focusable="true"
                                 android:padding="8dp"
-                                android:text="Stop"
+                                android:text="@string/stop"
                                 android:textColor="@color/metroTextSecondary"
                                 android:textSize="13sp"
                                 android:textStyle="bold" />
@@ -152,7 +152,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:includeFontPadding="false"
-                            android:text="Indexing isn't finished"
+                            android:text="@string/cleanup_indexing_unfinished"
                             android:textColor="@color/metroWarning"
                             android:textSize="14sp"
                             android:textStyle="bold" />
@@ -184,7 +184,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:includeFontPadding="false"
-                            android:text="You can free approximately"
+                            android:text="@string/cleanup_free_approx"
                             android:textColor="@color/metroTextSecondary"
                             android:textSize="13sp" />
 
@@ -221,7 +221,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="48dp"
                         android:gravity="center"
-                        android:text="Your library looks clean — nothing to remove."
+                        android:text="@string/cleanup_clean"
                         android:textColor="@color/metroTextSecondary"
                         android:textSize="14sp"
                         android:visibility="gone" />
@@ -263,7 +263,7 @@
                         android:clickable="true"
                         android:focusable="true"
                         android:padding="8dp"
-                        android:text="Select all"
+                        android:text="@string/select_all"
                         android:textColor="?attr/accentColor"
                         android:textSize="14sp" />
                 </FrameLayout>
@@ -297,7 +297,7 @@
                     android:gravity="center"
                     android:paddingTop="18dp"
                     android:paddingBottom="18dp"
-                    android:text="Delete"
+                    android:text="@string/delete"
                     android:textColor="@color/metroTextPrimary"
                     android:textSize="15sp"
                     android:textStyle="bold" />

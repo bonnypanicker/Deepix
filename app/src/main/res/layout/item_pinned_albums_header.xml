@@ -14,7 +14,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:includeFontPadding="false"
-        android:text="Pinned Albums"
+        android:text="@string/pinned_albums"
         android:textAppearance="@style/TextAppearance.Metro.SectionLabel"
         android:paddingEnd="16dp"
         android:paddingBottom="12dp" />

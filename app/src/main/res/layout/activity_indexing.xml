@@ -24,7 +24,7 @@
                 android:layout_gravity="start|center_vertical"
                 android:layout_marginStart="6dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Back"
+                android:contentDescription="@string/back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
                 android:tint="@color/metroTextPrimary" />
@@ -48,14 +48,14 @@
                     android:layout_height="wrap_content"
                     android:fontFamily="sans-serif-light"
                     android:includeFontPadding="false"
-                    android:text="indexing"
+                    android:text="@string/indexing_title"
                     android:textColor="@color/metroTextPrimary"
                     android:textSize="40sp" />
 
                 <!-- ===================== STATUS + CONTROLS ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"
-                    android:text="STATUS" />
+                    android:text="@string/section_status" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -69,7 +69,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:includeFontPadding="false"
-                        android:text="Preparing…"
+                        android:text="@string/indexing_preparing"
                         android:textColor="@color/metroTextPrimary"
                         android:textSize="16sp" />
 
@@ -79,7 +79,7 @@
                         android:layout_height="wrap_content"
                         android:includeFontPadding="false"
                         android:paddingTop="3dp"
-                        android:text="On-device AI · nothing leaves your phone"
+                        android:text="@string/indexing_offline_note"
                         android:textColor="@color/metroTextSecondary"
                         android:textSize="13sp" />
 
@@ -122,7 +122,7 @@
                             android:paddingTop="11dp"
                             android:paddingEnd="24dp"
                             android:paddingBottom="11dp"
-                            android:text="Pause"
+                            android:text="@string/pause"
                             android:textAlignment="center"
                             android:textColor="@color/metroTextPrimary"
                             android:textSize="14sp"
@@ -141,7 +141,7 @@
                             android:paddingTop="11dp"
                             android:paddingEnd="24dp"
                             android:paddingBottom="11dp"
-                            android:text="Stop"
+                            android:text="@string/stop"
                             android:textAlignment="center"
                             android:textColor="@color/metroTextPrimary"
                             android:textSize="14sp" />
@@ -151,7 +151,7 @@
                 <!-- ===================== MEDIA PROCESSING INFO ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"
-                    android:text="MEDIA PROCESSING" />
+                    android:text="@string/section_media_processing" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -164,7 +164,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:lineSpacingExtra="3dp"
-                        android:text="Your photos never leave your device. Everything is processed locally using on-device AI to enrich your library with intelligent metadata — no internet connection required."
+                        android:text="@string/indexing_privacy_para"
                         android:textColor="@color/metroTextSecondary"
                         android:textSize="13sp" />
 
@@ -172,7 +172,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:text="During the initial scan, you may notice:"
+                        android:text="@string/indexing_initial_scan_intro"
                         android:textColor="@color/metroTextPrimary"
                         android:textSize="13sp"
                         android:textStyle="bold" />
@@ -182,7 +182,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
                         android:lineSpacingExtra="3dp"
-                        android:text="• Increased battery usage\n• Additional storage being used for the search index\n• Slightly slower performance while processing"
+                        android:text="@string/indexing_initial_scan_bullets"
                         android:textColor="@color/metroTextSecondary"
                         android:textSize="13sp" />
 
@@ -191,7 +191,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
                         android:lineSpacingExtra="3dp"
-                        android:text="This is a one-time process that analyzes your existing library."
+                        android:text="@string/indexing_one_time_note"
                         android:textColor="@color/metroTextSecondary"
                         android:textSize="13sp" />
 
@@ -200,7 +200,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
                         android:lineSpacingExtra="3dp"
-                        android:text="After the initial scan is complete, new photos are processed automatically as they are added, usually only a few items at a time. This keeps your library up to date with minimal impact on battery and performance."
+                        android:text="@string/indexing_after_scan_para"
                         android:textColor="@color/metroTextSecondary"
                         android:textSize="13sp" />
 
@@ -209,7 +209,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
                         android:lineSpacingExtra="3dp"
-                        android:text="Processing time depends on the size of your photo collection and may take from a few minutes to several hours."
+                        android:text="@string/indexing_duration_note"
                         android:textColor="@color/metroTextSecondary"
                         android:textSize="13sp" />
                 </LinearLayout>
@@ -217,7 +217,7 @@
                 <!-- ===================== POWER ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"
-                    android:text="POWER" />
+                    android:text="@string/section_power" />
 
                 <LinearLayout
                     android:id="@+id/rowCharging"
@@ -225,11 +225,11 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="Index only while charging" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/charging_only_title" />
 
                         <TextView
                             style="@style/SettingsRowSubtitle"
-                            android:text="Pause AI indexing until the device is plugged in" />
+                            android:text="@string/charging_only_subtitle" />
                     </LinearLayout>
 
                     <androidx.appcompat.widget.SwitchCompat
@@ -248,11 +248,11 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="Overnight only" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/overnight_only_title" />
 
                         <TextView
                             style="@style/SettingsRowSubtitle"
-                            android:text="Only index between 10 PM and 7 AM while plugged in" />
+                            android:text="@string/overnight_only_subtitle" />
                     </LinearLayout>
 
                     <androidx.appcompat.widget.SwitchCompat
@@ -266,13 +266,13 @@
                 <!-- ===================== FOLDERS ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"
-                    android:text="FOLDERS" />
+                    android:text="@string/section_folders" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:paddingBottom="8dp"
-                    android:text="Choose which folders AI search indexes. This does not change your gallery — every photo still shows normally."
+                    android:text="@string/indexed_folders_intro"
                     android:textColor="@color/metroTextSecondary"
                     android:textSize="13sp" />
 
@@ -282,11 +282,11 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="Select all folders" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/select_all_folders" />
 
                         <TextView
                             style="@style/SettingsRowSubtitle"
-                            android:text="Index every folder, including ones you add later" />
+                            android:text="@string/index_every_folder_subtitle" />
                     </LinearLayout>
 
                     <CheckBox

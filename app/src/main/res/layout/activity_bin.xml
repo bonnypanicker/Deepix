@@ -24,7 +24,7 @@
                 android:layout_gravity="start|center_vertical"
                 android:layout_marginStart="6dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Back"
+                android:contentDescription="@string/back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
                 android:tint="@color/metroTextPrimary" />
@@ -39,7 +39,7 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:padding="8dp"
-                android:text="Empty bin"
+                android:text="@string/bin_empty_action"
                 android:textColor="@color/metroDanger"
                 android:textSize="14sp" />
         </FrameLayout>
@@ -50,7 +50,7 @@
             android:layout_marginStart="20dp"
             android:fontFamily="sans-serif-light"
             android:includeFontPadding="false"
-            android:text="recycle bin"
+            android:text="@string/bin_title"
             android:textColor="@color/metroTextPrimary"
             android:textSize="40sp" />
 
@@ -62,7 +62,7 @@
             android:paddingTop="4dp"
             android:paddingEnd="20dp"
             android:paddingBottom="8dp"
-            android:text="Deleted photos are kept here for 30 days, then removed automatically."
+            android:text="@string/bin_retention_note"
             android:textColor="@color/metroTextSecondary"
             android:textSize="13sp" />
 
@@ -103,7 +103,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
                     android:includeFontPadding="false"
-                    android:text="Recycle bin is empty"
+                    android:text="@string/bin_empty_state"
                     android:textColor="@color/metroTextPrimary"
                     android:textSize="17sp" />
             </LinearLayout>

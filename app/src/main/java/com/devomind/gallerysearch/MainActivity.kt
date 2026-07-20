@@ -1860,7 +1860,7 @@ class MainActivity : AppCompatActivity() {
             fullSearchResults = emptyList()
             adapter.replaceCells(listOf(searchEmptyCell(emptyText)))
             resetGridToTop()
-            binding.searchResultSummary.text = "No results"
+            binding.searchResultSummary.text = getString(R.string.no_results)
             binding.statusText.text = statusText
             return
         }
@@ -1997,11 +1997,9 @@ class MainActivity : AppCompatActivity() {
     private fun updateSearchResultCount() {
         val total = fullSearchResults.size
         binding.searchResultSummary.text = when {
-            total == 0 -> "No results"
-            total == 1 -> "1 result"
-            currentSortMode == SortMode.Relevance && currentDisplayedSearchResultCount < total ->
-                "Photos · $total"
-            else -> "Photos · $total"
+            total == 0 -> getString(R.string.no_results)
+            total == 1 -> resources.getQuantityString(R.plurals.result_count, 1, 1)
+            else -> getString(R.string.photos_count_summary, total)
         }
     }
 
@@ -2511,10 +2509,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun filterSummaryText(parsedQuery: StructuredSearch.ParsedQuery, resultCount: Int): String {
         val filterCount = parsedQuery.filters.size
-        return when {
-            filterCount <= 0 -> if (resultCount == 1) "1 result" else "$resultCount results"
-            resultCount == 1 -> "1 photo matches $filterCount filter"
-            else -> "$resultCount photos match $filterCount filters"
+        return if (filterCount <= 0) {
+            resources.getQuantityString(R.plurals.result_count, resultCount, resultCount)
+        } else {
+            resources.getQuantityString(R.plurals.photos_match_filters, resultCount, resultCount, filterCount)
         }
     }
 
@@ -2709,10 +2707,10 @@ class MainActivity : AppCompatActivity() {
             .filter { it.uri.toString() in uriOrder.keys }
             .sortedBy { uriOrder[it.uri.toString()] ?: Int.MAX_VALUE }
 
-        binding.resultCount.text = when {
-            items.isEmpty() -> ""
-            items.size == 1 -> "1 result"
-            else -> "${items.size} results"
+        binding.resultCount.text = if (items.isEmpty()) {
+            ""
+        } else {
+            resources.getQuantityString(R.plurals.result_count, items.size, items.size)
         }
         binding.progressBar.visibility = View.GONE
         binding.statusText.text = indexedSummary(repository?.indexedCount ?: 0)
@@ -2929,7 +2927,7 @@ class MainActivity : AppCompatActivity() {
 
         if (selecting) {
             binding.screenTitle.visibility = View.VISIBLE
-            binding.screenTitle.text = "$count selected"
+            binding.screenTitle.text = resources.getQuantityString(R.plurals.selected_count, count, count)
             binding.menuBtn.setImageResource(R.drawable.ic_fluent_back_24_regular)
             binding.menuBtn.alpha = 1f
             binding.menuBtn.setOnClickListener { adapter.clearSelection() }
@@ -3034,10 +3032,14 @@ class MainActivity : AppCompatActivity() {
                 is DeleteCoordinator.Outcome.Done -> {
                     adapter.clearSelection()
                     refreshVisibleItems()
-                    val noun = if (outcome.succeeded == 1) "photo" else "photos"
-                    val verb = if (outcome.toBin) "moved to Bin" else "deleted"
                     val msg = buildString {
-                        append("${outcome.succeeded} $noun $verb")
+                        append(
+                            resources.getQuantityString(
+                                if (outcome.toBin) R.plurals.photos_moved_to_bin else R.plurals.photos_deleted,
+                                outcome.succeeded,
+                                outcome.succeeded
+                            )
+                        )
                         if (outcome.failed > 0) append(" · ${outcome.failed} failed")
                     }
                     if (outcome.toBin && outcome.binnedIds.isNotEmpty()) {

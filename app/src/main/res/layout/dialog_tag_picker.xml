@@ -28,7 +28,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="10dp"
             android:includeFontPadding="false"
-            android:text="Tags"
+            android:text="@string/tags"
             android:textAppearance="@style/TextAppearance.Metro.DialogTitle" />
     </LinearLayout>
 
@@ -38,7 +38,7 @@
         android:layout_marginTop="10dp"
         android:includeFontPadding="false"
         android:lineSpacingExtra="2dp"
-        android:text="Tap to select or create a new tag"
+        android:text="@string/tag_picker_subtitle"
         android:textAppearance="@style/TextAppearance.Metro.BodySecondary" />
 
     <HorizontalScrollView
@@ -60,7 +60,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="22dp"
         android:includeFontPadding="false"
-        android:text="New tag"
+        android:text="@string/label_new_tag"
         android:textAppearance="@style/TextAppearance.Metro.FieldLabel" />
 
     <LinearLayout
@@ -86,7 +86,7 @@
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:background="@android:color/transparent"
-            android:hint="Name your tag"
+            android:hint="@string/tag_name_hint"
             android:imeOptions="actionDone"
             android:importantForAutofill="no"
             android:inputType="text"
@@ -107,7 +107,7 @@
             android:includeFontPadding="false"
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
-            android:text="Add"
+            android:text="@string/add"
             android:textAppearance="@style/TextAppearance.Metro.ButtonLabel"
             android:textColor="?attr/accentColor" />
     </LinearLayout>
@@ -137,7 +137,7 @@
             android:minWidth="88dp"
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
-            android:text="Cancel"
+            android:text="@string/cancel"
             android:textAppearance="@style/TextAppearance.Metro.ButtonLabel"
             android:textColor="@color/metroTextSecondary" />
 
@@ -153,7 +153,7 @@
             android:minWidth="104dp"
             android:paddingStart="20dp"
             android:paddingEnd="20dp"
-            android:text="Save"
+            android:text="@string/save"
             android:textAppearance="@style/TextAppearance.Metro.ButtonLabel"
             android:textColor="@color/metroTextPrimary" />
     </LinearLayout>

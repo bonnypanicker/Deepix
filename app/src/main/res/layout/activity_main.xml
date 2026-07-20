@@ -47,7 +47,7 @@
                     android:paddingStart="16dp"
                     android:paddingEnd="56dp"
                     android:singleLine="true"
-                    android:text="collections"
+                    android:text="@string/collections_title"
                     android:textAppearance="@style/TextAppearance.Metro.ScreenTitle" />
 
                 <ImageButton
@@ -57,7 +57,7 @@
                     android:layout_gravity="end|center_vertical"
                     android:layout_marginEnd="12dp"
                     android:background="?android:attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="Add smart album"
+                    android:contentDescription="@string/add_smart_album"
                     android:padding="10dp"
                     android:src="@drawable/ic_fluent_add_24_regular"
                     android:tint="@color/metroTextPrimary"
@@ -82,7 +82,7 @@
                     android:layout_width="44dp"
                     android:layout_height="44dp"
                     android:background="?android:attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="Menu"
+                    android:contentDescription="@string/menu"
                     android:padding="10dp"
                     android:src="@drawable/ic_fluent_navigation_24_regular"
                     android:tint="@color/metroTextPrimary" />
@@ -92,7 +92,7 @@
                     android:layout_width="32dp"
                     android:layout_height="32dp"
                     android:layout_marginStart="2dp"
-                    android:contentDescription="Similar image"
+                    android:contentDescription="@string/similar_image"
                     android:scaleType="centerCrop"
                     android:visibility="gone" />
 
@@ -101,7 +101,7 @@
                     android:layout_width="22dp"
                     android:layout_height="22dp"
                     android:layout_marginStart="6dp"
-                    android:contentDescription="AI search"
+                    android:contentDescription="@string/ai_search"
                     android:src="@drawable/ic_deepix_ai_orb_24" />
 
                 <EditText
@@ -110,7 +110,7 @@
                     android:layout_height="match_parent"
                     android:layout_weight="1"
                     android:background="@android:color/transparent"
-                    android:hint="Search with AI"
+                    android:hint="@string/search_hint"
                     android:imeOptions="actionSearch"
                     android:inputType="text"
                     android:paddingStart="8dp"
@@ -125,7 +125,7 @@
                     android:layout_width="44dp"
                     android:layout_height="44dp"
                     android:background="?android:attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="Search"
+                    android:contentDescription="@string/search"
                     android:padding="11dp"
                     android:src="@drawable/ic_fluent_search_24_regular"
                     android:tint="@color/metroTextPrimary" />
@@ -189,7 +189,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginStart="7dp"
                             android:includeFontPadding="false"
-                            android:text="Sort &amp; filter"
+                            android:text="@string/sort_filter"
                             android:textColor="@color/metroTextPrimary"
                             android:textSize="12sp" />
                     </LinearLayout>
@@ -260,7 +260,7 @@
                     <ImageView
                         android:layout_width="24dp"
                         android:layout_height="24dp"
-                        android:contentDescription="Select all"
+                        android:contentDescription="@string/select_all"
                         android:src="@drawable/ic_fluent_select_all_24_regular"
                         android:tint="@color/metroTextPrimary" />
 
@@ -270,7 +270,7 @@
                         android:layout_marginTop="4dp"
                         android:includeFontPadding="false"
                         android:letterSpacing="0.04"
-                        android:text="select all"
+                        android:text="@string/select_all_lower"
                         android:textColor="@color/metroTextSecondary"
                         android:textSize="10sp" />
                 </LinearLayout>
@@ -289,7 +289,7 @@
                     <ImageView
                         android:layout_width="24dp"
                         android:layout_height="24dp"
-                        android:contentDescription="Share selected"
+                        android:contentDescription="@string/share_selected"
                         android:src="@drawable/ic_fluent_share_24_regular"
                         android:tint="@color/metroTextPrimary" />
 
@@ -299,7 +299,7 @@
                         android:layout_marginTop="4dp"
                         android:includeFontPadding="false"
                         android:letterSpacing="0.04"
-                        android:text="share"
+                        android:text="@string/share_lower"
                         android:textColor="@color/metroTextSecondary"
                         android:textSize="10sp" />
                 </LinearLayout>
@@ -318,7 +318,7 @@
                     <ImageView
                         android:layout_width="24dp"
                         android:layout_height="24dp"
-                        android:contentDescription="Move to Safe"
+                        android:contentDescription="@string/move_to_safe"
                         android:src="@drawable/ic_deepix_safe_24_regular"
                         android:tint="@color/metroTextPrimary" />
 
@@ -328,7 +328,7 @@
                         android:layout_marginTop="4dp"
                         android:includeFontPadding="false"
                         android:letterSpacing="0.04"
-                        android:text="safe"
+                        android:text="@string/safe_lower"
                         android:textColor="@color/metroTextSecondary"
                         android:textSize="10sp" />
                 </LinearLayout>
@@ -347,7 +347,7 @@
                     <ImageView
                         android:layout_width="24dp"
                         android:layout_height="24dp"
-                        android:contentDescription="Delete selected"
+                        android:contentDescription="@string/delete_selected"
                         android:src="@drawable/ic_fluent_delete_24_regular"
                         android:tint="@color/metroTextPrimary" />
 
@@ -357,7 +357,7 @@
                         android:layout_marginTop="4dp"
                         android:includeFontPadding="false"
                         android:letterSpacing="0.04"
-                        android:text="delete"
+                        android:text="@string/delete_lower"
                         android:textColor="@color/metroTextSecondary"
                         android:textSize="10sp" />
                 </LinearLayout>
@@ -392,7 +392,7 @@
                     android:id="@+id/bottomCollectionsIcon"
                     android:layout_width="26dp"
                     android:layout_height="26dp"
-                    android:contentDescription="Collection"
+                    android:contentDescription="@string/tab_collection"
                     android:src="@drawable/ic_deepix_collections_24_regular"
                     android:tint="?attr/accentColor" />
             </LinearLayout>
@@ -410,7 +410,7 @@
                     android:id="@+id/bottomVideosIcon"
                     android:layout_width="26dp"
                     android:layout_height="26dp"
-                    android:contentDescription="Videos"
+                    android:contentDescription="@string/tab_videos"
                     android:src="@drawable/ic_deepix_video_24_regular"
                     android:tint="@color/metroTextSecondary" />
             </LinearLayout>
@@ -428,7 +428,7 @@
                     android:id="@+id/bottomAlbumsIcon"
                     android:layout_width="26dp"
                     android:layout_height="26dp"
-                    android:contentDescription="Albums"
+                    android:contentDescription="@string/tab_albums"
                     android:src="@drawable/ic_deepix_albums_24_regular"
                     android:tint="@color/metroTextSecondary" />
             </LinearLayout>
@@ -446,7 +446,7 @@
                     android:id="@+id/bottomFavoritesIcon"
                     android:layout_width="26dp"
                     android:layout_height="26dp"
-                    android:contentDescription="Favorites"
+                    android:contentDescription="@string/tab_favorites"
                     android:src="@drawable/ic_deepix_favorite_24_regular"
                     android:tint="@color/metroTextSecondary" />
             </LinearLayout>
@@ -476,7 +476,7 @@
                 android:fontFamily="sans-serif-light"
                 android:includeFontPadding="false"
                 android:letterSpacing="0.08"
-                android:text="Loading your gallery"
+                android:text="@string/loading_gallery"
                 android:textAllCaps="true"
                 android:textColor="@color/metroTextSecondary"
                 android:textSize="13sp" />
@@ -495,57 +495,58 @@
         <TextView
             android:id="@+id/drawerCollection"
             style="@style/MetroDrawerItem"
-            android:text="collection" />
+            android:text="@string/drawer_collection" />
 
         <TextView
             android:id="@+id/drawerAlbums"
             style="@style/MetroDrawerItem"
-            android:text="albums" />
+            android:text="@string/drawer_albums" />
 
         <TextView
             android:id="@+id/drawerSearch"
             style="@style/MetroDrawerItem"
-            android:text="search" />
+            android:text="@string/drawer_search" />
 
         <TextView
             android:id="@+id/drawerFolders"
             style="@style/MetroDrawerItem"
-            android:text="folders" />
+            android:text="@string/drawer_folders" />
 
         <TextView
             android:id="@+id/drawerSafe"
             style="@style/MetroDrawerItem"
-            android:text="safe" />
+            android:text="@string/safe_lower" />
 
         <TextView
             android:id="@+id/drawerBin"
             style="@style/MetroDrawerItem"
-            android:text="recycle bin" />
+            android:text="@string/bin_title" />
 
         <TextView
             android:id="@+id/drawerSmartCleanup"
             style="@style/MetroDrawerItem"
-            android:text="smart cleanup" />
+            android:text="@string/smart_cleanup_title" />
 
         <TextView
             android:id="@+id/drawerIndex"
             style="@style/MetroDrawerItem"
-            android:text="start indexing" />
+            android:text="@string/drawer_start_indexing" />
 
         <TextView
             android:id="@+id/drawerSettings"
             style="@style/MetroDrawerItem"
-            android:text="settings" />
+            android:text="@string/settings_lower" />
 
         <TextView
             android:id="@+id/statusText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:accessibilityLiveRegion="polite"
             android:includeFontPadding="false"
             android:paddingStart="24dp"
             android:paddingTop="24dp"
             android:paddingEnd="24dp"
-            android:text="Waiting for gallery permission..."
+            android:text="@string/waiting_permission"
             android:textAllCaps="true"
             android:textColor="@color/metroTextSecondary"
             android:textSize="12sp" />

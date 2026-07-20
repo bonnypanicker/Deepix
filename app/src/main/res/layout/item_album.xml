@@ -30,7 +30,7 @@
             android:paddingTop="2dp"
             android:paddingEnd="6dp"
             android:paddingBottom="2dp"
-            android:text="AI"
+            android:text="@string/ai_badge"
             android:textAllCaps="true"
             android:textColor="@color/metroTextPrimary"
             android:textSize="10sp"

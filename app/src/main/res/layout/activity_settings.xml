@@ -24,7 +24,7 @@
                 android:layout_gravity="start|center_vertical"
                 android:layout_marginStart="6dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Back"
+                android:contentDescription="@string/back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
                 android:tint="@color/metroTextPrimary" />
@@ -48,14 +48,14 @@
                     android:layout_height="wrap_content"
                     android:fontFamily="sans-serif-light"
                     android:includeFontPadding="false"
-                    android:text="settings"
+                    android:text="@string/settings_lower"
                     android:textColor="@color/metroTextPrimary"
                     android:textSize="40sp" />
 
                 <!-- ===================== DISPLAY ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"
-                    android:text="DISPLAY" />
+                    android:text="@string/section_display" />
 
                 <LinearLayout
                     android:id="@+id/rowCollage"
@@ -63,7 +63,7 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="Collage layout" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/collage_layout" />
 
                     </LinearLayout>
 
@@ -93,11 +93,11 @@
 
                         <LinearLayout style="@style/SettingsRowText">
 
-                            <TextView style="@style/SettingsRowTitle" android:text="Thumbnail size" />
+                            <TextView style="@style/SettingsRowTitle" android:text="@string/thumbnail_size" />
 
                             <TextView
                                 style="@style/SettingsRowSubtitle"
-                                android:text="Size of photos in grid and collage layouts" />
+                                android:text="@string/thumbnail_size_subtitle" />
                         </LinearLayout>
 
                         <TextView
@@ -106,7 +106,7 @@
                             android:layout_height="wrap_content"
                             android:gravity="center"
                             android:minWidth="64dp"
-                            android:text="Medium"
+                            android:text="@string/size_medium"
                             android:textColor="?attr/accentColor"
                             android:textSize="13sp"
                             android:textStyle="bold" />
@@ -128,12 +128,12 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="Accent color" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/accent_color" />
 
                         <TextView
                             android:id="@+id/accentColorSubtitle"
                             style="@style/SettingsRowSubtitle"
-                            android:text="Azure" />
+                            android:text="@string/accent_azure" />
                     </LinearLayout>
 
                     <ImageView
@@ -152,7 +152,7 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="Pinned albums in Collections" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/pinned_albums_in_collections" />
 
                     </LinearLayout>
 
@@ -172,7 +172,7 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="Album folder size" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/album_folder_size" />
 
                     </LinearLayout>
 
@@ -187,7 +187,7 @@
                 <!-- ===================== INDEXING ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"
-                    android:text="INDEXING" />
+                    android:text="@string/section_indexing" />
 
                 <!-- Link to the dedicated Indexing page (status, folders, power, info) -->
                 <LinearLayout
@@ -196,12 +196,12 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="Indexing" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/indexing_label" />
 
                         <TextView
                             android:id="@+id/indexingSubtitle"
                             style="@style/SettingsRowSubtitle"
-                            android:text="Manage indexing" />
+                            android:text="@string/manage_indexing" />
                     </LinearLayout>
 
                     <ImageView
@@ -216,7 +216,7 @@
                 <TextView
                     android:id="@+id/privacyHeader"
                     style="@style/SettingsSectionHeader"
-                    android:text="PRIVACY" />
+                    android:text="@string/section_privacy" />
 
                 <LinearLayout
                     android:id="@+id/rowBlurSensitive"
@@ -224,7 +224,7 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="Blur sensitive content · Beta" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/blur_sensitive" />
 
                     </LinearLayout>
 
@@ -239,7 +239,7 @@
                 <!-- ===================== SAFE ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"
-                    android:text="SAFE" />
+                    android:text="@string/section_safe" />
 
                 <LinearLayout
                     android:id="@+id/rowSafeLocation"
@@ -247,12 +247,12 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="Safe storage location" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/safe_storage_location" />
 
                         <TextView
                             android:id="@+id/safeLocationSubtitle"
                             style="@style/SettingsRowSubtitle"
-                            android:text="Pictures" />
+                            android:text="@string/pictures" />
                     </LinearLayout>
 
                     <ImageView
@@ -266,7 +266,7 @@
                 <!-- ===================== STORAGE ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"
-                    android:text="STORAGE" />
+                    android:text="@string/section_storage" />
 
                 <LinearLayout
                     android:id="@+id/rowRecycleBin"
@@ -274,7 +274,7 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="Recycle bin" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/recycle_bin_label" />
 
                     </LinearLayout>
 
@@ -289,18 +289,18 @@
                 <!-- ===================== ABOUT ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"
-                    android:text="ABOUT" />
+                    android:text="@string/section_about" />
 
                 <LinearLayout style="@style/SettingsRow">
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="Deepix" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/app_name" />
 
                         <TextView
                             android:id="@+id/aboutVersion"
                             style="@style/SettingsRowSubtitle"
-                            android:text="Version" />
+                            android:text="@string/version" />
                     </LinearLayout>
                 </LinearLayout>
 
@@ -310,11 +310,11 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="On-device AI" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/on_device_ai" />
 
                         <TextView
                             style="@style/SettingsRowSubtitle"
-                            android:text="MobileCLIP-S2 · runs fully offline" />
+                            android:text="@string/on_device_ai_subtitle" />
                     </LinearLayout>
                 </LinearLayout>
             </LinearLayout>

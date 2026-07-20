@@ -41,22 +41,21 @@
                 android:fontFamily="sans-serif-medium"
                 android:includeFontPadding="false"
                 android:letterSpacing="0.04"
-                android:text="Create a smart album"
+                android:text="@string/create_smart_album"
                 android:textColor="@color/metroTextPrimary"
                 android:textSize="18sp" />
 
             <ImageView
                 android:id="@+id/onboardingDismissBtn"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
                 android:layout_marginStart="8dp"
-                android:layout_marginTop="2dp"
-                android:layout_marginEnd="-6dp"
+                android:layout_marginEnd="-14dp"
+                android:padding="12dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:clickable="true"
-                android:contentDescription="Dismiss"
+                android:contentDescription="@string/dismiss"
                 android:focusable="true"
-                android:padding="6dp"
                 android:src="@drawable/ic_fluent_dismiss_24_regular"
                 android:tint="@color/metroTextSecondary" />
         </LinearLayout>
@@ -68,7 +67,7 @@
             android:fontFamily="sans-serif"
             android:includeFontPadding="false"
             android:lineSpacingExtra="3dp"
-            android:text="Group photos automatically by describing them — like “beach sunsets”, “my dog”, or “birthday parties”. Your phone finds the matches for you, right on the device."
+            android:text="@string/smart_album_onboarding_body"
             android:textColor="@color/metroTextSecondary"
             android:textSize="14sp" />
 
@@ -84,7 +83,7 @@
             android:gravity="center"
             android:includeFontPadding="false"
             android:letterSpacing="0.04"
-            android:text="CREATE SMART ALBUM"
+            android:text="@string/create_smart_album_caps"
             android:textColor="@color/metroTextPrimary"
             android:textSize="13sp" />
     </LinearLayout>

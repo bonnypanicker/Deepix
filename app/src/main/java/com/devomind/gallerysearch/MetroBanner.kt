@@ -17,7 +17,8 @@ import androidx.core.content.ContextCompat
  */
 object MetroBanner {
 
-    private const val TAG_KEY = R.id.metro_banner_tag
+    // R.id values are resolved at resource-link time, not compile-time constants — must be val.
+    private val TAG_KEY = R.id.metro_banner_tag
 
     fun show(
         activity: Activity,

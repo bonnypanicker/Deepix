@@ -595,6 +595,19 @@ class ImageAdapter(
                 isSelected = isSelected,
                 animate = animate
             )
+            // TalkBack: announce what the tile is and whether it's selected.
+            val typeLabel = if (cell.item.mediaType == GalleryRepository.MediaType.Video) "Video" else "Photo"
+            val dateLabel = cell.item.displayName ?: ""
+            binding.root.contentDescription = if (dateLabel.isEmpty()) typeLabel else "$typeLabel, $dateLabel"
+            binding.root.isSelected = isSelected
+            ViewCompat.setStateDescription(
+                binding.root,
+                when {
+                    isSelected -> "Selected"
+                    selectionMode -> "Not selected"
+                    else -> null
+                }
+            )
             bindSearchBadges(cell.searchSources)
             if (cell.item.mediaType == GalleryRepository.MediaType.Video) {
                 binding.videoBadge.visibility = View.VISIBLE

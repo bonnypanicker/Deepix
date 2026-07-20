@@ -70,7 +70,7 @@
                 android:layout_height="12dp"
                 android:src="@drawable/ic_fluent_play_24_regular"
                 android:tint="@color/metroTextPrimary"
-                android:contentDescription="Video" />
+                android:contentDescription="@string/video" />
             <TextView
                 android:id="@+id/leadDurationText"
                 android:layout_width="wrap_content"
@@ -152,7 +152,7 @@
                     android:layout_height="12dp"
                     android:src="@drawable/ic_fluent_play_24_regular"
                     android:tint="@color/metroTextPrimary"
-                    android:contentDescription="Video" />
+                    android:contentDescription="@string/video" />
                 <TextView
                     android:id="@+id/topRightDurationText"
                     android:layout_width="wrap_content"
@@ -227,7 +227,7 @@
                     android:layout_height="12dp"
                     android:src="@drawable/ic_fluent_play_24_regular"
                     android:tint="@color/metroTextPrimary"
-                    android:contentDescription="Video" />
+                    android:contentDescription="@string/video" />
                 <TextView
                     android:id="@+id/bottomRightDurationText"
                     android:layout_width="wrap_content"
