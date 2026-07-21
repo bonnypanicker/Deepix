@@ -7,7 +7,10 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import java.nio.LongBuffer
 
-class TextEncoder(context: Context) : AutoCloseable {
+class TextEncoder(
+    context: Context,
+    threadCount: Int = OnnxSessionOptions.DefaultThreadCount
+) : AutoCloseable {
     private val environment: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
     private val inputIdsName: String

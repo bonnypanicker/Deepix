@@ -6,7 +6,7 @@ object IndexPreferences {
     private const val PrefName = "index_prefs"
     private const val KeyLastIndexed = "last_indexed_time"
     private const val KeyOptimalThreads = "optimal_thread_count"
-private const val KeyIndexBatchSizeOverride = "index_batch_size_override"
+    private const val KeyIndexBatchSizeOverride = "index_batch_size_override"
     private const val KeyShowPinnedCollections = "show_pinned_collections"
     private const val KeyGridColumnCount = "grid_column_count"
     private const val KeyCollageScale = "collage_scale_level"
@@ -235,6 +235,20 @@ private const val KeyIndexBatchSizeOverride = "index_batch_size_override"
     fun getOptimalThreadCount(context: Context): Int {
         return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .getInt(KeyOptimalThreads, 0)
+    }
+
+    /** Returns the OOM-persisted batch size override, or 0 if none has been saved. */
+    fun getIndexBatchSizeOverride(context: Context): Int {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getInt(KeyIndexBatchSizeOverride, 0)
+    }
+
+    /** Persist a reduced batch size after an OOM so the next indexing run uses it. */
+    fun saveIndexBatchSizeOverride(context: Context, size: Int) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KeyIndexBatchSizeOverride, size)
+            .apply()
     }
 
     fun isShowPinnedInCollections(context: Context): Boolean {

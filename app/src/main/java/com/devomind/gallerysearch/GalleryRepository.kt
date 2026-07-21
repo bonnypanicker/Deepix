@@ -1,5 +1,6 @@
 package com.devomind.gallerysearch
 
+import android.app.ActivityManager
 import android.content.ContentUris
 import android.content.Context
 import android.graphics.Bitmap
