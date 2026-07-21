@@ -128,24 +128,3 @@ object ThreadBenchmark {
         return floats
     }
 }
-me() - start) / 1_000_000 // ms
-        } finally {
-            session.close()
-        }
-    }
-
-    /**
-     * Creates a synthetic 256×256 image tensor (all mid-gray).
-     * We don't need a real image — we're measuring compute throughput, not accuracy.
-     */
-    private fun createSyntheticInput(env: OrtEnvironment): FloatArray {
-        val size = ImageEncoder.ImageSize
-        val planeSize = size * size
-        val floats = FloatArray(3 * planeSize)
-        // Fill with 0.5 (mid-gray, normalized)
-        for (i in floats.indices) {
-            floats[i] = 0.5f
-        }
-        return floats
-    }
-}
