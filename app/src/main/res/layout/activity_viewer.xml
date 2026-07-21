@@ -45,36 +45,10 @@
                 android:src="@drawable/ic_fluent_back_24_regular"
                 android:tint="@color/metroTextPrimary" />
 
-            <LinearLayout
+            <View
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:layout_marginEnd="6dp"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:id="@+id/fileNameText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:ellipsize="middle"
-                    android:includeFontPadding="false"
-                    android:singleLine="true"
-                    android:textColor="@color/metroTextPrimary"
-                    android:textSize="16sp" />
-
-                <TextView
-                    android:id="@+id/mediaDate"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:ellipsize="end"
-                    android:includeFontPadding="false"
-                    android:paddingTop="2dp"
-                    android:singleLine="true"
-                    android:textColor="@color/metroTextSecondary"
-                    android:textSize="12sp"
-                    android:visibility="gone" />
-            </LinearLayout>
+                android:layout_height="1dp"
+                android:layout_weight="1" />
 
             <ImageButton
                 android:id="@+id/favoriteBtn"
@@ -105,6 +79,41 @@
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_more_24_regular"
                 android:tint="@color/metroTextPrimary" />
+        </LinearLayout>
+
+        <!-- Screen-centered capture date; sits between the side button groups. -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/mediaDate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false"
+                android:letterSpacing="0.01"
+                android:singleLine="true"
+                android:textColor="@color/metroTextPrimary"
+                android:textSize="15sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/mediaTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:letterSpacing="0.02"
+                android:paddingTop="1dp"
+                android:singleLine="true"
+                android:textColor="@color/metroTextSecondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
         </LinearLayout>
     </FrameLayout>
 

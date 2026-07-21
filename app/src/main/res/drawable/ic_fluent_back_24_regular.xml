@@ -1,7 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Metro back arrow: sharp butt-capped strokes, miter joins. Tinted at usage sites. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M10.7,5.3L4,12l6.7,6.7l1.1,-1.1L7,12.8h13v-1.6H7l4.8,-4.8z"/>
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M21,12H4.2"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.6" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M10.8,5.4L4.2,12l6.6,6.6"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineJoin="miter"
+        android:strokeWidth="1.6" />
 </vector>

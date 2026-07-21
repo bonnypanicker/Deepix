@@ -1,7 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Metro overflow: three true circles, evenly spaced on the vertical axis. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M12,8a2,2 0,1 0,0 -0.1zM12,14a2,2 0,1 0,0 -0.1zM12,20a2,2 0,1 0,0 -0.1z"/>
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,3.8m-1.7,0a1.7,1.7 0,1 0,3.4 0a1.7,1.7 0,1 0,-3.4 0" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,12m-1.7,0a1.7,1.7 0,1 0,3.4 0a1.7,1.7 0,1 0,-3.4 0" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,20.2m-1.7,0a1.7,1.7 0,1 0,3.4 0a1.7,1.7 0,1 0,-3.4 0" />
 </vector>

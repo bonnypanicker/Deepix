@@ -58,7 +58,8 @@ class ViewerActivity : AppCompatActivity() {
     private var controlsVisible = true
     private var infoVisible = false
     private var contentChanged = false
-    private val bottomDateFormat = SimpleDateFormat("MMMM d, yyyy  •  h:mm a", Locale.getDefault())
+    private val topDateFormat = SimpleDateFormat("MMMM d, yyyy", Locale.getDefault())
+    private val topTimeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
     private val infoDateFormat = SimpleDateFormat("MMMM d, yyyy  h:mm a", Locale.getDefault())
     private val autoHideHandler = Handler(Looper.getMainLooper())
     private val autoHideRunnable = Runnable { setControlsVisible(false) }
@@ -322,7 +323,9 @@ class ViewerActivity : AppCompatActivity() {
         val uri = item.uri
         val isVideo = item.mediaType == GalleryRepository.MediaType.Video
 
-        binding.fileNameText.text = stripExtension(item.displayName)
+        // Date is bound from metadata below; clear stale text from the previous page immediately.
+        binding.mediaDate.visibility = View.GONE
+        binding.mediaTime.visibility = View.GONE
         renderFavoriteState(favoritesStore.isFavorite(uri))
 
         setEditAction(isVideo = isVideo, playing = false)
@@ -651,12 +654,15 @@ class ViewerActivity : AppCompatActivity() {
 
     private fun bindMetadata(metadata: PhotoMetadata, exif: ExifData?, tags: List<com.devomind.gallerysearch.db.TagEntity>) {
         val name = metadata.displayName ?: "Photo"
-        binding.fileNameText.text = stripExtension(name)
         if (metadata.dateMillis > 0L) {
+            val date = Date(metadata.dateMillis)
             binding.mediaDate.visibility = View.VISIBLE
-            binding.mediaDate.text = bottomDateFormat.format(Date(metadata.dateMillis))
+            binding.mediaDate.text = topDateFormat.format(date)
+            binding.mediaTime.visibility = View.VISIBLE
+            binding.mediaTime.text = topTimeFormat.format(date)
         } else {
             binding.mediaDate.visibility = View.GONE
+            binding.mediaTime.visibility = View.GONE
         }
 
         setInfoRow(binding.rowFilename, "Filename", name)
@@ -780,7 +786,11 @@ class ViewerActivity : AppCompatActivity() {
             if (isFavorite) R.drawable.ic_fluent_heart_24_filled else R.drawable.ic_fluent_heart_24_regular
         )
         binding.favoriteBtn.imageTintList = android.content.res.ColorStateList.valueOf(
-            if (isFavorite) Color.parseColor("#FF6B8A") else Color.WHITE
+            if (isFavorite) {
+                androidx.core.content.ContextCompat.getColor(this, R.color.metroFavorite)
+            } else {
+                Color.WHITE
+            }
         )
     }
 
@@ -857,13 +867,6 @@ class ViewerActivity : AppCompatActivity() {
         val lp = binding.infoScroll.layoutParams
         lp.height = if (maxScroll in 1 until natural) maxScroll else android.view.ViewGroup.LayoutParams.WRAP_CONTENT
         binding.infoScroll.layoutParams = lp
-    }
-
-    private fun stripExtension(name: String?): String {
-        val trimmed = name?.trim().orEmpty()
-        if (trimmed.isEmpty()) return "Photo"
-        val dot = trimmed.lastIndexOf('.')
-        return if (dot > 0) trimmed.substring(0, dot) else trimmed
     }
 
     private var infoPanelDownY = 0f

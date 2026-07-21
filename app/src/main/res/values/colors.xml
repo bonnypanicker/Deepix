@@ -28,6 +28,7 @@
     <color name="metroDimScrim">#66000000</color>
     <color name="metroDanger">#FFE5484D</color>
     <color name="metroWarning">#FFFFC24B</color>
+    <color name="metroFavorite">#FFFF6B8A</color>
 
     <!-- Legacy alias kept for compatibility -->
     <color name="black">#FF000000</color>
