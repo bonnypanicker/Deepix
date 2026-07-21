@@ -8,19 +8,19 @@ Use this for targeted lookups. Format: `SymbolName` | file | signature/notes
 
 ```
 GallerySearchApp          GallerySearchApp.kt      Application; owns SharedEncoders (lazy)
-SharedEncoders            GallerySearchApp.kt      getImageEncoder(): ImageEncoder; getTextEncoder(): TextEncoder
-ImageEncoder              ImageEncoder.kt          encode(Bitmap): FloatArray; encodeBatch(List<Bitmap>): List<FloatArray>; preprocess(Bitmap): FloatArray
-TextEncoder               TextEncoder.kt           encode(query: String): FloatArray; val tokenizer: ClipTokenizer
+SharedEncoders            GallerySearchApp.kt      getImageEncoder(): ImageEncoder; getTextEncoder(): TextEncoder — passes cached ThreadBenchmark count (fallback DefaultThreadCount) to both ctors
+ImageEncoder              ImageEncoder.kt          ctor(context, threadCount=DefaultThreadCount); encode(Bitmap): FloatArray; encodeBatch(List<Bitmap>): List<FloatArray>; preprocess(Bitmap): FloatArray; internal resolveVisionModelAssetName(context) (shared with ThreadBenchmark)
+TextEncoder               TextEncoder.kt           ctor(context, threadCount=DefaultThreadCount); encode(query: String): FloatArray; val tokenizer: ClipTokenizer
 ClipTokenizer             ClipTokenizer.kt         encode(query: String): TokenizedText; ContextLength=77; prepends "a photo of "
-GalleryRepository         GalleryRepository.kt     loadSnapshot(); search(); buildIndex(); semanticSearch(); loadIndex()
+GalleryRepository         GalleryRepository.kt     loadSnapshot(); search(); buildIndex(); semanticSearch(); loadIndex(); instance batchSize/pipelineBuffer via computeBatchSize()
   MediaItem               GalleryRepository.kt     data class: uri,bucketId,bucketName,dateMillis,width,height,mimeType,displayName,mediaType,durationMillis,path
   Album                   GalleryRepository.kt     data class: id,name,count,coverUri,isSmart
   SemanticSearchHit       GalleryRepository.kt     data class: uri: Uri, score: Float
   Snapshot                GalleryRepository.kt     data class: albums,imageItems,collectionItems,videoItems
 DbRepository              DbRepository.kt          upsertMedia(); toggleFavorite(); upsertExif(); addTag(); setTagsForMedia()
-IndexWorker               IndexWorker.kt           CoroutineWorker; WorkName="gallery_background_index"; BatchSize via GalleryRepository
+IndexWorker               IndexWorker.kt           CoroutineWorker; WorkName="gallery_background_index"; runs ThreadBenchmark before encoder load; OOM → batch override 2 + retry
 IndexControlReceiver      IndexControlReceiver.kt  ActionPause/ActionResume broadcasts; pendingIntent()
-IndexPreferences          IndexPreferences.kt      save/loadLastIndexedTime; isIndexPaused/setIndexPaused; getGridColumnCount; getSafeStorageRoot/setSafeStorageRoot (SAFE_ROOT_PICTURES|SAFE_ROOT_DOCUMENTS)
+IndexPreferences          IndexPreferences.kt      save/loadLastIndexedTime; isIndexPaused/setIndexPaused; getGridColumnCount; getSafeStorageRoot/setSafeStorageRoot (SAFE_ROOT_PICTURES|SAFE_ROOT_DOCUMENTS); getOptimalThreadCount/saveOptimalThreadCount; getIndexBatchSizeOverride/saveIndexBatchSizeOverride (0=auto)
 IndexScopeStore           IndexScopeStore.kt       getFolderIds/setFolderIds/isAllFolders (empty=all); AI-index folder scope, independent of gallery view
 IndexedFoldersActivity    IndexedFoldersActivity.kt  Settings folder picker → IndexScopeStore + IndexController.rescan
 PhotoEditorActivity       PhotoEditorActivity.kt   in-app editor (crop/perspective/draw/adjust); Save + Save a copy; ExtraUri/ExtraName/ExtraEdited
@@ -42,7 +42,7 @@ PhotoSearchResult         MetadataSearch.kt        item: MediaItem, sources: Sea
 SearchSources             MetadataSearch.kt        data class: ai: Boolean, metadata: Boolean
 EmbeddingUtils            EmbeddingUtils.kt        l2Normalize(FloatArray): FloatArray; cosineSimilarity(a,b): Float
 OnnxOutput                OnnxOutput.kt            flattenFloatArray(value: Any): FloatArray
-OnnxSessionOptions        OnnxSessionOptions.kt    create(tag,threadCount=4): OrtSession.SessionOptions — NNAPI disabled
+OnnxSessionOptions        OnnxSessionOptions.kt    DefaultThreadCount=4 (public); create(tag,threadCount=DefaultThreadCount): OrtSession.SessionOptions — NNAPI disabled
 DesignTokens              DesignTokens.kt          (see CONTEXT.md for key values)
 StickyHeaderDecoration    StickyHeaderDecoration.kt  RecyclerView.ItemDecoration
 ThumbnailScaleGestureListener  ThumbnailScaleGestureListener.kt  pinch-to-resize; emits onZoom(zoomIn) step (grid columns OR collage scale)
@@ -56,7 +56,7 @@ FolderNode                FolderNode.kt            data class: name, path, child
 ExifData                  ExifData.kt              data class; hasCameraInfo: Boolean; hasGps: Boolean
 ExifExtractor             ExifExtractor.kt         extract(context, uri): ExifData
 TagPickerDialog           TagPickerDialog.kt       AlertDialog subclass for tag assignment
-ThreadBenchmark           ThreadBenchmark.kt       benchmarks optimal ORT thread count
+ThreadBenchmark           ThreadBenchmark.kt       getOrBenchmark(context): Int — one-time ORT intra-op tuning (1/2/4/6, synthetic input, mutex-guarded), cached in IndexPreferences; called from MainActivity.ensureEncodersLoaded + IndexWorker.doWork before encoder construction; benchmarks ImageEncoder.resolveVisionModelAssetName's asset
 SmartCleanupActivity      SmartCleanupActivity.kt   dedicated cleanup screen; reads CleanupResultStore, observes CleanupWorker; tiles + selectable grid; pause/resume/stop
 CleanupAnalyzer           CleanupAnalyzer.kt        object; analyze(items,embeddings,sizeByUri,encodeText,imageStats,onProgress,onPartial,resumeQuality,scannedUris): Report
   Category                CleanupAnalyzer.kt        DUPLICATES|SIMILAR|LIKELY_CLUTTER|SCREENSHOTS|DOCUMENTS|RECEIPTS|QR_CODES|BLURRY|DARK|BRIGHT|LOW_RESOLUTION
@@ -116,7 +116,7 @@ DesignTokens.collageRowsPerWidth(level): Float                      // level 1..
 MainActivity: startSearchHintCycle()/stopSearchHintCycle()/cycleSearchHint() // "alive" search bar: crossfades AI/metadata/indexing hints while empty
 MainActivity: searchHints(): List<CharSequence>                    // AI(sparkle) + Metadata + live "Indexing • N%" when a pass runs
 MainActivity: hintWithSparkle(text)                                // prepends accent ic_fluent_sparkle ImageSpan to a hint
-MainActivity: ensureEncodersLoaded(warmupDelayMs): CompletableDeferred<Boolean> // idempotent lazy CLIP load; awaited by search paths
+MainActivity: ensureEncodersLoaded(warmupDelayMs): CompletableDeferred<Boolean> // idempotent lazy CLIP load; awaited by search paths; runs ThreadBenchmark first
 MainActivity: shouldRunBackgroundIndexing(): Boolean               // true when index pass should run (also gates eager encoder warm-up)
 MainActivity: renderPagedTimeline(items,emptyText,contextKey,prefix) // incremental browse grid — first page fast, rest on scroll
 MainActivity: paginateBrowse()                                     // appends next timeline page near bottom
@@ -130,6 +130,19 @@ ViewerActivity.ExtraFindSimilarCrop                                // FloatArray
 CropOverlayView.setImageBounds(RectF)/normalizedSelection()        // interactive crop rect (draw/resize/move); region image-search
 RotatablePhotoView.resetRotation()                                 // PhotoView subclass: two-finger twist rotates photo, snaps to nearest 90° (View.rotation, about centre); reset on bind
 RotationGestureDetector(Listener)                                  // two-finger twist detector → onRotationBegin/onRotation(deltaDeg)/onRotationEnd
+
+---
+
+## Indexing perf pass additions
+
+```
+GalleryRepository.loadBitmap(uri): Bitmap?                          // delegates to decodeOrientedBitmap(uri, MaxBitmapEdge): two-pass bounds decode ≤512px + EXIF orientation
+GalleryRepository.computeBatchSize(): Int                           // override (IndexPreferences) > isLowRamDevice→2 > memoryClass≥192→6 > else 4
+GalleryRepository.batchSize / pipelineBuffer                        // instance vals (pipelineBuffer = 1 when batchSize ≤ 2, else 2)
+IndexPreferences.getIndexBatchSizeOverride()/saveIndexBatchSizeOverride()  // 0 = auto-scale; set to 2 on OOM in IndexWorker
+SharedEncoders.optimalThreadCount()                                 // cached ThreadBenchmark pref, fallback OnnxSessionOptions.DefaultThreadCount
+ImageEncoder.resolveVisionModelAssetName(context)                   // now internal — shared by ThreadBenchmark
+```
 
 ---
 
@@ -186,10 +199,11 @@ ContextLength     = 77
 PhotoPrefix       = "a photo of "
 
 // GalleryRepository.kt
-BatchSize         = 4
+batchSize         = 2|4|6   // instance val: isLowRamDevice→2, memoryClass≥192→6, else 4; IndexPreferences override wins
+pipelineBuffer    = 1|2     // instance val: 1 when batchSize ≤ 2, else 2
 SaveEvery         = 20
 MaxBitmapEdge     = 512
-IndexMagic        = 0x47534958   IndexVersion = 2
+IndexMagic        = 0x47534958   IndexVersion = 3   // v3: EXIF-oriented, bounds-sampled decodes
 MetadataIndexMagic = 0x474d4458  MetadataIndexVersion = 1
 
 // SmartAlbumStore.kt
@@ -197,7 +211,10 @@ SMART_PREFIX      = "smart:"
 MAX_SMART_MEMBERS = 800
 
 // OnnxSessionOptions.kt
-DefaultThreadCount = 4
+DefaultThreadCount = 4   // public; fallback until ThreadBenchmark cache exists
+
+// ThreadBenchmark.kt
+ThreadCandidates  = [1, 2, 4, 6]   WarmUpRuns = 3   MeasureRuns = 5
 
 // Safe (encrypted photo locker)
 SafeStore.PbkdfIterations = 120_000   SafeStore.SaltBytes = 16

@@ -12,7 +12,7 @@
 
 | File | Role |
 |---|---|
-| `GallerySearchApp` | Application class. Owns `SharedEncoders` (lazy singleton for ONNX sessions) |
+| `GallerySearchApp` | Application class. Owns `SharedEncoders` (lazy singleton for ONNX sessions; thread count from cached `ThreadBenchmark` result, default 4) |
 | `MainActivity` | God activity: browse/search/album/smart-album/folder modes, WorkManager orchestration, all UI state, Smart Cleanup launch, revamped search (filter chips + sort/filter sheet + image-to-image). Owns the **persistent top search box** (used in both browse + search), full-screen **loading overlay** (faded out on first render), **justified-rows collage** builder, **auto-pin defaults** + albums **onboarding card** |
 | `ViewerActivity` | Full-screen pager: spring-physics swipe-to-dismiss (single-finger gated), Metro **key-value Info bottom sheet** (filename/date/size/dims/duration/location/device/lens/settings/path/tags), top-bar title+date, favorite/info/overflow actions, flat bottom action row (Share/Edit/Wallpaper/Delete), **Find similar** (image-to-image), Metro delete dialog, video controls |
 | `SmartCleanupActivity` | Dedicated Metro screen: CLIP-detected clutter tiles + storage summary, per-category selectable grid, MediaStore delete. Reads `CleanupResultStore`, observes `CleanupWorker`; progress bar + pause/resume/stop |
@@ -29,9 +29,10 @@
 | `CleanupHandoff` | Strong-ref hand-off of candidate image list + indexedCount to `SmartCleanupActivity` (mirrors `ViewerItemsHolder`) |
 | `GalleryRepository` | Data + AI core: MediaStore queries, embedding index (binary file), metadata index, search |
 | `DbRepository` | Room facade: media metadata, EXIF, favorites, tags, tag-media cross-refs |
-| `ImageEncoder` | MobileCLIP S2 FP16 vision ONNX. Input: `[N,3,256,256]` CHW float. Output: L2-norm embedding |
-| `TextEncoder` | MobileCLIP text INT8 ONNX. Wraps `ClipTokenizer`. Output: L2-norm embedding |
+| `ImageEncoder` | MobileCLIP S2 FP16 vision ONNX. Input: `[N,3,256,256]` CHW float. Output: L2-norm embedding. Ctor takes `threadCount` |
+| `TextEncoder` | MobileCLIP text INT8 ONNX. Wraps `ClipTokenizer`. Output: L2-norm embedding. Ctor takes `threadCount` |
 | `ClipTokenizer` | Pure-Kotlin BPE tokenizer. Context length 77. Prepends `"a photo of "` automatically |
+| `ThreadBenchmark` | One-time ORT intra-op thread-count tuning (tries 1/2/4/6 on a synthetic input), result cached in `IndexPreferences`. Runs before encoder construction in `MainActivity.ensureEncodersLoaded` + `IndexWorker.doWork`; mutex-guarded against first-launch races; benchmarks the same asset `ImageEncoder.resolveVisionModelAssetName` picks |
 | `IndexWorker` | `CoroutineWorker` (WorkManager). Foreground service. Pause/resume via `IndexControlReceiver` |
 | `QueryExpander` | Weighted embedding from WordNet synonyms/hypernyms/hyponyms (weights: 1.0/0.85/0.6/0.5) |
 | `StructuredSearch` | Query parser: extracts filter chips (favorite, album, mime, ext, date, tag, EXIF, ISO, focal) |
@@ -40,10 +41,10 @@
 | `AlbumPinStore` | SharedPreferences JSON array of pinned album IDs (ordered). Tracks an `initialized` flag so default pins apply only once |
 | `SmartAlbumStore` | SharedPreferences JSON array of smart album definitions (name, prompt, member Uris, cover) |
 | `FavoritesStore` | Wraps Room `FavoriteDao`. Migrates legacy SharedPrefs on first run |
-| `IndexPreferences` | SharedPrefs: selected albums, last-indexed timestamp, thread count, grid columns, layout mode |
+| `IndexPreferences` | SharedPrefs: last-indexed timestamp, tuned thread count, indexing batch-size override, grid columns, layout mode |
 | `DesignTokens` | All constants: sizes, durations, caps, column counts, thresholds |
 | `WordNetExpansionDictionary` | Loads `photo_synonyms.json.gz` from assets at runtime |
-| `OnnxSessionOptions` | Creates ORT sessions: 4 threads, ALL_OPT, NNAPI intentionally disabled |
+| `OnnxSessionOptions` | Creates ORT sessions: configurable intra-op threads (`DefaultThreadCount = 4` fallback), ALL_OPT, NNAPI intentionally disabled |
 | `EmbeddingUtils` | `l2Normalize()` + `cosineSimilarity()` (dot product on pre-normalized vectors) |
 | `FastScrollIndicator` | Custom View: animated thumb, track line, 64dp touch target from right edge. Tracks on every scroll (drag/fling/programmatic); drag jumps via `scrollToPositionWithOffset` (smooth on variable-height grids) |
 | `StickyHeaderDecoration` | RecyclerView `ItemDecoration` for floating date headers |
@@ -58,12 +59,17 @@
 **Consent-gated:** indexing never auto-starts. First launch shows a one-time plain-language consent dialog (battery note + "search by describing your photos") with Start now / Choose folders / Not now. `IndexPreferences.isIndexConsentGiven` gates `maybeStartBackgroundIndexing()`. Side panel item toggles start ↔ pause ↔ resume (`onIndexDrawerAction` + `updateIndexDrawerLabel`). Settings "index only while charging" adds a `Constraints.setRequiresCharging(true)` to the work request. **All** enqueue paths (initial start, settings re-apply, notification "Resume") build the request through the single `IndexWorker.buildWorkRequest(context, selection)`, which reads `IndexPreferences.isChargingOnlyIndexing` at build time.
 ```
 IndexWorker.doWork()
+  → ThreadBenchmark.getOrBenchmark(context)   [one-time; cached in prefs; mutex-guarded]
+  → SharedEncoders.getImageEncoder()          [reads cached optimal thread count]
   → scope = IndexScopeStore.getFolderIds() (empty = all folders)
   → GalleryRepository.getImageUrisForAlbumIds(scope)  [MediaStore, full in-scope set]
   → GalleryRepository.buildIndex(uris, onProgress)
-      → chunked into batches of 4 (BatchSize)
-      → producer coroutine: loads bitmaps, scales to max 512px edge
+      → chunked into device-scaled batches: isLowRamDevice→2, memoryClass≥192→6, else 4
+        (OOM-persisted override via IndexPreferences.getIndexBatchSizeOverride wins)
+      → producer coroutine: two-pass bounds decode (inJustDecodeBounds → power-of-2
+        inSampleSize) straight to ≤512px max edge + EXIF orientation applied
       → ImageEncoder.encodeBatch(bitmaps) → [N,3,256,256] ORT inference
+        (batch failure falls back to per-image encode)
       → saves every 20 items (SaveEvery)
   → GalleryRepository.rebuildMetadataIndex(allImages)
   → DbRepository.upsertMedia(allImages)
@@ -215,7 +221,9 @@ Key derivation & biometric:
 ```
 
 ### Index Storage
-- **Embedding index:** `filesDir/embedding_index.bin` — custom binary (magic `0x47534958`, v2)
+- **Embedding index:** `filesDir/embedding_index.bin` — custom binary (magic `0x47534958`, v3;
+  v3 = embeddings from EXIF-oriented, bounds-sampled decodes — pre-v3 files are discarded on load
+  and rebuilt by the next index run)
   - Format: `[magic][version][count]` then per-entry `[uriByteLen][uriBytes][embDim][floats...]`
 - **Metadata index:** `filesDir/metadata_index.bin` — custom binary (magic `0x474d4458`, v1)
 - **Cleanup results:** `filesDir/cleanup_results.json` — per-category uris + suggested + scannedUris + progress (written by `CleanupWorker`)
@@ -307,7 +315,7 @@ SAF tree grant (`takePersistableUriPermission`). `SafeActivity` is `excludeFromR
 2. **Video shared element** — `startPostponedEnterTransition()` must be called after thumbnail load in `ViewerActivity`
 3. **Glide black square thumbnails** for videos — must use `RequestOptions.frameOf(0)` or equivalent
 4. **Index corrupt recovery** — `loadIndex()` wraps in `runCatching`, deletes corrupt file, returns empty map
-5. **Batch OOM fallback** — `IndexWorker` catches `OutOfMemoryError`, returns `Result.failure()`
+5. **Batch OOM fallback** — `IndexWorker` catches `OutOfMemoryError`, persists a batch-size override of 2 (`IndexPreferences.saveIndexBatchSizeOverride`) and retries (≤ `MaxRetryCount`); `buildIndex` also falls back from batch to per-image encode on any batch failure
 6. **FavoritesStore migration** — legacy SharedPrefs → Room migration runs in `init` block on IO dispatcher
 7. **Smart albums not visible in Collections page pinned header** — `renderMediaSection` was building `pinnedAlbums` from `albums` only (MediaStore), missing smart albums. Fixed by using `albumById` merge (real + smart) same as `renderAlbums()`.
 8. **Viewer image spinner timing** — `photoView.post {}` hid the spinner before Glide finished decoding. Now driven by a Glide `RequestListener` (`onResourceReady`/`onLoadFailed`), which also fires `startPostponedEnterTransition()`.
@@ -339,6 +347,7 @@ SAF tree grant (`takePersistableUriPermission`). `SafeActivity` is `excludeFromR
 32. **Indexed-folder selection rebuilt (was "album scope")** — the old drawer "album scope" restricted the *whole gallery view* and its dialog fed `selectedAlbumIds` into indexing; the incremental path (`getNewImageUris` + `buildIndex(newOnly)`) also wiped the index on new photos. Removed entirely (drawer item, `showAlbumSelector`, `selectedAlbumIds`, `IndexPreferences.save/loadSelectedAlbums`, `LibrarySnapshot.selectedAlbumIds`, `getNewImageUris`, `SelectedAlbumIdsKey`). Fresh model: `IndexScopeStore` (empty = all folders incl. future) drives **only** `IndexWorker`; the gallery view always shows every photo. New `IndexedFoldersActivity` (Settings › Indexing › Indexed folders) with an "All folders" master switch + per-folder toggles. `IndexWorker` always indexes the full in-scope set and `buildIndex` reconciles (encodes added, prunes removed + persists the prune), so checking/unchecking folders deterministically adds/removes them from search. Scope changes trigger `IndexController.rescan` (REPLACE).
 35. **Multi-select refactor (Metro command bar + squared tick)** — long-press selection was off-theme: a floating rounded pill (`pill_bg`, 26dp corners) hovering over the grid + an oval `✓`-glyph badge (`selection_badge_bg`). Now selection uses a flat, full-width **command bar** (`selectionBar` in `activity_main.xml`: select all / share / delete as icon+caption commands) that **replaces the bottom nav** while selecting — `renderSelectionState` toggles `selectionBar` ↔ `bottomPanel` (honors the system nav inset like the nav does; old 84dp pill margin hack removed). The tick is now a **squared** accent chip (`selection_badge_bg` oval→3dp rounded-square + 1.5dp black hairline for legibility) holding a crisp **vector** checkmark (`ic_fluent_checkmark_24_regular`), `checkBadge` views changed `TextView`→`ImageView`. A 3dp accent **frame** (`selection_frame.xml`) outlines the selected thumbnail; **unselected tiles are left untouched (no dim scrim)** for a purer WP10 look. Animation switched from `OvershootInterpolator` bounce to a 120ms decelerate that runs **only on a genuine toggle** (payload path) — the tick no longer pops on recycle/scroll. Grid + collage share `ImageAdapter.bindSelectionVisual(dimScrim, selectionFrame, checkBadge, isSelected, animate)`.
 36. **Safe reset + relocatable vault** — after reinstall with a leftover `DeepixSafe.zip` whose password was forgotten, `setUpVault` returned `WRONG_PASSWORD` in an infinite loop (`startSetup` → reject → `startSetup`), and "Remove Safe from this device" only cleared app config (`SafeStore.reset`) without deleting the zip, so it never broke the loop. Now `WRONG_PASSWORD` shows `offerResetOrphanedVault` ("Delete & start over" via `SafeManager.purgeVault`, which wipes the zip across **all** known roots + config + thumbnails, then fresh `CREATED`), and the lock screen gains a "Forgot password?" link to the same escape. The vault path is no longer hard-coded: `SafeManager.vaultDir`/`masterZip`/`archiveExists`/`vaultLocationLabel` are context-aware, reading the root (`pictures`|`documents`) from `IndexPreferences.getSafeStorageRoot` (stored in `index_prefs`, so it survives `SafeStore.reset`). A new Settings › **SAFE** section switches the storage location; switching **moves** an existing configured vault (`SafeManager.moveVault`, rename→copy fallback) so no data is lost, and surfaces the actual file path. The setup dialog now shows the resolved path (was a misleading "pick the folder" string with no picker).
+37. **Indexing perf & robustness pass** — `ThreadBenchmark` was dead code: both encoders silently used hardcoded 4 threads. Now the benchmark runs once before encoder construction (`MainActivity.ensureEncodersLoaded` + `IndexWorker.doWork`, mutex-guarded, cached in prefs) and `SharedEncoders` passes the tuned count to `ImageEncoder`/`TextEncoder`; the benchmark also reuses `ImageEncoder.resolveVisionModelAssetName` so it tunes the model actually shipped. Index batch size is device-scaled (`isLowRamDevice`→2, `memoryClass ≥ 192`→6, else 4; channel buffer 1 on tiny batches) with an OOM-persisted override of 2. `loadBitmap()` now delegates to `decodeOrientedBitmap` (two-pass bounds decode straight to ≤512px + EXIF orientation) — fixing both the fixed `inSampleSize = 4` OOM risk on high-MP photos and rotated embeddings for phone photos; embedding index bumped to v3 so old rotated embeddings are rebuilt. OOM in `IndexWorker` persists the batch override and retries instead of dying permanently.
 
 ---
 
@@ -361,4 +370,6 @@ SAF tree grant (`takePersistableUriPermission`). `SafeActivity` is `excludeFromR
 
 **Safe (encrypted photo locker) — complete.** New `SafeActivity` reached via drawer "safe" or the multi-select "safe" command. All safe photos live inside a single standard AES-256 password zip (`DeepixSafe.zip`) at a **configurable** public path (`Pictures/Deepix Safe/` default, or `Documents/Deepix Safe/` — Settings › Safe storage location; switching moves the existing vault) via All-files access that survives uninstall and opens in any zip tool with the password (not app-dependent). Biometric-first lock screen (`BiometricPrompt` + Keystore-wrapped password) with password fallback; "Show password" in the overflow after fingerprint login. **Forgotten-password escape:** on `WRONG_PASSWORD` during setup (orphaned zip after reinstall) and via a lock-screen "Forgot password?" link, `SafeManager.purgeVault` deletes the vault across all roots + app config + thumbnails so a fresh Safe can be created. Moving photos in deletes the originals via the normal delete-consent flow. `FLAG_SECURE`, relocks on background. Recoverable after reinstall by re-entering the password (archive stays at the configured path). Thumbnails decode straight from the encrypted entry stream (cache + rebuild-on-failure). See `SafeManager`/`SafeCrypto`/`SafeKeystore`/`SafeStore`. Adds deps `zip4j` + `androidx.biometric`.
 
-**Last commit:** Production-grade Metro multi-select — flat command bar (replaces bottom nav) + squared vector selection tick with accent frame, highlight-selected-only (no dim)
+**Indexing performance & robustness pass — complete.** `ThreadBenchmark` is now wired end-to-end (one-time tuned intra-op thread count, cached in prefs, consumed by both encoders via `SharedEncoders`); index batching scales to device capability (2/4/6 + OOM-persisted fallback); `loadBitmap` does an EXIF-aware two-pass decode (embedding index bumped to v3); OOM during indexing degrades (batch=2 + retry) instead of failing permanently.
+
+**Last commit:** Indexing perf: wire ThreadBenchmark into encoders, device-scaled batches, EXIF-aware two-pass decode, OOM batch fallback

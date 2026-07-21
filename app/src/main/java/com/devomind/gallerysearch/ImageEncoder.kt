@@ -11,7 +11,10 @@ import org.json.JSONObject
 import java.nio.FloatBuffer
 import kotlin.math.roundToInt
 
-class ImageEncoder(private val context: Context) : AutoCloseable {
+class ImageEncoder(
+    private val context: Context,
+    threadCount: Int = OnnxSessionOptions.DefaultThreadCount
+) : AutoCloseable {
     private val environment: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
     private val inputName: String
@@ -208,7 +211,7 @@ class ImageEncoder(private val context: Context) : AutoCloseable {
         private val Mean = floatArrayOf(0.48145466f, 0.4578275f, 0.40821073f)
         private val Std = floatArrayOf(0.26862954f, 0.26130258f, 0.27577711f)
 
-        private fun resolveVisionModelAssetName(context: Context): String {
+        internal fun resolveVisionModelAssetName(context: Context): String {
             val available = context.assets.list("")?.toSet().orEmpty()
             return PreferredVisionModels.firstOrNull { it in available }
                 ?: error("No vision model asset found. Checked: ${PreferredVisionModels.joinToString()}")

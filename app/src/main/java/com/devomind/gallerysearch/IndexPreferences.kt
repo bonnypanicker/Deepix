@@ -6,6 +6,7 @@ object IndexPreferences {
     private const val PrefName = "index_prefs"
     private const val KeyLastIndexed = "last_indexed_time"
     private const val KeyOptimalThreads = "optimal_thread_count"
+private const val KeyIndexBatchSizeOverride = "index_batch_size_override"
     private const val KeyShowPinnedCollections = "show_pinned_collections"
     private const val KeyGridColumnCount = "grid_column_count"
     private const val KeyCollageScale = "collage_scale_level"

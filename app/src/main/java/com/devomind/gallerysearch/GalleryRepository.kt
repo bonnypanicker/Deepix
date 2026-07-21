@@ -31,6 +31,22 @@ class GalleryRepository(
 ) {
     private val albumCoverStore = AlbumCoverStore(context)
 
+    /** Images per inference batch: OOM-persisted override wins, else scaled to device capability. */
+    private val batchSize: Int = computeBatchSize()
+
+    /** Pipeline channel capacity — producer can be this many batches ahead of the consumer. */
+    private val pipelineBuffer: Int = if (batchSize <= 2) 1 else 2
+
+    private fun computeBatchSize(): Int {
+        IndexPreferences.getIndexBatchSizeOverride(context).takeIf { it > 0 }?.let { return it }
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        return when {
+            activityManager.isLowRamDevice -> 2
+            activityManager.memoryClass >= 192 -> 6
+            else -> 4
+        }
+    }
+
     data class SemanticSearchHit(val uri: Uri, val score: Float)
 
     /** Attaches the MobileCLIP encoders once they finish loading on a background thread. */
@@ -257,22 +273,12 @@ class GalleryRepository(
         return buildAlbumsFrom(getAllMediaItemsForAlbumIds(emptySet()))
     }
 
-    fun loadBitmap(uri: Uri): Bitmap? {
-        return runCatching {
-            val options = BitmapFactory.Options().apply {
-                inSampleSize = 4
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-            }
-            val decoded = context.contentResolver.openInputStream(uri).use { input ->
-                if (input == null) return null
-                BitmapFactory.decodeStream(input, null, options)
-            } ?: return null
-
-            scaleToMaxEdge(decoded, MaxBitmapEdge)
-        }.onFailure { error ->
-            Log.w(Tag, "Failed to decode $uri", error)
-        }.getOrNull()
-    }
+    /**
+     * Decodes [uri] for indexing/search: two-pass bounds decode so the longest edge lands near
+     * [MaxBitmapEdge] in a single decode (no large intermediate bitmap on high-MP photos),
+     * with EXIF orientation applied so embeddings match how the photo is actually viewed.
+     */
+    fun loadBitmap(uri: Uri): Bitmap? = decodeOrientedBitmap(uri, MaxBitmapEdge)
 
     /**
      * Builds the embedding index using batched inference and pipelined preprocessing.
@@ -322,7 +328,7 @@ class GalleryRepository(
 
         // Pipeline: producer loads bitmaps, consumer runs inference
         coroutineScope {
-            val channel = Channel<BatchData>(capacity = PipelineBuffer)
+            val channel = Channel<BatchData>(capacity = pipelineBuffer)
 
             // Producer: load and preprocess bitmaps on IO threads
             val producer = launch(Dispatchers.IO) {

@@ -8,10 +8,10 @@ Use this file to navigate cross-file impact before editing. Each entry shows wha
 
 | Node | Used by | Uses |
 |---|---|---|
-| `GalleryRepository` | MainActivity, IndexWorker, DbRepository | ImageEncoder, TextEncoder, MetadataSearch, QueryExpander, EmbeddingUtils |
-| `MainActivity` | (entry point) | GalleryRepository, DbRepository, ImageAdapter, FavoritesStore, AlbumPinStore, SmartAlbumStore, IndexPreferences, StructuredSearch, DesignTokens, SearchResultManager, ViewerActivity |
+| `GalleryRepository` | MainActivity, IndexWorker, DbRepository | ImageEncoder, TextEncoder, MetadataSearch, QueryExpander, EmbeddingUtils, IndexPreferences, ActivityManager |
+| `MainActivity` | (entry point) | GalleryRepository, DbRepository, ImageAdapter, FavoritesStore, AlbumPinStore, SmartAlbumStore, IndexPreferences, StructuredSearch, DesignTokens, SearchResultManager, ViewerActivity, ThreadBenchmark |
 | `DesignTokens` | MainActivity, IndexPreferences, ImageAdapter, FastScrollIndicator | colors.xml |
-| `IndexPreferences` | MainActivity, IndexWorker, IndexControlReceiver | DesignTokens |
+| `IndexPreferences` | MainActivity, IndexWorker, IndexControlReceiver, GallerySearchApp, GalleryRepository, ThreadBenchmark | DesignTokens |
 
 ---
 
@@ -20,22 +20,32 @@ Use this file to navigate cross-file impact before editing. Each entry shows wha
 ### AI / ML Layer
 ```
 GallerySearchApp
-  └── SharedEncoders (lazy)
-        ├── ImageEncoder  ←  AssetUtils, OnnxSessionOptions, OnnxOutput, EmbeddingUtils
+  └── SharedEncoders (lazy; reads IndexPreferences.getOptimalThreadCount, fallback OnnxSessionOptions.DefaultThreadCount)
+        ├── ImageEncoder(context, threadCount)  ←  AssetUtils, OnnxSessionOptions, OnnxOutput, EmbeddingUtils
         │     └── vision_model_fp16.onnx, preprocessor_config.json
-        └── TextEncoder   ←  ClipTokenizer, OnnxSessionOptions, OnnxOutput, EmbeddingUtils
+        │     └── internal resolveVisionModelAssetName() — shared with ThreadBenchmark
+        └── TextEncoder(context, threadCount)   ←  ClipTokenizer, OnnxSessionOptions, OnnxOutput, EmbeddingUtils
               └── text_model_int8.onnx, tokenizer.json, tokenizer_config.json
+
+ThreadBenchmark (one-time, mutex-guarded; result cached in IndexPreferences)
+  ├── called by MainActivity.ensureEncodersLoaded + IndexWorker.doWork (before encoder construction)
+  ├── ImageEncoder.resolveVisionModelAssetName  (benchmarks the shipped model asset)
+  ├── ImageEncoder.ImageSize  (synthetic input shape)
+  └── IndexPreferences.getOptimalThreadCount / saveOptimalThreadCount
 ```
 
 ### Indexing Pipeline
 ```
 IndexWorker
+  ├── ThreadBenchmark.getOrBenchmark()  (one-time ORT thread tuning, cached)
   ├── GalleryRepository  (getImageUrisForAlbumIds[scope], buildIndex[reconciles: prune+add], rebuildMetadataIndex)
-  │     ├── ImageEncoder  (encodeBatch)
+  │     ├── computeBatchSize()  (IndexPreferences override → ActivityManager isLowRamDevice/memoryClass → 2/4/6)
+  │     ├── loadBitmap() → decodeOrientedBitmap()  (two-pass bounds decode ≤512px + EXIF orientation)
+  │     ├── ImageEncoder  (encodeBatch; per-image fallback on batch failure)
   │     ├── MetadataSearch  (buildDocuments, indexFromDocuments)
   │     └── EmbeddingUtils  (l2Normalize, cosineSimilarity)
   ├── DbRepository  (upsertMedia)
-  ├── IndexPreferences  (isIndexPaused, saveLastIndexedTime)
+  ├── IndexPreferences  (isIndexPaused, saveLastIndexedTime, saveIndexBatchSizeOverride on OOM)
   └── IndexControlReceiver  (pause/resume PendingIntents)
 ```
 
@@ -164,7 +174,7 @@ DbRepository
 
 AlbumPinStore  (SharedPreferences / JSONArray)
 SmartAlbumStore  (SharedPreferences / JSONArray)
-IndexPreferences  (SharedPreferences; incl. isCleanupPaused)
+IndexPreferences  (SharedPreferences; incl. isCleanupPaused, optimal_thread_count, index_batch_size_override)
 CleanupResultStore  (JSON file: filesDir/cleanup_results.json)
 ```
 
@@ -175,10 +185,10 @@ CleanupResultStore  (JSON file: filesDir/cleanup_results.json)
 | If you change... | Also check... |
 |---|---|
 | `SearchTuning.ScoreThreshold` | `GalleryRepository.search()`, `buildMergedPhotoSearchResults()` in MainActivity |
-| `ImageEncoder.ImageSize` (256) | `preprocessor_config.json`, `ImageEncoder.preprocess()`, `GalleryRepository.buildIndex()` |
+| `ImageEncoder.ImageSize` (256) | `preprocessor_config.json`, `ImageEncoder.preprocess()`, `GalleryRepository.buildIndex()`, `ThreadBenchmark` synthetic input |
 | `ClipTokenizer.ContextLength` (77) | `TextEncoder.encode()` shape, `QueryExpander.getEmbedding()` |
 | `GalleryDatabase` version | Add migration or `fallbackToDestructiveMigration()` is already set |
-| `IndexWorker.BatchSize` (4) | Memory pressure on low-RAM devices. `GalleryRepository.buildIndex()` chunking |
+| `GalleryRepository.computeBatchSize()` (2/4/6 + override) | Memory pressure on low-RAM devices; `buildIndex()` chunking; OOM override persisted via `IndexPreferences.saveIndexBatchSizeOverride` (IndexWorker OOM path) |
 | `MainActivity.BROWSE_PAGE_SIZE/MAX` (120/320) | Browse timeline page size; grid is paged (no hard item cap) |
 | `DesignTokens.SEARCH_METADATA_HARD_CAP` (80) | Search pagination cap in `MainActivity` |
 | `SmartAlbumStore.MAX_SMART_MEMBERS` (800) | Stored URI count per smart album in `createSmartAlbum()` |
@@ -187,9 +197,10 @@ CleanupResultStore  (JSON file: filesDir/cleanup_results.json)
 | `IndexPreferences` SharedPrefs keys | Cannot rename without migration — stored on device |
 | `AlbumPinStore` JSON format | Stored in SharedPrefs — changing breaks existing pins |
 | `SmartAlbumStore` JSON format | Stored in SharedPrefs — changing breaks existing smart albums |
-| `IndexMagic` / `IndexVersion` in GalleryRepository | Will invalidate all existing embedding indexes on user devices |
+| `IndexMagic` / `IndexVersion` in GalleryRepository | Will invalidate all existing embedding indexes on user devices (v2→3 did exactly this for EXIF-oriented embeddings) |
 | `MetadataIndexMagic` / `MetadataIndexVersion` | Will invalidate metadata indexes |
-| `OnnxSessionOptions.DefaultThreadCount` (4) | Benchmark in `ThreadBenchmark.kt` determines optimal count |
+| `OnnxSessionOptions.DefaultThreadCount` (4) | Fallback only — `SharedEncoders` prefers the cached `ThreadBenchmark` result; benchmark trigger points are `MainActivity.ensureEncodersLoaded` + `IndexWorker.doWork` |
+| `ImageEncoder.resolveVisionModelAssetName` | Also used by `ThreadBenchmark` — priority order must match the shipped assets |
 | `ViewerActivity` gesture logic | Test all 6 gesture scenarios: diagonal swipes, info panel tap-close, fast swiping captions, panel drag smoothness, paging disabled while panel open |
 | `SafeManager` MasterName (`DeepixSafe.zip`) / VaultFolderName | Vault archive name/folder; root dir is `IndexPreferences.getSafeStorageRoot` (pictures\|documents). Changing the root via Settings **moves** the existing vault (`moveVault`); `purgeVault` wipes it across all roots |
 | `IndexPreferences` safe_storage_root (`pictures`\|`documents`) | Stored in `index_prefs` (survives `SafeStore.reset`); drives `SafeManager.vaultDir`/`masterZip`/`archiveExists`/`vaultLocationLabel` |
@@ -202,7 +213,7 @@ CleanupResultStore  (JSON file: filesDir/cleanup_results.json)
 ## Assets Map
 ```
 app/src/main/assets/
-├── vision_model_fp16.onnx    ← ImageEncoder (primary, Git LFS)
+├── vision_model_fp16.onnx    ← ImageEncoder (primary, Git LFS) + ThreadBenchmark
 ├── text_model_int8.onnx      ← TextEncoder  (Git LFS)
 ├── tokenizer.json            ← ClipTokenizer (2.2MB HuggingFace vocab+merges)
 ├── tokenizer_config.json     ← ClipTokenizer metadata

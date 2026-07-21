@@ -33,15 +33,21 @@ class SharedEncoders(private val context: android.content.Context) {
     @Volatile private var imageEncoder: ImageEncoder? = null
     @Volatile private var textEncoder: TextEncoder? = null
 
+    /** Thread count tuned by [ThreadBenchmark]; falls back to the default until it has run. */
+    private fun optimalThreadCount(): Int {
+        return IndexPreferences.getOptimalThreadCount(context).takeIf { it > 0 }
+            ?: OnnxSessionOptions.DefaultThreadCount
+    }
+
     fun getImageEncoder(): ImageEncoder {
         return imageEncoder ?: synchronized(this) {
-            imageEncoder ?: ImageEncoder(context).also { imageEncoder = it }
+            imageEncoder ?: ImageEncoder(context, optimalThreadCount()).also { imageEncoder = it }
         }
     }
 
     fun getTextEncoder(): TextEncoder {
         return textEncoder ?: synchronized(this) {
-            textEncoder ?: TextEncoder(context).also { textEncoder = it }
+            textEncoder ?: TextEncoder(context, optimalThreadCount()).also { textEncoder = it }
         }
     }
 }

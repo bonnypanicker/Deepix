@@ -5,7 +5,7 @@ import ai.onnxruntime.OrtSession
 
 object OnnxSessionOptions {
 
-    private const val DefaultThreadCount = 4
+    const val DefaultThreadCount = 4
 
     /**
      * Creates ORT session options with:
@@ -19,7 +19,7 @@ object OnnxSessionOptions {
         return OrtSession.SessionOptions().apply {
             setIntraOpNumThreads(threadCount)
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
-            Log.d(tag, "Using ORT CPU/XNNPACK path")
+            Log.d(tag, "Using ORT CPU/XNNPACK path (intra-op threads=$threadCount)")
         }
     }
 }

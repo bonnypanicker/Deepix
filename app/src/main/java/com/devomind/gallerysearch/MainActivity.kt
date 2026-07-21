@@ -700,6 +700,9 @@ class MainActivity : AppCompatActivity() {
             if (warmupDelayMs > 0) kotlinx.coroutines.delay(warmupDelayMs)
             val sharedEncoders = (application as GallerySearchApp).sharedEncoders
             val encoders = withContext(Dispatchers.IO) {
+                // One-time ORT thread-count tuning; cached in prefs afterwards. Must run before
+                // the encoders are constructed so they pick up the result.
+                ThreadBenchmark.getOrBenchmark(applicationContext)
                 val imageAsync = async { runCatching { sharedEncoders.getImageEncoder() }.getOrNull() }
                 val textAsync = async { runCatching { sharedEncoders.getTextEncoder() }.getOrNull() }
                 imageAsync.await() to textAsync.await()

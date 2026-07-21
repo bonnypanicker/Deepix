@@ -69,6 +69,8 @@ class IndexWorker(
         }
 
         return try {
+            // One-time ORT thread-count tuning (cached in prefs) before the encoder is built.
+            ThreadBenchmark.getOrBenchmark(applicationContext)
             val imageEncoder = (applicationContext as GallerySearchApp).sharedEncoders.getImageEncoder()
             val repository = GalleryRepository(applicationContext, imageEncoder, null)
 
@@ -139,8 +141,10 @@ class IndexWorker(
             }
             throw cancelled
         } catch (oom: OutOfMemoryError) {
-            Log.w(Tag, "Index worker ran out of memory on attempt $runAttemptCount.", oom)
-            Result.failure()
+            Log.w(Tag, "Index worker OOM on attempt $runAttemptCount; reducing batch size.", oom)
+            // Persist the smallest batch so the retried run degrades instead of OOM-ing again.
+            IndexPreferences.saveIndexBatchSizeOverride(applicationContext, 2)
+            if (runAttemptCount < MaxRetryCount) Result.retry() else Result.failure()
         } catch (error: Throwable) {
             Log.w(Tag, "Index worker failed on attempt $runAttemptCount.", error)
             if (runAttemptCount < MaxRetryCount) Result.retry() else Result.failure()

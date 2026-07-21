@@ -45,12 +45,8 @@ object ThreadBenchmark {
 
     private fun runBenchmark(context: Context): Int {
         val env = OrtEnvironment.getEnvironment()
-        val modelBytes = AssetUtils.readAssetBytes(
-            context,
-            context.assets.list("")?.firstOrNull {
-                it == "vision_model_android_int8.onnx" || it == "vision_model_fp16.onnx" || it == "vision_model.onnx"
-            } ?: "vision_model_android_int8.onnx"
-        )
+        // Benchmark the same model asset the encoder will actually run.
+        val modelBytes = AssetUtils.readAssetBytes(context, ImageEncoder.resolveVisionModelAssetName(context))
         val testTensor = createSyntheticInput(env)
 
         var bestThreads = 4 // safe default
@@ -112,6 +108,27 @@ object ThreadBenchmark {
                 }
             }
             return (System.nanoTime() - start) / 1_000_000 // ms
+        } finally {
+            session.close()
+        }
+    }
+
+    /**
+     * Creates a synthetic 256×256 image tensor (all mid-gray).
+     * We don't need a real image — we're measuring compute throughput, not accuracy.
+     */
+    private fun createSyntheticInput(env: OrtEnvironment): FloatArray {
+        val size = ImageEncoder.ImageSize
+        val planeSize = size * size
+        val floats = FloatArray(3 * planeSize)
+        // Fill with 0.5 (mid-gray, normalized)
+        for (i in floats.indices) {
+            floats[i] = 0.5f
+        }
+        return floats
+    }
+}
+me() - start) / 1_000_000 // ms
         } finally {
             session.close()
         }
