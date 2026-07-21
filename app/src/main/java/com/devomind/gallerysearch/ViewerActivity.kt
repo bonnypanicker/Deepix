@@ -195,7 +195,9 @@ class ViewerActivity : AppCompatActivity() {
                 items.addAll(parcelables)
             }
         }
-        currentPosition = intent.getIntExtra(ExtraPosition, 0)
+        // After process death the saved page wins over the launch intent's position.
+        currentPosition = savedInstanceState?.getInt(StatePosition)
+            ?: intent.getIntExtra(ExtraPosition, 0)
         val transitionName = intent.getStringExtra(ExtraTransitionName)
 
         if (items.isEmpty() || currentPosition !in items.indices) {
@@ -1389,6 +1391,12 @@ class ViewerActivity : AppCompatActivity() {
         const val ExtraMarker = "marker_uri"
         const val ExtraFindSimilarUri = "find_similar_uri"
         const val ExtraFindSimilarCrop = "find_similar_crop"
+        private const val StatePosition = "state_position"
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(StatePosition, currentPosition)
     }
 
     override fun onDestroy() {

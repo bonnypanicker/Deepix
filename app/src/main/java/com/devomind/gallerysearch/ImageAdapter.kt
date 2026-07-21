@@ -107,6 +107,9 @@ class ImageAdapter(
     var gridColumnCount: Int = DesignTokens.GRID_DEFAULT_COLUMNS
     var useCollageLayout: Boolean = false
 
+    // Set once from the host (and on settings change) so album binds never touch SharedPreferences.
+    var showAlbumFolderSize: Boolean = false
+
     // Sensitive-content blur (Beta): NSFW-flagged uris are blurred until tapped to reveal.
     var blurSensitive: Boolean = false
         private set
@@ -229,7 +232,7 @@ class ImageAdapter(
                 useCollageLayout
             )
             is GalleryCell.Collage -> (holder as CollageViewHolder).bind(cell, selected)
-            is GalleryCell.AlbumCell -> (holder as AlbumViewHolder).bind(cell.album)
+            is GalleryCell.AlbumCell -> (holder as AlbumViewHolder).bind(cell.album, showAlbumFolderSize)
             is GalleryCell.FolderCell -> (holder as FolderViewHolder).bind(cell.node)
             is GalleryCell.PinnedAlbumsHeader -> (holder as PinnedAlbumsHeaderViewHolder).bind(cell)
             is GalleryCell.SmartAlbumOnboarding -> Unit
@@ -833,7 +836,7 @@ class ImageAdapter(
         private val onAlbumClick: (GalleryRepository.Album) -> Unit,
         private val onAlbumLongClick: (GalleryRepository.Album, View) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(album: GalleryRepository.Album) {
+        fun bind(album: GalleryRepository.Album, showFolderSize: Boolean) {
             val metrics = binding.root.resources.displayMetrics
             val coverWidth = (metrics.widthPixels / 2).coerceAtLeast(160)
             val coverHeight = (coverWidth * 3) / 4
@@ -846,7 +849,7 @@ class ImageAdapter(
                 album.count == 1 -> "1 item"
                 else -> "${album.count} items"
             }
-            val showSize = !album.isSmart && IndexPreferences.isShowAlbumFolderSize(binding.root.context)
+            val showSize = !album.isSmart && showFolderSize
             binding.albumCount.text = if (showSize && album.sizeBytes > 0L) {
                 "$countText \u00b7 ${formatStorageSize(album.sizeBytes)}"
             } else {

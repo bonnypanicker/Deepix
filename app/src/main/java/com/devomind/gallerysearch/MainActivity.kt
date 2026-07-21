@@ -253,6 +253,12 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         binding.root.postDelayed({ keepSplash = false }, SPLASH_MAX_HOLD_MS)
         configureEdgeToEdge()
+
+        // Process-death restore: reopen the section the user was browsing. Search/detail modes
+        // restore to their parent section (their backing state is intentionally not persisted).
+        savedInstanceState?.getString(STATE_SECTION)?.let { saved ->
+            activeSection = runCatching { Section.valueOf(saved) }.getOrDefault(activeSection)
+        }
         favoritesStore = FavoritesStore(this)
         albumPinStore = AlbumPinStore(this)
         smartAlbumStore = SmartAlbumStore(this)
@@ -272,6 +278,7 @@ class MainActivity : AppCompatActivity() {
         )
         adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
         adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
+        adapter.showAlbumFolderSize = IndexPreferences.isShowAlbumFolderSize(this)
         collageScaleLevel = IndexPreferences.getCollageScale(this)
 
         val initialSpanCount = if (adapter.useCollageLayout) DesignTokens.COLLAGE_SPAN_COUNT else adapter.gridColumnCount
@@ -308,6 +315,10 @@ class MainActivity : AppCompatActivity() {
         binding.imageGrid.adapter = adapter
         binding.imageGrid.setHasFixedSize(true)
         binding.imageGrid.setItemViewCacheSize(12)
+        // Photo/collage rows dominate fling churn; a deeper recycle pool avoids re-inflation
+        // (the default pool keeps only 5 per view type).
+        binding.imageGrid.recycledViewPool.setMaxRecycledViews(ImageAdapter.ViewTypePhoto, 24)
+        binding.imageGrid.recycledViewPool.setMaxRecycledViews(ImageAdapter.ViewTypeCollage, 16)
         binding.imageGrid.addItemDecoration(StickyHeaderDecoration(adapter))
         binding.fastScrollIndicator.attach(binding.imageGrid, adapter)
 
@@ -3380,6 +3391,7 @@ class MainActivity : AppCompatActivity() {
     private fun applyDisplaySettings() {
         adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
         adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
+        adapter.showAlbumFolderSize = IndexPreferences.isShowAlbumFolderSize(this)
         collageScaleLevel = IndexPreferences.getCollageScale(this)
         val layoutManager = binding.imageGrid.layoutManager as GridLayoutManager
         layoutManager.spanCount = if (adapter.useCollageLayout) DesignTokens.COLLAGE_SPAN_COUNT else adapter.gridColumnCount
@@ -3499,8 +3511,14 @@ class MainActivity : AppCompatActivity() {
         renderJob?.cancel()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(STATE_SECTION, activeSection.name)
+    }
+
     companion object {
         private const val TAG = "MainActivity"
+        private const val STATE_SECTION = "state_section"
         private const val INDEX_WORK_NAME = "gallery_background_index"
         // Safety cap: never hold the launch splash longer than this even if content stalls.
         private const val SPLASH_MAX_HOLD_MS = 2500L
