@@ -403,10 +403,5 @@ object SafeManager {
         return uri.lastPathSegment?.substringAfterLast('/')
     }
 
-    private fun mimeFor(name: String): String = when {
-        name.endsWith(".png", true) -> "image/png"
-        name.endsWith(".webp", true) -> "image/webp"
-        name.endsWith(".gif", true) -> "image/gif"
-        else -> "image/jpeg"
-    }
+    private fun mimeFor(name: String): String = MediaFormats.imageMimeFor(name)
 }

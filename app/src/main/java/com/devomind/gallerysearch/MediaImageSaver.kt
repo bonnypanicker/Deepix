@@ -29,9 +29,11 @@ object MediaImageSaver {
 
     /** Rewrites the original image. May throw RecoverableSecurityException on Q+; caller retries. */
     fun overwrite(context: Context, uri: Uri, bitmap: Bitmap) {
-        val jpeg = isJpeg(context.contentResolver.getType(uri))
+        // PNG keeps lossless/alpha sources lossless; everything else (JPEG, HEIC, WebP, BMP,
+        // TIFF…) re-encodes as JPEG — never PNG, which would balloon photographic content.
+        val png = context.contentResolver.getType(uri).equals("image/png", ignoreCase = true)
         context.contentResolver.openOutputStream(uri, "wt")?.use { out ->
-            compress(bitmap, out, jpeg)
+            compress(bitmap, out, jpeg = !png)
         } ?: throw IllegalStateException("Could not open $uri for writing")
     }
 
@@ -65,7 +67,4 @@ object MediaImageSaver {
         }
         return newUri
     }
-
-    private fun isJpeg(mime: String?): Boolean =
-        mime == null || mime.equals("image/jpeg", true) || mime.equals("image/jpg", true)
 }

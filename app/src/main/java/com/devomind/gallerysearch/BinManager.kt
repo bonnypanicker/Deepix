@@ -207,18 +207,35 @@ object BinManager {
 
     private fun insertViaMediaStore(context: Context, src: File, entry: BinEntry): Boolean {
         return runCatching {
+            // Route by actual type — videos must land in the Video collection, or they vanish
+            // from every video-only view after a restore.
+            val mime = entry.mimeType
+                ?: MediaFormats.mimeFor(entry.fileName)
+                ?: "image/jpeg"
+            val isVideo = MediaFormats.isVideoMime(mime)
             val values = android.content.ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, entry.fileName)
-                put(MediaStore.Images.Media.MIME_TYPE, entry.mimeType ?: "image/jpeg")
+                put(MediaStore.MediaColumns.DISPLAY_NAME, entry.fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mime)
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Deepix")
-                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                    put(
+                        MediaStore.MediaColumns.RELATIVE_PATH,
+                        if (isVideo) "Movies/Deepix" else "Pictures/Deepix"
+                    )
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
                 }
             }
             val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                if (isVideo) {
+                    MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                } else {
+                    MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                }
             } else {
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                if (isVideo) {
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                } else {
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                }
             }
             val out = context.contentResolver.insert(collection, values) ?: return false
             context.contentResolver.openOutputStream(out)?.use { os -> src.inputStream().use { it.copyTo(os) } }
