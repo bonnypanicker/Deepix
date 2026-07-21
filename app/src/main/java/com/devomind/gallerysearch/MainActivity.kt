@@ -2830,7 +2830,14 @@ class MainActivity : AppCompatActivity() {
             withContext(Dispatchers.Default) { repo.searchMetadata(query, candidateItems) }
         } else emptyList()
 
-        val semanticResults = if (shouldSearchAi) {
+        // Encoders are deferred on paused/idle cold starts (loadEncodersInBackground); load them
+        // on demand here, else repo.search() silently returns nothing and smart albums come up
+        // empty despite an existing index.
+        if (shouldSearchAi && textEncoder == null) {
+            ensureEncodersLoaded().await()
+        }
+
+        val semanticResults = if (shouldSearchAi && textEncoder != null) {
             withContext(Dispatchers.Default) { repo.search(query) }
         } else emptyList()
 
