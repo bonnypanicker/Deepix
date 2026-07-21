@@ -325,7 +325,7 @@ class GalleryRepository(
         // Report the already-indexed count immediately
         onProgress(alreadyDone, total)
 
-        val batches = unindexed.chunked(BatchSize)
+        val batches = unindexed.chunked(batchSize)
 
         // Pipeline: producer loads bitmaps, consumer runs inference
         coroutineScope {
@@ -915,10 +915,5 @@ class GalleryRepository(
         private const val MinValidMillis = 631152000000L
         private const val OneDayMillis = 86_400_000L
 
-        /** Number of images per inference batch. Start at 4, reduce to 2 if OOM occurs. */
-        const val BatchSize = 4
-
-        /** Pipeline channel buffer — producer can be this many batches ahead of consumer. */
-        private const val PipelineBuffer = 2
     }
 }
