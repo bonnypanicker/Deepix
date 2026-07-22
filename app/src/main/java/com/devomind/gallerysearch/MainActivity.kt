@@ -3283,7 +3283,8 @@ class MainActivity : AppCompatActivity() {
             updateIndexDrawerLabel()
             return
         }
-        // Delay so a cold start finishes rendering before the heavy model load + indexing begins.
+        // Short settle delay so the first frame renders first; the encoder is warmed in-process
+        // (SharedEncoders) and reused by the worker, so this no longer gates on the model load.
         enqueueIndexWork(ExistingWorkPolicy.KEEP, INDEX_STARTUP_DELAY_SECONDS)
         binding.statusText.text =
             "Background indexing queued · ${indexedSummary(repo.indexedCount)}"
@@ -3532,9 +3533,15 @@ class MainActivity : AppCompatActivity() {
         private const val INDEX_WORK_NAME = "gallery_background_index"
         // Safety cap: never hold the launch splash longer than this even if content stalls.
         private const val SPLASH_MAX_HOLD_MS = 2500L
-        // Let a cold start render + settle before the background index worker loads the ONNX
-        // models and starts processing, so the heavy work doesn't jank the launch.
-        private const val INDEX_STARTUP_DELAY_SECONDS = 6L
+        // Small settle delay before the background index worker starts, just long enough to clear
+        // the first-frame render. The heavy ONNX model load is NOT paid here: the eager warm-up
+        // (ENCODER_WARMUP_DELAY_MS) loads the encoders into the process-wide SharedEncoders singleton
+        // off the launch-critical path, and the worker reuses that same warmed instance
+        // (IndexWorker.doWork -> sharedEncoders.getImageEncoder()) instead of re-loading. Kept above
+        // ENCODER_WARMUP_DELAY_MS so the warm-up always starts first and the worker reuses it rather
+        // than front-running the load during the launch animation. Only affects START latency —
+        // indexing throughput (batch size, thread count, encoder) is unchanged.
+        private const val INDEX_STARTUP_DELAY_SECONDS = 2L
         private const val ENCODER_WARMUP_DELAY_MS = 1200L
         // Show the fast-scroll bar once content exceeds ~1.5 viewports.
         private const val FAST_SCROLL_MIN_RATIO = 1.5f
