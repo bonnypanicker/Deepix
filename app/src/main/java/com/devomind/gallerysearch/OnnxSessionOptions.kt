@@ -5,7 +5,7 @@ import ai.onnxruntime.OrtSession
 
 object OnnxSessionOptions {
 
-    const val DefaultThreadCount = 4
+    const val DefaultThreadCount = 6
 
     /**
      * Creates ORT session options with:

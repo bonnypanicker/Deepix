@@ -75,11 +75,10 @@ class IndexWorker(
 
         return try {
             val (imageEncoder, _) = coroutineScope {
-                // Overlap the one-time ORT thread-count benchmark with reading the vision model
-                // asset bytes off disk — independent costs (throwaway-session CPU churn vs. pure
-                // file IO), no reason to pay them sequentially.
+                // Read the vision model bytes in parallel with fetching the fixed ORT thread count
+                // from prefs so startup reaches the first indexing pass without benchmark work.
                 val modelBytesDeferred = async(Dispatchers.IO) { ImageEncoder.preloadModelBytes(applicationContext) }
-                val benchmarkedThreadCount = withContext(Dispatchers.Default) {
+                val configuredThreadCount = withContext(Dispatchers.Default) {
                     ThreadBenchmark.getOrBenchmark(applicationContext)
                 }
 
@@ -91,14 +90,14 @@ class IndexWorker(
                 // now locks each encoder independently instead of sharing one monitor.
                 thread(isDaemon = true) {
                     runCatching {
-                        (applicationContext as GallerySearchApp).sharedEncoders.getTextEncoder(benchmarkedThreadCount)
+                        (applicationContext as GallerySearchApp).sharedEncoders.getTextEncoder(configuredThreadCount)
                     }.onFailure { Log.w(Tag, "Background text-encoder warm-up failed (non-fatal)", it) }
                 }
 
                 val modelBytes = modelBytesDeferred.await()
                 val encoder = (applicationContext as GallerySearchApp).sharedEncoders
-                    .getImageEncoder(benchmarkedThreadCount, modelBytes)
-                encoder to benchmarkedThreadCount
+                    .getImageEncoder(configuredThreadCount, modelBytes)
+                encoder to configuredThreadCount
             }
             val repository = GalleryRepository(applicationContext, imageEncoder, null)
 

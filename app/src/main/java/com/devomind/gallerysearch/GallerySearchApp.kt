@@ -39,7 +39,7 @@ class SharedEncoders(private val context: android.content.Context) {
     private val imageLock = Any()
     private val textLock = Any()
 
-    /** Thread count tuned by [ThreadBenchmark]; falls back to the default until it has run. */
+    /** Thread count chosen for ORT sessions; falls back to the global default when unset. */
     private fun optimalThreadCount(): Int {
         return IndexPreferences.getOptimalThreadCount(context).takeIf { it > 0 }
             ?: OnnxSessionOptions.DefaultThreadCount

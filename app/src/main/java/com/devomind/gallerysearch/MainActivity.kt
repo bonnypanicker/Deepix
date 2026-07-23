@@ -700,8 +700,8 @@ class MainActivity : AppCompatActivity() {
             if (warmupDelayMs > 0) kotlinx.coroutines.delay(warmupDelayMs)
             val sharedEncoders = (application as GallerySearchApp).sharedEncoders
             val encoders = withContext(Dispatchers.IO) {
-                // One-time ORT thread-count tuning; cached in prefs afterwards. Must run before
-                // the encoders are constructed so they pick up the result.
+                // Persist the fixed ORT thread count before encoder construction so every startup
+                // path uses the same session configuration without paying benchmark latency.
                 ThreadBenchmark.getOrBenchmark(applicationContext)
                 val imageAsync = async { runCatching { sharedEncoders.getImageEncoder() }.getOrNull() }
                 val textAsync = async { runCatching { sharedEncoders.getTextEncoder() }.getOrNull() }
@@ -754,9 +754,9 @@ class MainActivity : AppCompatActivity() {
             maybeStartBackgroundIndexing()
             return
         }
-        // First run: auto-start indexing (delayed, in background) and tell the user once.
+        // First run: auto-start indexing once the initial UI/library load has completed.
         if (!IndexPreferences.wasIndexConsentAsked(applicationContext)) {
-            enqueueBackgroundIndexing(showBanner = false, initialDelaySeconds = INDEX_STARTUP_DELAY_SECONDS)
+            enqueueBackgroundIndexing(showBanner = false)
             showIndexingStartedDialog()
         }
     }
@@ -3190,7 +3190,7 @@ class MainActivity : AppCompatActivity() {
                     WorkInfo.State.BLOCKED -> {
                         binding.statusText.text =
                             if (IndexPreferences.isChargingOnlyIndexing(this)) "Indexing queued · waiting to charge"
-                            else "Index job queued"
+                            else "Indexing starting…"
                     }
                     WorkInfo.State.RUNNING -> {
                         val current = work.progress.getInt(IndexWorker.ProgressCurrentKey, 0)
@@ -3283,11 +3283,11 @@ class MainActivity : AppCompatActivity() {
             updateIndexDrawerLabel()
             return
         }
-        // Short settle delay so the first frame renders first; the encoder is warmed in-process
-        // (SharedEncoders) and reused by the worker, so this no longer gates on the model load.
-        enqueueIndexWork(ExistingWorkPolicy.KEEP, INDEX_STARTUP_DELAY_SECONDS)
+        // Startup already waits for the initial UI/library load before calling this, so enqueue
+        // immediately instead of adding an extra fixed delay that leaves indexing "queued".
+        enqueueIndexWork(ExistingWorkPolicy.KEEP)
         binding.statusText.text =
-            "Background indexing queued · ${indexedSummary(repo.indexedCount)}"
+            "Background indexing starting · ${indexedSummary(repo.indexedCount)}"
     }
 
     private fun primeMetadataIndexAsync() {
@@ -3533,15 +3533,6 @@ class MainActivity : AppCompatActivity() {
         private const val INDEX_WORK_NAME = "gallery_background_index"
         // Safety cap: never hold the launch splash longer than this even if content stalls.
         private const val SPLASH_MAX_HOLD_MS = 2500L
-        // Small settle delay before the background index worker starts, just long enough to clear
-        // the first-frame render. The heavy ONNX model load is NOT paid here: the eager warm-up
-        // (ENCODER_WARMUP_DELAY_MS) loads the encoders into the process-wide SharedEncoders singleton
-        // off the launch-critical path, and the worker reuses that same warmed instance
-        // (IndexWorker.doWork -> sharedEncoders.getImageEncoder()) instead of re-loading. Kept above
-        // ENCODER_WARMUP_DELAY_MS so the warm-up always starts first and the worker reuses it rather
-        // than front-running the load during the launch animation. Only affects START latency —
-        // indexing throughput (batch size, thread count, encoder) is unchanged.
-        private const val INDEX_STARTUP_DELAY_SECONDS = 2L
         private const val ENCODER_WARMUP_DELAY_MS = 1200L
         // Show the fast-scroll bar once content exceeds ~1.5 viewports.
         private const val FAST_SCROLL_MIN_RATIO = 1.5f

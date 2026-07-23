@@ -4,8 +4,7 @@ import android.app.ActivityManager
 import android.content.Context
 
 /**
- * Single source of truth for the device-scaled index batch size, shared by [GalleryRepository]
- * (actual indexing) and [ThreadBenchmark] (must benchmark the same workload shape it will apply).
+ * Single source of truth for the device-scaled index batch size used by [GalleryRepository].
  */
 object BatchSizing {
     fun computeBatchSize(context: Context): Int {

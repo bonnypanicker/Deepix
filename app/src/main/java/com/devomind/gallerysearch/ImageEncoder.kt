@@ -221,7 +221,7 @@ class ImageEncoder private constructor(
                 ?: error("No vision model asset found. Checked: ${PreferredVisionModels.joinToString()}")
         }
 
-        /** Reads the vision model asset bytes — pure IO, safe to run concurrently with [ThreadBenchmark]. */
+        /** Reads the vision model asset bytes — pure IO for eager preload paths. */
         fun preloadModelBytes(context: Context): ByteArray =
             AssetUtils.readAssetBytes(context, resolveVisionModelAssetName(context))
 

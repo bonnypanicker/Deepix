@@ -231,7 +231,7 @@ object IndexPreferences {
             .apply()
     }
 
-    /** Returns 0 if no benchmark has been run yet. */
+    /** Returns 0 if no thread count has been stored yet. */
     fun getOptimalThreadCount(context: Context): Int {
         return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .getInt(KeyOptimalThreads, 0)
@@ -248,9 +248,7 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putInt(KeyIndexBatchSizeOverride, size)
-            // The cached thread count was tuned for the old (larger) batch shape — invalidate it
-            // so the next run re-benchmarks against the new batch size instead of running with a
-            // stale, mismatched thread count.
+            // Clear the stored thread count so the next startup rewrites the fixed/default value.
             .putInt(KeyOptimalThreads, 0)
             .apply()
     }
