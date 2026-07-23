@@ -1336,17 +1336,25 @@ class MainActivity : AppCompatActivity() {
     // "Alive" search bar — rotating hints
     // ---------------------------------------------------------------------------------------------
 
+    private val shuffledSearchHints = listOf(
+        "Search with AI",
+        "\"Beach at sunset\"",
+        "\"Birthday cake\"",
+        "\"Handwritten note\"",
+        "\"screenshot\"",
+        "\"Documents\"",
+        "Search metadata",
+        "Search by description"
+    ).shuffled()
+
     /** The rotating hints shown while the field is empty. Indexing progress joins in only while a pass runs. */
     private fun searchHints(): List<CharSequence> {
-        val hints = ArrayList<CharSequence>(5)
+        val hints = ArrayList<CharSequence>()
         if (indexRunning && indexProgressTotal > 0) {
             val pct = (indexProgressCurrent * 100 / indexProgressTotal).coerceIn(0, 100)
             hints += "AI Learning Photos\u2026 $pct%"
         }
-        hints += "Search with AI"
-        hints += "\"Beach at sunset\""
-        hints += "\"Documents\""
-        hints += "Search metadata"
+        hints.addAll(shuffledSearchHints)
         return hints
     }
 
