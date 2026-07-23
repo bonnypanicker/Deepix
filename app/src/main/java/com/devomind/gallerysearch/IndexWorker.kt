@@ -14,6 +14,11 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
+import kotlin.concurrent.thread
 import kotlin.math.max
 
 class IndexWorker(
@@ -69,9 +74,32 @@ class IndexWorker(
         }
 
         return try {
-            // One-time ORT thread-count tuning (cached in prefs) before the encoder is built.
-            ThreadBenchmark.getOrBenchmark(applicationContext)
-            val imageEncoder = (applicationContext as GallerySearchApp).sharedEncoders.getImageEncoder()
+            val (imageEncoder, _) = coroutineScope {
+                // Overlap the one-time ORT thread-count benchmark with reading the vision model
+                // asset bytes off disk — independent costs (throwaway-session CPU churn vs. pure
+                // file IO), no reason to pay them sequentially.
+                val modelBytesDeferred = async(Dispatchers.IO) { ImageEncoder.preloadModelBytes(applicationContext) }
+                val benchmarkedThreadCount = withContext(Dispatchers.Default) {
+                    ThreadBenchmark.getOrBenchmark(applicationContext)
+                }
+
+                // Fire-and-forget: warms the text encoder so a search right after a
+                // background-only indexing run (e.g. night-charging, app never opened) doesn't
+                // pay cold-load latency on the first search — MainActivity.ensureEncodersLoaded()
+                // already covers the app-opened case. Never awaited, so it can't delay or fail
+                // indexing; safe to overlap with the image encoder load below since SharedEncoders
+                // now locks each encoder independently instead of sharing one monitor.
+                thread(isDaemon = true) {
+                    runCatching {
+                        (applicationContext as GallerySearchApp).sharedEncoders.getTextEncoder(benchmarkedThreadCount)
+                    }.onFailure { Log.w(Tag, "Background text-encoder warm-up failed (non-fatal)", it) }
+                }
+
+                val modelBytes = modelBytesDeferred.await()
+                val encoder = (applicationContext as GallerySearchApp).sharedEncoders
+                    .getImageEncoder(benchmarkedThreadCount, modelBytes)
+                encoder to benchmarkedThreadCount
+            }
             val repository = GalleryRepository(applicationContext, imageEncoder, null)
 
             // The full set of images currently in scope (empty scope = all folders).
@@ -79,17 +107,17 @@ class IndexWorker(
             // photos and drops embeddings for any photo no longer in scope (e.g. an unchecked
             // folder), so scope changes take effect deterministically.
             val scope = IndexScopeStore.getFolderIds(applicationContext)
-            val uris = repository.getImageUrisForAlbumIds(scope)
-            if (uris.isEmpty()) {
+            val items = repository.getImageItemsForAlbumIds(scope)
+            if (items.isEmpty()) {
                 // No images in scope — prune the index to empty, then finish.
-                repository.buildIndex(uris) { _, _ -> }
+                repository.buildIndex(items) { _, _ -> }
                 IndexPreferences.saveLastIndexedTime(applicationContext)
                 IndexPreferences.setIndexProgressPercent(applicationContext, 100)
                 return Result.success()
             }
-            val total = max(1, uris.size)
+            val total = max(1, items.size)
 
-            repository.buildIndex(uris) { current, _ ->
+            repository.buildIndex(items) { current, _ ->
                 if (IndexPreferences.isIndexPaused(applicationContext)) {
                     throw IndexPausedException()
                 }

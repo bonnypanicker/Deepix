@@ -248,6 +248,10 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putInt(KeyIndexBatchSizeOverride, size)
+            // The cached thread count was tuned for the old (larger) batch shape — invalidate it
+            // so the next run re-benchmarks against the new batch size instead of running with a
+            // stale, mismatched thread count.
+            .putInt(KeyOptimalThreads, 0)
             .apply()
     }
 

@@ -33,21 +33,28 @@ class SharedEncoders(private val context: android.content.Context) {
     @Volatile private var imageEncoder: ImageEncoder? = null
     @Volatile private var textEncoder: TextEncoder? = null
 
+    // Separate lock per encoder: constructing an ImageEncoder and a TextEncoder are independent
+    // (separate OrtSessions, separate model assets) — sharing one lock would serialize them even
+    // when callers deliberately try to load both concurrently (see MainActivity.ensureEncodersLoaded).
+    private val imageLock = Any()
+    private val textLock = Any()
+
     /** Thread count tuned by [ThreadBenchmark]; falls back to the default until it has run. */
     private fun optimalThreadCount(): Int {
         return IndexPreferences.getOptimalThreadCount(context).takeIf { it > 0 }
             ?: OnnxSessionOptions.DefaultThreadCount
     }
 
-    fun getImageEncoder(): ImageEncoder {
-        return imageEncoder ?: synchronized(this) {
-            imageEncoder ?: ImageEncoder(context, optimalThreadCount()).also { imageEncoder = it }
+    fun getImageEncoder(threadCount: Int? = null, preloadedModelBytes: ByteArray? = null): ImageEncoder {
+        return imageEncoder ?: synchronized(imageLock) {
+            imageEncoder ?: ImageEncoder.create(context, threadCount ?: optimalThreadCount(), preloadedModelBytes)
+                .also { imageEncoder = it }
         }
     }
 
-    fun getTextEncoder(): TextEncoder {
-        return textEncoder ?: synchronized(this) {
-            textEncoder ?: TextEncoder(context, optimalThreadCount()).also { textEncoder = it }
+    fun getTextEncoder(threadCount: Int? = null): TextEncoder {
+        return textEncoder ?: synchronized(textLock) {
+            textEncoder ?: TextEncoder(context, threadCount ?: optimalThreadCount()).also { textEncoder = it }
         }
     }
 }

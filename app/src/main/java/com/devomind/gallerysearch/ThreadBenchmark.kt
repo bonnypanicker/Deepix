@@ -47,20 +47,23 @@ object ThreadBenchmark {
         val env = OrtEnvironment.getEnvironment()
         // Benchmark the same model asset the encoder will actually run.
         val modelBytes = AssetUtils.readAssetBytes(context, ImageEncoder.resolveVisionModelAssetName(context))
-        val testTensor = createSyntheticInput(env)
+        // Benchmark the real batch shape indexing will run, not batch=1 — thread-count tuning for
+        // a single image doesn't necessarily transfer to a batched [N,3,256,256] tensor.
+        val batchSize = BatchSizing.computeBatchSize(context)
+        val testInput = createSyntheticInput(batchSize)
 
         var bestThreads = 4 // safe default
         var bestTime = Long.MAX_VALUE
 
         for (threads in ThreadCandidates) {
             val elapsed = try {
-                benchmarkWithThreads(env, modelBytes, testTensor, threads)
+                benchmarkWithThreads(env, modelBytes, testInput, threads, batchSize)
             } catch (e: Exception) {
                 Log.w(Tag, "Benchmark failed for threads=$threads", e)
                 Long.MAX_VALUE
             }
 
-            Log.d(Tag, "Threads=$threads → ${elapsed}ms (${MeasureRuns} runs)")
+            Log.d(Tag, "Threads=$threads → ${elapsed}ms (${MeasureRuns} runs, batch=$batchSize)")
 
             if (elapsed < bestTime) {
                 bestTime = elapsed
@@ -75,7 +78,8 @@ object ThreadBenchmark {
         env: OrtEnvironment,
         modelBytes: ByteArray,
         testInput: FloatArray,
-        threads: Int
+        threads: Int,
+        batchSize: Int
     ): Long {
         val options = OrtSession.SessionOptions().apply {
             setIntraOpNumThreads(threads)
@@ -83,15 +87,12 @@ object ThreadBenchmark {
         }
         val session = env.createSession(modelBytes, options)
         val inputName = session.inputNames.first()
+        val shape = longArrayOf(batchSize.toLong(), 3, ImageEncoder.ImageSize.toLong(), ImageEncoder.ImageSize.toLong())
 
         try {
             // Warm up — let JIT and caches stabilize
             repeat(WarmUpRuns) {
-                OnnxTensor.createTensor(
-                    env,
-                    FloatBuffer.wrap(testInput),
-                    longArrayOf(1, 3, ImageEncoder.ImageSize.toLong(), ImageEncoder.ImageSize.toLong())
-                ).use { tensor ->
+                OnnxTensor.createTensor(env, FloatBuffer.wrap(testInput), shape).use { tensor ->
                     session.run(mapOf(inputName to tensor)).use { /* discard */ }
                 }
             }
@@ -99,11 +100,7 @@ object ThreadBenchmark {
             // Measure
             val start = System.nanoTime()
             repeat(MeasureRuns) {
-                OnnxTensor.createTensor(
-                    env,
-                    FloatBuffer.wrap(testInput),
-                    longArrayOf(1, 3, ImageEncoder.ImageSize.toLong(), ImageEncoder.ImageSize.toLong())
-                ).use { tensor ->
+                OnnxTensor.createTensor(env, FloatBuffer.wrap(testInput), shape).use { tensor ->
                     session.run(mapOf(inputName to tensor)).use { /* discard */ }
                 }
             }
@@ -114,13 +111,12 @@ object ThreadBenchmark {
     }
 
     /**
-     * Creates a synthetic 256×256 image tensor (all mid-gray).
-     * We don't need a real image — we're measuring compute throughput, not accuracy.
+     * Creates a synthetic [batchSize]x256x256 image tensor (all mid-gray).
+     * We don't need real images — we're measuring compute throughput, not accuracy.
      */
-    private fun createSyntheticInput(env: OrtEnvironment): FloatArray {
+    private fun createSyntheticInput(batchSize: Int): FloatArray {
         val size = ImageEncoder.ImageSize
-        val planeSize = size * size
-        val floats = FloatArray(3 * planeSize)
+        val floats = FloatArray(batchSize * 3 * size * size)
         // Fill with 0.5 (mid-gray, normalized)
         for (i in floats.indices) {
             floats[i] = 0.5f

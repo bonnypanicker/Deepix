@@ -13,7 +13,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 import java.io.BufferedInputStream
@@ -22,6 +25,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.EOFException
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -33,19 +37,18 @@ class GalleryRepository(
     private val albumCoverStore = AlbumCoverStore(context)
 
     /** Images per inference batch: OOM-persisted override wins, else scaled to device capability. */
-    private val batchSize: Int = computeBatchSize()
+    private val batchSize: Int = BatchSizing.computeBatchSize(context)
 
-    /** Pipeline channel capacity — producer can be this many batches ahead of the consumer. */
-    private val pipelineBuffer: Int = if (batchSize <= 2) 1 else 2
+    /** Decode/preprocess workers running concurrently ahead of inference. Conservative on
+     *  low-RAM devices; shrinks automatically when an OOM pins [batchSize] down since both derive
+     *  from the same override. */
+    private val decodeConcurrency: Int = computeDecodeConcurrency()
 
-    private fun computeBatchSize(): Int {
-        IndexPreferences.getIndexBatchSizeOverride(context).takeIf { it > 0 }?.let { return it }
+    private fun computeDecodeConcurrency(): Int {
         val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        return when {
-            activityManager.isLowRamDevice -> 2
-            activityManager.memoryClass >= 192 -> 6
-            else -> 4
-        }
+        if (activityManager.isLowRamDevice) return 1
+        val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+        return minOf(cores, batchSize, MaxDecodeConcurrency)
     }
 
     data class SemanticSearchHit(val uri: Uri, val score: Float)
@@ -69,7 +72,9 @@ class GalleryRepository(
         val mediaType: MediaType,
         val sizeBytes: Long = 0L,
         val durationMillis: Long = 0L,
-        val path: String = ""
+        val path: String = "",
+        /** MediaStore rotation degrees (0/90/180/270); indexing-only fast path, see [decodeOrientedBitmapForIndexing]. */
+        val orientationDegrees: Int = 0
     ) : Parcelable
 
     data class Album(
@@ -156,7 +161,8 @@ class GalleryRepository(
             MediaStore.Images.Media.DISPLAY_NAME,
             MediaStore.Images.Media.SIZE,
             MediaStore.Images.Media.RELATIVE_PATH,
-            MediaStore.Images.Media.DATA
+            MediaStore.Images.Media.DATA,
+            MediaStore.Images.Media.ORIENTATION
         )
         val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
         val items = ArrayList<MediaItem>()
@@ -174,6 +180,7 @@ class GalleryRepository(
             val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
             val relativePathColumn = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
             val dataPathColumn = cursor.getColumnIndex(MediaStore.Images.Media.DATA)
+            val orientationColumn = cursor.getColumnIndex(MediaStore.Images.Media.ORIENTATION)
             while (cursor.moveToNext()) {
                 val bucketId = cursor.getString(bucketIdColumn) ?: continue
                 if (albumIds.isNotEmpty() && bucketId !in albumIds) continue
@@ -193,7 +200,8 @@ class GalleryRepository(
                     sizeBytes = cursor.getLong(sizeColumn).coerceAtLeast(0L),
                     path = cursor.getString(relativePathColumn).orEmpty().ifBlank {
                         cursor.getString(dataPathColumn).orEmpty()
-                    }
+                    },
+                    orientationDegrees = if (orientationColumn >= 0) cursor.getInt(orientationColumn) else 0
                 )
             }
         }
@@ -282,18 +290,26 @@ class GalleryRepository(
     fun loadBitmap(uri: Uri): Bitmap? = decodeOrientedBitmap(uri, MaxBitmapEdge)
 
     /**
-     * Builds the embedding index using batched inference and pipelined preprocessing.
+     * Builds the embedding index using a parallel decode/preprocess pool feeding batched inference.
      *
      * Architecture:
-     * - Producer coroutine (Dispatchers.IO): loads bitmaps from disk in batches
-     * - Consumer (current coroutine): runs encodeBatch() on each prepared batch
-     * - Channel with capacity=2 lets the producer stay 1-2 batches ahead
+     * - Feeder coroutine: walks the unindexed items into a bounded work channel.
+     * - Decode pool ([decodeConcurrency] coroutines, Dispatchers.IO): each pulls an item, decodes
+     *   it, applies orientation, and preprocesses it into a normalized FloatArray. A bitmap never
+     *   leaves its worker — decode, preprocess, and recycle all happen in one try/finally.
+     * - Consumer (current coroutine): accumulates prepared FloatArrays into [batchSize]-sized
+     *   buffers and runs encodeBatchPrepared() on each — no bitmap or preprocessing work happens
+     *   on this thread, so it's free to run inference back-to-back.
+     * - Save ticker (Dispatchers.IO): persists the index on a wall-clock interval instead of
+     *   inline every N items, so a slow write never blocks the next batch's inference.
      *
-     * This overlaps IO (bitmap loading) with compute (inference), and
-     * batching reduces per-image ONNX framework overhead.
+     * Decode/preprocess is embarrassingly parallel and never touches the encoder's session lock,
+     * so it fully overlaps with inference on multi-core devices. Batch composition doesn't affect
+     * correctness (embeddings are stored in a URI-keyed map), so workers don't need to preserve
+     * input order.
      */
-    suspend fun buildIndex(uris: List<Uri>, onProgress: (current: Int, total: Int) -> Unit) {
-        val uriSet = uris.mapTo(HashSet()) { it.toString() }
+    suspend fun buildIndex(items: List<MediaItem>, onProgress: (current: Int, total: Int) -> Unit) {
+        val uriSet = items.mapTo(HashSet()) { it.uri.toString() }
         // Reconcile against the requested set: keep in-scope embeddings, drop everything else
         // (e.g. photos from a folder the user unchecked).
         val onDisk = loadIndex()
@@ -302,11 +318,11 @@ class GalleryRepository(
             embeddings = LinkedHashMap(loaded)
         }
 
-        val total = uris.size
+        val total = items.size
         onProgress(0, total)
 
-        // Collect URIs that actually need encoding
-        val unindexed = uris.filter { !containsEmbedding(it.toString()) }
+        // Collect items that actually need encoding
+        val unindexed = items.filter { !containsEmbedding(it.uri.toString()) }
 
         if (unindexed.isEmpty()) {
             // Nothing new to encode, but persist any pruning so removed folders don't reappear.
@@ -320,91 +336,117 @@ class GalleryRepository(
 
         val alreadyDone = total - unindexed.size
         var processedNew = 0
-        var newSinceLastSave = 0
+        val dirty = AtomicBoolean(false)
 
         // Report the already-indexed count immediately
         onProgress(alreadyDone, total)
 
-        val batches = unindexed.chunked(batchSize)
-
-        // Pipeline: producer loads bitmaps, consumer runs inference
         coroutineScope {
-            val channel = Channel<BatchData>(capacity = pipelineBuffer)
+            val inputChannel = Channel<MediaItem>(capacity = decodeConcurrency * 2)
+            val outputChannel = Channel<PreparedItem>(capacity = decodeConcurrency * 2)
 
-            // Producer: load and preprocess bitmaps on IO threads
-            val producer = launch(Dispatchers.IO) {
-                for (batch in batches) {
-                    currentCoroutineContext().ensureActive()
-                    val bitmapEntries = mutableListOf<BitmapEntry>()
-                    for (uri in batch) {
-                        currentCoroutineContext().ensureActive()
-                        val bitmap = loadBitmap(uri)
-                        if (bitmap != null) {
-                            bitmapEntries.add(BitmapEntry(uri, bitmap))
-                        }
-                    }
-                    if (bitmapEntries.isNotEmpty()) {
-                        channel.send(BatchData(bitmapEntries))
+            // Persist on a wall-clock interval, off the consumer's critical path, instead of a
+            // synchronous full-file rewrite every N items blocking the next batch's inference.
+            val saveTicker = launch(Dispatchers.IO) {
+                while (isActive) {
+                    delay(SaveIntervalMillis)
+                    if (dirty.compareAndSet(true, false)) {
+                        saveIndex(snapshotIndex())
                     }
                 }
-                channel.close()
             }
 
-            // Consumer: run batched inference
-            for (batchData in channel) {
-                currentCoroutineContext().ensureActive()
-
-                val bitmaps = batchData.entries.map { it.bitmap }
-                try {
-                    val encoder = imageEncoder ?: error("Image encoder not attached yet; indexing must wait for model load")
-                    val embeddings = encoder.encodeBatch(bitmaps)
-
-                    // Store each valid result
-                    batchData.entries.zip(embeddings).forEach { (entry, embedding) ->
-                        if (isEmbeddingValid(embedding)) {
-                            synchronized(indexLock) {
-                                this@GalleryRepository.embeddings[entry.uri.toString()] = embedding
-                            }
-                            newSinceLastSave++
-                        } else {
-                            Log.w(Tag, "Skipping invalid embedding for ${entry.uri}")
-                        }
-                    }
-                } catch (error: Throwable) {
-                    Log.w(Tag, "Batch encoding failed, falling back to single-image", error)
-                    // Fallback: encode one at a time
-                    for (entry in batchData.entries) {
-                        try {
-                            val encoder = imageEncoder ?: continue
-                            val embedding = encoder.encode(entry.bitmap)
-                            if (isEmbeddingValid(embedding)) {
-                                synchronized(indexLock) {
-                                    this@GalleryRepository.embeddings[entry.uri.toString()] = embedding
-                                }
-                                newSinceLastSave++
-                            }
-                        } catch (e: Throwable) {
-                            Log.w(Tag, "Failed to encode ${entry.uri}", e)
-                        }
-                    }
-                } finally {
-                    // Recycle all bitmaps
-                    bitmaps.forEach { it.recycle() }
+            // Feeder: hands work items to the decode pool; suspends only on channel backpressure.
+            val feeder = launch(Dispatchers.Default) {
+                for (item in unindexed) {
+                    ensureActive()
+                    inputChannel.send(item)
                 }
+                inputChannel.close()
+            }
 
-                processedNew += batchData.entries.size
+            // Decode pool: N workers decode + orient + preprocess concurrently, independent of
+            // the inference session lock.
+            val decodeWorkers = List(decodeConcurrency) {
+                launch(Dispatchers.IO) {
+                    for (item in inputChannel) {
+                        ensureActive()
+                        val prepared = runCatching { loadAndPreprocess(item) }
+                            .onFailure { Log.w(Tag, "Decode/preprocess failed for ${item.uri}", it) }
+                            .getOrNull()
+                        if (prepared != null) outputChannel.send(prepared)
+                    }
+                }
+            }
+            // Fan-in closer: closes the output channel once every decode worker is done, without
+            // blocking the consumer loop below.
+            launch(Dispatchers.Default) {
+                decodeWorkers.joinAll()
+                outputChannel.close()
+            }
+
+            // Consumer: buffers prepared items up to batchSize, then runs inference.
+            val batchBuffer = ArrayList<PreparedItem>(batchSize)
+            suspend fun flushBatch() {
+                if (batchBuffer.isEmpty()) return
+                encodeAndStore(batchBuffer, dirty)
+                processedNew += batchBuffer.size
                 onProgress(alreadyDone + processedNew, total)
-
-                if (newSinceLastSave >= SaveEvery) {
-                    saveIndex(snapshotIndex())
-                    newSinceLastSave = 0
-                }
+                batchBuffer.clear()
             }
+            for (prepared in outputChannel) {
+                currentCoroutineContext().ensureActive()
+                batchBuffer.add(prepared)
+                if (batchBuffer.size >= batchSize) flushBatch()
+            }
+            flushBatch()
 
-            producer.join()
+            feeder.join()
+            saveTicker.cancel()
         }
 
         saveIndex(snapshotIndex())
+    }
+
+    /** Runs inference on a prepared batch and stores valid embeddings; falls back to per-image
+     *  encoding (reusing the already-preprocessed data, no re-decode) if the batch call fails. */
+    private fun encodeAndStore(batch: List<PreparedItem>, dirty: AtomicBoolean) {
+        val encoder = imageEncoder ?: error("Image encoder not attached yet; indexing must wait for model load")
+        try {
+            val results = encoder.encodeBatchPrepared(batch.map { it.floats })
+            batch.zip(results).forEach { (entry, embedding) -> storeEmbedding(entry.uri, embedding, dirty) }
+        } catch (error: Throwable) {
+            Log.w(Tag, "Batch encoding failed, falling back to single-image", error)
+            for (entry in batch) {
+                try {
+                    storeEmbedding(entry.uri, encoder.encodePrepared(entry.floats), dirty)
+                } catch (e: Throwable) {
+                    Log.w(Tag, "Failed to encode ${entry.uri}", e)
+                }
+            }
+        }
+    }
+
+    private fun storeEmbedding(uri: Uri, embedding: FloatArray, dirty: AtomicBoolean) {
+        if (!isEmbeddingValid(embedding)) {
+            Log.w(Tag, "Skipping invalid embedding for $uri")
+            return
+        }
+        synchronized(indexLock) {
+            embeddings[uri.toString()] = embedding
+        }
+        dirty.set(true)
+    }
+
+    /** Decodes, orients, and preprocesses one image for indexing; the bitmap never leaves this call. */
+    private fun loadAndPreprocess(item: MediaItem): PreparedItem? {
+        val encoder = imageEncoder ?: return null
+        val bitmap = decodeOrientedBitmapForIndexing(item.uri, MaxBitmapEdge, item.orientationDegrees) ?: return null
+        return try {
+            PreparedItem(item.uri, encoder.preprocess(bitmap))
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     fun search(query: String): List<SemanticSearchHit> {
@@ -628,6 +670,53 @@ class GalleryRepository(
             androidx.exifinterface.media.ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.postScale(-1f, 1f) }
             else -> return bitmap
         }
+        val rotated = runCatching {
+            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        }.getOrNull() ?: return bitmap
+        if (rotated !== bitmap) bitmap.recycle()
+        return rotated
+    }
+
+    /**
+     * Indexing-only fast path: rotates by the MediaStore ORIENTATION degrees already fetched with
+     * the media query, skipping the 3rd stream-open + EXIF byte parse that [decodeOrientedBitmap]
+     * needs. Loses flip/mirror handling (rare in real EXIF data, already an accepted trade-off for
+     * display purposes elsewhere in the app). [loadBitmap]/[decodeRegionBitmap] are untouched and
+     * keep full EXIF correctness for the interactive crop-search path.
+     */
+    private fun decodeOrientedBitmapForIndexing(uri: Uri, maxEdge: Int, degrees: Int): Bitmap? {
+        return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, bounds)
+            }
+            val rawW = bounds.outWidth
+            val rawH = bounds.outHeight
+            if (rawW <= 0 || rawH <= 0) return null
+
+            var sample = 1
+            while (maxOf(rawW, rawH) / sample > maxEdge) sample *= 2
+
+            val opts = BitmapFactory.Options().apply {
+                inSampleSize = sample
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            val decoded = context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, opts)
+            } ?: return null
+
+            applyRotationDegrees(decoded, degrees)
+        } catch (t: Throwable) {
+            Log.w(Tag, "decodeOrientedBitmapForIndexing failed for $uri", t)
+            null
+        }
+    }
+
+    /** Returns [bitmap] rotated by [degrees] (a MediaStore rotation value: 0/90/180/270); recycles the source if replaced. */
+    private fun applyRotationDegrees(bitmap: Bitmap, degrees: Int): Bitmap {
+        val normalized = ((degrees % 360) + 360) % 360
+        if (normalized == 0) return bitmap
+        val matrix = android.graphics.Matrix().apply { postRotate(normalized.toFloat()) }
         val rotated = runCatching {
             Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
         }.getOrNull() ?: return bitmap
@@ -889,11 +978,8 @@ class GalleryRepository(
         output.write(bytes)
     }
 
-    /** Holds a URI + its loaded bitmap for batch processing. */
-    private data class BitmapEntry(val uri: Uri, val bitmap: Bitmap)
-
-    /** A prepared batch ready for inference. */
-    private data class BatchData(val entries: List<BitmapEntry>)
+    /** A URI paired with its preprocessed (normalized) image data, ready for inference. */
+    private data class PreparedItem(val uri: Uri, val floats: FloatArray)
 
     companion object {
         private const val Tag = "GalleryRepository"
@@ -908,7 +994,8 @@ class GalleryRepository(
         // selections still carry enough detail for the 256px CLIP encoder.
         private const val RegionDecodeMaxEdge = 2048
         private const val RegionThumbnailMaxEdge = 256
-        private const val SaveEvery = 20
+        private const val SaveIntervalMillis = 10_000L
+        private const val MaxDecodeConcurrency = 4
         private const val MaxUriBytes = 4096
         private const val MaxEmbeddingSize = 4096
         private const val MaxTextBytes = 16_384

@@ -11,39 +11,38 @@ import org.json.JSONObject
 import java.nio.FloatBuffer
 import kotlin.math.roundToInt
 
-class ImageEncoder(
+class ImageEncoder private constructor(
     private val context: Context,
-    threadCount: Int = OnnxSessionOptions.DefaultThreadCount
+    modelBytes: ByteArray,
+    threadCount: Int
 ) : AutoCloseable {
     private val environment: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
     private val inputName: String
     private val outputName: String
     private val processorConfig = ProcessorConfig.fromAssets(context)
-    private val modelAssetName: String
 
     /** Guards the shared OrtSession so indexing and live queries never call run() concurrently. */
     private val sessionLock = Any()
 
     init {
-        modelAssetName = resolveVisionModelAssetName(context)
-        val modelBytes = AssetUtils.readAssetBytes(context, modelAssetName)
-        val options = OnnxSessionOptions.create(Tag)
+        val options = OnnxSessionOptions.create(Tag, threadCount)
         session = environment.createSession(modelBytes, options)
         inputName = session.inputNames.first()
         outputName = session.outputNames.first()
-        Log.d(Tag, "Vision model asset: $modelAssetName")
         Log.d(Tag, "Vision model inputs: ${session.inputNames}")
         Log.d(Tag, "Vision model outputs: ${session.outputNames}")
         Log.d(Tag, "Vision processor config: $processorConfig")
     }
 
     /** Encode a single image. Kept for backward compatibility. */
-    fun encode(bitmap: Bitmap): FloatArray {
-        val image = preprocess(bitmap)
+    fun encode(bitmap: Bitmap): FloatArray = encodePrepared(preprocess(bitmap))
+
+    /** Runs a single already-preprocessed image through the model. */
+    fun encodePrepared(preprocessed: FloatArray): FloatArray {
         OnnxTensor.createTensor(
             environment,
-            FloatBuffer.wrap(image),
+            FloatBuffer.wrap(preprocessed),
             longArrayOf(1, 3, ImageSize.toLong(), ImageSize.toLong())
         ).use { tensor ->
             // Serialize model runs: indexing (encodeBatch) and live queries (encode) share one
@@ -69,19 +68,24 @@ class ImageEncoder(
      * may be shorter than the input list — callers must zip with original URIs
      * using the bitmapIndices).
      */
-    fun encodeBatch(bitmaps: List<Bitmap>): List<FloatArray> {
-        if (bitmaps.isEmpty()) return emptyList()
-        if (bitmaps.size == 1) return listOf(encode(bitmaps[0]))
+    fun encodeBatch(bitmaps: List<Bitmap>): List<FloatArray> = encodeBatchPrepared(bitmaps.map { preprocess(it) })
 
-        val batchSize = bitmaps.size
+    /**
+     * Same as [encodeBatch] but takes already-preprocessed images, so callers that preprocessed
+     * off the inference thread (e.g. a parallel decode pool) skip re-doing that work here.
+     */
+    fun encodeBatchPrepared(preprocessed: List<FloatArray>): List<FloatArray> {
+        if (preprocessed.isEmpty()) return emptyList()
+        if (preprocessed.size == 1) return listOf(encodePrepared(preprocessed[0]))
+
+        val batchSize = preprocessed.size
         val planeSize = ImageSize * ImageSize
         val imageFloatCount = 3 * planeSize
 
         // Stack all preprocessed images into one flat array
         val batchArray = FloatArray(batchSize * imageFloatCount)
-        for (i in bitmaps.indices) {
-            val preprocessed = preprocess(bitmaps[i])
-            preprocessed.copyInto(batchArray, destinationOffset = i * imageFloatCount)
+        for (i in preprocessed.indices) {
+            preprocessed[i].copyInto(batchArray, destinationOffset = i * imageFloatCount)
         }
 
         val shape = longArrayOf(batchSize.toLong(), 3, ImageSize.toLong(), ImageSize.toLong())
@@ -215,6 +219,19 @@ class ImageEncoder(
             val available = context.assets.list("")?.toSet().orEmpty()
             return PreferredVisionModels.firstOrNull { it in available }
                 ?: error("No vision model asset found. Checked: ${PreferredVisionModels.joinToString()}")
+        }
+
+        /** Reads the vision model asset bytes — pure IO, safe to run concurrently with [ThreadBenchmark]. */
+        fun preloadModelBytes(context: Context): ByteArray =
+            AssetUtils.readAssetBytes(context, resolveVisionModelAssetName(context))
+
+        fun create(
+            context: Context,
+            threadCount: Int = OnnxSessionOptions.DefaultThreadCount,
+            preloadedModelBytes: ByteArray? = null
+        ): ImageEncoder {
+            val modelBytes = preloadedModelBytes ?: preloadModelBytes(context)
+            return ImageEncoder(context, modelBytes, threadCount)
         }
     }
 }
