@@ -80,7 +80,7 @@ class FastScrollIndicator @JvmOverloads constructor(
         this.recyclerView = rv
         this.adapter = imageAdapter
         rv.addOnScrollListener(scrollListener)
-        alpha = 0.28f
+        alpha = 0f
         visibility = View.VISIBLE
     }
 
@@ -122,7 +122,7 @@ class FastScrollIndicator @JvmOverloads constructor(
                     Math.min(width - dip(8f), bx + bw),
                     by + bh
                 )
-                canvas.drawRoundRect(bubbleRect, dip(18f), dip(18f), bubblePaint)
+                canvas.drawRoundRect(bubbleRect, dip(2f), dip(2f), bubblePaint)
                 canvas.drawText(
                     bubbleText,
                     bubbleRect.centerX(),
@@ -254,7 +254,7 @@ class FastScrollIndicator @JvmOverloads constructor(
 
     private fun hide() {
         fadeAnim?.cancel()
-        fadeAnim = ObjectAnimator.ofFloat(this, "alpha", 0.28f).apply {
+        fadeAnim = ObjectAnimator.ofFloat(this, "alpha", 0f).apply {
             startDelay = 800
             duration = 200
             start()
