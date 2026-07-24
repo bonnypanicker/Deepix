@@ -69,20 +69,16 @@
             android:id="@+id/aiBadge"
             android:layout_width="22dp"
             android:layout_height="22dp"
-            android:background="@drawable/search_ai_badge_bg"
             android:contentDescription="@string/ai_match"
-            android:padding="4dp"
-            android:src="@drawable/ic_fluent_sparkle_24_regular"
+            android:src="@drawable/ic_deepix_ai_orb_mono_24"
             android:visibility="gone" />
 
         <ImageView
             android:id="@+id/metadataBadge"
             android:layout_width="22dp"
             android:layout_height="22dp"
-            android:layout_marginStart="4dp"
-            android:background="@drawable/search_metadata_badge_bg"
+            android:layout_marginStart="6dp"
             android:contentDescription="@string/text_match"
-            android:padding="4dp"
             android:src="@drawable/ic_fluent_tag_24_regular"
             android:tint="@color/metroTextPrimary"
             android:visibility="gone" />

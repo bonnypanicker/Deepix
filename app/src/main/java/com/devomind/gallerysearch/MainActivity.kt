@@ -774,7 +774,7 @@ class MainActivity : AppCompatActivity() {
             this,
             title = "Local AI photo search",
             message = message,
-            iconRes = R.drawable.ic_fluent_sparkle_24_regular,
+            iconRes = R.drawable.ic_deepix_ai_orb_24,
             positive = "Got it"
         )
     }
@@ -1903,7 +1903,7 @@ class MainActivity : AppCompatActivity() {
                 text = "AI search isn't ready",
                 hint = "Indexing is ${if (progress > 0) "$progress% done and " else ""}paused, so AI " +
                     "search only sees part of your library. Resume it to search everything.",
-                iconRes = R.drawable.ic_fluent_sparkle_24_regular,
+                iconRes = R.drawable.ic_deepix_ai_orb_24,
                 actionLabel = "Resume indexing",
                 onAction = { resumeIndexing() }
             )
@@ -2666,7 +2666,7 @@ class MainActivity : AppCompatActivity() {
             label = "NAME",
             positive = "Rename",
             initial = smart.name,
-            iconRes = R.drawable.ic_fluent_sparkle_24_regular
+            iconRes = R.drawable.ic_deepix_ai_orb_24
         ) { newName ->
             smartAlbumStore.upsert(smart.copy(name = newName, updatedAt = System.currentTimeMillis()))
             smartAlbums = smartAlbumStore.getAll()
@@ -2684,7 +2684,7 @@ class MainActivity : AppCompatActivity() {
             label = "WHAT TO FIND",
             positive = "Save & refresh",
             initial = smart.prompt,
-            iconRes = R.drawable.ic_fluent_sparkle_24_regular
+            iconRes = R.drawable.ic_deepix_ai_orb_24
         ) { newPrompt ->
             val updated = smart.copy(prompt = newPrompt, updatedAt = System.currentTimeMillis())
             smartAlbumStore.upsert(updated)
@@ -2742,7 +2742,7 @@ class MainActivity : AppCompatActivity() {
                 text = "No matches yet",
                 hint = "This smart album fills itself as matching photos are indexed. " +
                     "Refresh it from the album menu, or broaden its description.",
-                iconRes = R.drawable.ic_fluent_sparkle_24_regular
+                iconRes = R.drawable.ic_deepix_ai_orb_24
             ),
             "smart:${smart.id}"
         )

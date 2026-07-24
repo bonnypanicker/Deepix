@@ -180,7 +180,7 @@
                     android:layout_marginTop="6dp"
                     android:background="@drawable/search_filter_chip_bg"
                     android:clickable="true"
-                    android:drawableStart="@drawable/ic_fluent_sparkle_24_regular"
+                    android:drawableStart="@drawable/ic_deepix_ai_orb_24"
                     android:drawablePadding="6dp"
                     android:focusable="true"
                     android:paddingStart="14dp"
