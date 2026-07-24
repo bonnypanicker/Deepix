@@ -199,9 +199,9 @@ class IndexWorker(
         ensureChannel()
         val indeterminate = total <= 1
         val percent = if (indeterminate) 0 else (current.coerceAtMost(total) * 100) / total
-        val text = if (indeterminate) "Starting…" else "$percent%"
+        val text = if (indeterminate) "Starting…" else "${current.coerceAtMost(total)}/$total · $percent%"
         val notification: Notification = NotificationCompat.Builder(applicationContext, ChannelId)
-            .setContentTitle("Indexing photos for AI search")
+            .setContentTitle("Indexing photos")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setOngoing(true)
@@ -304,8 +304,8 @@ class IndexWorker(
         fun showPausedNotification(context: Context) {
             ensureChannel(context)
             val notification = NotificationCompat.Builder(context, ChannelId)
-                .setContentTitle("Photo indexing paused")
-                .setContentText("Resume when you're ready to finish building your AI search index.")
+                .setContentTitle("Indexing paused")
+                .setContentText("Tap Resume to continue")
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
@@ -327,8 +327,8 @@ class IndexWorker(
         fun showWaitingForChargeNotification(context: Context) {
             ensureChannel(context)
             val notification = NotificationCompat.Builder(context, ChannelId)
-                .setContentTitle("Photo indexing waiting to charge")
-                .setContentText("Plug in to continue building your AI search index.")
+                .setContentTitle("Waiting to charge")
+                .setContentText("Plug in to continue indexing")
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
