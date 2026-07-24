@@ -33,7 +33,6 @@ import androidx.core.view.GravityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
@@ -458,7 +457,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun configureEdgeToEdge() {
         configureCutoutMode()
-        hideStatusBar()
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
             val systemInsets = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
@@ -491,13 +489,6 @@ class MainActivity : AppCompatActivity() {
             WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
         window.attributes = params
-    }
-
-    private fun hideStatusBar() {
-        WindowCompat.getInsetsController(window, binding.root)?.apply {
-            hide(WindowInsetsCompat.Type.statusBars())
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        }
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
@@ -1336,7 +1327,7 @@ class MainActivity : AppCompatActivity() {
     // "Alive" search bar — rotating hints
     // ---------------------------------------------------------------------------------------------
 
-    private val shuffledSearchHints = listOf(
+    private val orderedSearchHints = listOf(
         "Search with AI",
         "\"Beach at sunset\"",
         "\"Birthday cake\"",
@@ -1345,7 +1336,7 @@ class MainActivity : AppCompatActivity() {
         "\"Documents\"",
         "Search metadata",
         "Search by description"
-    ).shuffled()
+    )
 
     /** The rotating hints shown while the field is empty. Indexing progress joins in only while a pass runs. */
     private fun searchHints(): List<CharSequence> {
@@ -1354,7 +1345,7 @@ class MainActivity : AppCompatActivity() {
             val pct = (indexProgressCurrent * 100 / indexProgressTotal).coerceIn(0, 100)
             hints += "AI Learning Photos\u2026 $pct%"
         }
-        hints.addAll(shuffledSearchHints)
+        hints.addAll(orderedSearchHints)
         return hints
     }
 
@@ -3505,11 +3496,6 @@ class MainActivity : AppCompatActivity() {
             positive = "Close",
             scrollableMessage = true
         )
-    }
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) hideStatusBar()
     }
 
     override fun onResume() {
