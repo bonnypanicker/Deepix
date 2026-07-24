@@ -213,7 +213,7 @@ class PhotoEditorActivity : AppCompatActivity() {
     // ------------------------------------------------------------------ chrome
 
     private fun wireChrome() {
-        binding.closeBtn.setOnClickListener { confirmDiscardAndExit() }
+        binding.closeBtn.setOnClickListener { if (tool != null) cancelTool() else confirmDiscardAndExit() }
         binding.undoBtn.setOnClickListener { undo() }
         binding.saveBtn.setOnClickListener { showSaveMenu() }
 
