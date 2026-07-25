@@ -146,7 +146,7 @@
                 android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:contentDescription="@string/share"
-                android:src="@drawable/ic_fluent_share_24_regular"
+                android:src="@drawable/ic_fluent_share_android_24_regular"
                 android:tint="@color/metroTextPrimary" />
 
             <TextView
