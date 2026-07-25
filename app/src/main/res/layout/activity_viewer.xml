@@ -192,36 +192,6 @@
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/actionOrientation"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:contentDescription="@string/rotate"
-                android:src="@drawable/ic_fluent_screen_rotate_24_regular"
-                android:tint="@color/metroTextPrimary" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:includeFontPadding="false"
-                android:text="@string/rotate"
-                android:textColor="@color/metroTextStrong"
-                android:textSize="11sp" />
-        </LinearLayout>
-
-        <LinearLayout
             android:id="@+id/actionDelete"
             android:layout_width="0dp"
             android:layout_height="wrap_content"

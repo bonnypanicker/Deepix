@@ -114,6 +114,11 @@ class RotatablePhotoView @JvmOverloads constructor(
         scaleY = 1f
     }
 
+    /** Rotates the photo 90 degrees clockwise, baking the rotation into the bitmap. */
+    fun rotateClockwise() {
+        rotateOneStep(90f)
+    }
+
     private fun beginTwist(event: MotionEvent) {
         val angle = angleBetweenFirstTwoPointers(event) ?: return
         val span = spanBetweenFirstTwoPointers(event) ?: return

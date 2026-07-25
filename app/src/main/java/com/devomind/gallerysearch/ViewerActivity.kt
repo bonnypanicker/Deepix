@@ -383,14 +383,6 @@ class ViewerActivity : AppCompatActivity() {
     private fun bindGlobalActions() {
         binding.backBtn.setOnClickListener { supportFinishAfterTransition() }
         binding.actionShare.setOnClickListener { shareCurrent() }
-        binding.actionOrientation.setOnClickListener {
-            val currentOrientation = resources.configuration.orientation
-            requestedOrientation = if (currentOrientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) {
-                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            } else {
-                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-            }
-        }
         binding.favoriteBtn.setOnClickListener {
             val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
             val isFavorite = favoritesStore.toggle(item.uri)
@@ -519,8 +511,9 @@ class ViewerActivity : AppCompatActivity() {
             if (!albumId.isNullOrBlank()) {
                 menu.menu.add(0, MENU_SET_AS_ALBUM_COVER, 2, "Set as album cover")
             }
+            menu.menu.add(0, MENU_ROTATE, 3, "Rotate")
         }
-        menu.menu.add(0, MENU_INFO, 3, "Info")
+        menu.menu.add(0, MENU_INFO, 4, "Info")
         menu.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
                 MENU_TAGS -> {
@@ -535,6 +528,10 @@ class ViewerActivity : AppCompatActivity() {
                     setAsAlbumCover(item)
                     true
                 }
+                MENU_ROTATE -> {
+                    rotateCurrentPhoto()
+                    true
+                }
                 MENU_INFO -> {
                     if (!infoVisible) toggleInfoPanel()
                     true
@@ -543,6 +540,11 @@ class ViewerActivity : AppCompatActivity() {
             }
         }
         menu.show()
+    }
+
+    private fun rotateCurrentPhoto() {
+        val holder = getCurrentPageViewHolder() ?: return
+        holder.binding.photoView.rotateClockwise()
     }
 
     private fun setAsAlbumCover(item: GalleryRepository.MediaItem) {
@@ -1380,6 +1382,7 @@ class ViewerActivity : AppCompatActivity() {
         private const val MENU_SIMILAR_REGION = 4
         private const val MENU_GOOGLE_LENS = 5
         private const val MENU_SET_AS_ALBUM_COVER = 6
+        private const val MENU_ROTATE = 7
         private const val GOOGLE_LENS_PACKAGE = "com.google.ar.lens"
         private const val GOOGLE_PLAY_STORE_PACKAGE = "com.android.vending"
         const val ExtraContentChanged = "content_changed"
