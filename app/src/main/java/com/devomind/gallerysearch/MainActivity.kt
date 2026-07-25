@@ -105,7 +105,8 @@ class MainActivity : AppCompatActivity() {
     private var fullSearchResults: List<PhotoSearchResult> = emptyList()
     private var currentDisplayedSearchResultCount = 0
     private var searchResultsMaster: List<PhotoSearchResult> = emptyList()
-    private var currentSortMode = SortMode.Relevance
+    /** Search-only ordering; null means relevance (ranked by score), which browse listings have no equivalent of. */
+    private var currentSearchSort: SortOption? = null
     private var showFilter = ShowFilter.All
     private var lastSearchStatusText = ""
     private var imageSearchActive = false
@@ -125,6 +126,8 @@ class MainActivity : AppCompatActivity() {
     private var pagedContext: String? = null   // null = paging inactive (e.g. albums/folders/search)
     private var pagingInFlight = false
     private var pagedPrefixCount = 0            // non-timeline cells prepended (e.g. pinned header)
+    // Month/day headers only make sense while the list is in date order; name/size orders go flat.
+    private var pagedDateOrdered = true
 
     // Collage thumbnail scale (1..5); adjustable by pinch gesture + Settings. Cached here so the
     // justified-rows builder doesn't hit SharedPreferences per day-row.
@@ -1079,9 +1082,8 @@ class MainActivity : AppCompatActivity() {
         updateBottomPanelState()
         showBottomPanel()
 
-        val sorted = items.sortedByDescending { it.dateMillis }
         renderPagedTimeline(
-            sorted,
+            items,
             GalleryCell.Empty("Nothing in this folder", iconRes = R.drawable.ic_fluent_folder_24_regular),
             "folder:${folder.path}"
         )
@@ -1555,15 +1557,24 @@ class MainActivity : AppCompatActivity() {
      * [continuingMonth] is the last month header emitted by the previous page, so a header isn't
      * repeated across page boundaries. Returns the cells plus the last month emitted (for the next
      * page). Pages must start on a day boundary (see [nextPageEnd]) so justified rows aren't split.
+     *
+     * When [dateOrdered] is false the list isn't in date order, so date headers would interleave
+     * meaninglessly; the slice renders as one flat run instead.
      */
     private fun buildTimelinePage(
         items: List<GalleryRepository.MediaItem>,
         from: Int,
         to: Int,
         continuingMonth: String?,
-        useCollageLayout: Boolean
+        useCollageLayout: Boolean,
+        dateOrdered: Boolean
     ): Pair<List<GalleryCell>, String?> {
         val rowWidthPx = resources.displayMetrics.widthPixels
+        if (!dateOrdered) {
+            val cells = ArrayList<GalleryCell>(to - from)
+            appendDayCells(cells, items.subList(from, to), useCollageLayout, rowWidthPx)
+            return cells to null
+        }
         val cells = ArrayList<GalleryCell>()
         var lastMonth: String? = continuingMonth
         var lastDay: String? = null
@@ -1594,15 +1605,27 @@ class MainActivity : AppCompatActivity() {
         return cells to lastMonth
     }
 
-    /** End index (exclusive) of the next page: ~PAGE_SIZE items, extended to the day boundary. */
-    private fun nextPageEnd(from: Int): Int {
-        val size = pagedItems.size
+    /** End index (exclusive) of the next page within the active listing. */
+    private fun nextPageEnd(from: Int): Int = pageEndWithin(pagedItems, from, pagedDateOrdered)
+
+    /**
+     * End index (exclusive) of the page starting at [from]: ~PAGE_SIZE items, extended to the day
+     * boundary so justified rows aren't split mid-day. Non-date orders have no day grouping, so
+     * they take the plain slice.
+     */
+    private fun pageEndWithin(
+        items: List<GalleryRepository.MediaItem>,
+        from: Int,
+        dateOrdered: Boolean
+    ): Int {
+        val size = items.size
         var end = minOf(from + BROWSE_PAGE_SIZE, size)
+        if (!dateOrdered) return end
         if (end in (from + 1) until size) {
-            val boundaryDay = safeFormat(dayFormatter, pagedItems[end - 1].dateMillis, "")
+            val boundaryDay = safeFormat(dayFormatter, items[end - 1].dateMillis, "")
             while (end < size &&
                 (end - from) < BROWSE_PAGE_MAX &&
-                safeFormat(dayFormatter, pagedItems[end].dateMillis, "") == boundaryDay
+                safeFormat(dayFormatter, items[end].dateMillis, "") == boundaryDay
             ) {
                 end++
             }
@@ -1613,18 +1636,24 @@ class MainActivity : AppCompatActivity() {
     /**
      * Renders a browse timeline incrementally: the first page is built and shown immediately, then
      * more pages are appended as the user scrolls (see [paginateBrowse]).
+     *
+     * This is the one place browse listings get ordered. [contextKey] carries the active sort so a
+     * re-render under a new order can't be mistaken for the in-flight job of the previous one.
      */
     private fun renderPagedTimeline(
         items: List<GalleryRepository.MediaItem>,
         emptyCell: GalleryCell.Empty,
-        contextKey: String,
+        scopeKey: String,
         prefixCells: List<GalleryCell> = emptyList()
     ) {
         renderJob?.cancel()
-        pagedItems = items
+        val sortOption = SortManager.optionFor(this, scopeKey)
+        val contextKey = "$scopeKey|${sortOption.key}"
+        pagedItems = emptyList()
         pagedDisplayedCount = 0
         pagedLastMonth = null
         pagedContext = contextKey
+        pagedDateOrdered = sortOption.dateOrdered
         pagingInFlight = false
         pagedPrefixCount = prefixCells.size
 
@@ -1637,21 +1666,32 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val to = nextPageEnd(0)
         val useCollage = adapter.useCollageLayout
         renderJob = lifecycleScope.launch {
-            val (cells, lastMonth) = withContext(Dispatchers.Default) {
-                buildTimelinePage(items, 0, to, null, useCollage)
+            val page = withContext(Dispatchers.Default) {
+                val sorted = MediaSorter.sort(items, sortOption)
+                val to = pageEndWithin(sorted, 0, sortOption.dateOrdered)
+                val (cells, lastMonth) = buildTimelinePage(sorted, 0, to, null, useCollage, sortOption.dateOrdered)
+                FirstPage(sorted, cells, lastMonth, to)
             }
             if (pagedContext != contextKey) return@launch
-            pagedDisplayedCount = to
-            pagedLastMonth = lastMonth
-            adapter.replaceCells(prefixCells + cells)
+            pagedItems = page.items
+            pagedDisplayedCount = page.end
+            pagedLastMonth = page.lastMonth
+            adapter.replaceCells(prefixCells + page.cells)
             resetGridToTop()
             updateFastScrollVisibility()
             binding.fastScrollIndicator.syncToRecyclerView()
         }
     }
+
+    /** Sorted items plus their first rendered page, produced together off the main thread. */
+    private class FirstPage(
+        val items: List<GalleryRepository.MediaItem>,
+        val cells: List<GalleryCell>,
+        val lastMonth: String?,
+        val end: Int
+    )
 
     /** Appends the next timeline page when the user nears the bottom of the grid. */
     private fun paginateBrowse() {
@@ -1663,10 +1703,11 @@ class MainActivity : AppCompatActivity() {
         val continuing = pagedLastMonth
         val useCollage = adapter.useCollageLayout
         val items = pagedItems
+        val dateOrdered = pagedDateOrdered
         pagingInFlight = true
         lifecycleScope.launch {
             val (cells, lastMonth) = withContext(Dispatchers.Default) {
-                buildTimelinePage(items, from, to, continuing, useCollage)
+                buildTimelinePage(items, from, to, continuing, useCollage, dateOrdered)
             }
             if (pagedContext == ctx && pagedDisplayedCount == from) {
                 pagedDisplayedCount = to
@@ -1924,22 +1965,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Renders search results. Relevance keeps the ranked flat grid with infinite pagination;
-     * date sorts group results under month headers (the reference's philosophy).
+     * Renders search results. Relevance and non-date orders keep the flat grid with infinite
+     * pagination; date orders group results under month headers (the reference's philosophy).
      */
     private fun applySortAndShow() {
-        fullSearchResults = sortResults(searchResultsMaster, currentSortMode)
+        fullSearchResults = sortResults(searchResultsMaster, currentSearchSort)
         currentDisplayedSearchResultCount = 0
 
-        if (currentSortMode == SortMode.Relevance) {
-            val firstPage = fullSearchResults.take(SEARCH_PAGE_SIZE)
-            currentDisplayedSearchResultCount = firstPage.size
-            adapter.replaceCells(buildSearchPhotoCells(firstPage))
-        } else {
+        if (currentSearchSort?.dateOrdered == true) {
             // Date-grouped: render all (capped) with month headers; pagination disabled.
             val capped = fullSearchResults.take(SEARCH_DISPLAY_CAP)
             currentDisplayedSearchResultCount = fullSearchResults.size
             adapter.replaceCells(buildSearchTimelineCells(capped))
+        } else {
+            val firstPage = fullSearchResults.take(SEARCH_PAGE_SIZE)
+            currentDisplayedSearchResultCount = firstPage.size
+            adapter.replaceCells(buildSearchPhotoCells(firstPage))
         }
         resetGridToTop()
         updateFastScrollVisibility()
@@ -1999,12 +2040,14 @@ class MainActivity : AppCompatActivity() {
         return cells
     }
 
-    private fun sortResults(results: List<PhotoSearchResult>, mode: SortMode): List<PhotoSearchResult> {
-        return when (mode) {
-            SortMode.Relevance -> results // already ranked by score
-            SortMode.Newest -> results.sortedByDescending { it.item.dateMillis }
-            SortMode.Oldest -> results.sortedBy { it.item.dateMillis }
-        }
+    /**
+     * Orders search results. [option] null keeps the score ranking; otherwise the shared
+     * [MediaSorter] orders the underlying items and the results follow.
+     */
+    private fun sortResults(results: List<PhotoSearchResult>, option: SortOption?): List<PhotoSearchResult> {
+        if (option == null) return results // already ranked by score
+        val byUri = results.associateBy { it.item.uri }
+        return MediaSorter.sort(results.map { it.item }, option).mapNotNull { byUri[it.uri] }
     }
 
     private fun updateSearchResultCount() {
@@ -2040,7 +2083,7 @@ class MainActivity : AppCompatActivity() {
         val view = layoutInflater.inflate(R.layout.sheet_search_filter, null)
         val container = view.findViewById<LinearLayout>(R.id.sheetContainer)
 
-        var pendingSort = currentSortMode
+        var pendingSort = currentSearchSort
         var pendingMode = searchMode
         var pendingShow = showFilter
 
@@ -2049,9 +2092,13 @@ class MainActivity : AppCompatActivity() {
         rebuild = {
             container.removeAllViews()
             addSheetHeader(container, "SORT BY")
-            SortMode.entries.forEach { mode ->
-                addSheetOption(container, mode.label, pendingSort == mode) {
-                    pendingSort = mode
+            addSheetOption(container, "Relevance", pendingSort == null) {
+                pendingSort = null
+                rebuild()
+            }
+            SortOption.entries.forEach { option ->
+                addSheetOption(container, option.label, pendingSort == option) {
+                    pendingSort = option
                     rebuild()
                 }
             }
@@ -2129,8 +2176,8 @@ class MainActivity : AppCompatActivity() {
         container.addView(row)
     }
 
-    private fun applySheetSelections(sort: SortMode, mode: SearchMode, show: ShowFilter) {
-        currentSortMode = sort
+    private fun applySheetSelections(sort: SortOption?, mode: SearchMode, show: ShowFilter) {
+        currentSearchSort = sort
         searchMode = mode
         showFilter = show
         if (imageSearchActive) {
@@ -2222,7 +2269,7 @@ class MainActivity : AppCompatActivity() {
                     PhotoSearchResult(item, SearchSources(ai = true, metadata = false), hit.score)
                 }
             }
-            currentSortMode = SortMode.Relevance
+            currentSearchSort = null
             val title = if (isRegion) "Similar to region" else "Similar to $name"
             renderSearchResults(results, "No similar photos found", title)
         }
@@ -3338,6 +3385,41 @@ class MainActivity : AppCompatActivity() {
             currentMode == Mode.Browse &&
             adapter.selectionCount == 0
         binding.addAlbumBtn.visibility = if (isAlbumsSection) View.VISIBLE else View.GONE
+        updateSortControl()
+    }
+
+    /**
+     * The paging context key of the current listing, which doubles as the sort-preference scope.
+     * Null on screens that don't sort media (albums grid, folder tree, search).
+     */
+    private fun currentScopeKey(): String? = when (currentMode) {
+        Mode.AlbumDetail -> currentAlbum?.let { "album:${it.id}" }
+        Mode.FolderDetail -> currentFolder?.let { "folder:${it.path}" }
+        Mode.SmartAlbumDetail -> currentSmartAlbum?.let { "smart:${it.id}" }
+        Mode.Search -> null
+        Mode.Browse -> when (activeSection) {
+            Section.Collection, Section.Videos, Section.Favorites -> "section:$activeSection"
+            Section.Albums, Section.Folders -> null
+        }
+    }
+
+    /** Shows the accent sort affordance on media listings, labelled with the active order. */
+    private fun updateSortControl() {
+        val scopeKey = currentScopeKey()
+        val visible = scopeKey != null && adapter.selectionCount == 0
+        binding.sortControl.visibility = if (visible) View.VISIBLE else View.GONE
+        if (!visible) return
+
+        val current = SortManager.optionFor(this, scopeKey)
+        binding.sortLabel.text = current.label
+        binding.sortControl.contentDescription =
+            getString(R.string.sort_change_order) + ": " + current.label
+        binding.sortControl.setOnClickListener { anchor ->
+            SortMenu.show(anchor, current) { picked ->
+                SortManager.setOption(this, scopeKey, picked)
+                renderCurrentState()
+            }
+        }
     }
 
     private fun updateDrawerState() {
@@ -3547,12 +3629,6 @@ class MainActivity : AppCompatActivity() {
         Hybrid,
         AiOnly,
         MetadataOnly
-    }
-
-    private enum class SortMode(val label: String) {
-        Relevance("Relevance"),
-        Newest("Newest first"),
-        Oldest("Oldest first")
     }
 
     private enum class ShowFilter(val label: String) {

@@ -74,7 +74,9 @@ class GalleryRepository(
         val durationMillis: Long = 0L,
         val path: String = "",
         /** MediaStore rotation degrees (0/90/180/270); indexing-only fast path, see [decodeOrientedBitmapForIndexing]. */
-        val orientationDegrees: Int = 0
+        val orientationDegrees: Int = 0,
+        /** File's last-modified time. [dateMillis] is the capture date; these differ after an edit. */
+        val dateModifiedMillis: Long = 0L
     ) : Parcelable
 
     data class Album(
@@ -155,6 +157,7 @@ class GalleryRepository(
             MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
             MediaStore.Images.Media.DATE_TAKEN,
             MediaStore.Images.Media.DATE_ADDED,
+            MediaStore.Images.Media.DATE_MODIFIED,
             MediaStore.Images.Media.WIDTH,
             MediaStore.Images.Media.HEIGHT,
             MediaStore.Images.Media.MIME_TYPE,
@@ -173,6 +176,7 @@ class GalleryRepository(
             val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
             val dateTakenColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
             val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+            val dateModifiedColumn = cursor.getColumnIndex(MediaStore.Images.Media.DATE_MODIFIED)
             val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
             val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
             val mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
@@ -187,11 +191,12 @@ class GalleryRepository(
 
                 val dateTaken = cursor.getLong(dateTakenColumn)
                 val dateAdded = cursor.getLong(dateAddedColumn) * 1000L
+                val dateMillis = sanitizeDate(dateTaken, dateAdded)
                 items += MediaItem(
                     uri = ContentUris.withAppendedId(collection, cursor.getLong(idColumn)),
                     bucketId = bucketId,
                     bucketName = cursor.getString(bucketNameColumn)?.takeIf { it.isNotBlank() } ?: "Unnamed album",
-                    dateMillis = sanitizeDate(dateTaken, dateAdded),
+                    dateMillis = dateMillis,
                     width = cursor.getInt(widthColumn),
                     height = cursor.getInt(heightColumn),
                     mimeType = cursor.getString(mimeColumn),
@@ -201,7 +206,12 @@ class GalleryRepository(
                     path = cursor.getString(relativePathColumn).orEmpty().ifBlank {
                         cursor.getString(dataPathColumn).orEmpty()
                     },
-                    orientationDegrees = if (orientationColumn >= 0) cursor.getInt(orientationColumn) else 0
+                    orientationDegrees = if (orientationColumn >= 0) cursor.getInt(orientationColumn) else 0,
+                    dateModifiedMillis = if (dateModifiedColumn >= 0) {
+                        cursor.getLong(dateModifiedColumn) * 1000L
+                    } else {
+                        dateMillis
+                    }
                 )
             }
         }
@@ -221,6 +231,7 @@ class GalleryRepository(
             MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
             MediaStore.Video.Media.DATE_TAKEN,
             MediaStore.Video.Media.DATE_ADDED,
+            MediaStore.Video.Media.DATE_MODIFIED,
             MediaStore.Video.Media.WIDTH,
             MediaStore.Video.Media.HEIGHT,
             MediaStore.Video.Media.MIME_TYPE,
@@ -239,6 +250,7 @@ class GalleryRepository(
             val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
             val dateTakenColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_TAKEN)
             val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+            val dateModifiedColumn = cursor.getColumnIndex(MediaStore.Video.Media.DATE_MODIFIED)
             val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
             val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
             val mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
@@ -253,11 +265,12 @@ class GalleryRepository(
 
                 val dateTaken = cursor.getLong(dateTakenColumn)
                 val dateAdded = cursor.getLong(dateAddedColumn) * 1000L
+                val dateMillis = sanitizeDate(dateTaken, dateAdded)
                 items += MediaItem(
                     uri = ContentUris.withAppendedId(collection, cursor.getLong(idColumn)),
                     bucketId = bucketId,
                     bucketName = cursor.getString(bucketNameColumn)?.takeIf { it.isNotBlank() } ?: "Unnamed album",
-                    dateMillis = sanitizeDate(dateTaken, dateAdded),
+                    dateMillis = dateMillis,
                     width = cursor.getInt(widthColumn),
                     height = cursor.getInt(heightColumn),
                     mimeType = cursor.getString(mimeColumn),
@@ -267,6 +280,11 @@ class GalleryRepository(
                     durationMillis = cursor.getLong(durationColumn),
                     path = cursor.getString(relativePathColumn).orEmpty().ifBlank {
                         cursor.getString(dataPathColumn).orEmpty()
+                    },
+                    dateModifiedMillis = if (dateModifiedColumn >= 0) {
+                        cursor.getLong(dateModifiedColumn) * 1000L
+                    } else {
+                        dateMillis
                     }
                 )
             }

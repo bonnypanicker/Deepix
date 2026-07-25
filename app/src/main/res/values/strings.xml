@@ -69,6 +69,8 @@
     <string name="ai_search">AI search</string>
     <string name="search_hint">Search with AI</string>
     <string name="sort_filter">Sort &amp; filter</string>
+    <string name="sort_newest_first">Newest first</string>
+    <string name="sort_change_order">Change sort order</string>
     <string name="select_all_lower">select all</string>
     <string name="share_selected">Share selected</string>
     <string name="share_lower">share</string>

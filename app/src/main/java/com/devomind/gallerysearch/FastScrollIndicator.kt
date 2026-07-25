@@ -226,10 +226,9 @@ class FastScrollIndicator @JvmOverloads constructor(
         val total = cells.size
         if (total == 0) return
         val pos = (fraction * total).toInt().coerceIn(0, total - 1)
-        val header = findNearestHeader(cells, pos)
-        if (header != null) {
-            bubbleText = header.title
-        }
+        // Headerless listings (name/size sort) have no label to show, so drop the bubble
+        // rather than leaving a stale month from the previous order.
+        bubbleText = findNearestHeader(cells, pos)?.title.orEmpty()
     }
 
     private fun findNearestHeader(cells: List<GalleryCell>, pos: Int): GalleryCell.Header? {
