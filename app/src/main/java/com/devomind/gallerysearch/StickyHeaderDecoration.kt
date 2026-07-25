@@ -50,6 +50,7 @@ class StickyHeaderDecoration(
             lastBoundSubtitle = headerCell.subtitle
             measureHeader(parent)
         }
+        val nextHeaderView = findNextHeader(parent, headerPos)
         var offset = 0
         if (nextHeaderView != null) {
             val nextTop = nextHeaderView.top
