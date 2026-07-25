@@ -18,6 +18,8 @@ class StickyHeaderDecoration(
     private var headerBinding: ItemTimelineHeaderBinding? = null
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var cachedHeaderHeight = 0
+    private var lastBoundTitle: String? = null
+    private var lastBoundSubtitle: String? = null
 
     override fun onDrawOver(c: Canvas, parent: RecyclerView, state: RecyclerView.State) {
         val firstVisiblePos = (parent.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager)
@@ -39,12 +41,15 @@ class StickyHeaderDecoration(
             val inflater = LayoutInflater.from(parent.context)
             headerBinding = ItemTimelineHeaderBinding.inflate(inflater, parent, false)
             headerView = headerBinding!!.root
-            headerBinding!!.headerTitle.text = headerCell.title
-            headerBinding!!.headerSubtitle.text = headerCell.subtitle
             measureHeader(parent)
         }
-
-        val nextHeaderView = findNextHeader(parent, headerPos)
+        if (lastBoundTitle != headerCell.title || lastBoundSubtitle != headerCell.subtitle) {
+            headerBinding!!.headerTitle.text = headerCell.title
+            headerBinding!!.headerSubtitle.text = headerCell.subtitle
+            lastBoundTitle = headerCell.title
+            lastBoundSubtitle = headerCell.subtitle
+            measureHeader(parent)
+        }
         var offset = 0
         if (nextHeaderView != null) {
             val nextTop = nextHeaderView.top

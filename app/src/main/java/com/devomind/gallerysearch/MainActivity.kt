@@ -51,6 +51,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -122,11 +123,11 @@ class MainActivity : AppCompatActivity() {
     // Incremental (paged) loading of the browse timeline grid so large libraries render fast.
     private var pagedItems: List<GalleryRepository.MediaItem> = emptyList()
     private var pagedDisplayedCount = 0
-    private var pagedLastMonth: String? = null
+    private var pagedLastDay: String? = null
     private var pagedContext: String? = null   // null = paging inactive (e.g. albums/folders/search)
     private var pagingInFlight = false
     private var pagedPrefixCount = 0            // non-timeline cells prepended (e.g. pinned header)
-    // Month/day headers only make sense while the list is in date order; name/size orders go flat.
+    // Day headers only make sense while the list is in date order; name/size orders go flat.
     private var pagedDateOrdered = true
 
     // Collage thumbnail scale (1..5); adjustable by pinch gesture + Settings. Cached here so the
@@ -1553,9 +1554,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Builds timeline cells (month headers + per-day justified rows) for the slice [from, to).
-     * [continuingMonth] is the last month header emitted by the previous page, so a header isn't
-     * repeated across page boundaries. Returns the cells plus the last month emitted (for the next
+     * Builds timeline cells (day headers + per-day justified rows) for the slice [from, to).
+     * [continuingDay] is the last day header emitted by the previous page, so a header isn't
+     * repeated across page boundaries. Returns the cells plus the last day emitted (for the next
      * page). Pages must start on a day boundary (see [nextPageEnd]) so justified rows aren't split.
      *
      * When [dateOrdered] is false the list isn't in date order, so date headers would interleave
@@ -1565,7 +1566,7 @@ class MainActivity : AppCompatActivity() {
         items: List<GalleryRepository.MediaItem>,
         from: Int,
         to: Int,
-        continuingMonth: String?,
+        continuingDay: String?,
         useCollageLayout: Boolean,
         dateOrdered: Boolean
     ): Pair<List<GalleryCell>, String?> {
@@ -1576,25 +1577,24 @@ class MainActivity : AppCompatActivity() {
             return cells to null
         }
         val cells = ArrayList<GalleryCell>()
-        var lastMonth: String? = continuingMonth
-        var lastDay: String? = null
+        var lastDay: String? = continuingDay
         var currentDayItems = ArrayList<GalleryRepository.MediaItem>()
 
         for (i in from until to) {
             val item = items[i]
-            val month = safeFormat(monthFormatter, item.dateMillis, "Unknown date")
-            val day = safeFormat(dayFormatter, item.dateMillis, "")
-
-            if (month != lastMonth || day != lastDay) {
+            val dayKey = safeFormat(dayFormatter, item.dateMillis, "")
+            if (dayKey != lastDay) {
                 if (currentDayItems.isNotEmpty()) {
                     appendDayCells(cells, currentDayItems, useCollageLayout, rowWidthPx)
                     currentDayItems = ArrayList()
                 }
-                if (month != lastMonth) {
-                    cells += GalleryCell.Header(month, day.uppercase(Locale.getDefault()))
-                    lastMonth = month
+                if (dayKey.isNotEmpty()) {
+                    cells += GalleryCell.Header(
+                        title = dayHeaderTitle(item.dateMillis),
+                        subtitle = safeFormat(monthFormatter, item.dateMillis, "")
+                    )
+                    lastDay = dayKey
                 }
-                lastDay = day
             }
             currentDayItems.add(item)
         }
@@ -1602,7 +1602,7 @@ class MainActivity : AppCompatActivity() {
         if (currentDayItems.isNotEmpty()) {
             appendDayCells(cells, currentDayItems, useCollageLayout, rowWidthPx)
         }
-        return cells to lastMonth
+        return cells to lastDay
     }
 
     /** End index (exclusive) of the next page within the active listing. */
@@ -1651,7 +1651,7 @@ class MainActivity : AppCompatActivity() {
         val contextKey = "$scopeKey|${sortOption.key}"
         pagedItems = emptyList()
         pagedDisplayedCount = 0
-        pagedLastMonth = null
+        pagedLastDay = null
         pagedContext = contextKey
         pagedDateOrdered = sortOption.dateOrdered
         pagingInFlight = false
@@ -1671,13 +1671,13 @@ class MainActivity : AppCompatActivity() {
             val page = withContext(Dispatchers.Default) {
                 val sorted = MediaSorter.sort(items, sortOption)
                 val to = pageEndWithin(sorted, 0, sortOption.dateOrdered)
-                val (cells, lastMonth) = buildTimelinePage(sorted, 0, to, null, useCollage, sortOption.dateOrdered)
-                FirstPage(sorted, cells, lastMonth, to)
+                val (cells, lastDay) = buildTimelinePage(sorted, 0, to, null, useCollage, sortOption.dateOrdered)
+                FirstPage(sorted, cells, lastDay, to)
             }
             if (pagedContext != contextKey) return@launch
             pagedItems = page.items
             pagedDisplayedCount = page.end
-            pagedLastMonth = page.lastMonth
+            pagedLastDay = page.lastDay
             adapter.replaceCells(prefixCells + page.cells)
             resetGridToTop()
             updateFastScrollVisibility()
@@ -1689,7 +1689,7 @@ class MainActivity : AppCompatActivity() {
     private class FirstPage(
         val items: List<GalleryRepository.MediaItem>,
         val cells: List<GalleryCell>,
-        val lastMonth: String?,
+        val lastDay: String?,
         val end: Int
     )
 
@@ -1700,18 +1700,18 @@ class MainActivity : AppCompatActivity() {
         val from = pagedDisplayedCount
         val to = nextPageEnd(from)
         if (to <= from) return
-        val continuing = pagedLastMonth
+        val continuing = pagedLastDay
         val useCollage = adapter.useCollageLayout
         val items = pagedItems
         val dateOrdered = pagedDateOrdered
         pagingInFlight = true
         lifecycleScope.launch {
-            val (cells, lastMonth) = withContext(Dispatchers.Default) {
+            val (cells, lastDay) = withContext(Dispatchers.Default) {
                 buildTimelinePage(items, from, to, continuing, useCollage, dateOrdered)
             }
             if (pagedContext == ctx && pagedDisplayedCount == from) {
                 pagedDisplayedCount = to
-                pagedLastMonth = lastMonth
+                pagedLastDay = lastDay
                 adapter.updateCells(adapter.cells + cells)
                 updateFastScrollVisibility()
             }
@@ -1973,7 +1973,7 @@ class MainActivity : AppCompatActivity() {
         currentDisplayedSearchResultCount = 0
 
         if (currentSearchSort?.dateOrdered == true) {
-            // Date-grouped: render all (capped) with month headers; pagination disabled.
+            // Date-grouped: render all (capped) with day headers; pagination disabled.
             val capped = fullSearchResults.take(SEARCH_DISPLAY_CAP)
             currentDisplayedSearchResultCount = fullSearchResults.size
             adapter.replaceCells(buildSearchTimelineCells(capped))
@@ -2007,36 +2007,41 @@ class MainActivity : AppCompatActivity() {
         return cells
     }
 
-    /** Groups ranked results under month headers while preserving the AI/text source badges. */
+    /** Groups ranked results under day headers while preserving the AI/text source badges. */
     private fun buildSearchTimelineCells(results: List<PhotoSearchResult>): List<GalleryCell> {
         val cells = ArrayList<GalleryCell>(results.size + 8)
         val rowWidthPx = resources.displayMetrics.widthPixels
         val sources = results.associate { it.item.uri to it.sources }
-        var lastMonth: String? = null
-        var monthItems = ArrayList<GalleryRepository.MediaItem>()
+        var lastDay: String? = null
+        var dayItems = ArrayList<GalleryRepository.MediaItem>()
 
-        fun flushMonth() {
-            if (monthItems.isEmpty()) return
+        fun flushDay() {
+            if (dayItems.isEmpty()) return
             if (adapter.useCollageLayout) {
-                appendJustifiedRows(cells, monthItems, rowWidthPx) { sources[it.uri] ?: SearchSources() }
+                appendJustifiedRows(cells, dayItems, rowWidthPx) { sources[it.uri] ?: SearchSources() }
             } else {
-                monthItems.forEach {
+                dayItems.forEach {
                     cells += GalleryCell.Photo(item = it, featured = false, searchSources = sources[it.uri] ?: SearchSources())
                 }
             }
-            monthItems = ArrayList()
+            dayItems = ArrayList()
         }
 
         for (result in results) {
-            val month = safeFormat(monthFormatter, result.item.dateMillis, "Unknown date")
-            if (month != lastMonth) {
-                flushMonth()
-                cells += GalleryCell.Header(month, "")
-                lastMonth = month
+            val dayKey = safeFormat(dayFormatter, result.item.dateMillis, "")
+            if (dayKey != lastDay) {
+                flushDay()
+                if (dayKey.isNotEmpty()) {
+                    cells += GalleryCell.Header(
+                        title = dayHeaderTitle(result.item.dateMillis),
+                        subtitle = safeFormat(monthFormatter, result.item.dateMillis, "")
+                    )
+                    lastDay = dayKey
+                }
             }
-            monthItems.add(result.item)
+            dayItems.add(result.item)
         }
-        flushMonth()
+        flushDay()
         return cells
     }
 
@@ -2615,6 +2620,17 @@ class MainActivity : AppCompatActivity() {
         fallback: String
     ): String {
         return runCatching { formatter.format(Instant.ofEpochMilli(millis)) }.getOrDefault(fallback)
+    }
+
+    /** Friendly day header title: "Today", "Yesterday", or the short weekday + date. */
+    private fun dayHeaderTitle(millis: Long): String {
+        val date = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
+        val today = LocalDate.now(ZoneId.systemDefault())
+        return when (date) {
+            today -> getString(R.string.today)
+            today.minusDays(1) -> getString(R.string.yesterday)
+            else -> safeFormat(dayFormatter, millis, "")
+        }
     }
 
     private fun normalizedRank(index: Int, total: Int): Float {
