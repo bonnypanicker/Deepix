@@ -390,6 +390,7 @@ class MainActivity : AppCompatActivity() {
     private fun bindChrome() {
         binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
         binding.addAlbumBtn.setOnClickListener { showCreateSmartAlbumDialog() }
+        binding.albumSortBtn.setOnClickListener(::showAlbumSortMenu)
         binding.searchTrailingBtn.setOnClickListener {
             if (currentMode == Mode.Search) onSearchClear() else openSearch()
         }
@@ -1268,7 +1269,25 @@ class MainActivity : AppCompatActivity() {
         val albumById = (albums + smartById.values).associateBy { it.id }
 
         val pinnedAlbums = pinnedIds.mapNotNull { albumById[it] }
-        val normalAlbums = albums.filter { it.id !in pinnedIds }
+        val albumDates = collectionItems.groupingBy { it.bucketId }
+            .fold(0L) { latest, item -> maxOf(latest, item.dateMillis) }
+        val smartDates = smartAlbums.associate { it.id to it.updatedAt }
+        val currentSort = SortManager.optionFor(this, AlbumsSortScope)
+        val albumComparator = when (currentSort) {
+            SortOption.NameAsc -> Comparator { first, second ->
+                String.CASE_INSENSITIVE_ORDER.compare(first.name, second.name)
+            }
+            SortOption.NameDesc -> Comparator { first, second ->
+                String.CASE_INSENSITIVE_ORDER.compare(second.name, first.name)
+            }
+            SortOption.OldestFirst -> compareBy<GalleryRepository.Album> {
+                smartDates[it.id] ?: albumDates[it.id] ?: 0L
+            }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }
+            else -> compareByDescending<GalleryRepository.Album> {
+                smartDates[it.id] ?: albumDates[it.id] ?: 0L
+            }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }
+        }
+        val normalAlbums = albums.filter { it.id !in pinnedIds }.sortedWith(albumComparator)
 
         val cells = mutableListOf<GalleryCell>()
         // Onboarding: nudge first-time users to try smart albums (until dismissed).
@@ -3550,6 +3569,8 @@ class MainActivity : AppCompatActivity() {
             currentMode == Mode.Browse &&
             adapter.selectionCount == 0
         binding.addAlbumBtn.visibility = if (isAlbumsSection) View.VISIBLE else View.GONE
+        binding.albumSortBtn.visibility = if (isAlbumsSection) View.VISIBLE else View.GONE
+        binding.screenTitle.updatePadding(right = dp(if (isAlbumsSection) 100 else 56))
         val isFoldersSection = activeSection == Section.Folders &&
             currentMode == Mode.Browse &&
             adapter.selectionCount == 0
@@ -3731,6 +3752,27 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun showAlbumSortMenu(anchor: View) {
+        val current = SortManager.optionFor(this, AlbumsSortScope)
+        val options = listOf(
+            SortOption.NameAsc to "A-Z",
+            SortOption.NameDesc to "Z-A",
+            SortOption.NewestFirst to "Recent",
+            SortOption.OldestFirst to "Oldest"
+        )
+        MetroDropdownMenu.show(
+            anchor,
+            options.map { (option, label) ->
+                MetroDropdownMenu.Item(label, selected = option == current) {
+                    if (option != current) {
+                        SortManager.setOption(this, AlbumsSortScope, option)
+                        renderAlbums()
+                    }
+                }
+            }
+        )
+    }
+
     private fun applyBottomBarConfig() {
         val tabs = mapOf(
             BottomBarDestination.Collection to binding.bottomCollections,
@@ -3803,6 +3845,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val STATE_SECTION = "state_section"
+        private const val AlbumsSortScope = "section:Albums"
         private const val INDEX_WORK_NAME = "gallery_background_index"
         // Safety cap: never hold the launch splash longer than this even if content stalls.
         private const val SPLASH_MAX_HOLD_MS = 2500L

@@ -115,6 +115,7 @@
     <string name="crop">Crop</string>
     <string name="edit_video">Edit video</string>
     <string name="trim">Trim</string>
+    <string name="sort_albums">Sort albums</string>
     <string name="saving_video">Saving video</string>
     <string name="save_a_copy">Save a copy</string>
     <string name="perspective">Perspective</string>
