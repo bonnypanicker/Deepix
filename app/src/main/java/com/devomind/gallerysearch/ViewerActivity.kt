@@ -293,7 +293,7 @@ class ViewerActivity : AppCompatActivity() {
             )
             binding.topBar.updatePadding(top = systemInsets.top)
 
-            binding.bottomControls.updatePadding(bottom = systemInsets.bottom + dp(16))
+            binding.bottomControls.updatePadding(bottom = systemInsets.bottom)
 
             binding.infoPanel.updatePadding(bottom = systemInsets.bottom)
             insets
@@ -455,7 +455,6 @@ class ViewerActivity : AppCompatActivity() {
 
         binding.topBar.visibility = View.GONE
         binding.bottomControls.visibility = View.GONE
-        binding.bottomGradient.visibility = View.GONE
         binding.cropBar.visibility = View.VISIBLE
         binding.cropOverlay.visibility = View.VISIBLE
         binding.cropOverlay.post {
@@ -475,7 +474,6 @@ class ViewerActivity : AppCompatActivity() {
         binding.viewPager.isUserInputEnabled = true
         binding.topBar.visibility = View.VISIBLE
         binding.bottomControls.visibility = View.VISIBLE
-        binding.bottomGradient.visibility = View.VISIBLE
         setControlsVisible(true)
     }
 
@@ -781,7 +779,6 @@ class ViewerActivity : AppCompatActivity() {
         val bottomTranslation = if (visible) 0f else dp(24).toFloat()
         binding.topBar.animate().alpha(targetAlpha).translationY(topTranslation).setDuration(220).start()
         binding.bottomControls.animate().alpha(targetAlpha).translationY(bottomTranslation).setDuration(220).start()
-        binding.bottomGradient.animate().alpha(targetAlpha).setDuration(220).start()
         syncScrubber()
         if (visible) {
             scheduleAutoHide()

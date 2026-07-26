@@ -2521,7 +2521,12 @@ class MainActivity : AppCompatActivity() {
         }
         parsedFilters.forEach { filter ->
             binding.searchActivePills.addView(
-                createActiveFilterChip(filter.chipLabel) { removeFilter(filter.rawToken) }
+                createSearchPill(
+                    label = filter.chipLabel,
+                    selected = true,
+                    dismissable = true,
+                    onClick = { removeFilter(filter.rawToken) }
+                )
             )
         }
     }
@@ -2616,46 +2621,30 @@ class MainActivity : AppCompatActivity() {
         selected: Boolean,
         clickable: Boolean = true,
         onClick: () -> Unit
-    ): TextView {
-        return TextView(this).apply {
-            text = label
-            textSize = 12f
-            isAllCaps = false
-            setTextColor(Color.WHITE)
-            setPadding(dp(14), dp(8), dp(14), dp(8))
+    ): View = createSearchPill(label, selected, dismissable = false, clickable = clickable, onClick = onClick)
+
+    private fun createSearchPill(
+        label: String,
+        selected: Boolean,
+        dismissable: Boolean = false,
+        clickable: Boolean = true,
+        onClick: () -> Unit
+    ): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
             background = ContextCompat.getDrawable(
                 this@MainActivity,
                 if (selected) R.drawable.search_filter_chip_active_bg else R.drawable.search_filter_chip_bg
             )
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                marginEnd = dp(8)
-            }
-            isClickable = clickable
-            isFocusable = clickable
-            if (clickable) {
-                setOnClickListener { onClick() }
-            } else {
-                setOnClickListener(null)
-            }
-        }
-    }
-
-    private fun createActiveFilterChip(label: String, onRemove: () -> Unit): View {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            background = ContextCompat.getDrawable(this@MainActivity, R.drawable.search_filter_chip_active_bg)
-            setPadding(dp(14), dp(8), dp(10), dp(8))
+            setPadding(dp(14), dp(8), if (dismissable) dp(10) else dp(14), dp(8))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { marginEnd = dp(8) }
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { onRemove() }
+            isClickable = clickable
+            isFocusable = clickable
+            setOnClickListener { onClick() }
         }
         val text = TextView(this).apply {
             this.text = label
@@ -2663,13 +2652,15 @@ class MainActivity : AppCompatActivity() {
             includeFontPadding = false
             setTextColor(Color.WHITE)
         }
-        val close = ImageView(this).apply {
-            setImageResource(R.drawable.ic_fluent_dismiss_24_regular)
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(dp(13), dp(13)).apply { marginStart = dp(7) }
-        }
         row.addView(text)
-        row.addView(close)
+        if (dismissable) {
+            val close = ImageView(this).apply {
+                setImageResource(R.drawable.ic_fluent_dismiss_24_regular)
+                imageTintList = ColorStateList.valueOf(Color.WHITE)
+                layoutParams = LinearLayout.LayoutParams(dp(13), dp(13)).apply { marginStart = dp(7) }
+            }
+            row.addView(close)
+        }
         return row
     }
 
