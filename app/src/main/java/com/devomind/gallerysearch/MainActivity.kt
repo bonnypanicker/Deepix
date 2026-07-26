@@ -277,7 +277,8 @@ class MainActivity : AppCompatActivity() {
             onDismissSmartAlbumOnboarding = {
                 IndexPreferences.setSmartAlbumOnboardingDismissed(this)
                 if (activeSection == Section.Albums && currentMode == Mode.Browse) renderAlbums()
-            }
+            },
+            onSortClick = ::showSortMenu
         )
         adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
         adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
@@ -1663,6 +1664,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * Hangs the sort affordance on the first header of a listing, or prepends a standalone row when
+     * the order emits no headers to hang it on (name/size/modified). Applied to the first page only,
+     * so later pages appended by [paginateBrowse] can't each grow their own chip.
+     */
+    private fun withSortAffordance(cells: List<GalleryCell>, label: String): List<GalleryCell> {
+        val headerIndex = cells.indexOfFirst { it is GalleryCell.Header }
+        if (headerIndex < 0) return listOf(GalleryCell.SortRow(label)) + cells
+        return cells.toMutableList().also {
+            it[headerIndex] = (it[headerIndex] as GalleryCell.Header).copy(sortLabel = label)
+        }
+    }
+
+    /**
      * Renders a browse timeline incrementally: the first page is built and shown immediately, then
      * more pages are appended as the user scrolls (see [paginateBrowse]).
      *
@@ -1707,7 +1721,7 @@ class MainActivity : AppCompatActivity() {
             pagedItems = page.items
             pagedDisplayedCount = page.end
             pagedLastDay = page.lastDay
-            adapter.replaceCells(prefixCells + page.cells)
+            adapter.replaceCells(prefixCells + withSortAffordance(page.cells, sortOption.label))
             resetGridToTop()
             updateFastScrollVisibility()
             binding.fastScrollIndicator.syncToRecyclerView()
@@ -3430,7 +3444,6 @@ class MainActivity : AppCompatActivity() {
             currentMode == Mode.Browse &&
             adapter.selectionCount == 0
         binding.addAlbumBtn.visibility = if (isAlbumsSection) View.VISIBLE else View.GONE
-        updateSortControl()
     }
 
     /**
@@ -3448,22 +3461,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Shows the accent sort affordance on media listings, labelled with the active order. */
-    private fun updateSortControl() {
-        val scopeKey = currentScopeKey()
-        val visible = scopeKey != null && adapter.selectionCount == 0
-        binding.sortControl.visibility = if (visible) View.VISIBLE else View.GONE
-        if (!visible) return
-
+    /**
+     * Opens the sort dropdown for the active listing. The scope is read at click time rather than
+     * captured: the adapter is built once in [onCreate], but the listing under it changes.
+     */
+    private fun showSortMenu(anchor: View) {
+        val scopeKey = currentScopeKey() ?: return
         val current = SortManager.optionFor(this, scopeKey)
-        binding.sortLabel.text = current.label
-        binding.sortControl.contentDescription =
-            getString(R.string.sort_change_order) + ": " + current.label
-        binding.sortControl.setOnClickListener { anchor ->
-            SortMenu.show(anchor, current) { picked ->
-                SortManager.setOption(this, scopeKey, picked)
-                renderCurrentState()
-            }
+        SortMenu.show(anchor, current) { picked ->
+            SortManager.setOption(this, scopeKey, picked)
+            renderCurrentState()
         }
     }
 

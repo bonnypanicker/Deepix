@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Orders with no date grouping (name/size/modified) have no header to hang the sort chip on,
+     so this slim row carries it instead. Scrolls away with the content like a header would. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/metroBgPrimary"
+    android:gravity="end|center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="16dp"
+    android:paddingTop="6dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="2dp">
+
+    <LinearLayout
+        android:id="@+id/sortControl"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/metro_row_pressed"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:minHeight="36dp"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp">
+
+        <TextView
+            android:id="@+id/sortLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:text="@string/sort_newest_first"
+            android:textColor="?attr/accentColor"
+            android:textSize="13sp" />
+
+        <ImageView
+            android:id="@+id/sortIcon"
+            android:layout_width="15dp"
+            android:layout_height="15dp"
+            android:layout_marginStart="6dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_fluent_sort_24_regular"
+            android:tint="?attr/accentColor" />
+    </LinearLayout>
+</LinearLayout>

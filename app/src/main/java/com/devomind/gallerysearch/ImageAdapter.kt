@@ -26,6 +26,7 @@ import com.devomind.gallerysearch.databinding.ItemImageBinding
 import com.devomind.gallerysearch.databinding.ItemPinnedAlbumChipBinding
 import com.devomind.gallerysearch.databinding.ItemPinnedAlbumsHeaderBinding
 import com.devomind.gallerysearch.databinding.ItemSmartAlbumOnboardingBinding
+import com.devomind.gallerysearch.databinding.ItemSortRowBinding
 import com.devomind.gallerysearch.databinding.ItemTimelineHeaderBinding
 
 /**
@@ -60,8 +61,42 @@ private fun bindSelectionVisual(
     }
 }
 
+/**
+ * Binds the sort affordance shared by the timeline header and the standalone sort row.
+ * Must be called on every bind, including the null path: header holders are recycled across
+ * every date header, so skipping the else-branch leaks a stale chip onto a later header.
+ */
+private fun bindSortChip(
+    chip: LinearLayout,
+    label: TextView,
+    text: String?,
+    onSortClick: (View) -> Unit
+) {
+    if (text == null) {
+        chip.visibility = View.GONE
+        chip.setOnClickListener(null)
+        return
+    }
+    chip.visibility = View.VISIBLE
+    label.text = text
+    chip.contentDescription = chip.context.getString(R.string.sort_change_order) + ": " + text
+    chip.setOnClickListener { onSortClick(it) }
+}
+
 sealed class GalleryCell {
-    data class Header(val title: String, val subtitle: String) : GalleryCell()
+    /**
+     * A timeline group header. [sortLabel] is non-null on the single header that carries the sort
+     * affordance (see MainActivity.withSortAffordance); every other header renders without one.
+     */
+    data class Header(
+        val title: String,
+        val subtitle: String,
+        val sortLabel: String? = null
+    ) : GalleryCell()
+
+    /** Slim right-aligned sort chip, used when an order emits no date headers to hang it on. */
+    data class SortRow(val label: String) : GalleryCell()
+
     data class Photo(
         val item: GalleryRepository.MediaItem,
         val featured: Boolean = false,
@@ -98,7 +133,8 @@ class ImageAdapter(
     private val onFolderClick: (FolderNode) -> Unit = {},
     private val onFolderExpandClick: (FolderNode) -> Unit = {},
     private val onCreateSmartAlbum: () -> Unit = {},
-    private val onDismissSmartAlbumOnboarding: () -> Unit = {}
+    private val onDismissSmartAlbumOnboarding: () -> Unit = {},
+    private val onSortClick: (View) -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     var cells = mutableListOf<GalleryCell>()
@@ -176,6 +212,7 @@ class ImageAdapter(
     override fun getItemViewType(position: Int): Int {
         return when (cells[position]) {
             is GalleryCell.Header -> ViewTypeHeader
+            is GalleryCell.SortRow -> ViewTypeSortRow
             is GalleryCell.Photo -> ViewTypePhoto
             is GalleryCell.Collage -> ViewTypeCollage
             is GalleryCell.AlbumCell -> ViewTypeAlbum
@@ -191,7 +228,8 @@ class ImageAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
         return when (viewType) {
-            ViewTypeHeader -> HeaderViewHolder(ItemTimelineHeaderBinding.inflate(inflater, parent, false))
+            ViewTypeHeader -> HeaderViewHolder(ItemTimelineHeaderBinding.inflate(inflater, parent, false), onSortClick)
+            ViewTypeSortRow -> SortRowViewHolder(ItemSortRowBinding.inflate(inflater, parent, false), onSortClick)
             ViewTypeCollage -> CollageViewHolder(
                 ItemCollageBinding.inflate(inflater, parent, false),
                 onPhotoClick,
@@ -224,6 +262,7 @@ class ImageAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val cell = cells[position]) {
             is GalleryCell.Header -> (holder as HeaderViewHolder).bind(cell)
+            is GalleryCell.SortRow -> (holder as SortRowViewHolder).bind(cell)
             is GalleryCell.Photo -> (holder as PhotoViewHolder).bind(
                 cell,
                 selected.isNotEmpty(),
@@ -257,6 +296,7 @@ class ImageAdapter(
     fun spanSizeAt(position: Int, totalSpanCount: Int): Int {
         return when (val cell = cells.getOrNull(position)) {
             is GalleryCell.Header,
+            is GalleryCell.SortRow,
             is GalleryCell.Empty,
             is GalleryCell.PinnedAlbumsHeader -> totalSpanCount
             is GalleryCell.SmartAlbumOnboarding -> totalSpanCount
@@ -494,7 +534,10 @@ class ImageAdapter(
 
     private fun stableIdFor(cell: GalleryCell): Long {
         val key = when (cell) {
+            // sortLabel is deliberately excluded: a sort change should rebind the header in place
+            // (areContentsTheSame sees the field) rather than look like a different item.
             is GalleryCell.Header -> "header:${cell.title}:${cell.subtitle}"
+            is GalleryCell.SortRow -> "sort_row"
             is GalleryCell.Photo -> "photo:${cell.item.uri}"
             is GalleryCell.Collage -> "collage:${cell.items.joinToString("|") { it.uri.toString() }}"
             is GalleryCell.AlbumCell -> "album:${cell.album.id}"
@@ -506,10 +549,23 @@ class ImageAdapter(
         return key.fold(1125899906842597L) { hash, char -> 31L * hash + char.code.toLong() }
     }
 
-    class HeaderViewHolder(private val binding: ItemTimelineHeaderBinding) : RecyclerView.ViewHolder(binding.root) {
+    class HeaderViewHolder(
+        private val binding: ItemTimelineHeaderBinding,
+        private val onSortClick: (View) -> Unit
+    ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(cell: GalleryCell.Header) {
             binding.headerTitle.text = cell.title
             binding.headerSubtitle.text = cell.subtitle
+            bindSortChip(binding.sortControl, binding.sortLabel, cell.sortLabel, onSortClick)
+        }
+    }
+
+    class SortRowViewHolder(
+        private val binding: ItemSortRowBinding,
+        private val onSortClick: (View) -> Unit
+    ) : RecyclerView.ViewHolder(binding.root) {
+        fun bind(cell: GalleryCell.SortRow) {
+            bindSortChip(binding.sortControl, binding.sortLabel, cell.label, onSortClick)
         }
     }
 
@@ -1015,6 +1071,7 @@ class ImageAdapter(
         const val ViewTypePinnedAlbumsHeader = 6
         const val ViewTypeFolder = 7
         const val ViewTypeSmartOnboarding = 8
+        const val ViewTypeSortRow = 9
 
         private fun formatDuration(durationMs: Long): String {
             val totalSeconds = durationMs / 1000

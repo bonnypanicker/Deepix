@@ -45,7 +45,7 @@
                     android:includeFontPadding="false"
                     android:minHeight="44dp"
                     android:paddingStart="16dp"
-                    android:paddingEnd="150dp"
+                    android:paddingEnd="56dp"
                     android:singleLine="true"
                     android:text="@string/collections_title"
                     android:textAppearance="@style/TextAppearance.Metro.ScreenTitle" />
@@ -57,41 +57,6 @@
                     android:layout_gravity="end|center_vertical"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
-
-                    <!-- Flat Metro sort affordance: label + glyph, both accent-tinted. No chip, no stroke. -->
-                    <LinearLayout
-                        android:id="@+id/sortControl"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:background="@drawable/metro_row_pressed"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:gravity="center_vertical"
-                        android:minHeight="44dp"
-                        android:orientation="horizontal"
-                        android:paddingStart="10dp"
-                        android:paddingEnd="10dp"
-                        android:visibility="gone">
-
-                        <TextView
-                            android:id="@+id/sortLabel"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:includeFontPadding="false"
-                            android:singleLine="true"
-                            android:text="@string/sort_newest_first"
-                            android:textColor="?attr/accentColor"
-                            android:textSize="13sp" />
-
-                        <ImageView
-                            android:id="@+id/sortIcon"
-                            android:layout_width="15dp"
-                            android:layout_height="15dp"
-                            android:layout_marginStart="6dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/ic_fluent_sort_24_regular"
-                            android:tint="?attr/accentColor" />
-                    </LinearLayout>
 
                     <ImageButton
                         android:id="@+id/addAlbumBtn"

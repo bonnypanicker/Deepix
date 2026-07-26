@@ -41,6 +41,11 @@ class StickyHeaderDecoration(
             val inflater = LayoutInflater.from(parent.context)
             headerBinding = ItemTimelineHeaderBinding.inflate(inflater, parent, false)
             headerView = headerBinding!!.root
+            // The pinned copy is painted onto the canvas, so it can't receive touches — drawing the
+            // sort chip here would render a dead control. GONE (not INVISIBLE) also keeps this
+            // measuring to the height of an ordinary chipless header, which the push-off offset
+            // below assumes.
+            headerBinding!!.sortControl.visibility = View.GONE
             measureHeader(parent)
         }
         if (lastBoundTitle != headerCell.title || lastBoundSubtitle != headerCell.subtitle) {
