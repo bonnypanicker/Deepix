@@ -1,17 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android-style share: three dots connected by two lines. -->
+<!-- Standard Android share silhouette, optically centered in a 24dp viewport. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
     <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M8,12 L15,8 M8,12 L15,16"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeLineCap="round"
-        android:strokeWidth="1.6" />
-    <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M6,12m-2,0a2,2 0 1,0 4,0a2,2 0 1,0 -4,0 M17,7m-2,0a2,2 0 1,0 4,0a2,2 0 1,0 -4,0 M17,17m-2,0a2,2 0 1,0 4,0a2,2 0 1,0 -4,0" />
+        android:pathData="M18,16.08c-0.76,0 -1.44,0.3 -1.96,0.77L8.91,12.7c0.05,-0.23 0.09,-0.46 0.09,-0.7s-0.04,-0.47 -0.09,-0.7l7.05,-4.11C16.5,7.69 17.2,8 18,8c1.66,0 3,-1.34 3,-3s-1.34,-3 -3,-3s-3,1.34 -3,3c0,0.24 0.04,0.47 0.09,0.7L8.04,9.81C7.5,9.31 6.8,9 6,9c-1.66,0 -3,1.34 -3,3s1.34,3 3,3c0.8,0 1.5,-0.31 2.04,-0.81l7.12,4.16c-0.05,0.21 -0.08,0.43 -0.08,0.65c0,1.61 1.31,2.92 2.92,2.92s2.92,-1.31 2.92,-2.92s-1.31,-2.92 -2.92,-2.92z" />
 </vector>
