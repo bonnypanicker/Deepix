@@ -470,6 +470,44 @@
                     android:src="@drawable/ic_deepix_favorite_24_regular"
                     android:tint="@color/metroTextSecondary" />
             </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/bottomFolders"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingTop="2dp"
+                android:visibility="gone">
+
+                <ImageView
+                    android:id="@+id/bottomFoldersIcon"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:contentDescription="@string/tab_folders"
+                    android:src="@drawable/ic_deepix_folders_24_regular"
+                    android:tint="@color/metroTextSecondary" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/bottomSafe"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingTop="2dp"
+                android:visibility="gone">
+
+                <ImageView
+                    android:id="@+id/bottomSafeIcon"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:contentDescription="@string/safe_title"
+                    android:src="@drawable/ic_deepix_safe_nav_24_regular"
+                    android:tint="@color/metroTextSecondary" />
+            </LinearLayout>
         </LinearLayout>
 
         <LinearLayout

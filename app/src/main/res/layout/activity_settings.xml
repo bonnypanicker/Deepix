@@ -184,6 +184,70 @@
                         android:focusable="false" />
                 </LinearLayout>
 
+                <!-- ===================== NAVIGATION ===================== -->
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="@string/section_navigation" />
+
+                <LinearLayout android:id="@+id/rowBottomBarOrder" style="@style/SettingsRow">
+                    <LinearLayout style="@style/SettingsRowText">
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/bottom_bar_order" />
+                        <TextView
+                            android:id="@+id/bottomBarOrderSubtitle"
+                            style="@style/SettingsRowSubtitle"
+                            android:text="@string/bottom_bar_order_subtitle" />
+                    </LinearLayout>
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_fluent_chevron_right_24_regular"
+                        android:tint="@color/metroTextTertiary" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout android:id="@+id/rowBottomBarFolders" style="@style/SettingsRow">
+                    <LinearLayout style="@style/SettingsRowText">
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/bottom_bar_folders" />
+                    </LinearLayout>
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/switchBottomBarFolders"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clickable="false"
+                        android:focusable="false" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout android:id="@+id/rowBottomBarSafe" style="@style/SettingsRow">
+                    <LinearLayout style="@style/SettingsRowText">
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/bottom_bar_safe" />
+                    </LinearLayout>
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/switchBottomBarSafe"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clickable="false"
+                        android:focusable="false" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout android:id="@+id/rowDefaultPage" style="@style/SettingsRow">
+                    <LinearLayout style="@style/SettingsRowText">
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/default_page" />
+                        <TextView android:id="@+id/defaultPageSubtitle" style="@style/SettingsRowSubtitle" />
+                    </LinearLayout>
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_fluent_chevron_right_24_regular"
+                        android:tint="@color/metroTextTertiary" />
+                </LinearLayout>
+
                 <!-- ===================== INDEXING ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"

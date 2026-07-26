@@ -58,6 +58,19 @@ class EditorCropView @JvmOverloads constructor(
         invalidate()
     }
 
+    /** Restores a prior 0..1 selection after [setImageBounds], used when reopening a crop tool. */
+    fun setNormalizedSelection(selection: RectF?) {
+        if (!ready || selection == null) return
+        sel.set(
+            bounds.left + selection.left.coerceIn(0f, 1f) * bounds.width(),
+            bounds.top + selection.top.coerceIn(0f, 1f) * bounds.height(),
+            bounds.left + selection.right.coerceIn(0f, 1f) * bounds.width(),
+            bounds.top + selection.bottom.coerceIn(0f, 1f) * bounds.height()
+        )
+        aspect = null
+        invalidate()
+    }
+
     /** Selection as 0..1 fractions of the image bounds. */
     fun normalizedSelection(): RectF? {
         if (bounds.width() <= 0f || bounds.height() <= 0f) return null

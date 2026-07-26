@@ -84,6 +84,7 @@
     <string name="tab_videos">Videos</string>
     <string name="tab_albums">Albums</string>
     <string name="tab_favorites">Favorites</string>
+    <string name="tab_folders">Folders</string>
     <string name="loading_gallery">Loading your gallery</string>
     <string name="drawer_collection">collection</string>
     <string name="drawer_albums">albums</string>
@@ -111,6 +112,10 @@
     <string name="undo_stroke">Undo stroke</string>
     <string name="perspective_hint">Drag the corners to the edges of the document, then apply</string>
     <string name="crop">Crop</string>
+    <string name="edit_video">Edit video</string>
+    <string name="trim">Trim</string>
+    <string name="saving_video">Saving video</string>
+    <string name="save_a_copy">Save a copy</string>
     <string name="perspective">Perspective</string>
     <string name="draw">Draw</string>
     <string name="adjust">Adjust</string>
@@ -132,6 +137,16 @@
     <string name="accent_azure">Azure</string>
     <string name="pinned_albums_in_collections">Pinned albums in Collections</string>
     <string name="album_folder_size">Album folder size</string>
+    <string name="section_navigation">NAVIGATION</string>
+    <string name="bottom_bar_order">Bottom bar order</string>
+    <string name="bottom_bar_order_subtitle">Arrange enabled destinations</string>
+    <string name="bottom_bar_order_help">Use the arrows to arrange destinations. Optional tabs keep their position while hidden.</string>
+    <string name="bottom_bar_hidden">Hidden · enable in Navigation settings</string>
+    <string name="move_up">Move %1$s up</string>
+    <string name="move_down">Move %1$s down</string>
+    <string name="bottom_bar_folders">Show Folders in bottom bar</string>
+    <string name="bottom_bar_safe">Show Safe in bottom bar</string>
+    <string name="default_page">Default page</string>
     <string name="section_indexing">INDEXING</string>
     <string name="indexing_label">Indexing</string>
     <string name="manage_indexing">Manage indexing</string>

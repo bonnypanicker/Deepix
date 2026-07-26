@@ -89,6 +89,7 @@ class MainActivity : AppCompatActivity() {
     private var currentMode = Mode.Browse
     private var preAlbumDetailSection = Section.Collection
     private var activeSection = Section.Collection
+    private var openSafeAfterInitialRender = false
     private var searchMode = SearchMode.Hybrid
     private var searchJob: Job? = null
     private var searchDebounceJob: Job? = null
@@ -188,7 +189,10 @@ class MainActivity : AppCompatActivity() {
                 settingsLaunchAccentKey != IndexPreferences.getAccentColor(this)
         settingsLaunchAccentKey = null
         val accentChanged = accentChangedByResult || accentChangedByPreference
-        if (accentChanged) recreate() else applyDisplaySettings()
+        if (accentChanged) recreate() else {
+            applyBottomBarConfig()
+            applyDisplaySettings()
+        }
     }
 
     private val safeLauncher = registerForActivityResult(
@@ -260,8 +264,22 @@ class MainActivity : AppCompatActivity() {
 
         // Process-death restore: reopen the section the user was browsing. Search/detail modes
         // restore to their parent section (their backing state is intentionally not persisted).
-        savedInstanceState?.getString(STATE_SECTION)?.let { saved ->
-            activeSection = runCatching { Section.valueOf(saved) }.getOrDefault(activeSection)
+        if (savedInstanceState == null) {
+            when (BottomBarConfig.defaultPage(this)) {
+                BottomBarDestination.Collection -> activeSection = Section.Collection
+                BottomBarDestination.Videos -> activeSection = Section.Videos
+                BottomBarDestination.Albums -> activeSection = Section.Albums
+                BottomBarDestination.Favorites -> activeSection = Section.Favorites
+                BottomBarDestination.Folders -> activeSection = Section.Folders
+                BottomBarDestination.Safe -> {
+                    activeSection = Section.Collection
+                    openSafeAfterInitialRender = true
+                }
+            }
+        } else {
+            savedInstanceState.getString(STATE_SECTION)?.let { saved ->
+                activeSection = runCatching { Section.valueOf(saved) }.getOrDefault(activeSection)
+            }
         }
         favoritesStore = FavoritesStore(this)
         albumPinStore = AlbumPinStore(this)
@@ -351,6 +369,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         bindChrome()
+        applyBottomBarConfig()
         bindBackNavigation()
         // Notification permission is requested only after the storage-permission flow resolves —
         // Android drops a second runtime-permission dialog launched while the first is still
@@ -420,6 +439,8 @@ class MainActivity : AppCompatActivity() {
         binding.bottomAlbums.setOnClickListener { navigateToSection(Section.Albums) }
         binding.bottomFavorites.setOnClickListener { navigateToSection(Section.Favorites) }
         binding.bottomVideos.setOnClickListener { navigateToSection(Section.Videos) }
+        binding.bottomFolders.setOnClickListener { navigateToSection(Section.Folders) }
+        binding.bottomSafe.setOnClickListener { openSafe() }
 
         binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
@@ -631,6 +652,10 @@ class MainActivity : AppCompatActivity() {
                 binding.statusText.text =
                     indexedSummary(repo.indexedCount)
                 renderCurrentState()
+                if (openSafeAfterInitialRender) {
+                    openSafeAfterInitialRender = false
+                    binding.root.post { openSafe() }
+                }
                 primeMetadataIndexAsync()
             } catch (error: Throwable) {
                 binding.progressBar.visibility = View.GONE
@@ -3684,6 +3709,38 @@ class MainActivity : AppCompatActivity() {
             icon = binding.bottomVideosIcon,
             active = currentMode != Mode.Search && activeSection == Section.Videos
         )
+        updateBottomTab(
+            tab = binding.bottomFolders,
+            icon = binding.bottomFoldersIcon,
+            active = currentMode != Mode.Search && activeSection == Section.Folders
+        )
+        updateBottomTab(
+            tab = binding.bottomSafe,
+            icon = binding.bottomSafeIcon,
+            active = false
+        )
+    }
+
+    private fun applyBottomBarConfig() {
+        val tabs = mapOf(
+            BottomBarDestination.Collection to binding.bottomCollections,
+            BottomBarDestination.Videos to binding.bottomVideos,
+            BottomBarDestination.Albums to binding.bottomAlbums,
+            BottomBarDestination.Favorites to binding.bottomFavorites,
+            BottomBarDestination.Folders to binding.bottomFolders,
+            BottomBarDestination.Safe to binding.bottomSafe
+        )
+        binding.bottomPanel.removeAllViews()
+        BottomBarConfig.enabledOrder(this).forEach { destination ->
+            tabs.getValue(destination).let { tab ->
+                tab.visibility = View.VISIBLE
+                binding.bottomPanel.addView(tab)
+            }
+        }
+        tabs.filterKeys { it !in BottomBarConfig.enabledOrder(this) }.values.forEach {
+            it.visibility = View.GONE
+        }
+        updateBottomPanelState()
     }
 
     private fun updateBottomTab(tab: View, icon: android.widget.ImageView, active: Boolean) {

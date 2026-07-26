@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Deepix bottom-nav Safe: compact shield-lock, distinct from the selection command icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M12,3.75l7,2.65v4.9c0,4.25 -2.65,7.4 -7,9.15c-4.35,-1.75 -7,-4.9 -7,-9.15V6.4z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.55" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M9.25,11h5.5c0.69,0 1.25,0.56 1.25,1.25v3.25c0,0.69 -0.56,1.25 -1.25,1.25h-5.5C8.56,16.75 8,16.19 8,15.5v-3.25C8,11.56 8.56,11 9.25,11zM9.75,11V9.75a2.25,2.25 0,0 1,4.5 0V11"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.4" />
+</vector>

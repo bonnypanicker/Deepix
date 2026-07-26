@@ -56,6 +56,12 @@
             android:exported="false"
             android:theme="@style/Theme.GallerySearch" />
 
+        <activity
+            android:name=".VideoEditorActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.GallerySearch" />
+
         <!-- Encrypted photo locker. excludeFromRecents + no launch icon; screenshots
              blocked at runtime via FLAG_SECURE inside the activity. -->
         <activity

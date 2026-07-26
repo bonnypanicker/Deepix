@@ -4,6 +4,9 @@ import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.widget.ImageButton
+import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -46,6 +49,7 @@ class SettingsActivity : AppCompatActivity() {
         bindToggles()
         bindThumbnailSize()
         bindAccentColor()
+        bindBottomBar()
         bindStorage()
         bindSafe()
         bindIndexing()
@@ -134,6 +138,101 @@ class SettingsActivity : AppCompatActivity() {
     private fun bindAccentColor() {
         binding.accentColorSubtitle.text = AccentPalette.current(this).displayName
         binding.rowAccentColor.setOnClickListener { showAccentColorDialog() }
+    }
+
+    private fun bindBottomBar() {
+        updateBottomBarSettings()
+        binding.rowBottomBarOrder.setOnClickListener { showBottomBarOrderDialog() }
+        binding.rowBottomBarFolders.setOnClickListener {
+            val enabled = !binding.switchBottomBarFolders.isChecked
+            BottomBarConfig.setFoldersEnabled(this, enabled)
+            updateBottomBarSettings()
+        }
+        binding.rowBottomBarSafe.setOnClickListener {
+            val enabled = !binding.switchBottomBarSafe.isChecked
+            BottomBarConfig.setSafeEnabled(this, enabled)
+            updateBottomBarSettings()
+        }
+        binding.rowDefaultPage.setOnClickListener { showDefaultPageDialog() }
+    }
+
+    private fun updateBottomBarSettings() {
+        val enabled = BottomBarConfig.enabledOrder(this)
+        binding.switchBottomBarFolders.isChecked = BottomBarConfig.isFoldersEnabled(this)
+        binding.switchBottomBarSafe.isChecked = BottomBarConfig.isSafeEnabled(this)
+        binding.bottomBarOrderSubtitle.text = enabled.joinToString(" · ") { getString(it.labelRes) }
+        binding.defaultPageSubtitle.text = getString(BottomBarConfig.defaultPage(this).labelRes)
+    }
+
+    private fun showDefaultPageDialog() {
+        val enabled = BottomBarConfig.enabledOrder(this)
+        val current = BottomBarConfig.defaultPage(this)
+        MetroDialog.singleChoice(
+            this,
+            title = getString(R.string.default_page),
+            options = enabled.map { getString(it.labelRes) },
+            checkedIndex = enabled.indexOf(current).coerceAtLeast(0)
+        ) { which ->
+            BottomBarConfig.setDefaultPage(this, enabled[which])
+            updateBottomBarSettings()
+        }
+    }
+
+    private fun showBottomBarOrderDialog() {
+        val root = layoutInflater.inflate(R.layout.dialog_bottom_bar_order, null)
+        val list = root.findViewById<LinearLayout>(R.id.bottomBarOrderList)
+        val order = BottomBarConfig.order(this).toMutableList()
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
+            .setView(root)
+            .create()
+
+        fun renderRows() {
+            list.removeAllViews()
+            order.forEachIndexed { index, destination ->
+                val row = layoutInflater.inflate(R.layout.item_bottom_bar_order, list, false)
+                row.findViewById<ImageView>(R.id.orderIcon).setImageResource(destination.iconRes)
+                row.findViewById<TextView>(R.id.orderTitle).text = getString(destination.labelRes)
+                val optionalHidden = when (destination) {
+                    BottomBarDestination.Folders -> !BottomBarConfig.isFoldersEnabled(this)
+                    BottomBarDestination.Safe -> !BottomBarConfig.isSafeEnabled(this)
+                    else -> false
+                }
+                row.findViewById<TextView>(R.id.orderSubtitle).apply {
+                    visibility = if (optionalHidden) View.VISIBLE else View.GONE
+                    text = getString(R.string.bottom_bar_hidden)
+                }
+                row.findViewById<ImageButton>(R.id.orderUp).apply {
+                    isEnabled = index > 0
+                    alpha = if (isEnabled) 1f else 0.3f
+                    contentDescription = getString(R.string.move_up, getString(destination.labelRes))
+                    setOnClickListener {
+                        if (index > 0) {
+                            java.util.Collections.swap(order, index, index - 1)
+                            BottomBarConfig.setOrder(this@SettingsActivity, order)
+                            renderRows()
+                            updateBottomBarSettings()
+                        }
+                    }
+                }
+                row.findViewById<ImageButton>(R.id.orderDown).apply {
+                    isEnabled = index < order.lastIndex
+                    alpha = if (isEnabled) 1f else 0.3f
+                    contentDescription = getString(R.string.move_down, getString(destination.labelRes))
+                    setOnClickListener {
+                        if (index < order.lastIndex) {
+                            java.util.Collections.swap(order, index, index + 1)
+                            BottomBarConfig.setOrder(this@SettingsActivity, order)
+                            renderRows()
+                            updateBottomBarSettings()
+                        }
+                    }
+                }
+                list.addView(row)
+            }
+        }
+        root.findViewById<TextView>(R.id.bottomBarOrderDone).setOnClickListener { dialog.dismiss() }
+        renderRows()
+        dialog.show()
     }
 
     private fun showAccentColorDialog() {

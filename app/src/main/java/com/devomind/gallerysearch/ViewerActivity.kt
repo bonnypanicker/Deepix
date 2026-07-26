@@ -1200,9 +1200,16 @@ class ViewerActivity : AppCompatActivity() {
 
     private fun edit(uri: Uri) {
         val item = items.getOrNull(currentPosition)
-        val intent = Intent(this, PhotoEditorActivity::class.java).apply {
-            putExtra(PhotoEditorActivity.ExtraUri, uri.toString())
-            putExtra(PhotoEditorActivity.ExtraName, item?.displayName)
+        val intent = if (item?.mediaType == GalleryRepository.MediaType.Video) {
+            Intent(this, VideoEditorActivity::class.java).apply {
+                putExtra(VideoEditorActivity.ExtraUri, uri.toString())
+                putExtra(VideoEditorActivity.ExtraName, item.displayName)
+            }
+        } else {
+            Intent(this, PhotoEditorActivity::class.java).apply {
+                putExtra(PhotoEditorActivity.ExtraUri, uri.toString())
+                putExtra(PhotoEditorActivity.ExtraName, item?.displayName)
+            }
         }
         editorLauncher.launch(intent)
     }

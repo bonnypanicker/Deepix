@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Metro trim: film frame with a scissor-cut dashed line. Matches the 1.55dp stroke language. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M5,6.5h14c1.1,0 2,0.9 2,2v7c0,1.1 -0.9,2 -2,2H5c-1.1,0 -2,-0.9 -2,-2v-7c0,-1.1 0.9,-2 2,-2z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.55" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M8.5,6.5v11 M15.5,6.5v11"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.55" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M10.6,10.15v3.7c0,0.4 0.43,0.64 0.77,0.43l2.9,-1.85c0.31,-0.2 0.31,-0.66 0,-0.86l-2.9,-1.85c-0.34,-0.21 -0.77,0.03 -0.77,0.43" />
+</vector>
