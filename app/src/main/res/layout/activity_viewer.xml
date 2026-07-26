@@ -98,8 +98,8 @@
                 android:includeFontPadding="false"
                 android:letterSpacing="0.01"
                 android:singleLine="true"
-                android:textColor="@color/metroTextPrimary"
-                android:textSize="15sp"
+                android:textColor="#F2FFFFFF"
+                android:textSize="20sp"
                 android:visibility="gone" />
 
             <TextView
@@ -107,11 +107,12 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
+                android:fontFamily="sans-serif"
                 android:includeFontPadding="false"
                 android:letterSpacing="0.02"
-                android:paddingTop="1dp"
+                android:paddingTop="4dp"
                 android:singleLine="true"
-                android:textColor="@color/metroTextSecondary"
+                android:textColor="#BFFFFFFF"
                 android:textSize="12sp"
                 android:visibility="gone" />
         </LinearLayout>
