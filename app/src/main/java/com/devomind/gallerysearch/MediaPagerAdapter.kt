@@ -20,6 +20,7 @@ import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
+import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.Target
 import com.devomind.gallerysearch.databinding.ItemViewerPageBinding
 import java.util.Locale
@@ -42,6 +43,10 @@ class MediaPagerAdapter(
 
     // Mute is a session-wide preference: muting one video keeps subsequent videos muted too.
     private var sessionMuted = false
+
+    // ViewPager2 can select a prefetched page before its holder is attached. Keeping selection in
+    // the adapter makes a later video bind inherit the correct autoplay state.
+    private var primaryPosition = initialPosition
 
     override fun getItemCount(): Int = items.size
 
@@ -67,6 +72,14 @@ class MediaPagerAdapter(
             activePlayers.valueAt(i).release()
         }
         activePlayers.clear()
+    }
+
+    fun setPrimaryPosition(position: Int) {
+        primaryPosition = position
+        for (i in 0 until activePlayers.size()) {
+            val player = activePlayers.valueAt(i)
+            if (activePlayers.keyAt(i) == position) player.play() else player.pause()
+        }
     }
 
     inner class PageViewHolder(val binding: ItemViewerPageBinding) : RecyclerView.ViewHolder(binding.root) {
@@ -182,7 +195,10 @@ class MediaPagerAdapter(
             transitionName: String?,
             isInitialSharedElement: Boolean
         ) {
-            binding.photoView.visibility = View.GONE
+            // Keep a real MediaStore frame over the TextureView until the decoder has rendered its
+            // first frame. STATE_READY only means decoding can start and otherwise exposes black.
+            binding.photoView.visibility = View.VISIBLE
+            binding.photoView.resetRotation()
             binding.playerView.visibility = View.VISIBLE
             binding.loadingSpinner.visibility = View.VISIBLE
             binding.videoControls.visibility = View.GONE
@@ -198,17 +214,56 @@ class MediaPagerAdapter(
                 applyMute()
             }
 
-            val newPlayer = ExoPlayer.Builder(binding.root.context).build().apply {
+
+            if (transitionName != null) {
+                ViewCompat.setTransitionName(binding.photoView, transitionName)
+            }
+
+            Glide.with(binding.photoView)
+                .load(item.uri)
+                .apply(RequestOptions.frameOf(0L))
+                .format(DecodeFormat.PREFER_ARGB_8888)
+                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                .override(
+                    binding.photoView.resources.displayMetrics.widthPixels,
+                    binding.photoView.resources.displayMetrics.heightPixels
+                )
+                .fitCenter()
+                .dontAnimate()
+                .listener(object : RequestListener<Drawable> {
+                    override fun onLoadFailed(
+                        e: GlideException?,
+                        model: Any?,
+                        target: Target<Drawable>,
+                        isFirstResource: Boolean
+                    ): Boolean {
+                        if (boundUri == item.uri && isInitialSharedElement) onInitialImageLoaded()
+                        return false
+                    }
+
+                    override fun onResourceReady(
+                        resource: Drawable,
+                        model: Any,
+                        target: Target<Drawable>?,
+                        dataSource: DataSource,
+                        isFirstResource: Boolean
+                    ): Boolean {
+                        if (boundUri == item.uri && isInitialSharedElement) onInitialImageLoaded()
+                        return false
+                    }
+                })
+                .into(binding.photoView)
+
+            val newPlayer = ExoPlayer.Builder(binding.root.context).build()
+            newPlayer.apply {
                 setMediaItem(Media3Item.fromUri(item.uri))
                 repeatMode = Player.REPEAT_MODE_OFF
-                // Autoplay only the page the viewer opened on; swiped-to pages are started by
-                // the activity's page-change callback so off-screen prefetched pages stay paused.
-                playWhenReady = position == initialPosition
+                playWhenReady = position == primaryPosition
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (player !== newPlayer) return
                         when (playbackState) {
                             Player.STATE_READY -> {
-                                binding.loadingSpinner.visibility = View.GONE
                                 updateDurationLabel()
                                 updateCenterButton()
                             }
@@ -224,8 +279,8 @@ class MediaPagerAdapter(
                     }
 
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        if (player !== newPlayer) return
                         if (isPlaying) {
-                            binding.loadingSpinner.visibility = View.GONE
                             startProgressUpdates()
                         } else {
                             stopProgressUpdates()
@@ -234,7 +289,14 @@ class MediaPagerAdapter(
                         onPlayStateChanged(boundPosition, isPlaying)
                     }
 
+                    override fun onRenderedFirstFrame() {
+                        if (player !== newPlayer) return
+                        binding.photoView.visibility = View.GONE
+                        binding.loadingSpinner.visibility = View.GONE
+                    }
+
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        if (player !== newPlayer) return
                         binding.loadingSpinner.visibility = View.GONE
                         android.util.Log.w("MediaPagerAdapter", "Video playback failed for ${item.uri}", error)
                         android.widget.Toast.makeText(
@@ -244,21 +306,16 @@ class MediaPagerAdapter(
                         ).show()
                     }
                 })
-                prepare()
             }
 
             player = newPlayer
             activePlayers.put(position, newPlayer)
+            // Attach the output surface before prepare; preparing first can render the initial frame
+            // without a surface on fast local files and leave the TextureView black.
             binding.playerView.player = newPlayer
             applyMute()
             updateCenterButton()
-
-            if (transitionName != null) {
-                ViewCompat.setTransitionName(binding.playerView, transitionName)
-            }
-            if (isInitialSharedElement) {
-                binding.playerView.post { onInitialImageLoaded() }
-            }
+            newPlayer.prepare()
         }
 
         private fun setupSeekBar() {

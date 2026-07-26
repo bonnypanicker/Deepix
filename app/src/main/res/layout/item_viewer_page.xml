@@ -5,12 +5,6 @@
     android:layout_height="match_parent"
     android:background="@color/metroBgPrimary">
 
-    <com.devomind.gallerysearch.RotatablePhotoView
-        android:id="@+id/photoView"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@color/metroBgPrimary" />
-
     <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
         android:layout_width="match_parent"
@@ -21,6 +15,13 @@
         app:resize_mode="fit"
         app:use_controller="false"
         app:show_buffering="never" />
+
+    <!-- Images use this normally; videos keep a fitted frame here until ExoPlayer renders. -->
+    <com.devomind.gallerysearch.RotatablePhotoView
+        android:id="@+id/photoView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/metroBgPrimary" />
 
     <!-- Primary play / pause / replay control -->
     <ImageButton

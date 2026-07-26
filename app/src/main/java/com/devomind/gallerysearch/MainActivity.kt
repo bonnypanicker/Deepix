@@ -3102,11 +3102,17 @@ class MainActivity : AppCompatActivity() {
         }
 
         ViewerItemsHolder.store(items)
-        val transitionName = ViewCompat.getTransitionName(sharedView) ?: ""
+        // A center-cropped grid frame cannot transition cleanly into a fit-mode video surface;
+        // Android briefly stretches that frame before playback. Photos retain the shared transition.
+        val transitionName = if (item.mediaType == GalleryRepository.MediaType.Image) {
+            ViewCompat.getTransitionName(sharedView) ?: ""
+        } else {
+            null
+        }
         val intent = Intent(this, ViewerActivity::class.java).apply {
             putExtra(ViewerActivity.ExtraMarker, item.uri.toString())
             putExtra(ViewerActivity.ExtraPosition, position)
-            putExtra(ViewerActivity.ExtraTransitionName, transitionName)
+            transitionName?.let { putExtra(ViewerActivity.ExtraTransitionName, it) }
             currentAlbum
                 ?.takeIf { !smartAlbumStore.isSmartId(it.id) }
                 ?.let { album ->
@@ -3115,8 +3121,12 @@ class MainActivity : AppCompatActivity() {
                 }
         }
 
-        val options = ActivityOptionsCompat.makeSceneTransitionAnimation(this, sharedView, transitionName)
-        viewerLauncher.launch(intent, options)
+        if (transitionName != null) {
+            val options = ActivityOptionsCompat.makeSceneTransitionAnimation(this, sharedView, transitionName)
+            viewerLauncher.launch(intent, options)
+        } else {
+            viewerLauncher.launch(intent)
+        }
     }
 
     private fun currentViewerItems(): List<GalleryRepository.MediaItem> {

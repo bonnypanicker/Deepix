@@ -131,7 +131,7 @@ class ViewerActivity : AppCompatActivity() {
             previousPosition = position
             currentPosition = position
             bindPage(position)
-            getPageViewHolder(position)?.startPlayback()
+            adapter.setPrimaryPosition(position)
         }
     }
 
