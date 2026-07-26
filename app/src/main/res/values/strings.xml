@@ -89,6 +89,14 @@
     <string name="drawer_albums">albums</string>
     <string name="drawer_search">search</string>
     <string name="drawer_folders">folders</string>
+    <string name="folder_options">Folder options</string>
+    <string name="folder_sort_name">Sort by name</string>
+    <string name="folder_sort_newest">Sort by newest</string>
+    <string name="folder_sort_items">Sort by most items</string>
+    <string name="folder_expand_all">Expand all</string>
+    <string name="folder_collapse_all">Collapse all</string>
+    <string name="folder_expand">Expand %1$s</string>
+    <string name="folder_collapse">Collapse %1$s</string>
     <string name="drawer_start_indexing">start indexing</string>
     <string name="settings_lower">settings</string>
     <string name="waiting_permission">Waiting for gallery permission...</string>

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="64dp"
-    android:background="@color/metroBgPrimary"
+    android:layout_height="72dp"
+    android:background="@drawable/metro_row_pressed"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingStart="16dp"
@@ -13,13 +13,28 @@
         android:layout_width="0dp"
         android:layout_height="match_parent" />
 
-    <ImageView
-        android:id="@+id/folderThumbnail"
+    <FrameLayout
         android:layout_width="56dp"
         android:layout_height="56dp"
-        android:background="@color/metroBgCard"
-        android:contentDescription="@null"
-        android:scaleType="centerCrop" />
+        android:background="@color/metroBgCard">
+
+        <ImageView
+            android:id="@+id/folderThumbnail"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@null"
+            android:scaleType="centerCrop" />
+
+        <ImageView
+            android:id="@+id/folderPlaceholderIcon"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_gravity="center"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_fluent_folder_24_regular"
+            android:tint="@color/metroTextSecondary"
+            android:visibility="gone" />
+    </FrameLayout>
 
     <LinearLayout
         android:layout_width="0dp"
@@ -32,8 +47,10 @@
             android:id="@+id/folderName"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:ellipsize="end"
             android:fontFamily="sans-serif"
             android:includeFontPadding="false"
+            android:maxLines="1"
             android:textColor="@color/metroTextPrimary"
             android:textSize="16sp" />
 
@@ -42,18 +59,21 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
+            android:ellipsize="end"
             android:fontFamily="sans-serif"
             android:includeFontPadding="false"
+            android:maxLines="1"
             android:textColor="@color/metroTextSecondary"
             android:textSize="12sp" />
     </LinearLayout>
 
     <ImageView
         android:id="@+id/folderExpandIcon"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:contentDescription="@null"
-        android:src="@drawable/ic_fluent_more_24_regular"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:padding="10dp"
+        android:src="@drawable/ic_fluent_chevron_right_24_regular"
         android:tint="@color/metroTextSecondary"
         android:visibility="gone" />
 </LinearLayout>

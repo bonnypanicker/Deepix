@@ -272,7 +272,7 @@ class ImageAdapter(
             )
             is GalleryCell.Collage -> (holder as CollageViewHolder).bind(cell, selected)
             is GalleryCell.AlbumCell -> (holder as AlbumViewHolder).bind(cell.album, showAlbumFolderSize)
-            is GalleryCell.FolderCell -> (holder as FolderViewHolder).bind(cell.node)
+            is GalleryCell.FolderCell -> (holder as FolderViewHolder).bind(cell.node, showAlbumFolderSize)
             is GalleryCell.PinnedAlbumsHeader -> (holder as PinnedAlbumsHeaderViewHolder).bind(cell)
             is GalleryCell.SmartAlbumOnboarding -> Unit
             is GalleryCell.Empty -> (holder as EmptyViewHolder).bind(cell)
@@ -1025,18 +1025,31 @@ class ImageAdapter(
         private val onFolderClick: (FolderNode) -> Unit,
         private val onFolderExpandClick: (FolderNode) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(node: FolderNode) {
+        fun bind(node: FolderNode, showFolderSize: Boolean) {
             binding.folderName.text = node.name
-            binding.folderCount.text = when (node.itemCount) {
-                1 -> "1 item"
-                else -> "${node.itemCount} items"
+            val media = when {
+                node.imageCount > 0 && node.videoCount > 0 ->
+                    "${node.imageCount} photos · ${node.videoCount} videos"
+                node.imageCount == 1 -> "1 photo"
+                node.imageCount > 1 -> "${node.imageCount} photos"
+                node.videoCount == 1 -> "1 video"
+                else -> "${node.videoCount} videos"
             }
-            val indentPx = (node.depth * 24 * binding.root.resources.displayMetrics.density).toInt()
+            val folders = when (node.folderCount) {
+                0 -> null
+                1 -> "1 subfolder"
+                else -> "${node.folderCount} subfolders"
+            }
+            val size = node.sizeBytes.takeIf { showFolderSize && it > 0L }?.let(::formatStorageSize)
+            binding.folderCount.text = listOfNotNull(media, folders, size).joinToString(" · ")
+            val indentDp = node.depth.coerceAtMost(MAX_VISIBLE_FOLDER_DEPTH) * FOLDER_INDENT_DP
+            val indentPx = (indentDp * binding.root.resources.displayMetrics.density).toInt()
             binding.folderIndent.layoutParams = binding.folderIndent.layoutParams.apply {
                 width = indentPx
             }
 
             if (node.coverUri != null) {
+                binding.folderPlaceholderIcon.visibility = View.GONE
                 Glide.with(binding.folderThumbnail)
                     .load(node.coverUri)
                     .format(DecodeFormat.PREFER_RGB_565)
@@ -1044,24 +1057,46 @@ class ImageAdapter(
                     .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
                     .into(binding.folderThumbnail)
             } else {
+                Glide.with(binding.folderThumbnail).clear(binding.folderThumbnail)
                 binding.folderThumbnail.setImageDrawable(ColorDrawable(Color.rgb(17, 17, 17)))
+                binding.folderPlaceholderIcon.visibility = View.VISIBLE
             }
 
             if (node.isLeaf) {
                 binding.folderExpandIcon.visibility = View.GONE
+                binding.folderExpandIcon.setOnClickListener(null)
                 binding.root.setOnClickListener { onFolderClick(node) }
             } else {
                 binding.folderExpandIcon.visibility = View.VISIBLE
                 binding.folderExpandIcon.setImageResource(
                     if (node.expanded) R.drawable.ic_fluent_chevron_down_24_regular else R.drawable.ic_fluent_chevron_right_24_regular
                 )
+                binding.folderExpandIcon.contentDescription = binding.root.context.getString(
+                    if (node.expanded) R.string.folder_collapse else R.string.folder_expand,
+                    node.name
+                )
                 binding.root.setOnClickListener { onFolderClick(node) }
                 binding.folderExpandIcon.setOnClickListener { onFolderExpandClick(node) }
             }
         }
+
+        private fun formatStorageSize(bytes: Long): String {
+            val units = arrayOf("B", "KB", "MB", "GB", "TB")
+            var value = bytes.toDouble()
+            var unit = 0
+            while (value >= 1024.0 && unit < units.lastIndex) {
+                value /= 1024.0
+                unit++
+            }
+            if (unit == 0) return "$bytes B"
+            val pattern = if (value >= 10.0) "%.0f %s" else "%.1f %s"
+            return String.format(java.util.Locale.getDefault(), pattern, value, units[unit])
+        }
     }
 
     companion object {
+        private const val FOLDER_INDENT_DP = 20
+        private const val MAX_VISIBLE_FOLDER_DEPTH = 4
         private const val PayloadSelection = "payload_selection"
         const val ViewTypeHeader = 1
         const val ViewTypePhoto = 2

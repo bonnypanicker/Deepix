@@ -85,6 +85,7 @@ class MainActivity : AppCompatActivity() {
     private var currentSmartAlbum: SmartAlbum? = null
     private var smartAlbums: List<SmartAlbum> = emptyList()
     private var folderTreeRoots = listOf<FolderNode>()
+    private var folderSort = FolderSort.Name
     private var currentMode = Mode.Browse
     private var preAlbumDetailSection = Section.Collection
     private var activeSection = Section.Collection
@@ -961,6 +962,13 @@ class MainActivity : AppCompatActivity() {
         val roots = buildFolderTree(collectionItems, previousExpanded)
         folderTreeRoots = roots
         val cells = flattenFolderNodes(roots)
+        val folderCount = roots.sumOf { 1 + it.folderCount }
+        binding.resultCount.text = when {
+            folderCount == 1 && collectionItems.size == 1 -> "1 folder · 1 item"
+            folderCount == 1 -> "1 folder · ${collectionItems.size} items"
+            collectionItems.size == 1 -> "$folderCount folders · 1 item"
+            else -> "$folderCount folders · ${collectionItems.size} items"
+        }
         adapter.replaceCells(
             if (cells.isEmpty()) {
                 listOf(
@@ -984,22 +992,28 @@ class MainActivity : AppCompatActivity() {
      * - Drops the filename so files are grouped under their parent directory.
      * Falls back to the bucket name for items that have no usable path.
      */
-    private fun folderSegmentsFor(path: String, bucketName: String): List<String> {
-        var dir = path.trim()
+    private fun folderSegmentsFor(
+        path: String,
+        bucketName: String,
+        displayName: String?
+    ): List<String> {
+        var dir = path.trim().replace('\\', '/')
         if (dir.isEmpty()) return listOf(bucketName)
 
         if (dir.endsWith("/")) dir = dir.dropLast(1)
 
-        // If the last segment looks like a filename (contains a dot), drop it.
+        // DATA contains the filename; RELATIVE_PATH does not. Compare against DISPLAY_NAME rather
+        // than treating every dotted directory as a file (folders such as "com.example" are valid).
         val lastSlash = dir.lastIndexOf('/')
         if (lastSlash >= 0) {
             val last = dir.substring(lastSlash + 1)
-            if (last.contains('.') && last.any { it.isLetterOrDigit() }) {
+            if (!displayName.isNullOrBlank() && last.equals(displayName, ignoreCase = true)) {
                 dir = dir.substring(0, lastSlash)
             }
         }
 
         dir = dir
+            .replace(Regex("^/storage/emulated/\\d+/"), "")
             .replace(Regex("^/storage/[^/]+/"), "")
             .removePrefix("/sdcard/")
             .trimStart('/')
@@ -1022,7 +1036,7 @@ class MainActivity : AppCompatActivity() {
 
         val roots = mutableMapOf<String, MutableNode>()
         items.forEach { item ->
-            val segments = folderSegmentsFor(item.path, item.bucketName)
+            val segments = folderSegmentsFor(item.path, item.bucketName, item.displayName)
             if (segments.isEmpty()) return@forEach
 
             val rootName = segments.first()
@@ -1037,23 +1051,40 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun toFolderNode(node: MutableNode): FolderNode {
-            val childNodes = node.children.values.map { toFolderNode(it) }.sortedBy { it.name }
+            val childNodes = sortFolderNodes(node.children.values.map { toFolderNode(it) })
             val count = node.directItems.size + childNodes.sumOf { it.itemCount }
-            val cover = node.directItems.firstOrNull()?.uri
-                ?: childNodes.firstOrNull { it.coverUri != null }?.coverUri
+            val directCover = node.directItems.maxByOrNull { it.dateMillis }
+            val newestChild = childNodes.maxByOrNull { it.latestDateMillis }
+            val cover = directCover?.uri ?: newestChild?.coverUri
             return FolderNode(
                 path = node.path,
                 name = node.name,
                 depth = node.depth,
                 coverUri = cover,
                 itemCount = count,
+                imageCount = node.directItems.count { it.mediaType == GalleryRepository.MediaType.Image } +
+                    childNodes.sumOf { it.imageCount },
+                videoCount = node.directItems.count { it.mediaType == GalleryRepository.MediaType.Video } +
+                    childNodes.sumOf { it.videoCount },
+                folderCount = childNodes.size + childNodes.sumOf { it.folderCount },
+                sizeBytes = node.directItems.sumOf { it.sizeBytes } + childNodes.sumOf { it.sizeBytes },
+                latestDateMillis = maxOf(
+                    node.directItems.maxOfOrNull { it.dateMillis } ?: 0L,
+                    childNodes.maxOfOrNull { it.latestDateMillis } ?: 0L
+                ),
                 directItems = node.directItems,
-                expanded = expandedStates[node.path] ?: true,
+                expanded = expandedStates[node.path] ?: (node.depth == 0),
                 children = childNodes
             )
         }
 
-        return roots.values.map { toFolderNode(it) }.sortedBy { it.name }
+        return sortFolderNodes(roots.values.map { toFolderNode(it) })
+    }
+
+    private fun sortFolderNodes(nodes: List<FolderNode>): List<FolderNode> = when (folderSort) {
+        FolderSort.Name -> nodes.sortedBy { it.name.lowercase(Locale.getDefault()) }
+        FolderSort.Newest -> nodes.sortedByDescending { it.latestDateMillis }
+        FolderSort.MostItems -> nodes.sortedByDescending { it.itemCount }
     }
 
     private fun collectExpandedStates(nodes: List<FolderNode>): Map<String, Boolean> {
@@ -1083,7 +1114,58 @@ class MainActivity : AppCompatActivity() {
 
     private fun toggleFolderExpanded(node: FolderNode) {
         folderTreeRoots = updateNodeExpanded(folderTreeRoots, node.path, !node.expanded)
-        renderFolders()
+        adapter.updateCells(flattenFolderNodes(folderTreeRoots))
+        updateFastScrollVisibility()
+    }
+
+    private fun setAllFoldersExpanded(expanded: Boolean) {
+        fun update(nodes: List<FolderNode>): List<FolderNode> = nodes.map { node ->
+            node.copy(expanded = expanded, children = update(node.children))
+        }
+        folderTreeRoots = update(folderTreeRoots)
+        adapter.updateCells(flattenFolderNodes(folderTreeRoots))
+        updateFastScrollVisibility()
+    }
+
+    private fun showFolderOptions(anchor: View) {
+        val menu = android.widget.PopupMenu(this, anchor)
+        menu.menu.add(FOLDER_MENU_SORT_GROUP, FOLDER_MENU_SORT_NAME, 0, getString(R.string.folder_sort_name)).apply {
+            isCheckable = true
+            isChecked = folderSort == FolderSort.Name
+        }
+        menu.menu.add(FOLDER_MENU_SORT_GROUP, FOLDER_MENU_SORT_NEWEST, 1, getString(R.string.folder_sort_newest)).apply {
+            isCheckable = true
+            isChecked = folderSort == FolderSort.Newest
+        }
+        menu.menu.add(FOLDER_MENU_SORT_GROUP, FOLDER_MENU_SORT_ITEMS, 2, getString(R.string.folder_sort_items)).apply {
+            isCheckable = true
+            isChecked = folderSort == FolderSort.MostItems
+        }
+        menu.menu.setGroupCheckable(FOLDER_MENU_SORT_GROUP, true, true)
+        menu.menu.add(0, FOLDER_MENU_EXPAND_ALL, 3, getString(R.string.folder_expand_all))
+        menu.menu.add(0, FOLDER_MENU_COLLAPSE_ALL, 4, getString(R.string.folder_collapse_all))
+        menu.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                FOLDER_MENU_SORT_NAME -> folderSort = FolderSort.Name
+                FOLDER_MENU_SORT_NEWEST -> folderSort = FolderSort.Newest
+                FOLDER_MENU_SORT_ITEMS -> folderSort = FolderSort.MostItems
+                FOLDER_MENU_EXPAND_ALL -> {
+                    setAllFoldersExpanded(true)
+                    return@setOnMenuItemClickListener true
+                }
+                FOLDER_MENU_COLLAPSE_ALL -> {
+                    setAllFoldersExpanded(false)
+                    return@setOnMenuItemClickListener true
+                }
+                else -> return@setOnMenuItemClickListener false
+            }
+            val expanded = collectExpandedStates(folderTreeRoots)
+            folderTreeRoots = buildFolderTree(collectionItems, expanded)
+            adapter.updateCells(flattenFolderNodes(folderTreeRoots))
+            resetGridToTop()
+            true
+        }
+        menu.show()
     }
 
     private fun updateNodeExpanded(nodes: List<FolderNode>, path: String, expanded: Boolean): List<FolderNode> {
@@ -3444,7 +3526,14 @@ class MainActivity : AppCompatActivity() {
             currentMode == Mode.Browse &&
             adapter.selectionCount == 0
         binding.addAlbumBtn.visibility = if (isAlbumsSection) View.VISIBLE else View.GONE
+        val isFoldersSection = activeSection == Section.Folders &&
+            currentMode == Mode.Browse &&
+            adapter.selectionCount == 0
+        binding.folderOptionsBtn.visibility = if (isFoldersSection) View.VISIBLE else View.GONE
+        binding.folderOptionsBtn.setOnClickListener(::showFolderOptions)
     }
+
+    private enum class FolderSort { Name, Newest, MostItems }
 
     /**
      * The paging context key of the current listing, which doubles as the sort-preference scope.
@@ -3656,6 +3745,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val FOLDER_MENU_SORT_GROUP = 10
+        private const val FOLDER_MENU_SORT_NAME = 100
+        private const val FOLDER_MENU_SORT_NEWEST = 101
+        private const val FOLDER_MENU_SORT_ITEMS = 102
+        private const val FOLDER_MENU_EXPAND_ALL = 103
+        private const val FOLDER_MENU_COLLAPSE_ALL = 104
         private const val TAG = "MainActivity"
         private const val STATE_SECTION = "state_section"
         private const val INDEX_WORK_NAME = "gallery_background_index"
