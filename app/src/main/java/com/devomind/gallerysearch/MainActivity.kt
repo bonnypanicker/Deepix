@@ -977,6 +977,36 @@ class MainActivity : AppCompatActivity() {
         updateFastScrollVisibility()
     }
 
+    /**
+     * Derive user-facing folder segments from a media item's filesystem path.
+     * - Strips absolute storage prefixes (e.g. /storage/emulated/0/, /sdcard/).
+     * - Drops the filename so files are grouped under their parent directory.
+     * Falls back to the bucket name for items that have no usable path.
+     */
+    private fun folderSegmentsFor(path: String, bucketName: String): List<String> {
+        var dir = path.trim()
+        if (dir.isEmpty()) return listOf(bucketName)
+
+        if (dir.endsWith("/")) dir = dir.dropLast(1)
+
+        // If the last segment looks like a filename (contains a dot), drop it.
+        val lastSlash = dir.lastIndexOf('/')
+        if (lastSlash >= 0) {
+            val last = dir.substring(lastSlash + 1)
+            if (last.contains('.') && last.any { it.isLetterOrDigit() }) {
+                dir = dir.substring(0, lastSlash)
+            }
+        }
+
+        dir = dir
+            .replace(Regex("^/storage/[^/]+/"), "")
+            .removePrefix("/sdcard/")
+            .trimStart('/')
+
+        val segments = dir.split('/').filter { it.isNotBlank() }
+        return segments.ifEmpty { listOf(bucketName) }
+    }
+
     private fun buildFolderTree(
         items: List<GalleryRepository.MediaItem>,
         expandedStates: Map<String, Boolean> = emptyMap()
@@ -991,8 +1021,7 @@ class MainActivity : AppCompatActivity() {
 
         val roots = mutableMapOf<String, MutableNode>()
         items.forEach { item ->
-            val rawPath = item.path.takeIf { it.isNotBlank() } ?: item.bucketName
-            val segments = rawPath.split('/').filter { it.isNotBlank() }
+            val segments = folderSegmentsFor(item.path, item.bucketName)
             if (segments.isEmpty()) return@forEach
 
             val rootName = segments.first()
