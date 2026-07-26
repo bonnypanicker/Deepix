@@ -423,24 +423,18 @@ class ViewerActivity : AppCompatActivity() {
             MetroBanner.show(this, "Similar search isn't available for videos")
             return
         }
-        val menu = androidx.appcompat.widget.PopupMenu(this, binding.similarBtn)
-        menu.menu.add(0, MENU_SIMILAR_WHOLE, 0, "Search whole image")
-        menu.menu.add(0, MENU_SIMILAR_REGION, 1, "Search part of image")
-        menu.setOnMenuItemClickListener { menuItem ->
-            when (menuItem.itemId) {
-                MENU_SIMILAR_WHOLE -> {
+        MetroDropdownMenu.show(
+            binding.similarBtn,
+            listOf(
+                MetroDropdownMenu.Item("Search whole image") {
                     findSimilarUri = item.uri.toString()
                     supportFinishAfterTransition()
-                    true
-                }
-                MENU_SIMILAR_REGION -> {
+                },
+                MetroDropdownMenu.Item("Search part of image") {
                     enterCropMode()
-                    true
                 }
-                else -> false
-            }
-        }
-        menu.show()
+            )
+        )
     }
 
     /** Enters region-select mode: resets transforms, hides chrome, and shows the crop overlay. */
@@ -504,42 +498,20 @@ class ViewerActivity : AppCompatActivity() {
     private fun showOverflowMenu(anchor: View) {
         val item = items.getOrNull(currentPosition) ?: return
         val albumId = intent.getStringExtra(ExtraAlbumId)
-        val menu = androidx.appcompat.widget.PopupMenu(this, anchor)
-        menu.menu.add(0, MENU_TAGS, 0, "Add tags")
+        val options = mutableListOf<MetroDropdownMenu.Item>()
+        options += MetroDropdownMenu.Item("Add tags") { openTagPicker(item) }
         if (item.mediaType != GalleryRepository.MediaType.Video) {
-            menu.menu.add(0, MENU_GOOGLE_LENS, 1, "Open in Google Lens")
+            options += MetroDropdownMenu.Item("Open in Google Lens") { openInGoogleLens(item) }
             if (!albumId.isNullOrBlank()) {
-                menu.menu.add(0, MENU_SET_AS_ALBUM_COVER, 2, "Set as album cover")
+                options += MetroDropdownMenu.Item("Set as album cover") { setAsAlbumCover(item) }
             }
-            menu.menu.add(0, MENU_ROTATE, 3, "Rotate")
+            options += MetroDropdownMenu.Item("Rotate") { rotateCurrentPhoto() }
+            options += MetroDropdownMenu.Item("Set as wallpaper") { setAsWallpaper(item) }
         }
-        menu.menu.add(0, MENU_INFO, 4, "Info")
-        menu.setOnMenuItemClickListener { menuItem ->
-            when (menuItem.itemId) {
-                MENU_TAGS -> {
-                    openTagPicker(item)
-                    true
-                }
-                MENU_GOOGLE_LENS -> {
-                    openInGoogleLens(item)
-                    true
-                }
-                MENU_SET_AS_ALBUM_COVER -> {
-                    setAsAlbumCover(item)
-                    true
-                }
-                MENU_ROTATE -> {
-                    rotateCurrentPhoto()
-                    true
-                }
-                MENU_INFO -> {
-                    if (!infoVisible) toggleInfoPanel()
-                    true
-                }
-                else -> false
-            }
+        options += MetroDropdownMenu.Item("Info") {
+            if (!infoVisible) toggleInfoPanel()
         }
-        menu.show()
+        MetroDropdownMenu.show(anchor, options)
     }
 
     private fun rotateCurrentPhoto() {
@@ -1378,13 +1350,6 @@ class ViewerActivity : AppCompatActivity() {
         private const val INFO_PANEL_VELOCITY_PX_PER_SEC = 600f
         private const val GEOCODER_TIMEOUT_MS = 3000L
         private const val SCRIM_MAX_ALPHA = 0.72f
-        private const val MENU_TAGS = 1
-        private const val MENU_INFO = 2
-        private const val MENU_SIMILAR_WHOLE = 3
-        private const val MENU_SIMILAR_REGION = 4
-        private const val MENU_GOOGLE_LENS = 5
-        private const val MENU_SET_AS_ALBUM_COVER = 6
-        private const val MENU_ROTATE = 7
         private const val GOOGLE_LENS_PACKAGE = "com.google.ar.lens"
         private const val GOOGLE_PLAY_STORE_PACKAGE = "com.android.vending"
         const val ExtraContentChanged = "content_changed"
