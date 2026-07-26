@@ -1088,6 +1088,23 @@ class ViewerActivity : AppCompatActivity() {
                 }
             return
         }
+        // Bin deletes are undoable (banner UNDO); direct permanent deletes are not — those get
+        // the one Metro confirm. The system consent dialog path confirms itself.
+        if (!DeleteCoordinator.usesBin(this)) {
+            MetroDialog.confirm(
+                context = this,
+                title = "Delete permanently?",
+                message = "Recycle Bin is off, so this item will be deleted permanently. There's no undo.",
+                positive = "Delete",
+                danger = true,
+                iconRes = R.drawable.ic_fluent_delete_24_regular
+            ) { performDelete(uri) }
+            return
+        }
+        performDelete(uri)
+    }
+
+    private fun performDelete(uri: Uri) {
         lifecycleScope.launch {
             when (val outcome = withContext(Dispatchers.IO) { DeleteCoordinator.delete(this@ViewerActivity, listOf(uri)) }) {
                 is DeleteCoordinator.Outcome.NeedsSystemDelete -> deletePhoto(uri)
