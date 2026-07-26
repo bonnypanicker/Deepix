@@ -94,6 +94,7 @@ object SortMenu {
         row.addView(
             TextView(context).apply {
                 text = option.label
+                setTextAppearance(R.style.TextAppearance_Metro_CompactAction)
                 textSize = RowTextSizeSp
                 includeFontPadding = false
                 setTextColor(if (selected) accent else DesignTokens.textPrimary(context))

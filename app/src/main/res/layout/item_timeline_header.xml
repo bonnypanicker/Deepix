@@ -48,8 +48,7 @@
                 android:includeFontPadding="false"
                 android:singleLine="true"
                 android:text="@string/sort_newest_first"
-                android:textColor="?attr/accentColor"
-                android:textSize="13sp" />
+                android:textAppearance="@style/TextAppearance.Metro.CompactAction" />
 
             <ImageView
                 android:id="@+id/sortIcon"

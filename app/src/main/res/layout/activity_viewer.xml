@@ -155,8 +155,7 @@
                 android:layout_marginTop="6dp"
                 android:includeFontPadding="false"
                 android:text="@string/share"
-                android:textColor="@color/metroTextStrong"
-                android:textSize="11sp" />
+                android:textAppearance="@style/TextAppearance.Metro.IconAction" />
         </LinearLayout>
 
         <LinearLayout
@@ -187,8 +186,7 @@
                 android:layout_marginTop="6dp"
                 android:includeFontPadding="false"
                 android:text="@string/edit"
-                android:textColor="@color/metroTextStrong"
-                android:textSize="11sp" />
+                android:textAppearance="@style/TextAppearance.Metro.IconAction" />
         </LinearLayout>
 
         <LinearLayout
@@ -217,8 +215,7 @@
                 android:layout_marginTop="6dp"
                 android:includeFontPadding="false"
                 android:text="@string/delete"
-                android:textColor="@color/metroTextStrong"
-                android:textSize="11sp" />
+                android:textAppearance="@style/TextAppearance.Metro.IconAction" />
         </LinearLayout>
     </LinearLayout>
 

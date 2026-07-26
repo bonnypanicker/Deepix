@@ -153,6 +153,22 @@
         <item name="android:textColor">@color/metroTextTertiary</item>
     </style>
 
+    <!-- Labels paired with bottom action icons. Medium weight keeps 12sp text crisp on AMOLED. -->
+    <style name="TextAppearance.Metro.IconAction">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:letterSpacing">0.02</item>
+        <item name="android:textColor">@color/metroTextPrimary</item>
+    </style>
+
+    <!-- Compact interactive labels such as the inline gallery sort control. -->
+    <style name="TextAppearance.Metro.CompactAction">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:letterSpacing">0.01</item>
+        <item name="android:textColor">?attr/accentColor</item>
+    </style>
+
     <!-- Flat footer button label (CANCEL / CREATE / DELETE). -->
     <style name="TextAppearance.Metro.ButtonLabel">
         <item name="android:fontFamily">sans-serif-medium</item>
