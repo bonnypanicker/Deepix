@@ -1128,44 +1128,36 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFolderOptions(anchor: View) {
-        val menu = android.widget.PopupMenu(this, anchor)
-        menu.menu.add(FOLDER_MENU_SORT_GROUP, FOLDER_MENU_SORT_NAME, 0, getString(R.string.folder_sort_name)).apply {
-            isCheckable = true
-            isChecked = folderSort == FolderSort.Name
-        }
-        menu.menu.add(FOLDER_MENU_SORT_GROUP, FOLDER_MENU_SORT_NEWEST, 1, getString(R.string.folder_sort_newest)).apply {
-            isCheckable = true
-            isChecked = folderSort == FolderSort.Newest
-        }
-        menu.menu.add(FOLDER_MENU_SORT_GROUP, FOLDER_MENU_SORT_ITEMS, 2, getString(R.string.folder_sort_items)).apply {
-            isCheckable = true
-            isChecked = folderSort == FolderSort.MostItems
-        }
-        menu.menu.setGroupCheckable(FOLDER_MENU_SORT_GROUP, true, true)
-        menu.menu.add(0, FOLDER_MENU_EXPAND_ALL, 3, getString(R.string.folder_expand_all))
-        menu.menu.add(0, FOLDER_MENU_COLLAPSE_ALL, 4, getString(R.string.folder_collapse_all))
-        menu.setOnMenuItemClickListener { item ->
-            when (item.itemId) {
-                FOLDER_MENU_SORT_NAME -> folderSort = FolderSort.Name
-                FOLDER_MENU_SORT_NEWEST -> folderSort = FolderSort.Newest
-                FOLDER_MENU_SORT_ITEMS -> folderSort = FolderSort.MostItems
-                FOLDER_MENU_EXPAND_ALL -> {
-                    setAllFoldersExpanded(true)
-                    return@setOnMenuItemClickListener true
-                }
-                FOLDER_MENU_COLLAPSE_ALL -> {
-                    setAllFoldersExpanded(false)
-                    return@setOnMenuItemClickListener true
-                }
-                else -> return@setOnMenuItemClickListener false
-            }
+        fun setSort(sort: FolderSort) {
+            folderSort = sort
             val expanded = collectExpandedStates(folderTreeRoots)
             folderTreeRoots = buildFolderTree(collectionItems, expanded)
             adapter.updateCells(flattenFolderNodes(folderTreeRoots))
             resetGridToTop()
-            true
         }
-        menu.show()
+        MetroDropdownMenu.show(
+            anchor,
+            listOf(
+                MetroDropdownMenu.Item(
+                    getString(R.string.folder_sort_name),
+                    selected = folderSort == FolderSort.Name
+                ) { setSort(FolderSort.Name) },
+                MetroDropdownMenu.Item(
+                    getString(R.string.folder_sort_newest),
+                    selected = folderSort == FolderSort.Newest
+                ) { setSort(FolderSort.Newest) },
+                MetroDropdownMenu.Item(
+                    getString(R.string.folder_sort_items),
+                    selected = folderSort == FolderSort.MostItems
+                ) { setSort(FolderSort.MostItems) },
+                MetroDropdownMenu.Item(getString(R.string.folder_expand_all)) {
+                    setAllFoldersExpanded(true)
+                },
+                MetroDropdownMenu.Item(getString(R.string.folder_collapse_all)) {
+                    setAllFoldersExpanded(false)
+                }
+            )
+        )
     }
 
     private fun updateNodeExpanded(nodes: List<FolderNode>, path: String, expanded: Boolean): List<FolderNode> {
@@ -2786,37 +2778,34 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val isPinned = albumPinStore.isPinned(album.id)
-        val popup = android.widget.PopupMenu(this, anchor)
-        popup.menu.add(if (isPinned) "Unpin Album" else "Pin Album")
-        popup.setOnMenuItemClickListener { _ ->
-            if (isPinned) albumPinStore.unpin(album.id) else albumPinStore.pin(album.id)
-            if (currentMode == Mode.Browse && currentAlbum == null) {
-                renderCurrentSection()
-            }
-            true
-        }
-        popup.show()
+        MetroDropdownMenu.show(
+            anchor,
+            listOf(
+                MetroDropdownMenu.Item(if (isPinned) "Unpin album" else "Pin album") {
+                    if (isPinned) albumPinStore.unpin(album.id) else albumPinStore.pin(album.id)
+                    if (currentMode == Mode.Browse && currentAlbum == null) {
+                        renderCurrentSection()
+                    }
+                }
+            )
+        )
     }
 
     private fun showSmartAlbumMenu(album: GalleryRepository.Album, anchor: View) {
         val smart = smartAlbums.find { it.id == album.id } ?: return
-        val popup = android.widget.PopupMenu(this, anchor)
-        popup.menu.add("Refresh")
-        popup.menu.add("Rename")
-        popup.menu.add("Edit Prompt")
-        popup.menu.add("Delete")
-        popup.menu.add("Unpin")
-        popup.setOnMenuItemClickListener { item ->
-            when (item.title.toString()) {
-                "Refresh" -> handleSmartAlbumRefresh(smart)
-                "Rename" -> showRenameSmartAlbumDialog(smart)
-                "Edit Prompt" -> showEditPromptDialog(smart)
-                "Delete" -> confirmDeleteSmartAlbum(smart)
-                "Unpin" -> { albumPinStore.unpin(album.id); renderCurrentSection() }
-            }
-            true
-        }
-        popup.show()
+        MetroDropdownMenu.show(
+            anchor,
+            listOf(
+                MetroDropdownMenu.Item("Refresh") { handleSmartAlbumRefresh(smart) },
+                MetroDropdownMenu.Item("Rename") { showRenameSmartAlbumDialog(smart) },
+                MetroDropdownMenu.Item("Edit prompt") { showEditPromptDialog(smart) },
+                MetroDropdownMenu.Item("Unpin") {
+                    albumPinStore.unpin(album.id)
+                    renderCurrentSection()
+                },
+                MetroDropdownMenu.Item("Delete", danger = true) { confirmDeleteSmartAlbum(smart) }
+            )
+        )
     }
 
     private fun handleSmartAlbumRefresh(smart: SmartAlbum) {
@@ -3745,12 +3734,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        private const val FOLDER_MENU_SORT_GROUP = 10
-        private const val FOLDER_MENU_SORT_NAME = 100
-        private const val FOLDER_MENU_SORT_NEWEST = 101
-        private const val FOLDER_MENU_SORT_ITEMS = 102
-        private const val FOLDER_MENU_EXPAND_ALL = 103
-        private const val FOLDER_MENU_COLLAPSE_ALL = 104
         private const val TAG = "MainActivity"
         private const val STATE_SECTION = "state_section"
         private const val INDEX_WORK_NAME = "gallery_background_index"
