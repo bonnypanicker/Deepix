@@ -59,17 +59,6 @@
                     android:orientation="horizontal">
 
                     <ImageButton
-                        android:id="@+id/albumSortBtn"
-                        android:layout_width="44dp"
-                        android:layout_height="44dp"
-                        android:background="?android:attr/selectableItemBackgroundBorderless"
-                        android:contentDescription="@string/sort_albums"
-                        android:padding="10dp"
-                        android:src="@drawable/ic_fluent_sort_24_regular"
-                        android:tint="@color/metroTextPrimary"
-                        android:visibility="gone" />
-
-                    <ImageButton
                         android:id="@+id/addAlbumBtn"
                         android:layout_width="44dp"
                         android:layout_height="44dp"

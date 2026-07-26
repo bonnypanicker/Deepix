@@ -297,7 +297,7 @@ class MainActivity : AppCompatActivity() {
                 IndexPreferences.setSmartAlbumOnboardingDismissed(this)
                 if (activeSection == Section.Albums && currentMode == Mode.Browse) renderAlbums()
             },
-            onSortClick = ::showSortMenu
+            onSortClick = { anchor -> onHeaderSortClick(anchor) }
         )
         adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
         adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
@@ -390,7 +390,6 @@ class MainActivity : AppCompatActivity() {
     private fun bindChrome() {
         binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
         binding.addAlbumBtn.setOnClickListener { showCreateSmartAlbumDialog() }
-        binding.albumSortBtn.setOnClickListener(::showAlbumSortMenu)
         binding.searchTrailingBtn.setOnClickListener {
             if (currentMode == Mode.Search) onSearchClear() else openSearch()
         }
@@ -1299,7 +1298,7 @@ class MainActivity : AppCompatActivity() {
             pinnedAlbums.forEach { cells += GalleryCell.AlbumCell(it) }
         }
         if (normalAlbums.isNotEmpty()) {
-            cells += GalleryCell.Header("OTHERS", "")
+            cells += GalleryCell.Header("OTHERS", "", sortLabel = currentSort.label)
             normalAlbums.forEach { cells += GalleryCell.AlbumCell(it) }
         }
 
@@ -3560,8 +3559,6 @@ class MainActivity : AppCompatActivity() {
             currentMode == Mode.Browse &&
             adapter.selectionCount == 0
         binding.addAlbumBtn.visibility = if (isAlbumsSection) View.VISIBLE else View.GONE
-        binding.albumSortBtn.visibility = if (isAlbumsSection) View.VISIBLE else View.GONE
-        binding.screenTitle.updatePadding(right = dp(if (isAlbumsSection) 100 else 56))
         val isFoldersSection = activeSection == Section.Folders &&
             currentMode == Mode.Browse &&
             adapter.selectionCount == 0
@@ -3583,6 +3580,18 @@ class MainActivity : AppCompatActivity() {
         Mode.Browse -> when (activeSection) {
             Section.Collection, Section.Videos, Section.Favorites -> "section:$activeSection"
             Section.Albums, Section.Folders -> null
+        }
+    }
+
+    /**
+     * Header-level sort chip click. In the Albums section the chip lives on the "OTHERS" header and
+     * uses album-specific options; everywhere else it delegates to the media sort menu.
+     */
+    private fun onHeaderSortClick(anchor: View) {
+        if (currentMode == Mode.Browse && activeSection == Section.Albums) {
+            showAlbumSortMenu(anchor)
+        } else {
+            showSortMenu(anchor)
         }
     }
 
