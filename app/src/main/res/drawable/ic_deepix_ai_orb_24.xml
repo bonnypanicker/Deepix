@@ -4,7 +4,7 @@
     android:viewportWidth="352"
     android:viewportHeight="352">
 
-    <!-- Matches ai_icon.jpg: a 145px-radius outer ring around a 109px-radius inner orb. -->
+    <!-- A 145px-radius outer ring around a 109px-radius inner orb. -->
     <path
         android:fillColor="?attr/accentColor"
         android:fillType="evenOdd"
