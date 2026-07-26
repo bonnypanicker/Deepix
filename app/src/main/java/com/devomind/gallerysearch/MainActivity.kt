@@ -2262,7 +2262,7 @@ class MainActivity : AppCompatActivity() {
                 pendingSort = null
                 rebuild()
             }
-            SortOption.entries.forEach { option ->
+            SortOption.MEDIA_OPTIONS.forEach { option ->
                 addSheetOption(container, option.label, pendingSort == option) {
                     pendingSort = option
                     rebuild()
@@ -3602,7 +3602,7 @@ class MainActivity : AppCompatActivity() {
     private fun showSortMenu(anchor: View) {
         val scopeKey = currentScopeKey() ?: return
         val current = SortManager.optionFor(this, scopeKey)
-        SortMenu.show(anchor, current) { picked ->
+        SortMenu.show(anchor, current, SortOption.MEDIA_OPTIONS) { picked ->
             SortManager.setOption(this, scopeKey, picked)
             renderCurrentState()
         }
@@ -3754,23 +3754,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun showAlbumSortMenu(anchor: View) {
         val current = SortManager.optionFor(this, AlbumsSortScope)
-        val options = listOf(
-            SortOption.NameAsc to "A-Z",
-            SortOption.NameDesc to "Z-A",
-            SortOption.NewestFirst to "Recent",
-            SortOption.OldestFirst to "Oldest"
-        )
-        MetroDropdownMenu.show(
-            anchor,
-            options.map { (option, label) ->
-                MetroDropdownMenu.Item(label, selected = option == current) {
-                    if (option != current) {
-                        SortManager.setOption(this, AlbumsSortScope, option)
-                        renderAlbums()
-                    }
-                }
-            }
-        )
+        SortMenu.show(anchor, current, SortOption.ALBUM_OPTIONS) { picked ->
+            SortManager.setOption(this, AlbumsSortScope, picked)
+            renderAlbums()
+        }
     }
 
     private fun applyBottomBarConfig() {
