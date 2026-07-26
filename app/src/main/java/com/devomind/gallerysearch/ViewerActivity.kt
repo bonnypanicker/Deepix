@@ -935,13 +935,8 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     private fun scheduleAutoHide() {
+        // Auto-hide is disabled: controls only hide/unhide on tap.
         autoHideHandler.removeCallbacks(autoHideRunnable)
-        // Keep controls up while a video is paused/ended (so play/replay stays reachable);
-        // otherwise (images, or a playing video) fade them out after a short delay.
-        val isPausedVideo = currentIsVideo() && getCurrentPageViewHolder()?.isPlaying() != true
-        if (controlsVisible && !infoVisible && !isScrubbing && !isPausedVideo) {
-            autoHideHandler.postDelayed(autoHideRunnable, 3000)
-        }
     }
 
     private fun handleViewerTouch(event: MotionEvent): Boolean {
