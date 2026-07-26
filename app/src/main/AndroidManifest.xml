@@ -62,6 +62,34 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.GallerySearch" />
 
+        <!-- Android resolver entry: appears as "Edit with Deepix" for photo/video ACTION_EDIT. -->
+        <activity
+            android:name=".EditDispatchActivity"
+            android:exported="true"
+            android:label="@string/edit_with_deepix"
+            android:theme="@style/Theme.GallerySearch">
+            <intent-filter>
+                <action android:name="android.intent.action.EDIT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.EDIT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+        </activity>
+
         <!-- Encrypted photo locker. excludeFromRecents + no launch icon; screenshots
              blocked at runtime via FLAG_SECURE inside the activity. -->
         <activity
