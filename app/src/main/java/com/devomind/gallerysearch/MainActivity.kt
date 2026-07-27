@@ -609,7 +609,7 @@ class MainActivity : AppCompatActivity() {
         MetroDialog.confirm(
             context = this,
             title = "Photo access needed",
-            message = "Deepix is a gallery — it can't show anything without permission to read " +
+            message = "Pixa AI Gallery is a gallery — it can't show anything without permission to read " +
                 "your photos and videos. Nothing ever leaves your phone.",
             positive = "Open settings",
             negative = "Exit",
@@ -786,7 +786,7 @@ class MainActivity : AppCompatActivity() {
     private fun showIndexingStartedDialog() {
         IndexPreferences.setIndexConsentAsked(applicationContext)
         val message =
-            "Deepix is building a private search index of your photos with on-device AI, so you can " +
+            "Pixa AI Gallery is building a private search index of your photos with on-device AI, so you can " +
                 "find them just by describing them — try \"beach\", \"my dog\" or \"receipts\".\n\n" +
                 "This full scan runs once. After that, only newly added photos are indexed automatically.\n\n" +
                 "It works entirely offline — nothing ever leaves your phone. Indexing runs in the background " +

@@ -8,7 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
 /**
- * Exported ACTION_EDIT entry point. Android's resolver displays this activity as "Edit with Deepix"
+ * Exported ACTION_EDIT entry point. Android's resolver displays this activity as "Edit with Pixa AI Gallery"
  * for photo and video MIME inputs; it immediately forwards the granted content Uri to the matching
  * in-app editor and returns that editor's result to the source application.
  */
@@ -58,7 +58,7 @@ class EditDispatchActivity : AppCompatActivity() {
             else -> null
         }
         if (editorClass == null) {
-            MetroBanner.show(this, "Deepix can edit photos and videos")
+            MetroBanner.show(this, "Pixa AI Gallery can edit photos and videos")
             finish()
             return
         }
