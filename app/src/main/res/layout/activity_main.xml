@@ -116,13 +116,12 @@
                     android:scaleType="centerCrop"
                     android:visibility="gone" />
 
-                <ImageView
+                <com.devomind.gallerysearch.IndexingOrbView
                     android:id="@+id/searchSparkle"
-                    android:layout_width="22dp"
-                    android:layout_height="22dp"
-                    android:layout_marginStart="6dp"
-                    android:contentDescription="@string/ai_search"
-                    android:src="@drawable/ic_deepix_ai_orb_24" />
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginStart="3dp"
+                    android:contentDescription="@string/ai_search" />
 
                 <EditText
                     android:id="@+id/searchInput"
