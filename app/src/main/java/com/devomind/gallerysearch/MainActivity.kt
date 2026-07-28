@@ -818,6 +818,7 @@ class MainActivity : AppCompatActivity() {
         WorkManager.getInstance(this).cancelUniqueWork(INDEX_WORK_NAME)
         indexRunning = false
         setOrbPulse(false)
+        binding.statusText.text = "Indexing paused"
         updateIndexDrawerLabel()
         MetroBanner.show(this, "Indexing paused")
     }
@@ -1509,6 +1510,7 @@ class MainActivity : AppCompatActivity() {
         !imageSearchActive && binding.searchInput.text.isNullOrEmpty()
 
     private fun setOrbPulse(running: Boolean) {
+        if (running && orbPulseAnimator?.isRunning == true) return
         orbPulseAnimator?.cancel()
         orbPulseAnimator = null
         val orb = binding.searchSparkle
@@ -1516,10 +1518,10 @@ class MainActivity : AppCompatActivity() {
         if (!running) return
         orbPulseAnimator = android.animation.ObjectAnimator.ofPropertyValuesHolder(
             orb,
-            android.animation.PropertyValuesHolder.ofFloat("scaleX", 1f, 1.07f, 1f),
-            android.animation.PropertyValuesHolder.ofFloat("scaleY", 1f, 1.07f, 1f)
+            android.animation.PropertyValuesHolder.ofFloat("scaleX", 1f, 1.04f, 1f),
+            android.animation.PropertyValuesHolder.ofFloat("scaleY", 1f, 1.04f, 1f)
         ).apply {
-            duration = 2500L
+            duration = 4000L
             repeatCount = android.animation.ObjectAnimator.INFINITE
             interpolator = android.view.animation.AccelerateDecelerateInterpolator()
             start()
@@ -3842,6 +3844,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         stopSearchHintCycle()
+        orbPulseAnimator?.cancel()
         searchDebounceJob?.cancel()
         searchJob?.cancel()
         renderJob?.cancel()
