@@ -96,6 +96,7 @@ class MainActivity : AppCompatActivity() {
     private var renderJob: Job? = null
     private var lastProgressRefresh = -1
     private var indexRunning = false
+    private var orbPulseAnimator: android.animation.ObjectAnimator? = null
     private var chargingPrefSnapshot = false
     private var settingsLaunchAccentKey: String? = null
     private var pendingDeleteUris: List<Uri> = emptyList()
@@ -390,6 +391,9 @@ class MainActivity : AppCompatActivity() {
     private fun bindChrome() {
         binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
         binding.addAlbumBtn.setOnClickListener { showCreateSmartAlbumDialog() }
+        binding.searchSparkle.setOnClickListener {
+            startActivity(android.content.Intent(this, IndexingActivity::class.java))
+        }
         binding.searchTrailingBtn.setOnClickListener {
             if (currentMode == Mode.Search) onSearchClear() else openSearch()
         }
@@ -813,7 +817,7 @@ class MainActivity : AppCompatActivity() {
         IndexPreferences.setIndexPaused(this, true)
         WorkManager.getInstance(this).cancelUniqueWork(INDEX_WORK_NAME)
         indexRunning = false
-        binding.statusText.text = "Indexing paused"
+        setOrbPulse(false)
         updateIndexDrawerLabel()
         MetroBanner.show(this, "Indexing paused")
     }
@@ -1503,6 +1507,24 @@ class MainActivity : AppCompatActivity() {
     /** True only when the empty-state hint is actually visible and worth animating. */
     private fun canCycleSearchHint(): Boolean =
         !imageSearchActive && binding.searchInput.text.isNullOrEmpty()
+
+    private fun setOrbPulse(running: Boolean) {
+        orbPulseAnimator?.cancel()
+        orbPulseAnimator = null
+        val orb = binding.searchSparkle
+        orb.scaleX = 1f; orb.scaleY = 1f
+        if (!running) return
+        orbPulseAnimator = android.animation.ObjectAnimator.ofPropertyValuesHolder(
+            orb,
+            android.animation.PropertyValuesHolder.ofFloat("scaleX", 1f, 1.07f, 1f),
+            android.animation.PropertyValuesHolder.ofFloat("scaleY", 1f, 1.07f, 1f)
+        ).apply {
+            duration = 2500L
+            repeatCount = android.animation.ObjectAnimator.INFINITE
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            start()
+        }
+    }
 
     /** Starts (or restarts) the rotating hint. Cheap: one delayed Runnable on the view's own handler. */
     private fun startSearchHintCycle() {
@@ -3404,6 +3426,7 @@ class MainActivity : AppCompatActivity() {
             .observe(this) { infos ->
                 val work = infos.firstOrNull() ?: return@observe
                 indexRunning = work.state == WorkInfo.State.RUNNING || work.state == WorkInfo.State.ENQUEUED
+                setOrbPulse(indexRunning)
                 updateIndexDrawerLabel()
                 when (work.state) {
                     WorkInfo.State.ENQUEUED,
