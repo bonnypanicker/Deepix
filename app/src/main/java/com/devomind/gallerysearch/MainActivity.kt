@@ -394,9 +394,11 @@ class MainActivity : AppCompatActivity() {
             startActivity(android.content.Intent(this, IndexingActivity::class.java))
         }
         binding.searchTrailingBtn.setOnClickListener {
-            if (currentMode == Mode.Search) onSearchClear() else openSearch()
+            if (currentMode == Mode.Search) showSortFilterSheet() else openSearch()
         }
-        binding.searchFilterBtn.setOnClickListener { showSortFilterSheet() }
+        binding.searchClearBtn.setOnClickListener {
+            if (currentMode == Mode.Search) onSearchClear()
+        }
 
         binding.drawerCollection.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
@@ -1438,13 +1440,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSearchTrailingIcon() {
-        val res = if (currentMode == Mode.Search) {
-            R.drawable.ic_fluent_dismiss_24_regular
+        val isSearching = currentMode == Mode.Search
+        val res = if (isSearching) {
+            R.drawable.ic_fluent_filter_24_regular
         } else {
             R.drawable.ic_fluent_search_24_regular
         }
         binding.searchTrailingBtn.setImageResource(res)
-        binding.searchTrailingBtn.contentDescription = if (currentMode == Mode.Search) "Clear search" else "Search"
+        binding.searchTrailingBtn.contentDescription = getString(
+            if (isSearching) R.string.sort_filter else R.string.search
+        )
+        binding.searchClearBtn.visibility = if (isSearching) View.VISIBLE else View.GONE
     }
 
     private fun closeSearch(clearQuery: Boolean) {
@@ -2481,6 +2487,11 @@ class MainActivity : AppCompatActivity() {
     private fun addFilter(token: String) {
         val canonical = StructuredSearch.canonicalToken(token)
         if (activeFilters.any { StructuredSearch.canonicalToken(it) == canonical }) return
+        val selectionLimit = if (currentSearchScopePill() == null) 3 else 2
+        if (activeFilters.size >= selectionLimit) {
+            MetroBanner.show(this, "You can keep up to three filters active")
+            return
+        }
         activeFilters.add(token)
         onFiltersChanged()
     }
@@ -2640,7 +2651,7 @@ class MainActivity : AppCompatActivity() {
                 this@MainActivity,
                 if (selected) R.drawable.search_filter_chip_active_bg else R.drawable.search_filter_chip_bg
             )
-            setPadding(dp(14), dp(8), if (dismissable) dp(10) else dp(14), dp(8))
+            setPadding(dp(16), dp(10), if (dismissable) dp(12) else dp(16), dp(10))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -2651,7 +2662,7 @@ class MainActivity : AppCompatActivity() {
         }
         val text = TextView(this).apply {
             this.text = label
-            textSize = 12f
+            textSize = 14f
             includeFontPadding = false
             setTextColor(Color.WHITE)
         }
@@ -2660,7 +2671,7 @@ class MainActivity : AppCompatActivity() {
             val close = ImageView(this).apply {
                 setImageResource(R.drawable.ic_fluent_dismiss_24_regular)
                 imageTintList = ColorStateList.valueOf(Color.WHITE)
-                layoutParams = LinearLayout.LayoutParams(dp(13), dp(13)).apply { marginStart = dp(7) }
+                layoutParams = LinearLayout.LayoutParams(dp(16), dp(16)).apply { marginStart = dp(8) }
             }
             row.addView(close)
         }

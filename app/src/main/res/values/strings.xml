@@ -24,6 +24,7 @@
     <string name="more">More</string>
     <string name="menu">Menu</string>
     <string name="search">Search</string>
+    <string name="clear_search">Clear search</string>
     <string name="pause">Pause</string>
     <string name="stop">Stop</string>
     <string name="play">Play</string>
