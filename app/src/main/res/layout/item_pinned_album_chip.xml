@@ -9,7 +9,8 @@
         android:id="@+id/chipCover"
         android:layout_width="100dp"
         android:layout_height="100dp"
-        android:background="@color/metroBgCard"
+        android:background="@drawable/album_cover_rounded_bg"
+        android:clipToOutline="true"
         android:contentDescription="@null"
         android:scaleType="centerCrop" />
 

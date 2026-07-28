@@ -5,19 +5,9 @@
     android:background="@color/metroBgPrimary"
     android:orientation="vertical"
     android:paddingStart="16dp"
-    android:paddingTop="16dp"
+    android:paddingTop="12dp"
     android:paddingEnd="0dp"
     android:paddingBottom="16dp">
-
-    <TextView
-        android:id="@+id/pinnedAlbumsLabel"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:includeFontPadding="false"
-        android:text="@string/pinned_albums"
-        android:textAppearance="@style/TextAppearance.Metro.SectionLabel"
-        android:paddingEnd="16dp"
-        android:paddingBottom="12dp" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/pinnedAlbumsList"
