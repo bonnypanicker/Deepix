@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.text.TextUtils
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
@@ -2467,12 +2468,12 @@ class MainActivity : AppCompatActivity() {
     private fun updateSearchPillState() {
         if (binding.searchPanel.visibility != View.VISIBLE) return
         if (imageSearchActive) {
-            binding.searchActivePillsScroll.visibility = View.GONE
-            binding.searchQuickPillsScroll.visibility = View.GONE
+            binding.searchPillsRow.visibility = View.GONE
             return
         }
         renderActiveSearchPills()
         renderQuickSearchPills()
+        updateSearchPillRow()
     }
 
     /** Composes free-text + active filter chips + the Show filter into the query the engine runs. */
@@ -2521,8 +2522,6 @@ class MainActivity : AppCompatActivity() {
         binding.searchActivePills.removeAllViews()
         val scopePill = currentSearchScopePill()
         val parsedFilters = StructuredSearch.parse(activeFilters.joinToString(" ")).filters
-        binding.searchActivePillsScroll.visibility =
-            if (parsedFilters.isEmpty() && scopePill == null) View.GONE else View.VISIBLE
         scopePill?.let {
             binding.searchActivePills.addView(
                 createSearchPillView(
@@ -2550,7 +2549,6 @@ class MainActivity : AppCompatActivity() {
         val activeCanonical = activeFilters.mapTo(HashSet()) { StructuredSearch.canonicalToken(it) }
         val suggestions = buildQuickSearchPills()
             .filter { StructuredSearch.canonicalToken(it.token) !in activeCanonical }
-        binding.searchQuickPillsScroll.visibility = if (suggestions.isEmpty()) View.GONE else View.VISIBLE
         suggestions.forEach { pill ->
             binding.searchQuickPills.addView(
                 createSearchPillView(
@@ -2559,6 +2557,21 @@ class MainActivity : AppCompatActivity() {
                     onClick = { addFilter(pill.token) }
                 )
             )
+        }
+    }
+
+    /**
+     * Active filters stay anchored at the leading edge. Suggestions share the same physical row
+     * and scroll behind that anchored area, so a selection never jumps into a separate line.
+     */
+    private fun updateSearchPillRow() {
+        val hasActivePills = binding.searchActivePills.childCount > 0
+        val hasQuickPills = binding.searchQuickPills.childCount > 0
+        binding.searchPillsRow.visibility = if (hasActivePills || hasQuickPills) View.VISIBLE else View.GONE
+        binding.searchQuickPillsScroll.visibility = if (hasQuickPills) View.VISIBLE else View.GONE
+        binding.searchActivePills.post {
+            val reservedStart = if (hasActivePills) binding.searchActivePills.width + dp(8) else dp(2)
+            binding.searchQuickPills.setPadding(reservedStart, 0, dp(2), 0)
         }
     }
 
@@ -2664,6 +2677,9 @@ class MainActivity : AppCompatActivity() {
             this.text = label
             textSize = 14f
             includeFontPadding = false
+            maxWidth = if (selected) dp(72) else dp(160)
+            ellipsize = TextUtils.TruncateAt.END
+            setSingleLine()
             setTextColor(Color.WHITE)
         }
         row.addView(text)

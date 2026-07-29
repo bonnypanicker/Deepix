@@ -166,9 +166,9 @@
                     android:layout_height="48dp"
                     android:layout_marginStart="8dp"
                     android:background="@drawable/search_action_bg"
-                    android:contentDescription="@string/sort_filter"
+                    android:contentDescription="@string/search"
                     android:padding="12dp"
-                    android:src="@drawable/ic_fluent_filter_24_regular"
+                    android:src="@drawable/ic_fluent_search_24_regular"
                     android:tint="@color/metroTextPrimary" />
             </LinearLayout>
 
@@ -203,40 +203,35 @@
                         android:textSize="12sp" />
                 </LinearLayout>
 
-                <LinearLayout
-                    android:id="@+id/searchActivePillsScroll"
+                <FrameLayout
+                    android:id="@+id/searchPillsRow"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:paddingStart="2dp"
-                    android:paddingEnd="2dp"
-                    android:gravity="start"
                     android:visibility="gone">
+
+                    <HorizontalScrollView
+                        android:id="@+id/searchQuickPillsScroll"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:clipToPadding="false"
+                        android:overScrollMode="never"
+                        android:scrollbars="none">
+
+                        <LinearLayout
+                            android:id="@+id/searchQuickPills"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal" />
+                    </HorizontalScrollView>
 
                     <LinearLayout
                         android:id="@+id/searchActivePills"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_gravity="start|center_vertical"
                         android:orientation="horizontal" />
-                </LinearLayout>
-
-                <HorizontalScrollView
-                    android:id="@+id/searchQuickPillsScroll"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:clipToPadding="false"
-                    android:overScrollMode="never"
-                    android:paddingStart="2dp"
-                    android:paddingEnd="2dp"
-                    android:scrollbars="none">
-
-                    <LinearLayout
-                        android:id="@+id/searchQuickPills"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal" />
-                </HorizontalScrollView>
+                </FrameLayout>
             </LinearLayout>
         </LinearLayout>
 
