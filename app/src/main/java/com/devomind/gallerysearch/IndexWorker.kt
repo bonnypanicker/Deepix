@@ -73,6 +73,11 @@ class IndexWorker(
             Log.w(Tag, "Foreground service start not allowed; indexing in background.", e)
         }
 
+        // A quiet, candidate-first YuNet pass runs independently after CLIP has had time to
+        // populate embeddings. It owns a different unique WorkManager chain and never surfaces
+        // progress or a notification.
+        FaceScanWorker.enqueue(applicationContext)
+
         return try {
             val (imageEncoder, _) = coroutineScope {
                 // Read the vision model bytes in parallel with fetching the fixed ORT thread count
@@ -148,6 +153,10 @@ class IndexWorker(
 
             val dbRepository = DbRepository(applicationContext)
             dbRepository.upsertMedia(allImages)
+
+            // Re-enqueue after a completed pass so photos indexed near the end are considered even
+            // if the first quiet face scan finished while CLIP was still catching up.
+            FaceScanWorker.enqueue(applicationContext)
 
             // Save timestamp so next run only processes new photos
             IndexPreferences.saveLastIndexedTime(applicationContext)

@@ -64,6 +64,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var favoritesStore: FavoritesStore
     private lateinit var albumPinStore: AlbumPinStore
     private lateinit var smartAlbumStore: SmartAlbumStore
+    private lateinit var faceResultStore: FaceResultStore
     private var imageEncoder: ImageEncoder? = null
     private var nsfwClassifier: NsfwClassifier? = null
     private var nsfwComputeJob: kotlinx.coroutines.Job? = null
@@ -285,6 +286,7 @@ class MainActivity : AppCompatActivity() {
         favoritesStore = FavoritesStore(this)
         albumPinStore = AlbumPinStore(this)
         smartAlbumStore = SmartAlbumStore(this)
+        faceResultStore = FaceResultStore(this)
 
         adapter = ImageAdapter(
             onPhotoClick = { item, view -> openMedia(item, view) },
@@ -377,6 +379,7 @@ class MainActivity : AppCompatActivity() {
         // pending, which previously lost the notification prompt on first launch.
         requestGalleryPermission()
         observeIndexWorker()
+        observeFaceScanWorker()
     }
 
     private fun ensureNotificationPermission() {
@@ -877,6 +880,10 @@ class MainActivity : AppCompatActivity() {
     private val albumDetailItems: List<GalleryRepository.MediaItem>
         get() {
             val album = currentAlbum ?: return emptyList()
+            if (album.id == PeopleAlbumId) {
+                val faceUris = faceResultStore.load(imageItems.mapTo(HashSet()) { it.uri.toString() }).faceCounts.keys
+                return collectionItems.filter { it.uri.toString() in faceUris }
+            }
             return if (smartAlbumStore.isSmartId(album.id)) {
                 val sa = smartAlbumStore.get(album.id) ?: return emptyList()
                 val order = sa.memberUris.withIndex().associate { (i, u) -> u to i }
@@ -1251,7 +1258,7 @@ class MainActivity : AppCompatActivity() {
             val pinnedIds = albumPinStore.getPinnedAlbumIds()
             val smartById = smartAlbums.associate { it.id to it.toAlbum() }
             val albumById = (albums + smartById.values).associateBy { it.id }
-            val pinnedAlbums = pinnedIds.mapNotNull { albumById[it] }
+            val pinnedAlbums = listOfNotNull(peopleAlbumOrNull()) + pinnedIds.mapNotNull { albumById[it] }
             if (IndexPreferences.isShowPinnedInCollections(this) && pinnedAlbums.isNotEmpty()) {
                 prefix += GalleryCell.PinnedAlbumsHeader(pinnedAlbums)
             }
@@ -2560,6 +2567,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** A virtual collection backed by local YuNet results, intentionally kept ahead of user pins. */
+    private fun peopleAlbumOrNull(): GalleryRepository.Album? {
+        val imageByUri = imageItems.associateBy { it.uri.toString() }
+        val snapshot = faceResultStore.load(imageByUri.keys)
+        if (snapshot.totalFaces < MinPeopleFaces || snapshot.faceCounts.isEmpty()) return null
+        val cover = imageItems.firstOrNull { it.uri.toString() in snapshot.faceCounts }?.uri
+        return GalleryRepository.Album(
+            id = PeopleAlbumId,
+            name = "People",
+            count = snapshot.faceCounts.size,
+            coverUri = cover
+        )
+    }
+
     /**
      * Active filters stay anchored at the leading edge. Suggestions share the same physical row
      * and scroll behind that anchored area, so a selection never jumps into a separate line.
@@ -3350,7 +3371,10 @@ class MainActivity : AppCompatActivity() {
                 allTags = refreshedTags
                 tagUriMap = refreshedTagUriMap
                 applyLibrarySnapshot(snapshot)
-                currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
+                currentAlbum = currentAlbum?.let { current ->
+                    if (current.id == PeopleAlbumId) peopleAlbumOrNull()
+                    else albums.firstOrNull { it.id == current.id }
+                }
                 binding.statusText.text = indexedSummary(repo.indexedCount)
                 val pinnedAlbum = currentAlbum
                 when {
@@ -3474,6 +3498,20 @@ class MainActivity : AppCompatActivity() {
                             "Indexing cancelled"
                         }
                     }
+                }
+            }
+    }
+
+    /** Refreshes Collections silently when the background face pass completes. */
+    private fun observeFaceScanWorker() {
+        WorkManager.getInstance(this)
+            .getWorkInfosForUniqueWorkLiveData(FaceScanWorker.WorkName)
+            .observe(this) { infos ->
+                val work = infos.firstOrNull() ?: return@observe
+                if (work.state == WorkInfo.State.SUCCEEDED &&
+                    activeSection == Section.Collection && currentMode == Mode.Browse
+                ) {
+                    renderCurrentSection()
                 }
             }
     }
@@ -3866,6 +3904,8 @@ class MainActivity : AppCompatActivity() {
         private const val STATE_SECTION = "state_section"
         private const val AlbumsSortScope = "section:Albums"
         private const val INDEX_WORK_NAME = "gallery_background_index"
+        private const val PeopleAlbumId = "virtual:people"
+        private const val MinPeopleFaces = 5
         // Safety cap: never hold the launch splash longer than this even if content stalls.
         private const val SPLASH_MAX_HOLD_MS = 2500L
         private const val ENCODER_WARMUP_DELAY_MS = 1200L
