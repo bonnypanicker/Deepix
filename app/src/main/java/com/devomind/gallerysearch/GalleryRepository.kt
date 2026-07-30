@@ -533,6 +533,12 @@ class GalleryRepository(
     private fun containsEmbedding(uri: String): Boolean =
         synchronized(indexLock) { embeddings.containsKey(uri) }
 
+    /** Which of [uris] have no stored embedding yet. Reads the in-memory index only. */
+    fun unindexedUris(uris: List<Uri>): List<Uri> {
+        val indexed = synchronized(indexLock) { HashSet(embeddings.keys) }
+        return uris.filter { it.toString() !in indexed }
+    }
+
     fun loadCachedIndexForUris(uris: List<Uri>) {
         val allowed = uris.mapTo(HashSet()) { it.toString() }
         val loaded = loadIndex().filterKeys { it in allowed }

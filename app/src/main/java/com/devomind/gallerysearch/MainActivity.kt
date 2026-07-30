@@ -80,6 +80,13 @@ class MainActivity : AppCompatActivity() {
     private var collectionItems: List<GalleryRepository.MediaItem> = emptyList()
     private var videoItems: List<GalleryRepository.MediaItem> = emptyList()
     private var allUris: List<Uri> = emptyList()
+    /** Only the in-scope photos, i.e. what indexing actually covers. [allUris] is the whole library. */
+    private var indexScopeUris: List<Uri> = emptyList()
+    /**
+     * In-scope photos a completed pass still didn't embed — corrupt files, unsupported codecs.
+     * Retrying them on every refresh is what spun the worker; skip them until the app restarts.
+     */
+    private var permanentlyUnindexedUris: Set<Uri> = emptySet()
     private var allTags: List<com.devomind.gallerysearch.db.TagEntity> = emptyList()
     private var tagUriMap: Map<Long, Set<String>> = emptyMap()
     private var currentAlbum: GalleryRepository.Album? = null
@@ -869,6 +876,9 @@ class MainActivity : AppCompatActivity() {
         collectionItems = snapshot.collectionItems
         videoItems = snapshot.videoItems
         allUris = snapshot.imageItems.map { it.uri }
+        val scope = IndexScopeStore.getFolderIds(applicationContext)
+        indexScopeUris = if (scope.isEmpty()) allUris
+        else snapshot.imageItems.filter { it.bucketId in scope }.map { it.uri }
     }
 
     private val favoriteItems: List<GalleryRepository.MediaItem>
@@ -3357,10 +3367,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun refreshVisibleItems() {
+    private fun refreshVisibleItems(afterCompletedIndexPass: Boolean = false) {
         val repo = repository ?: return
         lifecycleScope.launch(Dispatchers.IO) {
             val snapshot = loadLibrarySnapshot(repo)
+            // The worker owns its own repository instance, so this one still holds the embeddings
+            // it had before the pass ran. Re-read the on-disk index or the count and search results
+            // stay stuck at whatever was cached at load time.
+            repo.loadCachedIndexForUris(snapshot.imageItems.map { it.uri })
             val refreshedTags = withContext(Dispatchers.IO) { dbRepository?.getAllTags().orEmpty() }
             val refreshedTagUriMap = withContext(Dispatchers.IO) {
                 refreshedTags.associate { tag ->
@@ -3371,6 +3385,11 @@ class MainActivity : AppCompatActivity() {
                 allTags = refreshedTags
                 tagUriMap = refreshedTagUriMap
                 applyLibrarySnapshot(snapshot)
+                // A finished pass had its chance at every in-scope photo; whatever is still missing
+                // can't be encoded, so stop counting it as outstanding work.
+                if (afterCompletedIndexPass) {
+                    permanentlyUnindexedUris = repo.unindexedUris(indexScopeUris).toSet()
+                }
                 currentAlbum = currentAlbum?.let { current ->
                     if (current.id == PeopleAlbumId) peopleAlbumOrNull()
                     else albums.firstOrNull { it.id == current.id }
@@ -3482,7 +3501,7 @@ class MainActivity : AppCompatActivity() {
                             binding.statusText.text = "Indexing paused"
                             return@observe
                         }
-                        refreshVisibleItems()
+                        refreshVisibleItems(afterCompletedIndexPass = true)
                         refreshSensitiveBlur()
                         MetroBanner.show(this, "Indexing complete — AI search is ready")
                     }
@@ -3549,19 +3568,28 @@ class MainActivity : AppCompatActivity() {
      */
     private fun shouldRunBackgroundIndexing(): Boolean {
         val repo = repository ?: return false
-        if (allUris.isEmpty()) return false
+        if (indexScopeUris.isEmpty()) return false
         if (!IndexPreferences.isIndexConsentGiven(applicationContext)) return false
-        if (repo.indexedCount >= allUris.size) return false
+        if (!hasUnindexedWork(repo)) return false
         if (IndexPreferences.isIndexPaused(applicationContext)) return false
         if (IndexPreferences.isIndexStopped(applicationContext)) return false
         return true
     }
 
+    /**
+     * Compares URIs rather than counts. A count check can't tell "work remaining" apart from
+     * "these photos can never be encoded" (corrupt file, unsupported codec), and the latter used to
+     * leave indexedCount permanently below the target — so every refresh re-enqueued the worker,
+     * which finished, refreshed, and re-enqueued again.
+     */
+    private fun hasUnindexedWork(repo: GalleryRepository): Boolean =
+        repo.unindexedUris(indexScopeUris).any { it !in permanentlyUnindexedUris }
+
     private fun maybeStartBackgroundIndexing() {
         val repo = repository ?: return
-        if (allUris.isEmpty()) return
+        if (indexScopeUris.isEmpty()) return
         if (!IndexPreferences.isIndexConsentGiven(applicationContext)) return  // wait for user approval
-        if (repo.indexedCount >= allUris.size) return
+        if (!hasUnindexedWork(repo)) return
         if (IndexPreferences.isIndexPaused(applicationContext)) {
             binding.statusText.text =
                 "Indexing paused · ${indexedSummary(repo.indexedCount)}"
