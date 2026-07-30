@@ -34,46 +34,56 @@ class YuNetDetector(context: Context) : AutoCloseable {
             val input = toBgrTensor(resized)
             OnnxTensor.createTensor(environment, FloatBuffer.wrap(input), InputShape).use { tensor ->
                 session.run(mapOf(inputName to tensor)).use { result ->
-                    val detections = Strides.flatMap { stride ->
-                        decodeStride(
-                            stride = stride,
-                            cls = output(result, "cls_$stride"),
-                            obj = output(result, "obj_$stride"),
-                            bbox = output(result, "bbox_$stride")
-                        )
-                    }
+                    val loc = output(result, "loc")
+                    val conf = output(result, "conf")
+                    val iou = output(result, "iou")
+                    
+                    val detections = decode(loc, conf, iou)
                     nonMaximumSuppress(detections).size
                 }
             }
+        } catch (e: Exception) {
+            Log.e(Tag, "Face detection failed", e)
+            0
         } finally {
             if (resized !== bitmap) resized.recycle()
         }
+    }
+
+    private fun decode(loc: FloatArray, conf: FloatArray, iou: FloatArray): List<Detection> {
+        val accepted = ArrayList<Detection>()
+        var offset = 0
+        for (stride in Strides) {
+            val columns = InputSize / stride
+            val rows = InputSize / stride
+            val cells = columns * rows
+            for (index in 0 until cells) {
+                val absIndex = offset + index
+                
+                val clsScore = conf[absIndex * 2 + 1]
+                if (clsScore < ConfidenceThreshold) continue
+
+                val x = index % columns
+                val y = index / columns
+                val locOffset = absIndex * 14
+                
+                val centerX = (x + loc[locOffset]) * stride
+                val centerY = (y + loc[locOffset + 1]) * stride
+                val width = exp(loc[locOffset + 2].toDouble()).toFloat() * stride
+                val height = exp(loc[locOffset + 3].toDouble()).toFloat() * stride
+
+                if (width < MinFaceSize || height < MinFaceSize) continue
+                accepted.add(Detection(centerX - width / 2f, centerY - height / 2f, width, height, clsScore))
+            }
+            offset += cells
+        }
+        return accepted
     }
 
     private fun output(result: OrtSession.Result, name: String): FloatArray =
         result.get(name).orElseThrow { IllegalStateException("YuNet did not return '$name'; outputs=${session.outputNames}") }
             .value
             .let(OnnxOutput::flattenFloatArray)
-
-    private fun decodeStride(stride: Int, cls: FloatArray, obj: FloatArray, bbox: FloatArray): List<Detection> {
-        val cells = minOf(cls.size, obj.size, bbox.size / 4)
-        val columns = InputSize / stride
-        return buildList {
-            for (index in 0 until cells) {
-                val confidence = cls[index] * obj[index]
-                if (confidence < ConfidenceThreshold) continue
-                val x = index % columns
-                val y = index / columns
-                val offset = index * 4
-                val width = exp(bbox[offset + 2].toDouble()).toFloat() * stride
-                val height = exp(bbox[offset + 3].toDouble()).toFloat() * stride
-                if (width < MinFaceSize || height < MinFaceSize) continue
-                val centerX = (x + bbox[offset]) * stride
-                val centerY = (y + bbox[offset + 1]) * stride
-                add(Detection(centerX - width / 2f, centerY - height / 2f, width, height, confidence))
-            }
-        }
-    }
 
     private fun nonMaximumSuppress(candidates: List<Detection>): List<Detection> {
         val pending = candidates.sortedByDescending { it.confidence }.toMutableList()
