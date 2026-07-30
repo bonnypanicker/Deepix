@@ -80,7 +80,9 @@ class FaceScanWorker(
         private const val CandidatesPerQuery = 350
         private const val SaveEvery = 12
         private const val MaxRetries = 2
-        private val CandidateQueries = listOf("face", "person", "people", "group photo", "portrait", "selfie")
+        private val CandidateQueries = listOf(
+            "face", "person", "people", "man", "woman", "group photo", "portrait", "selfie"
+        )
 
         fun enqueue(context: Context) {
             val request = androidx.work.OneTimeWorkRequestBuilder<FaceScanWorker>()

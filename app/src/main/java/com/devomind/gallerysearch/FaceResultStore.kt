@@ -16,6 +16,9 @@ class FaceResultStore(context: Context) {
     @Synchronized
     fun load(validUris: Set<String>? = null): Snapshot {
         val root = runCatching { JSONObject(file.readText()) }.getOrNull() ?: return Snapshot(emptySet(), emptyMap())
+        // Older stores were written by a detector that silently found nothing; drop them so
+        // every candidate is rescanned once instead of staying marked "scanned: 0 faces".
+        if (root.optInt("version", 0) < Version) return Snapshot(emptySet(), emptyMap())
         val allowed = validUris
         val scanned = root.optJSONArray("scanned").toStringSet()
             .filterTo(LinkedHashSet()) { uri -> allowed == null || uri in allowed }
@@ -63,6 +66,6 @@ class FaceResultStore(context: Context) {
 
     private companion object {
         const val FileName = "face_detection_index.json"
-        const val Version = 1
+        const val Version = 2
     }
 }

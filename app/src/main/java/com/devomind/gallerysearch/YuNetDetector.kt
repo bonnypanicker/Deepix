@@ -11,6 +11,8 @@ import java.nio.FloatBuffer
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /** Minimal ONNX Runtime implementation of OpenCV Zoo's YuNet face detector. */
 class YuNetDetector(context: Context) : AutoCloseable {
@@ -19,71 +21,75 @@ class YuNetDetector(context: Context) : AutoCloseable {
     private val inputName: String
 
     init {
-        session = environment.createSession(
-            AssetUtils.readAssetBytes(context, ModelAsset),
-            OnnxSessionOptions.create(Tag, ThreadCount)
-        )
+        val model = AssetUtils.readAssetBytes(context, ModelAsset)
+        // A Git-LFS pointer masquerading as the model once made detection silently return 0 faces.
+        check(!BuildConfig.DEBUG || model.size >= MinModelBytes) {
+            "$ModelAsset is only ${model.size} bytes; expected a real ONNX binary (>= $MinModelBytes)"
+        }
+        session = environment.createSession(model, OnnxSessionOptions.create(Tag, ThreadCount))
         inputName = session.inputNames.firstOrNull() ?: error("YuNet model has no input")
         Log.d(Tag, "YuNet inputs=${session.inputNames}, outputs=${session.outputNames}")
     }
 
     fun detectFaceCount(bitmap: Bitmap): Int {
-        val resized = if (bitmap.width == InputSize && bitmap.height == InputSize) bitmap
-        else Bitmap.createScaledBitmap(bitmap, InputSize, InputSize, true)
+        val (width, height) = targetSize(bitmap.width, bitmap.height)
+        val resized = if (bitmap.width == width && bitmap.height == height) bitmap
+        else Bitmap.createScaledBitmap(bitmap, width, height, true)
         return try {
-            val input = toBgrTensor(resized)
-            OnnxTensor.createTensor(environment, FloatBuffer.wrap(input), InputShape).use { tensor ->
+            val input = toBgrTensor(resized, width, height)
+            val shape = longArrayOf(1, 3, height.toLong(), width.toLong())
+            OnnxTensor.createTensor(environment, FloatBuffer.wrap(input), shape).use { tensor ->
                 session.run(mapOf(inputName to tensor)).use { result ->
-                    val loc = output(result, "loc")
-                    val conf = output(result, "conf")
-                    val iou = output(result, "iou")
-                    
-                    val detections = decode(loc, conf, iou)
+                    val detections = Strides.flatMap { stride ->
+                        decodeStride(
+                            stride = stride,
+                            columns = width / stride,
+                            cls = output(result, "cls_$stride"),
+                            obj = output(result, "obj_$stride"),
+                            bbox = output(result, "bbox_$stride")
+                        )
+                    }
                     nonMaximumSuppress(detections).size
                 }
             }
-        } catch (e: Exception) {
-            Log.e(Tag, "Face detection failed", e)
-            0
         } finally {
             if (resized !== bitmap) resized.recycle()
         }
     }
 
-    private fun decode(loc: FloatArray, conf: FloatArray, iou: FloatArray): List<Detection> {
-        val accepted = ArrayList<Detection>()
-        var offset = 0
-        for (stride in Strides) {
-            val columns = InputSize / stride
-            val rows = InputSize / stride
-            val cells = columns * rows
-            for (index in 0 until cells) {
-                val absIndex = offset + index
-                
-                val clsScore = conf[absIndex * 2 + 1]
-                if (clsScore < ConfidenceThreshold) continue
-
-                val x = index % columns
-                val y = index / columns
-                val locOffset = absIndex * 14
-                
-                val centerX = (x + loc[locOffset]) * stride
-                val centerY = (y + loc[locOffset + 1]) * stride
-                val width = exp(loc[locOffset + 2].toDouble()).toFloat() * stride
-                val height = exp(loc[locOffset + 3].toDouble()).toFloat() * stride
-
-                if (width < MinFaceSize || height < MinFaceSize) continue
-                accepted.add(Detection(centerX - width / 2f, centerY - height / 2f, width, height, clsScore))
-            }
-            offset += cells
-        }
-        return accepted
+    /** Aspect-preserving fit into [MaxLongEdge], snapped down to a multiple of the largest stride. */
+    private fun targetSize(sourceWidth: Int, sourceHeight: Int): Pair<Int, Int> {
+        val scale = MaxLongEdge.toFloat() / max(sourceWidth, sourceHeight)
+        val width = snapToStride((sourceWidth * scale).roundToInt())
+        val height = snapToStride((sourceHeight * scale).roundToInt())
+        return width to height
     }
+
+    private fun snapToStride(value: Int): Int = max(StrideAlignment, value / StrideAlignment * StrideAlignment)
 
     private fun output(result: OrtSession.Result, name: String): FloatArray =
         result.get(name).orElseThrow { IllegalStateException("YuNet did not return '$name'; outputs=${session.outputNames}") }
             .value
             .let(OnnxOutput::flattenFloatArray)
+
+    private fun decodeStride(stride: Int, columns: Int, cls: FloatArray, obj: FloatArray, bbox: FloatArray): List<Detection> {
+        val cells = minOf(cls.size, obj.size, bbox.size / 4)
+        return buildList {
+            for (index in 0 until cells) {
+                val confidence = sqrt(cls[index] * obj[index])
+                if (confidence < ConfidenceThreshold) continue
+                val x = index % columns
+                val y = index / columns
+                val offset = index * 4
+                val width = exp(bbox[offset + 2].toDouble()).toFloat() * stride
+                val height = exp(bbox[offset + 3].toDouble()).toFloat() * stride
+                if (width < MinFaceSize || height < MinFaceSize) continue
+                val centerX = (x + bbox[offset]) * stride
+                val centerY = (y + bbox[offset + 1]) * stride
+                add(Detection(centerX - width / 2f, centerY - height / 2f, width, height, confidence))
+            }
+        }
+    }
 
     private fun nonMaximumSuppress(candidates: List<Detection>): List<Detection> {
         val pending = candidates.sortedByDescending { it.confidence }.toMutableList()
@@ -105,10 +111,10 @@ class YuNetDetector(context: Context) : AutoCloseable {
         return intersection / (first.width * first.height + second.width * second.height - intersection).coerceAtLeast(1e-6f)
     }
 
-    private fun toBgrTensor(bitmap: Bitmap): FloatArray {
-        val pixels = IntArray(InputSize * InputSize)
-        bitmap.getPixels(pixels, 0, InputSize, 0, 0, InputSize, InputSize)
-        val plane = InputSize * InputSize
+    private fun toBgrTensor(bitmap: Bitmap, width: Int, height: Int): FloatArray {
+        val plane = width * height
+        val pixels = IntArray(plane)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
         return FloatArray(plane * 3).also { tensor ->
             pixels.forEachIndexed { index, color ->
                 tensor[index] = Color.blue(color).toFloat()
@@ -124,14 +130,15 @@ class YuNetDetector(context: Context) : AutoCloseable {
 
     private companion object {
         const val Tag = "YuNetDetector"
-        const val ModelAsset = "face_detection_yunet_2023mar.onnx"
-        const val InputSize = 320
+        const val ModelAsset = "face_detection_yunet_2026may.onnx"
+        const val MinModelBytes = 50_000
+        const val MaxLongEdge = 480
+        const val StrideAlignment = 32
         const val ThreadCount = 2
         const val ConfidenceThreshold = 0.85f
         const val NmsThreshold = 0.3f
         const val MinFaceSize = 10f
         const val MaxDetections = 64
-        val InputShape = longArrayOf(1, 3, InputSize.toLong(), InputSize.toLong())
         val Strides = intArrayOf(8, 16, 32)
     }
 }
