@@ -276,6 +276,29 @@
                         android:tint="@color/metroTextTertiary" />
                 </LinearLayout>
 
+                <!-- People Phase 1 harness — only in debug builds -->
+                <LinearLayout
+                    android:id="@+id/rowFaceValidation"
+                    style="@style/SettingsRow"
+                    android:visibility="gone">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="face validation (debug)" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="run YuNet + MobileFaceNet on a photo" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_fluent_chevron_right_24_regular"
+                        android:tint="@color/metroTextTertiary" />
+                </LinearLayout>
+
                 <!-- ===================== PRIVACY ===================== -->
                 <TextView
                     android:id="@+id/privacyHeader"

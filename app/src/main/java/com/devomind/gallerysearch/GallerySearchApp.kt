@@ -32,12 +32,14 @@ class GallerySearchApp : Application() {
 class SharedEncoders(private val context: android.content.Context) {
     @Volatile private var imageEncoder: ImageEncoder? = null
     @Volatile private var textEncoder: TextEncoder? = null
+    @Volatile private var faceEmbedder: FaceEmbedder? = null
 
     // Separate lock per encoder: constructing an ImageEncoder and a TextEncoder are independent
     // (separate OrtSessions, separate model assets) — sharing one lock would serialize them even
     // when callers deliberately try to load both concurrently (see MainActivity.ensureEncodersLoaded).
     private val imageLock = Any()
     private val textLock = Any()
+    private val faceLock = Any()
 
     /** Thread count chosen for ORT sessions; falls back to the global default when unset. */
     private fun optimalThreadCount(): Int {
@@ -55,6 +57,13 @@ class SharedEncoders(private val context: android.content.Context) {
     fun getTextEncoder(threadCount: Int? = null): TextEncoder {
         return textEncoder ?: synchronized(textLock) {
             textEncoder ?: TextEncoder(context, threadCount ?: optimalThreadCount()).also { textEncoder = it }
+        }
+    }
+
+    /** Phase 1 sessions are created lazily and shared process-wide; spec asks 2–4 intra-op threads. */
+    fun getFaceEmbedder(): FaceEmbedder {
+        return faceEmbedder ?: synchronized(faceLock) {
+            faceEmbedder ?: FaceEmbedder(context, threadCount = 2).also { faceEmbedder = it }
         }
     }
 }

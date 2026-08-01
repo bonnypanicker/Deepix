@@ -11,9 +11,12 @@ import androidx.room.RoomDatabase
         ExifMetadataEntity::class,
         FavoriteEntity::class,
         TagEntity::class,
-        MediaTagCrossRef::class
+        MediaTagCrossRef::class,
+        PersonPhotoEntity::class,
+        PersonEntity::class,
+        FaceEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class GalleryDatabase : RoomDatabase() {
@@ -22,6 +25,9 @@ abstract class GalleryDatabase : RoomDatabase() {
     abstract fun exifMetadataDao(): ExifMetadataDao
     abstract fun favoriteDao(): FavoriteDao
     abstract fun tagDao(): TagDao
+    abstract fun personPhotoDao(): PersonPhotoDao
+    abstract fun personDao(): PersonDao
+    abstract fun faceDao(): FaceDao
 
     companion object {
         private const val DATABASE_NAME = "gallery_metadata.db"

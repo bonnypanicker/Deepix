@@ -47,6 +47,12 @@
             android:name=".IndexingActivity"
             android:exported="false" />
 
+        <!-- Phase 1 face-recognition verification harness; debug only, kept out of the launcher. -->
+        <activity
+            android:name=".FaceValidationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.GallerySearch" />
+
         <activity
             android:name=".IndexedFoldersActivity"
             android:exported="false" />

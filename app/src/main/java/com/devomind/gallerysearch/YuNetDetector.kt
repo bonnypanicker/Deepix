@@ -31,10 +31,20 @@ class YuNetDetector(context: Context) : AutoCloseable {
         Log.d(Tag, "YuNet inputs=${session.inputNames}, outputs=${session.outputNames}")
     }
 
-    fun detectFaceCount(bitmap: Bitmap): Int {
+    fun detectFaceCount(bitmap: Bitmap): Int = detectFaces(bitmap).size
+
+    /**
+     * Full decode: bounding box, confidence, and the five semantic landmarks YuNet exposes
+     * (left eye, right eye, nose, left mouth corner, right mouth corner). Coordinates are in
+     * the space of the caller-supplied [bitmap]. Returns at most [MaxDetections] results,
+     * post-NMS, ordered by confidence.
+     */
+    fun detectFaces(bitmap: Bitmap): List<FaceDetection> {
         val (width, height) = targetSize(bitmap.width, bitmap.height)
         val resized = if (bitmap.width == width && bitmap.height == height) bitmap
         else Bitmap.createScaledBitmap(bitmap, width, height, true)
+        val scaleX = bitmap.width.toFloat() / width
+        val scaleY = bitmap.height.toFloat() / height
         return try {
             val input = toBgrTensor(resized, width, height)
             val shape = longArrayOf(1, 3, height.toLong(), width.toLong())
@@ -44,17 +54,50 @@ class YuNetDetector(context: Context) : AutoCloseable {
                         decodeStride(
                             stride = stride,
                             columns = width / stride,
+                            rows = height / stride,
                             cls = output(result, "cls_$stride"),
                             obj = output(result, "obj_$stride"),
-                            bbox = output(result, "bbox_$stride")
+                            bbox = output(result, "bbox_$stride"),
+                            kps = output(result, "kps_$stride")
                         )
                     }
-                    nonMaximumSuppress(detections).size
+                    nonMaximumSuppress(detections).map { d ->
+                        FaceDetection(
+                            left = (d.left * scaleX).coerceIn(0f, bitmap.width.toFloat()),
+                            top = (d.top * scaleY).coerceIn(0f, bitmap.height.toFloat()),
+                            width = d.width * scaleX,
+                            height = d.height * scaleY,
+                            confidence = d.confidence,
+                            landmarks = Array(d.landmarks.size) { i ->
+                                floatArrayOf(d.landmarks[i][0] * scaleX, d.landmarks[i][1] * scaleY)
+                            }
+                        )
+                    }
                 }
             }
         } finally {
             if (resized !== bitmap) resized.recycle()
         }
+    }
+
+    /** A single YuNet detection, in pixel coordinates of the source bitmap. */
+    data class FaceDetection(
+        val left: Float,
+        val top: Float,
+        val width: Float,
+        val height: Float,
+        val confidence: Float,
+        /** Five points in order: left eye, right eye, nose, left mouth corner, right mouth corner. */
+        val landmarks: Array<FloatArray>
+    ) {
+        val right: Float get() = left + width
+        val bottom: Float get() = top + height
+        override fun equals(other: Any?): Boolean =
+            other is FaceDetection && left == other.left && top == other.top &&
+                width == other.width && height == other.height && confidence == other.confidence &&
+                landmarks.contentDeepEquals(other.landmarks)
+        override fun hashCode(): Int =
+            arrayOf(left, top, width, height, confidence, landmarks.contentDeepHashCode()).contentHashCode()
     }
 
     /** Aspect-preserving fit into [MaxLongEdge], snapped down to a multiple of the largest stride. */
@@ -72,8 +115,16 @@ class YuNetDetector(context: Context) : AutoCloseable {
             .value
             .let(OnnxOutput::flattenFloatArray)
 
-    private fun decodeStride(stride: Int, columns: Int, cls: FloatArray, obj: FloatArray, bbox: FloatArray): List<Detection> {
-        val cells = minOf(cls.size, obj.size, bbox.size / 4)
+    private fun decodeStride(
+        stride: Int,
+        columns: Int,
+        rows: Int,
+        cls: FloatArray,
+        obj: FloatArray,
+        bbox: FloatArray,
+        kps: FloatArray
+    ): List<Detection> {
+        val cells = minOf(cls.size, obj.size, bbox.size / 4, kps.size / 10, columns * rows)
         return buildList {
             for (index in 0 until cells) {
                 val confidence = sqrt(cls[index] * obj[index])
@@ -86,7 +137,14 @@ class YuNetDetector(context: Context) : AutoCloseable {
                 if (width < MinFaceSize || height < MinFaceSize) continue
                 val centerX = (x + bbox[offset]) * stride
                 val centerY = (y + bbox[offset + 1]) * stride
-                add(Detection(centerX - width / 2f, centerY - height / 2f, width, height, confidence))
+                val kpOffset = index * 10
+                val landmarks = Array(5) { landmarkIndex ->
+                    floatArrayOf(
+                        (x + kps[kpOffset + landmarkIndex * 2]) * stride,
+                        (y + kps[kpOffset + landmarkIndex * 2 + 1]) * stride
+                    )
+                }
+                add(Detection(centerX - width / 2f, centerY - height / 2f, width, height, confidence, landmarks))
             }
         }
     }
@@ -126,7 +184,14 @@ class YuNetDetector(context: Context) : AutoCloseable {
 
     override fun close() = session.close()
 
-    private data class Detection(val left: Float, val top: Float, val width: Float, val height: Float, val confidence: Float)
+    private data class Detection(
+        val left: Float,
+        val top: Float,
+        val width: Float,
+        val height: Float,
+        val confidence: Float,
+        val landmarks: Array<FloatArray>
+    )
 
     private companion object {
         const val Tag = "YuNetDetector"

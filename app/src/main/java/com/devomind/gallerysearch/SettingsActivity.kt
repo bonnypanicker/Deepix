@@ -369,6 +369,11 @@ class SettingsActivity : AppCompatActivity() {
             startActivity(android.content.Intent(this, IndexingActivity::class.java))
         }
 
+        binding.rowFaceValidation.apply {
+            if (BuildConfig.DEBUG) visibility = android.view.View.VISIBLE
+            setOnClickListener { FaceValidationActivity.launch(this@SettingsActivity) }
+        }
+
         WorkManager.getInstance(this)
             .getWorkInfosForUniqueWorkLiveData(IndexWorker.WorkName)
             .observe(this) { infos ->

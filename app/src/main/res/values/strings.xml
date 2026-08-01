@@ -220,4 +220,14 @@
         <item quantity="one">%1$d photo deleted</item>
         <item quantity="other">%1$d photos deleted</item>
     </plurals>
+
+    <!-- People Phase 1 validation harness -->
+    <string name="face_validation_title">people · phase 1</string>
+    <string name="face_validation_pick">pick photo</string>
+    <string name="face_validation_pick_compare">pick photo to compare</string>
+    <string name="face_validation_summary">SUMMARY</string>
+    <string name="face_validation_faces">FACES</string>
+    <string name="face_validation_compare">CROSS-PHOTO SIMILARITY</string>
+    <string name="face_validation_photo_label">photo · %1$s</string>
+    <string name="face_validation_perf">decode %1$dms · detect %2$dms · embed %3$dms</string>
 </resources>
