@@ -40,7 +40,9 @@ class FaceScanWorker(
 
             Log.i(Tag, "Scanning ${candidates.size} CLIP-selected face candidates")
             val pendingResults = LinkedHashMap<String, Int>()
-            YuNetDetector(applicationContext).use { detector ->
+            // The scan worker preserves its original tuning (higher confidence, lower min-face-size)
+            // since it was tuned for the CLIP prefilter; Phase 1 defaults apply elsewhere.
+            YuNetDetector.forScanWorker(applicationContext).use { detector ->
                 candidates.forEachIndexed { index, item ->
                     ensureActive()
                     val count = runCatching {

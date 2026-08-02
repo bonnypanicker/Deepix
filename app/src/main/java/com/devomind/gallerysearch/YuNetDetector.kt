@@ -15,7 +15,15 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /** Minimal ONNX Runtime implementation of OpenCV Zoo's YuNet face detector. */
-class YuNetDetector(context: Context) : AutoCloseable {
+class YuNetDetector(
+    context: Context,
+    /** Confidence floor for accepting a detection. Caller-tunable because the existing
+     * CLIP-gated scan pipeline in FaceScanWorker is tuned with a stricter 0.85 default. */
+    private val confidenceThreshold: Float = ConfidenceThreshold,
+    /** Minimum face side (px) on the detector's internal scale. Smaller values increase recall
+     * for tiny/blurry faces at the cost of more false positives inside texture. */
+    private val minFaceSize: Float = MinFaceSize,
+) : AutoCloseable {
     private val environment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
     private val inputName: String
@@ -125,16 +133,70 @@ class YuNetDetector(context: Context) : AutoCloseable {
         kps: FloatArray
     ): List<Detection> {
         val cells = minOf(cls.size, obj.size, bbox.size / 4, kps.size / 10, columns * rows)
+        // Diagnostic: capture the raw ranges seen in cls/obj so we can verify the export semantics
+        // (sigmoided [0,1] probabilities vs. raw logits) and detect where NaN enters.
+        if (BuildConfig.DEBUG) {
+            var clsMin = Float.POSITIVE_INFINITY
+            var clsMax = Float.NEGATIVE_INFINITY
+            var objMin = Float.POSITIVE_INFINITY
+            var objMax = Float.NEGATIVE_INFINITY
+            var clsNaN = 0
+            var objNaN = 0
+            for (i in 0 until cells) {
+                val c = cls[i]
+                val o = obj[i]
+                if (c.isNaN()) clsNaN++ else { clsMin = minOf(clsMin, c); clsMax = maxOf(clsMax, c) }
+                if (o.isNaN()) objNaN++ else { objMin = minOf(objMin, o); objMax = maxOf(objMax, o) }
+            }
+            Log.d(
+                Tag,
+                "stride=$stride cells=$cells cls:[$clsMin..$clsMax](NaN=$clsNaN) obj:[$objMin..$objMax](NaN=$objNaN) " +
+                        "sample={${cls.slice(0 until minOf(5, cells)).joinToString(", ")}} / " +
+                        "{${obj.slice(0 until minOf(5, cells)).joinToString(", ")}}"
+            )
+        }
+        var nanRejections = 0
+        var confidenceFloorRejections = 0
+        // In DEBUG builds, capture the top 10 highest-confidence cells along with their topologies
+        // regardless of the active threshold — this lets you see whether the model itself has
+        // plausible face candidates that the operating threshold is cutting out.
+        val best = if (BuildConfig.DEBUG) {
+            java.util.PriorityQueue<Pair<Int, Float>>(10, compareBy { it.second }).apply {
+                for (index in 0 until cells) {
+                    val c = sqrt((cls[index] * obj[index]).coerceAtLeast(0f))
+                    if (!c.isNaN()) {
+                        offer(index to c)
+                        if (size > 10) poll()
+                    }
+                }
+            }.toList().sortedByDescending { it.second }
+        } else emptyList()
+        if (BuildConfig.DEBUG && best.isNotEmpty()) {
+            Log.d(Tag, "stride=$stride top10: " + best.joinToString { "(idx=${it.first},c=%.3f)".format(it.second) })
+        }
+
         return buildList {
             for (index in 0 until cells) {
-                val confidence = sqrt(cls[index] * obj[index])
-                if (confidence < ConfidenceThreshold) continue
+                val clsScore = cls[index]
+                val objScore = obj[index]
+                val product = clsScore * objScore
+                // Clamp small negative zero values: sqrt(-0.0) is NaN, and cls/obj are sigmoided
+                // probabilities which should never be meaningfully negative — treat below-zero as 0.
+                val confidence = sqrt(product.coerceAtLeast(0f))
+                if (confidence.isNaN()) {
+                    nanRejections++
+                    continue
+                }
+                if (confidence < confidenceThreshold) {
+                    confidenceFloorRejections++
+                    continue
+                }
                 val x = index % columns
                 val y = index / columns
                 val offset = index * 4
                 val width = exp(bbox[offset + 2].toDouble()).toFloat() * stride
                 val height = exp(bbox[offset + 3].toDouble()).toFloat() * stride
-                if (width < MinFaceSize || height < MinFaceSize) continue
+                if (width < minFaceSize || height < minFaceSize) continue
                 val centerX = (x + bbox[offset]) * stride
                 val centerY = (y + bbox[offset + 1]) * stride
                 val kpOffset = index * 10
@@ -145,6 +207,13 @@ class YuNetDetector(context: Context) : AutoCloseable {
                     )
                 }
                 add(Detection(centerX - width / 2f, centerY - height / 2f, width, height, confidence, landmarks))
+            }
+        }.also { kept ->
+            if (BuildConfig.DEBUG) {
+                Log.d(
+                    Tag,
+                    "stride=$stride kept=${kept.size}  (rejected: $confidenceFloorRejections below conf, $nanRejections NaN)"
+                )
             }
         }
     }
@@ -193,17 +262,31 @@ class YuNetDetector(context: Context) : AutoCloseable {
         val landmarks: Array<FloatArray>
     )
 
-    private companion object {
-        const val Tag = "YuNetDetector"
-        const val ModelAsset = "face_detection_yunet_2026may.onnx"
-        const val MinModelBytes = 50_000
-        const val MaxLongEdge = 480
-        const val StrideAlignment = 32
-        const val ThreadCount = 2
-        const val ConfidenceThreshold = 0.85f
-        const val NmsThreshold = 0.3f
-        const val MinFaceSize = 10f
-        const val MaxDetections = 64
-        val Strides = intArrayOf(8, 16, 32)
+    companion object {
+        private const val Tag = "YuNetDetector"
+        private const val ModelAsset = "face_detection_yunet_2026may.onnx"
+        private const val MinModelBytes = 50_000
+        private const val MaxLongEdge = 480
+        private const val StrideAlignment = 32
+        private const val ThreadCount = 2
+        private const val NmsThreshold = 0.3f
+        private const val MaxDetections = 64
+        private val Strides = intArrayOf(8, 16, 32)
+
+        /** Spec default: confidence floor for accepting detections. */
+        const val ConfidenceThreshold = 0.6f
+
+        /** Spec default: minimum face side (px) on the detector's internal scale. */
+        const val MinFaceSize = 40f
+
+        /**
+         * Tuned for the existing FaceScanWorker CLIP pre-filter pass — keeps the behaviour the
+         * already-shipped pipeline was tuned against, without affecting the Phase 1 default.
+         */
+        fun forScanWorker(context: Context): YuNetDetector = YuNetDetector(
+            context = context,
+            confidenceThreshold = 0.85f,
+            minFaceSize = 10f
+        )
     }
 }

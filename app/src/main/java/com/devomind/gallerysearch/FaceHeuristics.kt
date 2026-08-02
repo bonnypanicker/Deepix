@@ -24,7 +24,10 @@ object FaceQualityScorer {
         val sizeScore = (minOf(detection.width, detection.height) / SizeFloorPx).coerceIn(0f, 1f)
         val blurScore = blurScore(bitmap, detection)
         val confScore = ((detection.confidence - ConfFloor) / (1f - ConfFloor)).coerceIn(0f, 1f)
-        return (sizeScore * 0.45f + blurScore * 0.45f + confScore * 0.10f).coerceIn(0f, 1f)
+        // NaN admission (e.g. degenerate bbox / empty variance sample) would otherwise poison the
+        // composite and crash Room's NOT NULL bind. Fall back to detector confidence only.
+        val composite = sizeScore * 0.45f + blurScore * 0.45f + confScore * 0.10f
+        return if (composite.isNaN()) confScore else composite.coerceIn(0f, 1f)
     }
 
     private fun blurScore(bitmap: Bitmap, d: YuNetDetector.FaceDetection): Float {
@@ -44,6 +47,7 @@ object FaceQualityScorer {
     private fun varianceOfLaplacian(gray: Bitmap): Float {
         val w = gray.width
         val h = gray.height
+        if (w < 3 || h < 3) return 0f
         val pixels = IntArray(w * h)
         gray.getPixels(pixels, 0, w, 0, 0, w, h)
         // 4-neighbour Laplacian kernel, computed inline over the IntArray.
@@ -73,7 +77,14 @@ object FaceQualityScorer {
         }
         if (count == 0) return 0f
         val mean = sum / count
-        return (sumSq / count) - mean * mean
+        val variance = (sumSq / count) - mean * mean
+        // Clamp tiny CPU/FPU-negative values to 0; guard against NaN & ±Inf.
+        return when {
+            variance.isNaN() -> 0f
+            variance.isInfinite() -> BlurCeiling
+            variance < 0f -> 0f
+            else -> variance
+        }
     }
 
     private inline fun luminance(pixel: Int): Int {

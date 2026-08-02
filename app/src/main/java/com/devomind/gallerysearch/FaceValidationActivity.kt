@@ -60,7 +60,17 @@ class FaceValidationActivity : AppCompatActivity() {
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         binding.btnPickPhoto.setOnClickListener { pickPhoto.launch("image/*") }
-        binding.btnPickSecond.setOnClickListener { pickComparePhoto.launch("image/*") }
+        binding.btnPickSecond.setOnClickListener {
+            if (firstPhotoResult == null) {
+                android.widget.Toast.makeText(
+                    this,
+                    "pick a primary photo first",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                pickComparePhoto.launch("image/*")
+            }
+        }
     }
 
     override fun onDestroy() {

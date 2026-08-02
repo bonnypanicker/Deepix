@@ -60,7 +60,9 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
 
         for (det in detections) {
             val aligned = FaceAligner.align(bitmap, det.landmarks)
-            val quality = FaceQualityScorer.score(bitmap, det)
+            val qualityRaw = FaceQualityScorer.score(bitmap, det)
+            // Belt-and-braces sanitize: NaN propagates through Score → Room's NOT NULL bind.
+            val quality = if (qualityRaw.isNaN()) 0f else qualityRaw.coerceIn(0f, 1f)
             val pose = FacePoseEstimator.estimate(det)
             val isLowQuality = quality < LowQualityThreshold
 
