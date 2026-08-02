@@ -143,55 +143,16 @@ class YuNetDetector(
         kps: FloatArray
     ): List<Detection> {
         val cells = minOf(cls.size, obj.size, bbox.size / 4, kps.size / 10, columns * rows)
-        // Diagnostic: capture the raw ranges seen in cls/obj so we can verify the export semantics
-        // (sigmoided [0,1] probabilities vs. raw logits) and detect where NaN enters.
-        if (BuildConfig.DEBUG) {
-            var clsMin = Float.POSITIVE_INFINITY
-            var clsMax = Float.NEGATIVE_INFINITY
-            var objMin = Float.POSITIVE_INFINITY
-            var objMax = Float.NEGATIVE_INFINITY
-            var clsNaN = 0
-            var objNaN = 0
-            for (i in 0 until cells) {
-                val c = cls[i]
-                val o = obj[i]
-                if (c.isNaN()) clsNaN++ else { clsMin = minOf(clsMin, c); clsMax = maxOf(clsMax, c) }
-                if (o.isNaN()) objNaN++ else { objMin = minOf(objMin, o); objMax = maxOf(objMax, o) }
-            }
-            Log.d(
-                Tag,
-                "stride=$stride cells=$cells cls:[$clsMin..$clsMax](NaN=$clsNaN) obj:[$objMin..$objMax](NaN=$objNaN) " +
-                        "sample={${cls.slice(0 until minOf(5, cells)).joinToString(", ")}} / " +
-                        "{${obj.slice(0 until minOf(5, cells)).joinToString(", ")}}"
-            )
-        }
         var nanRejections = 0
         var confidenceFloorRejections = 0
-        // In DEBUG builds, capture the top 10 highest-confidence cells along with their topologies
-        // regardless of the active threshold — this lets you see whether the model itself has
-        // plausible face candidates that the operating threshold is cutting out.
-        val best = if (BuildConfig.DEBUG) {
-            java.util.PriorityQueue<Pair<Int, Float>>(10, compareBy { it.second }).apply {
-                for (index in 0 until cells) {
-                    val c = sqrt((cls[index] * obj[index]).coerceAtLeast(0f))
-                    if (!c.isNaN()) {
-                        offer(index to c)
-                        if (size > 10) poll()
-                    }
-                }
-            }.toList().sortedByDescending { it.second }
-        } else emptyList()
-        if (BuildConfig.DEBUG && best.isNotEmpty()) {
-            Log.d(Tag, "stride=$stride top10: " + best.joinToString { "(idx=${it.first},c=%.3f)".format(it.second) })
-        }
-
         return buildList {
             for (index in 0 until cells) {
                 val clsScore = cls[index]
                 val objScore = obj[index]
                 val product = clsScore * objScore
-                // Clamp small negative zero values: sqrt(-0.0) is NaN, and cls/obj are sigmoided
-                // probabilities which should never be meaningfully negative — treat below-zero as 0.
+                // sqrt of a small negative product is NaN; cls/obj are sigmoided probabilities
+                // and occasionally emit denormalized negatives (e.g. -5.96e-8) on saturated cells.
+                // Clamp to zero — sqrt(-0) then reads zero, which cleanly fails the threshold.
                 val confidence = sqrt(product.coerceAtLeast(0f))
                 if (confidence.isNaN()) {
                     nanRejections++
@@ -298,13 +259,15 @@ class YuNetDetector(
         const val MinFaceSize = 40f
 
         /**
-         * Tuned for the existing FaceScanWorker CLIP pre-filter pass — keeps the behaviour the
-         * already-shipped pipeline was tuned against, without affecting the Phase 1 default.
+         * Tuned for the existing FaceScanWorker CLIP pre-filter pass — keeps spotty tiny-face recall
+         * in the background scan without letting them flood the foreground pipeline. The min-face
+         * floor is expressed at detector-input scale; set conservatively below the spec's 40px so
+         * the scan worker continues counting medium-small faces the older 480px tuning missed.
          */
         fun forScanWorker(context: Context): YuNetDetector = YuNetDetector(
             context = context,
             confidenceThreshold = 0.85f,
-            minFaceSize = 10f
+            minFaceSize = 18f
         )
     }
 }
