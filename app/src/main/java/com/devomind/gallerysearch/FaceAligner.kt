@@ -1,6 +1,10 @@
 package com.devomind.gallerysearch
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Matrix
+import android.util.Log
+import kotlin.math.sqrt
 
 /**
  * Least-squares Umeyama-style similarity transform mapping the five YuNet landmarks onto the
@@ -25,41 +29,47 @@ object FaceAligner {
     )
 
     private const val AlignedSize = 112
+    private const val MaxLandmarkRmsePx = 6.5f
 
     /**
      * Map [source] to an [AlignedSize]x[AlignedSize] bitmap via the similarity transform that best
      * fits [landmarks] to [CanonicalLandmarks]. The input landmarks must be in the order defined by
      * [YuNetDetector.FaceDetection.landmarks].
+     *
+     * `Canvas.drawBitmap(src, matrix)` samples source at matrix⁻¹(dst) per destination pixel, so to
+     * land detected landmarks on the canonical 112×112 points we hand over the FORWARD transform
+     * (source → destination); Canvas inverts internally. Inverting beforehand would draw the face
+     * OFF the output bitmap yielding a blank crop — which then collapses the embedding space.
      */
     fun align(source: Bitmap, landmarks: Array<FloatArray>): Bitmap {
-        val matrix = estimateSimilarityMatrix(landmarks, CanonicalLandmarks)
+        val matrix = runCatching { forwardSimilarityMatrix(landmarks, CanonicalLandmarks) }.getOrNull()
+        if (matrix == null || !passesSanityCheck(matrix, landmarks, CanonicalLandmarks)) {
+            Log.w(Tag, "Falling back to landmark-bounds crop for unstable alignment")
+            return fallbackAlignedCrop(source, landmarks)
+        }
         return Bitmap.createBitmap(AlignedSize, AlignedSize, Bitmap.Config.ARGB_8888).also { out ->
-            android.graphics.Canvas(out).apply {
+            Canvas(out).apply {
                 drawBitmap(source, matrix, null)
             }
         }
     }
 
     /**
-     * Returns a 3x3 row-major float array [a b tx; -b a ty; 0 0 1] or its inverse. We want to map
-     * source -> destination yet Canvas draws source coordinates via the matrix's inverse, so we
-     * compute the inverse map destination -> source and use that for the draw.
+     * Returns the source→destination similarity matrix mapping [from] onto [to]. Canvas samples
+     * source pixels via this matrix's inverse, so the points in [from] land exactly at [to].
      */
-    private fun estimateSimilarityMatrix(from: Array<FloatArray>, to: Array<FloatArray>): android.graphics.Matrix {
-        // Umeyama 3-point closed form is sufficient with 5 noisy points; taking the first three
-        // (eyes + nose) prioritizes stable geometry that anchors the face.
-        val (a1, b1, tx1, ty1) = similarityParams(from[0], from[1], from[2], to[0], to[1], to[2])
-        // Map destination -> source (inverse) so Canvas(source, matrix) places the aligned crop.
-        val det = a1 * a1 + b1 * b1
-        val aInv = a1 / det
-        val bInv = -b1 / det
-        val txInv = -(aInv * tx1 - bInv * ty1)
-        val tyInv = -(bInv * tx1 + aInv * ty1)
-        return android.graphics.Matrix().apply {
+    private fun forwardSimilarityMatrix(from: Array<FloatArray>, to: Array<FloatArray>): Matrix {
+        require(from.size == to.size && from.size >= 3) {
+            "Need matching landmark sets (>=3 points), got ${from.size} and ${to.size}"
+        }
+        // Similarity fit over all five landmarks. Using only three points makes the warp overly
+        // sensitive to one slightly noisy landmark, especially on small or profile faces.
+        val (a, b, tx, ty) = similarityParams(from, to)
+        return Matrix().apply {
             setValues(
                 floatArrayOf(
-                    aInv, bInv, txInv,
-                    -bInv, aInv, tyInv,
+                    a, -b, tx,
+                    b, a, ty,
                     0f, 0f, 1f
                 )
             )
@@ -67,39 +77,97 @@ object FaceAligner {
     }
 
     /**
-     * Closed-form similarity parameters (a = s cos θ, b = s sin θ, tx, ty) fitting two point triples.
-     * Solves [formula for similarity transform].
+     * Closed-form least-squares similarity parameters (a = s cos θ, b = s sin θ, tx, ty)
+     * over a corresponding set of 2D points.
      */
     private fun similarityParams(
-        s1: FloatArray, s2: FloatArray, s3: FloatArray,
-        d1: FloatArray, d2: FloatArray, d3: FloatArray
+        source: Array<FloatArray>,
+        destination: Array<FloatArray>
     ): FloatArray {
-        // Least-squares similarity transform via Kabsch on centered coordinates (2D).
-        val (smx, smy) = centroid(listOf(s1, s2, s3))
-        val (dmx, dmy) = centroid(listOf(d1, d2, d3))
+        val (smx, smy) = centroid(source)
+        val (dmx, dmy) = centroid(destination)
         var c1 = 0f
         var c2 = 0f
         var norm = 0f
-        for (pair in listOf(s1 to d1, s2 to d2, s3 to d3)) {
-            val (sx, sy) = pair.first[0] - smx to pair.first[1] - smy
-            val (dx, dy) = pair.second[0] - dmx to pair.second[1] - dmy
+        for (index in source.indices) {
+            val sx = source[index][0] - smx
+            val sy = source[index][1] - smy
+            val dx = destination[index][0] - dmx
+            val dy = destination[index][1] - dmy
             c1 += sx * dx + sy * dy
             c2 += sx * dy - sy * dx
             norm += sx * sx + sy * sy
         }
-        val scale = kotlin.math.sqrt((c1 * c1 + c2 * c2)) / norm
-        val angle = kotlin.math.atan2(c2, c1)
-        val a = scale * kotlin.math.cos(angle)
-        val b = scale * kotlin.math.sin(angle)
+        require(norm > 1e-6f) { "Degenerate landmark geometry" }
+        val a = c1 / norm
+        val b = c2 / norm
         val tx = dmx - (a * smx - b * smy)
         val ty = dmy - (b * smx + a * smy)
         return floatArrayOf(a, b, tx, ty)
     }
 
-    private fun centroid(points: List<FloatArray>): Pair<Float, Float> {
+    private fun passesSanityCheck(
+        matrix: Matrix,
+        source: Array<FloatArray>,
+        destination: Array<FloatArray>
+    ): Boolean {
+        val sourcePoints = FloatArray(source.size * 2) { index ->
+            source[index / 2][index % 2]
+        }
+        val mapped = sourcePoints.copyOf()
+        matrix.mapPoints(mapped)
+        var sumSq = 0f
+        for (index in source.indices) {
+            val dx = mapped[index * 2] - destination[index][0]
+            val dy = mapped[index * 2 + 1] - destination[index][1]
+            if (!dx.isFinite() || !dy.isFinite()) return false
+            sumSq += dx * dx + dy * dy
+        }
+        val rmse = sqrt(sumSq / source.size)
+        if (rmse > MaxLandmarkRmsePx) return false
+
+        val values = FloatArray(9)
+        matrix.getValues(values)
+        val scale = sqrt(values[Matrix.MSCALE_X] * values[Matrix.MSCALE_X] + values[Matrix.MSKEW_Y] * values[Matrix.MSKEW_Y])
+        return scale.isFinite() && scale in 0.05f..20f
+    }
+
+    private fun fallbackAlignedCrop(source: Bitmap, landmarks: Array<FloatArray>): Bitmap {
+        require(landmarks.isNotEmpty()) { "No landmarks supplied" }
+        var minX = Float.POSITIVE_INFINITY
+        var minY = Float.POSITIVE_INFINITY
+        var maxX = Float.NEGATIVE_INFINITY
+        var maxY = Float.NEGATIVE_INFINITY
+        var sumX = 0f
+        var sumY = 0f
+        landmarks.forEach { point ->
+            minX = minOf(minX, point[0])
+            minY = minOf(minY, point[1])
+            maxX = maxOf(maxX, point[0])
+            maxY = maxOf(maxY, point[1])
+            sumX += point[0]
+            sumY += point[1]
+        }
+        val centerX = sumX / landmarks.size
+        val centerY = sumY / landmarks.size + (maxY - minY) * 0.12f
+        val side = maxOf((maxX - minX) * 2.0f, (maxY - minY) * 2.4f).coerceAtLeast(16f)
+        val half = side / 2f
+        val left = (centerX - half).toInt().coerceIn(0, (source.width - 1).coerceAtLeast(0))
+        val top = (centerY - half).toInt().coerceIn(0, (source.height - 1).coerceAtLeast(0))
+        val right = (centerX + half).toInt().coerceIn(left + 1, source.width)
+        val bottom = (centerY + half).toInt().coerceIn(top + 1, source.height)
+        val crop = Bitmap.createBitmap(source, left, top, right - left, bottom - top)
+        return Bitmap.createScaledBitmap(crop, AlignedSize, AlignedSize, true).also {
+            if (crop !== it) crop.recycle()
+        }
+    }
+
+    private fun centroid(points: Array<FloatArray>): Pair<Float, Float> {
         var cx = 0f
         var cy = 0f
         points.forEach { cx += it[0]; cy += it[1] }
         return cx / points.size to cy / points.size
     }
+
+    private const val Tag = "FaceAligner"
 }

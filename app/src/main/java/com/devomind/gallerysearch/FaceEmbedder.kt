@@ -12,7 +12,7 @@ import kotlin.math.sqrt
  * Runs InsightFace's MobileFaceNet (w600k_mbf, 512-D embeddings) on a 112×112 aligned crop.
  * Returns an L2-normalized embedding — cosine similarity is a plain dot product between two outputs.
  *
- * Model: Apache 2.0, trained on WebFace600K. Input: 1×3×112×112 RGB, pixels in [-1, 1].
+ * Model: Apache 2.0, trained on WebFace600K. Input: 1×3×112×112 BGR, pixels in [-1, 1].
  * Session is shared app-wide via [GallerySearchApp.sharedEncoders] — create once, call embed() freely.
  */
 class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.DefaultThreadCount) : AutoCloseable {
