@@ -61,6 +61,21 @@ object IndexController {
         enqueue(context, ExistingWorkPolicy.REPLACE)
     }
 
+    /**
+     * Re-apply current prefs against the existing unique-work entry without forcing a fresh start.
+     * Used by constraint toggles (e.g. "index only while charging" / "only at night") where
+     * re-enqueuing against a RUNNING job is harmful because [ExistingWorkPolicy.REPLACE] would
+     * cancel the active pass. REPLACE is still correct for scope changes via [rescan].
+     */
+    fun applyPowerConstraintOnly(context: Context) {
+        // Don't touch the user-visible pause/stop flags — this is purely a constraint rebuild.
+        // If a job is mid-run, ExistingWorkPolicy.UPDATE (the natural replacement) would cancel
+        // it. We use KEEP to leave the running job alone; it will pick up the new constraints on
+        // its next enqueue, and "waiting for charge" retry is already runtime-checked inside
+        // IndexWorker itself.
+        enqueue(context, ExistingWorkPolicy.KEEP)
+    }
+
     private fun enqueue(context: Context, policy: ExistingWorkPolicy) {
         WorkManager.getInstance(context).enqueueUniqueWork(
             IndexWorker.WorkName,

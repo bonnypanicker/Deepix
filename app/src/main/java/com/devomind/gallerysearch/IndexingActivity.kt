@@ -248,11 +248,11 @@ class IndexingActivity : AppCompatActivity() {
     }
 
     /**
-     * Re-apply the power constraint to a running (or queued) job immediately by re-enqueuing with
-     * REPLACE — [IndexWorker.buildWorkRequest] reads the current prefs at build time.
+     * Re-apply the power constraint so the next IndexWorker run picks it up; leaves any in-flight
+     * run alone (REPLACE would cancel mid-photo, which is what churns a long index pass).
      */
     private fun applyPowerChangeNow() {
-        IndexController.rescan(this)
+        IndexController.applyPowerConstraintOnly(this)
         // Reflect the new constraint in the status line right away.
         renderIndexing(latestIndexState, livePercent = null, current = -1, total = -1)
     }

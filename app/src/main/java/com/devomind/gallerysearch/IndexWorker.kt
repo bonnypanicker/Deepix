@@ -73,10 +73,9 @@ class IndexWorker(
             Log.w(Tag, "Foreground service start not allowed; indexing in background.", e)
         }
 
-        // Chain the Phase 2 face-index worker as soon as CLIP has started its pass; face-indexing
-        // will pick up in-scope photos as those rows appear (the worker is battery-gated and runs
-        // no-network, so it never competes with foreground work).
-        FaceIndexWorker.enqueue(applicationContext)
+        // Don't begin an intra-pass face worker here — that creates two in-flight WorkSpecs and
+        // the cancellation of one would leak into the other via unique-work-name interaction. The
+        // post-pass chain schedules FaceIndexWorker once this CLIP pass *succeeds*.
 
         return try {
             val (imageEncoder, _) = coroutineScope {
@@ -155,8 +154,10 @@ class IndexWorker(
             dbRepository.upsertMedia(allImages)
 
             // Chain the Phase 2 face-index worker: it runs battery-gated on the same photos CLIP
-            // just worked through, so detection has fresh CLIP artifacts to reuse.
-            FaceIndexWorker.enqueue(applicationContext)
+            // just worked through, so detection has fresh CLIP artifacts to reuse. Uses
+            // APPEND_OR_REPLACE on this worker's unique name so it runs *behind* us instead of
+            // competing (and never cancels this pass mid-flight).
+            FaceIndexWorker.enqueueAfterClip(applicationContext)
 
             // Save timestamp so next run only processes new photos
             IndexPreferences.saveLastIndexedTime(applicationContext)

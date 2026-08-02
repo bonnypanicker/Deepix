@@ -275,29 +275,38 @@ class FaceIndexWorker(
 
     private fun reportProgress(stats: Stats, total: Int) {
         val percent = if (total == 0) 0 else (stats.visited * 100 / total).coerceIn(0, 100)
-        setProgressAsync(
-            workDataOf(
-                ProgressVisitedKey to stats.visited,
-                ProgressTotalKey to total,
-                ProgressPercentKey to percent,
-                ProgressPhaseKey to "",
-                StatsFacesKey to stats.totalFaces,
-                StatsPersonsKey to stats.newPersonsCreated,
-                StatsAssignedKey to stats.assignedToExistingPerson,
-                StatsGatedKey to stats.gatedOut
+        // Swallow cancellation-triggered "must complete before worker signals completion"
+        // IllegalStateException — see androidx.work#Worker cancellation semantic. Reporting
+        // progress is best-effort; a cancellation race on the last item shouldn't poison the run.
+        runCatching {
+            setProgressAsync(
+                workDataOf(
+                    ProgressVisitedKey to stats.visited,
+                    ProgressTotalKey to total,
+                    ProgressPercentKey to percent,
+                    StatsFacesKey to stats.totalFaces,
+                    StatsPersonsKey to stats.newPersonsCreated,
+                    StatsAssignedKey to stats.assignedToExistingPerson,
+                    StatsGatedKey to stats.gatedOut
+                )
             )
-        )
-        IndexPreferences.setIndexProgressPercent(applicationContext, percent)
+        }
+        runCatching { IndexPreferences.setIndexProgressPercent(applicationContext, percent) }
+        // Barrier against the Worker cancellation race: yield so the cancellation exception
+        // surfaces on the next suspension point, not from inside the reporter.
+        Thread.yield()
     }
 
     private fun reportProgress(p: Progress) {
-        setProgressAsync(
-            workDataOf(
-                ProgressVisitedKey to p.visited, ProgressTotalKey to p.total,
-                ProgressPercentKey to p.percent, ProgressPhaseKey to p.phase
+        runCatching {
+            setProgressAsync(
+                workDataOf(
+                    ProgressVisitedKey to p.visited, ProgressTotalKey to p.total,
+                    ProgressPercentKey to p.percent, ProgressPhaseKey to p.phase
+                )
             )
-        )
-        IndexPreferences.setIndexProgressPercent(applicationContext, p.percent)
+        }
+        runCatching { IndexPreferences.setIndexProgressPercent(applicationContext, p.percent) }
     }
 
     // ------------------------------------------------------------------------------------------------
@@ -360,6 +369,32 @@ class FaceIndexWorker(
             WorkManager.getInstance(context).enqueueUniqueWork(
                 WorkName,
                 if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
+                request
+            )
+        }
+
+        /**
+         * Schedule FaceIndexWorker to run after the current IndexWorker pass completes. Uses
+         * APPEND_OR_REPLACE against IndexWorker's unique name, which appends behind any in-flight
+         * work instead of forcing a sibling cancel — the failure mode we hit before this change.
+         */
+        fun enqueueAfterClip(context: Context) {
+            val request = OneTimeWorkRequestBuilder<FaceIndexWorker>()
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiresBatteryNotLow(true)
+                        .setRequiredNetworkType(androidx.work.NetworkType.NOT_REQUIRED)
+                        .build()
+                )
+                .setBackoffCriteria(
+                    androidx.work.BackoffPolicy.LINEAR,
+                    DesignTokens.INDEX_BACKOFF_SECONDS,
+                    TimeUnit.SECONDS
+                )
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                IndexWorker.WorkName,
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
                 request
             )
         }
