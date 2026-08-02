@@ -46,8 +46,46 @@ class YuNetDetector(
      * (left eye, right eye, nose, left mouth corner, right mouth corner). Coordinates are in
      * the space of the caller-supplied [bitmap]. Returns at most [MaxDetections] results,
      * post-NMS, ordered by confidence.
+     *
+     * When the primary pass finds fewer than [MinFacesBeforeUpscale] faces, a single upscaled
+     * (2× linear) pass is attempted and its detections merged with the primary list. This lets
+     * gallery shots with small, distant, or profile faces fall into the same recall bucket as
+     * close-up portraits, without paying for a second pass on already-populated frames.
      */
     fun detectFaces(bitmap: Bitmap): List<FaceDetection> {
+        val primary = detectOnce(bitmap)
+        if (primary.size >= MinFacesBeforeUpscale) return primary
+        // Only one 2x upscale pass. To keep memory/CPU in check the upscaled frame is also
+        // capped at MaxLongEdge on its long edge.
+        val upscaled = run {
+            val w = bitmap.width * UpscaleFactor
+            val h = bitmap.height * UpscaleFactor
+            val maxLong = kotlin.math.max(w, h)
+            if (maxLong > MaxLongEdge * UpscaleFactor) bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true)
+            else Bitmap.createScaledBitmap(bitmap, w, h, /* filter */ true)
+        }
+        return try {
+            val secondary = detectOnce(upscaled).map { d ->
+                FaceDetection(
+                    left = d.left / UpscaleFactor,
+                    top = d.top / UpscaleFactor,
+                    width = d.width / UpscaleFactor,
+                    height = d.height / UpscaleFactor,
+                    confidence = d.confidence,
+                    landmarks = Array(d.landmarks.size) { i ->
+                        floatArrayOf(d.landmarks[i][0] / UpscaleFactor, d.landmarks[i][1] / UpscaleFactor)
+                    }
+                )
+            }
+            // Merge with primary, keeping the higher-confidence instance when boxes overlap.
+            mergeWithNms(primary, secondary)
+        } finally {
+            if (upscaled !== bitmap) upscaled.recycle()
+        }
+    }
+
+    /** Single detection pass at the current input resolution cap. */
+    private fun detectOnce(bitmap: Bitmap): List<FaceDetection> {
         val (width, height) = targetSize(bitmap.width, bitmap.height)
         val resized = if (bitmap.width == width && bitmap.height == height) bitmap
         else Bitmap.createScaledBitmap(bitmap, width, height, true)
@@ -86,6 +124,26 @@ class YuNetDetector(
         } finally {
             if (resized !== bitmap) resized.recycle()
         }
+    }
+
+    /** Append secondary detections onto primary, deduplicating by IoU; first parent wins ties. */
+    private fun mergeWithNms(primary: List<FaceDetection>, secondary: List<FaceDetection>): List<FaceDetection> {
+        val accepted = primary.toMutableList()
+        for (cand in secondary.sortedByDescending { it.confidence }) {
+            if (accepted.none { iou(it, cand) >= NmsThreshold }) accepted += cand
+            if (accepted.size >= MaxDetections) break
+        }
+        return accepted.sortedByDescending { it.confidence }
+    }
+
+    private fun iou(a: FaceDetection, b: FaceDetection): Float {
+        val left = max(a.left, b.left)
+        val top = max(a.top, b.top)
+        val right = min(a.left + a.width, b.left + b.width)
+        val bottom = min(a.top + a.height, b.top + b.height)
+        val inter = max(0f, right - left) * max(0f, bottom - top)
+        val union = a.width * a.height + b.width * b.height - inter
+        return if (union <= 1e-6f) 0f else inter / union
     }
 
     /** A single YuNet detection, in pixel coordinates of the source bitmap. */
@@ -266,11 +324,15 @@ class YuNetDetector(
         private const val Tag = "YuNetDetector"
         private const val ModelAsset = "face_detection_yunet_2026may.onnx"
         private const val MinModelBytes = 50_000
-        private const val MaxLongEdge = 480
+        /** Spec: 720p decode cap. The sole knob powering YuNet's effective min-face size. */
+        private const val MaxLongEdge = 720
         private const val StrideAlignment = 32
         private const val ThreadCount = 2
         private const val NmsThreshold = 0.3f
         private const val MaxDetections = 64
+        /** Below this many faces, run the 2x-upscale fallback pass once. */
+        private const val MinFacesBeforeUpscale = 2
+        private const val UpscaleFactor = 2
         private val Strides = intArrayOf(8, 16, 32)
 
         /** Spec default: confidence floor for accepting detections. */
