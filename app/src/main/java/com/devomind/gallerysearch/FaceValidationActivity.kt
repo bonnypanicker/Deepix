@@ -6,7 +6,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.RectF
 import android.net.Uri
 import android.os.Bundle
@@ -18,6 +17,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.devomind.gallerysearch.databinding.ActivityFaceValidationBinding
 import com.devomind.gallerysearch.db.GalleryDatabase
 import kotlinx.coroutines.Dispatchers
@@ -25,11 +26,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
-/**
- * Phase 1 verification UI: pick a photo → YuNet detection + quality + pose + embedding.
+/** Phase 1 verification UI: pick a photo → YuNet detection + quality + pose + embedding.
  * Lets you visually confirm bboxes and landmarks, inspect per-face crops, and test cross-photo
- * similarity between any two photos, without waiting for Phases 2–5.
- */
+ * similarity between any two photos, without waiting for Phases 2–5. Now also surfaces the
+ * Phase 2 people-index status (running stats + person/face counters). */
 class FaceValidationActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityFaceValidationBinding
@@ -39,6 +39,9 @@ class FaceValidationActivity : AppCompatActivity() {
     private var firstPhotoResult: FaceAnalyzer.PhotoResult? = null
     private var firstPhotoBitmap: Bitmap? = null
     private var comparePhotoResult: FaceAnalyzer.PhotoResult? = null
+
+    /** True once we've started observing FaceIndexWorker's status line. */
+    private var observingFaceIndex = false
 
     private val pickPhoto = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { runAnalysis(it, isCompare = false) }
@@ -71,6 +74,39 @@ class FaceValidationActivity : AppCompatActivity() {
                 pickComparePhoto.launch("image/*")
             }
         }
+
+        // Phase 2 manual kick: let you fire the people-index pass from the harness; live status
+        // appears in the monospace line below.
+        binding.btnRunPeopleIndex.setOnClickListener {
+            FaceIndexWorker.enqueue(this, replaceExisting = true)
+            observingFaceIndex() // triggers the observer below if not already
+            binding.peopleIndexStatus.text = "workers queued — watching for progress…"
+        }
+        observingFaceIndex() // start observing immediately too, so if work is already running we show it
+    }
+
+    /** Once-per-activity observer of FaceIndexWorker progress + status. */
+    private fun observingFaceIndex() {
+        if (observingFaceIndex) return
+        observingFaceIndex = true
+
+        WorkManager.getInstance(this)
+            .getWorkInfosForUniqueWorkLiveData(FaceIndexWorker.WorkName)
+            .observe(this) { infos ->
+                val work = infos.firstOrNull() ?: return@observe
+                if (work.state != WorkInfo.State.RUNNING && work.state != WorkInfo.State.SUCCEEDED) return@observe
+                val visited = work.progress.getInt(FaceIndexWorker.ProgressVisitedKey, -1)
+                val total = work.progress.getInt(FaceIndexWorker.ProgressTotalKey, -1)
+                val faces = work.progress.getInt(FaceIndexWorker.StatsFacesKey, 0)
+                val persons = work.progress.getInt(FaceIndexWorker.StatsPersonsKey, 0)
+                val assigned = work.progress.getInt(FaceIndexWorker.StatsAssignedKey, 0)
+                val gated = work.progress.getInt(FaceIndexWorker.StatsGatedKey, 0)
+                binding.peopleIndexStatus.text = buildString {
+                    if (total > 0 && visited >= 0) append("idx %3d%% · %d/%d · ".format(visited * 100 / total, visited, total))
+                    append("faces=%d persons=%d assigned=%d gated=%d".format(faces, persons, assigned, gated))
+                    append(" · ${work.state.name}")
+                }
+            }
     }
 
     override fun onDestroy() {

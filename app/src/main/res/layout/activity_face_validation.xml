@@ -96,6 +96,40 @@
                         android:textSize="14sp" />
                 </LinearLayout>
 
+                <!-- Manual kick for the Phase 2 people-index pass, plus a live status line. -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:paddingTop="10dp">
+
+                    <TextView
+                        android:id="@+id/btnRunPeopleIndex"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/pill_bg"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:paddingStart="14dp"
+                        android:paddingTop="9dp"
+                        android:paddingEnd="14dp"
+                        android:paddingBottom="9dp"
+                        android:text="@string/face_validation_run_people_index"
+                        android:textColor="@color/metroTextPrimary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/peopleIndexStatus"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_vertical"
+                        android:layout_marginStart="12dp"
+                        android:layout_weight="1"
+                        android:fontFamily="monospace"
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
                 <TextView
                     android:id="@+id/photoUriLabel"
                     android:layout_width="match_parent"

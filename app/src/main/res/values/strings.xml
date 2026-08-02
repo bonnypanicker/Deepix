@@ -230,4 +230,6 @@
     <string name="face_validation_compare">CROSS-PHOTO SIMILARITY</string>
     <string name="face_validation_photo_label">photo · %1$s</string>
     <string name="face_validation_perf">decode %1$dms · detect %2$dms · embed %3$dms</string>
+    <string name="face_validation_run_people_index">run people index</string>
+    <string name="face_validation_people_index">PEOPLE INDEX</string>
 </resources>
