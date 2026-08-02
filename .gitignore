@@ -34,3 +34,5 @@ compress_out*.txt
 requantize_out*.txt
 verify_*.txt
 error *.md
+
+gallerysearch_log.txt
