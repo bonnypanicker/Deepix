@@ -46,43 +46,8 @@ class YuNetDetector(
      * (left eye, right eye, nose, left mouth corner, right mouth corner). Coordinates are in
      * the space of the caller-supplied [bitmap]. Returns at most [MaxDetections] results,
      * post-NMS, ordered by confidence.
-     *
-     * When the primary pass finds fewer than [MinFacesBeforeUpscale] faces, a single upscaled
-     * (2× linear) pass is attempted and its detections merged with the primary list. This lets
-     * gallery shots with small, distant, or profile faces fall into the same recall bucket as
-     * close-up portraits, without paying for a second pass on already-populated frames.
      */
-    fun detectFaces(bitmap: Bitmap): List<FaceDetection> {
-        val primary = detectOnce(bitmap)
-        if (primary.size >= MinFacesBeforeUpscale) return primary
-        // Only one 2x upscale pass. To keep memory/CPU in check the upscaled frame is also
-        // capped at MaxLongEdge on its long edge.
-        val upscaled = run {
-            val w = bitmap.width * UpscaleFactor
-            val h = bitmap.height * UpscaleFactor
-            val maxLong = kotlin.math.max(w, h)
-            if (maxLong > MaxLongEdge * UpscaleFactor) bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true)
-            else Bitmap.createScaledBitmap(bitmap, w, h, /* filter */ true)
-        }
-        return try {
-            val secondary = detectOnce(upscaled).map { d ->
-                FaceDetection(
-                    left = d.left / UpscaleFactor,
-                    top = d.top / UpscaleFactor,
-                    width = d.width / UpscaleFactor,
-                    height = d.height / UpscaleFactor,
-                    confidence = d.confidence,
-                    landmarks = Array(d.landmarks.size) { i ->
-                        floatArrayOf(d.landmarks[i][0] / UpscaleFactor, d.landmarks[i][1] / UpscaleFactor)
-                    }
-                )
-            }
-            // Merge with primary, keeping the higher-confidence instance when boxes overlap.
-            mergeWithNms(primary, secondary)
-        } finally {
-            if (upscaled !== bitmap) upscaled.recycle()
-        }
-    }
+    fun detectFaces(bitmap: Bitmap): List<FaceDetection> = detectOnce(bitmap)
 
     /** Single detection pass at the current input resolution cap. */
     private fun detectOnce(bitmap: Bitmap): List<FaceDetection> {
@@ -126,26 +91,6 @@ class YuNetDetector(
         }
     }
 
-    /** Append secondary detections onto primary, deduplicating by IoU; first parent wins ties. */
-    private fun mergeWithNms(primary: List<FaceDetection>, secondary: List<FaceDetection>): List<FaceDetection> {
-        val accepted = primary.toMutableList()
-        for (cand in secondary.sortedByDescending { it.confidence }) {
-            if (accepted.none { iou(it, cand) >= NmsThreshold }) accepted += cand
-            if (accepted.size >= MaxDetections) break
-        }
-        return accepted.sortedByDescending { it.confidence }
-    }
-
-    private fun iou(a: FaceDetection, b: FaceDetection): Float {
-        val left = max(a.left, b.left)
-        val top = max(a.top, b.top)
-        val right = min(a.left + a.width, b.left + b.width)
-        val bottom = min(a.top + a.height, b.top + b.height)
-        val inter = max(0f, right - left) * max(0f, bottom - top)
-        val union = a.width * a.height + b.width * b.height - inter
-        return if (union <= 1e-6f) 0f else inter / union
-    }
-
     /** A single YuNet detection, in pixel coordinates of the source bitmap. */
     data class FaceDetection(
         val left: Float,
@@ -166,15 +111,22 @@ class YuNetDetector(
             arrayOf(left, top, width, height, confidence, landmarks.contentDeepHashCode()).contentHashCode()
     }
 
-    /** Aspect-preserving fit into [MaxLongEdge], snapped down to a multiple of the largest stride. */
+    /**
+     * Aspect-preserving fit into [MaxLongEdge], snapped to the nearest multiple of the largest
+     * stride. Never upscales: interpolated pixels carry no new detail for the detector, so a
+     * source already within the cap runs at (stride-snapped) native size.
+     */
     private fun targetSize(sourceWidth: Int, sourceHeight: Int): Pair<Int, Int> {
-        val scale = MaxLongEdge.toFloat() / max(sourceWidth, sourceHeight)
+        val scale = min(1f, MaxLongEdge.toFloat() / max(sourceWidth, sourceHeight))
         val width = snapToStride((sourceWidth * scale).roundToInt())
         val height = snapToStride((sourceHeight * scale).roundToInt())
         return width to height
     }
 
-    private fun snapToStride(value: Int): Int = max(StrideAlignment, value / StrideAlignment * StrideAlignment)
+    /** Nearest multiple of [StrideAlignment]; rounding (vs. flooring) halves the worst-case
+     * aspect distortion, which otherwise skews the landmarks fed to alignment. */
+    private fun snapToStride(value: Int): Int =
+        max(StrideAlignment, (value + StrideAlignment / 2) / StrideAlignment * StrideAlignment)
 
     private fun output(result: OrtSession.Result, name: String): FloatArray =
         result.get(name).orElseThrow { IllegalStateException("YuNet did not return '$name'; outputs=${session.outputNames}") }
@@ -324,15 +276,18 @@ class YuNetDetector(
         private const val Tag = "YuNetDetector"
         private const val ModelAsset = "face_detection_yunet_2026may.onnx"
         private const val MinModelBytes = 50_000
-        /** Spec: 720p decode cap. The sole knob powering YuNet's effective min-face size. */
-        private const val MaxLongEdge = 720
+        /**
+         * Long-edge cap for the detector's internal resolution. Pairs with
+         * GalleryRepository.FaceDetectionMaxEdge (1536): the decode hands the detector more
+         * pixels than this, so inference always downsamples real detail rather than
+         * interpolating an undersized decode. Together with [MinFaceSize] this sets the
+         * effective minimum face size in the source photo (~3% of the long edge).
+         */
+        private const val MaxLongEdge = 1280
         private const val StrideAlignment = 32
         private const val ThreadCount = 2
         private const val NmsThreshold = 0.3f
         private const val MaxDetections = 64
-        /** Below this many faces, run the 2x-upscale fallback pass once. */
-        private const val MinFacesBeforeUpscale = 2
-        private const val UpscaleFactor = 2
         private val Strides = intArrayOf(8, 16, 32)
 
         /** Spec default: confidence floor for accepting detections. */

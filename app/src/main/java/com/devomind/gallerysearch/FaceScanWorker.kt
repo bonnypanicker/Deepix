@@ -46,7 +46,7 @@ class FaceScanWorker(
                 candidates.forEachIndexed { index, item ->
                     ensureActive()
                     val count = runCatching {
-                        repository.loadBitmap(item.uri)?.useBitmap(detector::detectFaceCount) ?: 0
+                        repository.loadBitmapForFaceDetection(item.uri)?.useBitmap(detector::detectFaceCount) ?: 0
                     }.onFailure { Log.w(Tag, "Face scan failed for ${item.uri}", it) }.getOrDefault(0)
                     pendingResults[item.uri.toString()] = count
                     if ((index + 1) % SaveEvery == 0) {

@@ -46,7 +46,9 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
      */
     suspend fun analyze(photoUri: Uri, persist: Boolean, includeAlignedCrops: Boolean = true): PhotoResult {
         val decodeStart = SystemClock()
-        val bitmap = GalleryRepository(appContext).loadBitmap(photoUri)
+        // Face-specific decode cap (1536px): detection coordinates are in this bitmap's space,
+        // so any UI drawing boxes over the photo must decode via the same path.
+        val bitmap = GalleryRepository(appContext).loadBitmapForFaceDetection(photoUri)
             ?: error("Could not decode $photoUri")
         val decodeMs = SystemClock() - decodeStart
 

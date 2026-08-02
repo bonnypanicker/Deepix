@@ -98,7 +98,9 @@ class FaceValidationActivity : AppCompatActivity() {
                 runCatching {
                     val current = analyzer ?: FaceAnalyzer(applicationContext).also { analyzer = it }
                     val repository = GalleryRepository(applicationContext)
-                    val bitmap = repository.loadBitmap(uri) ?: error("decode failed")
+                    // Must match FaceAnalyzer's decode path: detection coordinates are in the
+                    // face-detection bitmap's space, and we draw them straight onto this bitmap.
+                    val bitmap = repository.loadBitmapForFaceDetection(uri) ?: error("decode failed")
                     val result = current.analyze(uri, persist = !isCompare, includeAlignedCrops = true)
                     bitmap to result
                 }

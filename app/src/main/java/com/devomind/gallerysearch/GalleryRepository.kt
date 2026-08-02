@@ -308,6 +308,15 @@ class GalleryRepository(
     fun loadBitmap(uri: Uri): Bitmap? = decodeOrientedBitmap(uri, MaxBitmapEdge)
 
     /**
+     * Decodes [uri] for face detection. Faces need far more resolution than CLIP indexing:
+     * at the 512px [MaxBitmapEdge] cap a face must span ~40px of a 512px frame (~8% of the
+     * photo) to clear YuNet's minimum size, which silently drops distant/group faces. The
+     * higher [FaceDetectionMaxEdge] cap keeps small faces above the detector's floor while
+     * inSampleSize decoding still avoids full-resolution intermediates.
+     */
+    fun loadBitmapForFaceDetection(uri: Uri): Bitmap? = decodeOrientedBitmap(uri, FaceDetectionMaxEdge)
+
+    /**
      * Builds the embedding index using a parallel decode/preprocess pool feeding batched inference.
      *
      * Architecture:
@@ -1014,6 +1023,10 @@ class GalleryRepository(
         private const val MetadataIndexMagic = 0x474d4458
         private const val MetadataIndexVersion = 1
         private const val MaxBitmapEdge = 512
+        // Face detection decodes at a higher cap than CLIP indexing (see
+        // loadBitmapForFaceDetection). 1536 pairs with YuNetDetector.MaxLongEdge = 1280 so the
+        // detector downsamples real detail instead of upsampling an already-small decode.
+        private const val FaceDetectionMaxEdge = 1536
         // Region crops decode at higher resolution than the 512px index bitmaps so small
         // selections still carry enough detail for the 256px CLIP encoder.
         private const val RegionDecodeMaxEdge = 2048
