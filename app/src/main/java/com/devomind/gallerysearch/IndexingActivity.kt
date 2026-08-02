@@ -108,6 +108,23 @@ class IndexingActivity : AppCompatActivity() {
                 } else -1
                 renderIndexing(work?.state, livePercent, current, total)
             }
+
+        // Phase 2 face-index pipeline status: shows running face-processing stats (faces seen,
+        // persons created, gate activity) alongside the CLIP index progress.
+        WorkManager.getInstance(this)
+            .getWorkInfosForUniqueWorkLiveData(FaceIndexWorker.WorkName)
+            .observe(this) { infos ->
+                val work = infos.firstOrNull() ?: return@observe
+                if (work.state != WorkInfo.State.RUNNING) return@observe
+                val faces = work.progress.getInt(FaceIndexWorker.StatsFacesKey, 0)
+                val persons = work.progress.getInt(FaceIndexWorker.StatsPersonsKey, 0)
+                val visited = work.progress.getInt(FaceIndexWorker.ProgressVisitedKey, 0)
+                val total = work.progress.getInt(FaceIndexWorker.ProgressTotalKey, -1)
+                if (total > 0) {
+                    binding.indexSubStatus.text =
+                        "Indexing your photos… + face pass ($visited / $total · $faces faces · $persons persons)"
+                }
+            }
     }
 
     private fun isRunningState(state: WorkInfo.State?): Boolean =
