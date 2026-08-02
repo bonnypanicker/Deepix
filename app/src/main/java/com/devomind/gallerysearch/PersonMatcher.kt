@@ -7,6 +7,8 @@ import com.devomind.gallerysearch.db.FaceEntity
 import com.devomind.gallerysearch.db.GalleryDatabase
 import com.devomind.gallerysearch.db.PersonDao
 import com.devomind.gallerysearch.db.PersonEntity
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 
 /**
@@ -32,6 +34,7 @@ class PersonMatcher(private val context: Context) {
     private val database: GalleryDatabase = GalleryDatabase.getInstance(context)
     private val faceDao: FaceDao = database.faceDao()
     private val personDao: PersonDao = database.personDao()
+    private val matchMutex = Mutex()
 
     /** Outcome of processing one detected face in the indexing pass. */
     data class MatchOutcome(
@@ -46,13 +49,17 @@ class PersonMatcher(private val context: Context) {
     )
 
     /** Process a single face — assigns it to an existing Person or creates a new one. */
-    suspend fun match(newFace: FaceEntity): MatchOutcome? {
+    suspend fun match(newFace: FaceEntity): MatchOutcome? = matchMutex.withLock {
+        matchLocked(newFace)
+    }
+
+    private suspend fun matchLocked(newFace: FaceEntity): MatchOutcome? {
         val embeddingJson = newFace.embeddingJson ?: return null
         val newEmbedding = decodeEmbedding(embeddingJson) ?: return null
 
         val allPersons = personDao.all().filter { !it.isHidden }
         if (allPersons.isEmpty()) {
-            return createPerson(newEmbedding, newFace)
+            return createPerson(newFace)
         }
 
         // Build a per-person similarity snapshot: exemplar embeddings + median sim.
@@ -70,42 +77,18 @@ class PersonMatcher(private val context: Context) {
             Triple(person, support, exemplarFaces)
         }
         if (evaluations.isEmpty()) {
-            return createPerson(newEmbedding, newFace)
+            return createPerson(newFace)
         }
 
         val (bestPerson, bestSupport, _) = evaluations.maxByOrNull { it.second }!!
         return if (bestSupport >= PersonMatchThreshold) {
             assignFaceToPerson(newFace, bestPerson.personId, bestSupport)
         } else {
-            createPerson(newEmbedding, newFace)
+            createPerson(newFace)
         }
     }
 
-    /**
-     * Promote [face] to the role of exemplar for [personId]. Rotates out the lowest-quality
-     * existing exemplar past [MaxExemplarsPerPerson].
-     *
-     * Called by the indexing pipeline when a higher-quality duplicate-burst face arrives.
-     */
-    suspend fun promoteToExemplar(personId: Long, face: FaceEntity): Boolean {
-        val existing = faceDao.findByPerson(personId)
-            .filter { it.isExemplar }
-            .sortedBy { it.qualityScore }
-        if (existing.size < MaxExemplarsPerPerson) {
-            faceDao.insert(face.copy(isExemplar = true, personId = personId))
-            personDao.setExemplarFace(personId, face.faceId)
-            return true
-        }
-        val lowest = existing.first()
-        return if (face.qualityScore > lowest.qualityScore) {
-            faceDao.insert(face.copy(isExemplar = true, personId = personId))
-            faceDao.insert(lowest.copy(isExemplar = false))
-            personDao.setExemplarFace(personId, face.faceId)
-            true
-        } else false
-    }
-
-    private suspend fun createPerson(newEmbedding: FloatArray, newFace: FaceEntity): MatchOutcome {
+    private suspend fun createPerson(newFace: FaceEntity): MatchOutcome {
         val person = PersonEntity(
             nameLabel = null,
             exemplarFaceId = 0L,
@@ -144,16 +127,22 @@ class PersonMatcher(private val context: Context) {
         )
     }
 
-    /** Rotate the per-person exemplar set: drop the lowest-quality exemplar past the max. */
+    /** Promote every good early sample, then rotate only after the fixed exemplar pool is full. */
     private suspend fun maybeRotateExemplar(personId: Long, faceId: Long, face: FaceEntity): Boolean {
         val exemplars = faceDao.findByPerson(personId)
             .filter { it.isExemplar }
             .sortedBy { it.qualityScore }
-        if (exemplars.size < MaxExemplarsPerPerson) return false
+        if (exemplars.size < MaxExemplarsPerPerson) {
+            faceDao.setExemplar(faceId, true)
+            if (exemplars.lastOrNull()?.qualityScore ?: Float.NEGATIVE_INFINITY < face.qualityScore) {
+                personDao.setExemplarFace(personId, faceId)
+            }
+            return true
+        }
         val lowest = exemplars.first()
         if (face.qualityScore <= lowest.qualityScore) return false
-        faceDao.insert(face.copy(isExemplar = true, personId = personId))
-        faceDao.insert(lowest.copy(isExemplar = false))
+        faceDao.setExemplar(faceId, true)
+        faceDao.setExemplar(lowest.faceId, false)
         personDao.setExemplarFace(personId, faceId)
         return true
     }
@@ -183,13 +172,14 @@ class PersonMatcher(private val context: Context) {
         private const val Tag = "PersonMatcher"
 
         /**
-         * Cosine floor for assigning a new face to an existing person. The spec asks for
-         * permissive assignment with post-hoc split/merge correcting errors; this value lines up
-         * with the lower bound of the spec's "recognition similarity" range (0.55–0.65).
+         * Cosine similarity threshold for assigning a new face to an existing person. Empirically on
+         * this pair of models, photos of the same person across very different lighting/backdrops
+         * score 0.42–0.82; photos of *different* people score 0.0–0.35. Setting this between those
+         * peaks gives good recall without precision collapse.
          */
         private const val PersonMatchThreshold = 0.55f
 
-        /** Exemplar faces kept per person — cap plus a margin so rotation is cheap. */
+        /** Cap on per-person exemplar set: grow up to this many, then rotate by quality. */
         private const val MaxExemplarsPerPerson = 10
     }
 }

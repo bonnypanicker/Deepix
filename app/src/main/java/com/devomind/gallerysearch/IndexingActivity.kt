@@ -112,10 +112,11 @@ class IndexingActivity : AppCompatActivity() {
         // Phase 2 face-index pipeline status: shows running face-processing stats (faces seen,
         // persons created, gate activity) alongside the CLIP index progress.
         WorkManager.getInstance(this)
-            .getWorkInfosForUniqueWorkLiveData(FaceIndexWorker.WorkName)
+            .getWorkInfosForUniqueWorkLiveData(IndexWorker.WorkName)
             .observe(this) { infos ->
-                val work = infos.firstOrNull() ?: return@observe
-                if (work.state != WorkInfo.State.RUNNING) return@observe
+                val work = infos.firstOrNull {
+                    FaceIndexWorker.WorkTag in it.tags && it.state == WorkInfo.State.RUNNING
+                } ?: return@observe
                 val faces = work.progress.getInt(FaceIndexWorker.StatsFacesKey, 0)
                 val persons = work.progress.getInt(FaceIndexWorker.StatsPersonsKey, 0)
                 val visited = work.progress.getInt(FaceIndexWorker.ProgressVisitedKey, 0)

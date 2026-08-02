@@ -51,6 +51,9 @@ interface PersonPhotoDao {
     )
     suspend fun findCurrentBurstExemplar(exemplarUri: String): PersonPhotoEntity?
 
+    @Query("UPDATE person_photos SET exemplarPhotoUri = :exemplarUri WHERE uri IN (:memberUris)")
+    suspend fun setBurstExemplar(memberUris: List<String>, exemplarUri: String)
+
     @Query("SELECT COUNT(*) FROM person_photos")
     suspend fun countAll(): Int
 

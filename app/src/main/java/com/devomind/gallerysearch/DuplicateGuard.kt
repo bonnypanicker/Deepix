@@ -17,6 +17,18 @@ import kotlin.math.abs
  */
 object DuplicateGuard {
 
+    data class Request(
+        val candidatePhoto: PersonPhotoEntity,
+        val candidateWidth: Int,
+        val candidateHeight: Int,
+        val candidateFaceProportions: List<Float>,
+        val candidateMaxQuality: Float,
+        val siblingsInWindow: List<PersonPhotoEntity>,
+        val siblingWidths: Map<String, Int>,
+        val siblingHeights: Map<String, Int>,
+        val siblingFaceProportions: Map<String, List<Float>>
+    )
+
     /**
      * Result of checking [candidate] against prior photos. Either:
      * - [NotDuplicate]: no prior burst-room-ish match, run the pipeline normally.
@@ -48,19 +60,11 @@ object DuplicateGuard {
      *
      * The check compares [candidatePhoto] against sibling photos in the DAO's burst window.
      */
-    fun classify(
-        candidatePhoto: PersonPhotoEntity,
-        candidateWidth: Int,
-        candidateHeight: Int,
-        candidateFaceProportions: List<Float>,
-        candidateMaxQuality: Float,
-        siblingsInWindow: List<PersonPhotoEntity>,
-        siblingWidths: Map<String, Int>,
-        siblingHeights: Map<String, Int>
-    ): Outcome {
+    fun classify(request: Request): Outcome = with(request) {
         // No perceptual hash stored → can't compare, treat as standalone.
         if (candidatePhoto.dhash == 0L) return Outcome.NotDuplicate(candidatePhoto)
 
+        val matchingSiblings = mutableListOf<PersonPhotoEntity>()
         var bestIncumbent: PersonPhotoEntity? = null
         var bestIncumbentDistance = Int.MAX_VALUE
         for (sibling in siblingsInWindow) {
@@ -75,6 +79,7 @@ object DuplicateGuard {
                     candidateWidth, candidateHeight, siblingWidth, siblingHeight
                 )
             if (!dimensionsMatch.match) continue
+            matchingSiblings += sibling
             // Found at least one burst sibling. Pick the closest hash match as the reference.
             if (dist < bestIncumbentDistance) {
                 bestIncumbentDistance = dist
@@ -83,25 +88,31 @@ object DuplicateGuard {
         }
         val incumbent = bestIncumbent ?: return Outcome.NotDuplicate(candidatePhoto)
 
-        // Exemplar incumbent: the photo whose exemplarQuality is highest inside the burst.
-        val exemplar = siblingsInWindow.maxByOrNull { it.exemplarQuality } ?: incumbent
+        // Exemplar incumbent: only a verified burst sibling can be the reference.
+        val exemplar = matchingSiblings.maxByOrNull { it.exemplarQuality } ?: incumbent
         val shouldReplace = candidateMaxQuality > exemplar.exemplarQuality
 
         // Whether the *content* (face count + total bbox area as fraction of image) plausibly
         // matches. Used by the caller to skip re-embedding when not replacing the exemplar.
         // We don't have incumbent's face-area data here yet — formalized below as a ratio.
+        val candidateAreas = candidateFaceProportions.sorted()
+        val incumbentAreas = siblingFaceProportions[exemplar.uri].orEmpty().sorted()
         val plausibleContentMatch =
-            abs(candidateFaceProportions.size - exemplar.faceCount) <= FaceCountTolerance
+            candidateAreas.size == exemplar.faceCount &&
+                candidateAreas.size == incumbentAreas.size &&
+                candidateAreas.zip(incumbentAreas).all { (candidate, incumbentArea) ->
+                    abs(candidate - incumbentArea) <= FaceAreaTolerance
+                }
 
         return Outcome.DuplicateOf(
             candidatePhoto = candidatePhoto,
             incumbentExemplar = exemplar,
-            burstMemberUris = siblingsInWindow.map { it.uri },
+            burstMemberUris = matchingSiblings.map { it.uri },
             shouldReplaceExemplar = shouldReplace,
             contentLikelySameFaces = plausibleContentMatch,
         )
     }
 
     /** Face-count guard strength: allow ±1 disagreement between duplicates before re-certifying. */
-    private const val FaceCountTolerance = 1
+    private const val FaceAreaTolerance = 0.08f
 }

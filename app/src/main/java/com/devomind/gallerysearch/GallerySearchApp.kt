@@ -33,6 +33,7 @@ class SharedEncoders(private val context: android.content.Context) {
     @Volatile private var imageEncoder: ImageEncoder? = null
     @Volatile private var textEncoder: TextEncoder? = null
     @Volatile private var faceEmbedder: FaceEmbedder? = null
+    @Volatile private var faceDetector: YuNetDetector? = null
 
     // Separate lock per encoder: constructing an ImageEncoder and a TextEncoder are independent
     // (separate OrtSessions, separate model assets) — sharing one lock would serialize them even
@@ -40,6 +41,7 @@ class SharedEncoders(private val context: android.content.Context) {
     private val imageLock = Any()
     private val textLock = Any()
     private val faceLock = Any()
+    private val detectorLock = Any()
 
     /** Thread count chosen for ORT sessions; falls back to the global default when unset. */
     private fun optimalThreadCount(): Int {
@@ -64,6 +66,17 @@ class SharedEncoders(private val context: android.content.Context) {
     fun getFaceEmbedder(): FaceEmbedder {
         return faceEmbedder ?: synchronized(faceLock) {
             faceEmbedder ?: FaceEmbedder(context, threadCount = 2).also { faceEmbedder = it }
+        }
+    }
+
+    /**
+     * Shared YuNet session at the spec's default operating point. FaceScanWorker builds its own
+     * stricter-tuned instance; everything on the Phase 1/2 path shares this one so a per-photo
+     * indexing loop doesn't re-read the model asset and rebuild an OrtSession for every image.
+     */
+    fun getFaceDetector(): YuNetDetector {
+        return faceDetector ?: synchronized(detectorLock) {
+            faceDetector ?: YuNetDetector(context).also { faceDetector = it }
         }
     }
 }

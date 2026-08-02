@@ -7,7 +7,6 @@ import android.util.Log
 import com.devomind.gallerysearch.db.FaceEntity
 import com.devomind.gallerysearch.db.GalleryDatabase
 import org.json.JSONArray
-import kotlin.math.sqrt
 
 /**
  * Phase 1 orchestrator: photo → detected faces → quality / pose / aligned crop → 512-d embedding
@@ -17,9 +16,11 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
 
     private val appContext = context.applicationContext
     private val database = GalleryDatabase.getInstance(appContext)
-    private val detector = YuNetDetector(appContext)
-    // Shared process-wide MobileFaceNet session satisfies the Phase 1 spec: single OrtEnvironment
-    // plus 2–4 intra-op threads for the MobileFaceNet session, no separate process.
+    // Both ORT sessions are shared process-wide via SharedEncoders: the Phase 1 spec asks for a
+    // single OrtEnvironment with 2–4 intra-op threads, and the Phase 2 indexing loop constructs a
+    // FaceAnalyzer per photo — a per-instance session would re-read the model asset every image.
+    private val detector: YuNetDetector
+        get() = (appContext as GallerySearchApp).sharedEncoders.getFaceDetector()
     private val embedder: FaceEmbedder
         get() = (appContext as GallerySearchApp).sharedEncoders.getFaceEmbedder()
 
@@ -43,12 +44,23 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
     /**
      * Run the full Phase 1 pipeline for one photo. If [persist] is true the faces are written to
      * Room (with their embeddings). [includeAlignedCrops] keeps the 112×112 bitmaps for UI display.
+     *
+     * [decoded] lets a caller that already holds a face-detection-scale bitmap hand it in rather
+     * than paying a second decode; detection coordinates come back in that bitmap's space, so it
+     * must have come from [GalleryRepository.loadBitmapForFaceDetection]. Ownership stays with the
+     * caller — this method never recycles a bitmap it did not decode.
      */
-    suspend fun analyze(photoUri: Uri, persist: Boolean, includeAlignedCrops: Boolean = true): PhotoResult {
+    suspend fun analyze(
+        photoUri: Uri,
+        persist: Boolean,
+        includeAlignedCrops: Boolean = true,
+        decoded: Bitmap? = null
+    ): PhotoResult {
         val decodeStart = SystemClock()
         // Face-specific decode cap (1536px): detection coordinates are in this bitmap's space,
         // so any UI drawing boxes over the photo must decode via the same path.
-        val bitmap = GalleryRepository(appContext).loadBitmapForFaceDetection(photoUri)
+        val bitmap = decoded
+            ?: GalleryRepository(appContext).loadBitmapForFaceDetection(photoUri)
             ?: error("Could not decode $photoUri")
         val decodeMs = SystemClock() - decodeStart
 
@@ -120,8 +132,8 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
     }
 
     override fun close() {
-        detector.close()
-        // FaceEmbedder is shared via SharedEncoders — leave it open for other callers.
+        // Both the YuNet detector and the FaceEmbedder are shared via SharedEncoders — leave them
+        // open for other callers. FaceAnalyzer itself holds no per-instance native resources.
     }
 
     private fun bboxToJson(det: YuNetDetector.FaceDetection): String =
@@ -146,7 +158,6 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
 
     private companion object {
         const val Tag = "FaceAnalyzer"
-        const val ThreadCount = 2
         const val LowQualityThreshold = 0.35f
     }
 }

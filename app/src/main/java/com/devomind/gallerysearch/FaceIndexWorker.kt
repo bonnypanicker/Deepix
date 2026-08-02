@@ -52,6 +52,7 @@ class FaceIndexWorker(
     private val faceDao = database.faceDao()
     private val personDao = database.personDao()
     private val personMatcher = PersonMatcher(appContext)
+    private val analyzer = FaceAnalyzer(appContext)
 
     data class Stats(
         var visited: Int = 0,
@@ -61,6 +62,9 @@ class FaceIndexWorker(
         var totalFaces: Int = 0,
         var assignedToExistingPerson: Int = 0,
         var newPersonsCreated: Int = 0,
+        /** Already carried a terminal row from an earlier run — never entered the pipeline. */
+        var alreadyIndexedSkipped: Int = 0,
+        /** Entered the pipeline but resolved to an existing burst frame's exemplar. */
         var duplicateRectsSkipped: Int = 0,
         var exemplarReplacements: Int = 0
     )
@@ -90,6 +94,7 @@ class FaceIndexWorker(
 
             val stats = Stats()
             val total = images.size
+            val mediaByUri = images.associateBy { it.uri.toString() }
             reportProgress(Progress(visited = 0, total = total, percent = 0, phase = "starting"))
 
             coroutineScope {
@@ -101,7 +106,7 @@ class FaceIndexWorker(
                 }
                 val workers = (1..PipelineConcurrency).map { workerIndex ->
                     async(Dispatchers.Default) {
-                        processItems(repository, pipeline, stats, total)
+                        processItems(repository, pipeline, stats, total, mediaByUri)
                     }
                 }
                 producer.join()
@@ -131,13 +136,14 @@ class FaceIndexWorker(
         repository: GalleryRepository,
         pipeline: Channel<GalleryRepository.MediaItem>,
         stats: Stats,
-        total: Int
+        total: Int,
+        mediaByUri: Map<String, GalleryRepository.MediaItem>
     ) {
         for (item in pipeline) {
             currentCoroutineContext().ensureActive()
             // Yield battery: between photos the OS is free to schedule other things.
             if (!isDevicePluggedIn()) throw CancellationException("Unplugged during indexing")
-            runCatching { processOne(item, repository, stats, total) }
+            runCatching { processOne(item, repository, stats, total, mediaByUri) }
                 .onFailure { Log.w(Tag, "per-item failure on ${item.uri}", it) }
         }
     }
@@ -146,9 +152,10 @@ class FaceIndexWorker(
         item: GalleryRepository.MediaItem,
         repository: GalleryRepository,
         stats: Stats,
-        total: Int
+        total: Int,
+        mediaByUri: Map<String, GalleryRepository.MediaItem>
     ) {
-        stats.visited++
+        updateStats(stats) { visited++ }
 
         val uri = item.uri
         val uriStr = uri.toString()
@@ -156,15 +163,15 @@ class FaceIndexWorker(
         // ── duplicate check ────────────────────────────────────────────────────────────────
         val existing = photoDao.findByUri(uriStr)
         if (existing != null && existing.status in PhotoRowTerminalStatuses) {
-            stats.duplicateRectsSkipped++
-            if (stats.visited % ProgressEvery == 0) reportProgress(stats, total)
+            updateStats(stats) { alreadyIndexedSkipped++ }
+            if (visitedCount(stats) % ProgressEvery == 0) reportProgress(stats, total)
             return
         }
 
         // ── decode ──────────────────────────────────────────────────────────────────────────
         val bitmap = repository.loadBitmapForFaceDetection(uri)
         if (bitmap == null) {
-            stats.decodeFailures++
+            updateStats(stats) { decodeFailures++ }
             photoDao.insert(
                 PersonPhotoEntity(
                     uri = uriStr,
@@ -200,8 +207,10 @@ class FaceIndexWorker(
             }.getOrNull()
             val clipScore = personVerdict?.gateScore ?: 0f
 
-            if (personVerdict != null && !personVerdict.hasPerson) {
-                stats.gatedOut++
+            // Grey-zone negatives deliberately reach YuNet: this preserves recall and gives us
+            // persisted score/outcome pairs for threshold calibration.
+            if (personVerdict != null && !personVerdict.hasPerson && !personVerdict.isGreyZone) {
+                updateStats(stats) { gatedOut++ }
                 photoDao.insert(
                     PersonPhotoEntity(
                         uri = uriStr, dhash = dhash, clipPersonScore = clipScore,
@@ -213,14 +222,13 @@ class FaceIndexWorker(
             }
 
             // ── face detect + embed ─────────────────────────────────────────────────────────
-            val analyzer = FaceAnalyzer(applicationContext)
-            val photoResult = try {
-                analyzer.analyze(uri, persist = false, includeAlignedCrops = false)
-            } finally {
-                analyzer.close()
-            }
+            // Reuses the bitmap decoded above for the dHash; both want the same
+            // loadBitmapForFaceDetection scale, and detection coords land in that space.
+            val photoResult = analyzer.analyze(
+                uri, persist = false, includeAlignedCrops = false, decoded = bitmap
+            )
             if (photoResult.faces.isEmpty()) {
-                stats.noFaces++
+                updateStats(stats) { noFaces++ }
                 photoDao.insert(
                     PersonPhotoEntity(
                         uri = uriStr, dhash = dhash, clipPersonScore = clipScore,
@@ -228,6 +236,52 @@ class FaceIndexWorker(
                         lastAnalyzedAt = android.os.SystemClock.uptimeMillis(), capturedAt = item.dateMillis
                     )
                 )
+                return
+            }
+
+            val candidatePhoto = PersonPhotoEntity(
+                uri = uriStr,
+                dhash = dhash,
+                clipPersonScore = clipScore,
+                status = PersonPhotoEntity.Status.HAS_FACES_UNMATCHED,
+                faceCount = photoResult.faces.size,
+                exemplarQuality = photoResult.faces.maxOfOrNull { it.quality } ?: 0f,
+                capturedAt = item.dateMillis,
+                lastAnalyzedAt = android.os.SystemClock.uptimeMillis()
+            )
+            val duplicate = DuplicateGuard.classify(
+                DuplicateGuard.Request(
+                    candidatePhoto = candidatePhoto,
+                    candidateWidth = item.width,
+                    candidateHeight = item.height,
+                    candidateFaceProportions = photoResult.faces.map { face ->
+                    (face.detection.width * face.detection.height) /
+                        (item.width.coerceAtLeast(1) * item.height.coerceAtLeast(1)).toFloat()
+                    },
+                    candidateMaxQuality = candidatePhoto.exemplarQuality,
+                    siblingsInWindow = siblings,
+                    siblingWidths = siblings.mapNotNull { sibling ->
+                    mediaByUri[sibling.uri]?.width?.let { sibling.uri to it }
+                    }.toMap(),
+                    siblingHeights = siblings.mapNotNull { sibling ->
+                    mediaByUri[sibling.uri]?.height?.let { sibling.uri to it }
+                    }.toMap(),
+                    siblingFaceProportions = siblingFaceProportions(siblings, mediaByUri)
+                )
+            )
+            if (duplicate is DuplicateGuard.Outcome.DuplicateOf &&
+                duplicate.contentLikelySameFaces && !duplicate.shouldReplaceExemplar
+            ) {
+                val exemplarUri = duplicate.incumbentExemplar.exemplarPhotoUri ?: duplicate.incumbentExemplar.uri
+                photoDao.insert(
+                    candidatePhoto.copy(
+                        status = PersonPhotoEntity.Status.DUPLICATE_IN_BURST,
+                        exemplarPhotoUri = exemplarUri
+                    )
+                )
+                photoDao.setBurstExemplar(duplicate.burstMemberUris + uriStr, exemplarUri)
+                updateStats(stats) { duplicateRectsSkipped++ }
+                reportProgress(stats, total)
                 return
             }
 
@@ -247,21 +301,28 @@ class FaceIndexWorker(
                 if (face.embeddingJson == null) return@mapNotNull null
                 personMatcher.match(face)
             }
-            stats.totalFaces += faceEntities.size
-            stats.assignedToExistingPerson += matchOutcomes.count { !it.createdNewPerson }
-            stats.newPersonsCreated += matchOutcomes.count { it.createdNewPerson }
+            updateStats(stats) {
+                totalFaces += faceEntities.size
+                assignedToExistingPerson += matchOutcomes.count { !it.createdNewPerson }
+                newPersonsCreated += matchOutcomes.count { it.createdNewPerson }
+            }
             // Final photo row update
+            val replacesBurstExemplar = duplicate is DuplicateGuard.Outcome.DuplicateOf &&
+                duplicate.contentLikelySameFaces && duplicate.shouldReplaceExemplar
             photoDao.insert(
-                PersonPhotoEntity(
-                    uri = uriStr, dhash = dhash, clipPersonScore = clipScore,
+                candidatePhoto.copy(
                     status = PersonPhotoEntity.Status.RESOLVED_TO_PERSON,
                     faceCount = faceEntities.size,
-                    lastAnalyzedAt = android.os.SystemClock.uptimeMillis(),
-                    capturedAt = item.dateMillis,
-                    exemplarQuality = faceEntities.maxOfOrNull { it.qualityScore } ?: 0f
+                    exemplarQuality = faceEntities.maxOfOrNull { it.qualityScore } ?: 0f,
+                    exemplarPhotoUri = if (replacesBurstExemplar) uriStr else null
                 )
             )
-            if (stats.visited % ProgressEvery == 0) {
+            if (replacesBurstExemplar) {
+                val burst = duplicate as DuplicateGuard.Outcome.DuplicateOf
+                photoDao.setBurstExemplar(burst.burstMemberUris + uriStr, uriStr)
+                updateStats(stats) { exemplarReplacements++ }
+            }
+            if (visitedCount(stats) % ProgressEvery == 0) {
                 reportProgress(stats, total)
             }
         } finally {
@@ -274,20 +335,22 @@ class FaceIndexWorker(
     // ------------------------------------------------------------------------------------------------
 
     private fun reportProgress(stats: Stats, total: Int) {
-        val percent = if (total == 0) 0 else (stats.visited * 100 / total).coerceIn(0, 100)
+        val snapshot = synchronized(stats) { stats.copy() }
+        val percent = if (total == 0) 0 else (snapshot.visited * 100 / total).coerceIn(0, 100)
         // Swallow cancellation-triggered "must complete before worker signals completion"
         // IllegalStateException — see androidx.work#Worker cancellation semantic. Reporting
         // progress is best-effort; a cancellation race on the last item shouldn't poison the run.
         runCatching {
             setProgressAsync(
                 workDataOf(
-                    ProgressVisitedKey to stats.visited,
+                    ProgressVisitedKey to snapshot.visited,
                     ProgressTotalKey to total,
                     ProgressPercentKey to percent,
-                    StatsFacesKey to stats.totalFaces,
-                    StatsPersonsKey to stats.newPersonsCreated,
-                    StatsAssignedKey to stats.assignedToExistingPerson,
-                    StatsGatedKey to stats.gatedOut
+                    StatsFacesKey to snapshot.totalFaces,
+                    StatsPersonsKey to snapshot.newPersonsCreated,
+                    StatsAssignedKey to snapshot.assignedToExistingPerson,
+                    StatsGatedKey to snapshot.gatedOut,
+                    StatsSkippedKey to snapshot.alreadyIndexedSkipped
                 )
             )
         }
@@ -336,8 +399,33 @@ class FaceIndexWorker(
     private fun embeddingToJson(e: FloatArray): String =
         JSONArray().apply { e.forEach { put(it.toDouble()) } }.toString()
 
+    private inline fun updateStats(stats: Stats, update: Stats.() -> Unit) {
+        synchronized(stats) { stats.update() }
+    }
+
+    private fun visitedCount(stats: Stats): Int = synchronized(stats) { stats.visited }
+
+    private suspend fun siblingFaceProportions(
+        siblings: List<PersonPhotoEntity>,
+        mediaByUri: Map<String, GalleryRepository.MediaItem>
+    ): Map<String, List<Float>> = buildMap {
+        for (sibling in siblings) {
+            val media = mediaByUri[sibling.uri] ?: continue
+            val imageArea = (media.width.coerceAtLeast(1) * media.height.coerceAtLeast(1)).toFloat()
+            val proportions = faceDao.findByPhoto(sibling.uri).mapNotNull { face ->
+                runCatching {
+                    val bbox = JSONArray(face.bboxJson)
+                    val area = bbox.getDouble(2).toFloat() * bbox.getDouble(3).toFloat()
+                    (area / imageArea).takeIf { it in 0f..1f }
+                }.getOrNull()
+            }
+            if (proportions.isNotEmpty()) put(sibling.uri, proportions)
+        }
+    }
+
     companion object {
         const val WorkName = "gallery_face_index"
+        const val WorkTag = "gallery_face_index_work"
         const val ProgressVisitedKey = "visited"
         const val ProgressTotalKey = "total"
         const val ProgressPercentKey = "percent"
@@ -346,6 +434,7 @@ class FaceIndexWorker(
         const val StatsPersonsKey = "stats_persons"
         const val StatsAssignedKey = "stats_assigned"
         const val StatsGatedKey = "stats_gated"
+        const val StatsSkippedKey = "stats_skipped"
         private const val Tag = "FaceIndexWorker"
         private const val PipelineConcurrency = 2
         private const val ProgressEvery = 5
@@ -354,6 +443,7 @@ class FaceIndexWorker(
         /** Spec Phase 2 worker default — battery-gated, no network requirement. */
         fun enqueue(context: Context, replaceExisting: Boolean = false) {
             val request = OneTimeWorkRequestBuilder<FaceIndexWorker>()
+                .addTag(WorkTag)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiresBatteryNotLow(true)
@@ -380,6 +470,7 @@ class FaceIndexWorker(
          */
         fun enqueueAfterClip(context: Context) {
             val request = OneTimeWorkRequestBuilder<FaceIndexWorker>()
+                .addTag(WorkTag)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiresBatteryNotLow(true)

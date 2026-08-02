@@ -101,9 +101,13 @@ class FaceValidationActivity : AppCompatActivity() {
                 val persons = work.progress.getInt(FaceIndexWorker.StatsPersonsKey, 0)
                 val assigned = work.progress.getInt(FaceIndexWorker.StatsAssignedKey, 0)
                 val gated = work.progress.getInt(FaceIndexWorker.StatsGatedKey, 0)
+                val skipped = work.progress.getInt(FaceIndexWorker.StatsSkippedKey, 0)
                 binding.peopleIndexStatus.text = buildString {
                     if (total > 0 && visited >= 0) append("idx %3d%% · %d/%d · ".format(visited * 100 / total, visited, total))
-                    append("faces=%d persons=%d assigned=%d gated=%d".format(faces, persons, assigned, gated))
+                    append(
+                        "faces=%d persons=%d assigned=%d gated=%d skipped=%d"
+                            .format(faces, persons, assigned, gated, skipped)
+                    )
                     append(" · ${work.state.name}")
                 }
             }
@@ -137,7 +141,9 @@ class FaceValidationActivity : AppCompatActivity() {
                     // Must match FaceAnalyzer's decode path: detection coordinates are in the
                     // face-detection bitmap's space, and we draw them straight onto this bitmap.
                     val bitmap = repository.loadBitmapForFaceDetection(uri) ?: error("decode failed")
-                    val result = current.analyze(uri, persist = !isCompare, includeAlignedCrops = true)
+                    val result = current.analyze(
+                        uri, persist = !isCompare, includeAlignedCrops = true, decoded = bitmap
+                    )
                     bitmap to result
                 }
             }

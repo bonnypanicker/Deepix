@@ -20,6 +20,9 @@ interface FaceDao {
     @Query("SELECT * FROM faces WHERE personId = :personId ORDER BY qualityScore DESC")
     suspend fun findByPerson(personId: Long): List<FaceEntity>
 
+    @Query("UPDATE faces SET isExemplar = :isExemplar WHERE faceId = :faceId")
+    suspend fun setExemplar(faceId: Long, isExemplar: Boolean)
+
     /** All faces that have an embedding — used by Phase 2 exemplar-vote clustering. */
     @Query("SELECT * FROM faces WHERE embeddingJson IS NOT NULL")
     suspend fun findAllWithEmbeddings(): List<FaceEntity>
