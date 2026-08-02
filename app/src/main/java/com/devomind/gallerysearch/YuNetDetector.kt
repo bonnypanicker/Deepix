@@ -278,10 +278,11 @@ class YuNetDetector(
         private const val MinModelBytes = 50_000
         /**
          * Long-edge cap for the detector's internal resolution. Pairs with
-         * GalleryRepository.FaceDetectionMaxEdge (1536): the decode hands the detector more
-         * pixels than this, so inference always downsamples real detail rather than
-         * interpolating an undersized decode. Together with [MinFaceSize] this sets the
-         * effective minimum face size in the source photo (~3% of the long edge).
+         * GalleryRepository.FaceDetectionMaxEdge (2560 = 2x this): power-of-two inSampleSize
+         * decoding lands anywhere in (cap/2, cap], so the decode cap must be double this value
+         * to guarantee the detector always receives at least [MaxLongEdge] pixels and only ever
+         * downsamples real detail. Together with [MinFaceSize] this sets the effective minimum
+         * face size in the source photo (~3% of the long edge).
          */
         private const val MaxLongEdge = 1280
         private const val StrideAlignment = 32

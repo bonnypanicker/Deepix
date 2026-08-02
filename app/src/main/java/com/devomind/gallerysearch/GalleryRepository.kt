@@ -1024,9 +1024,12 @@ class GalleryRepository(
         private const val MetadataIndexVersion = 1
         private const val MaxBitmapEdge = 512
         // Face detection decodes at a higher cap than CLIP indexing (see
-        // loadBitmapForFaceDetection). 1536 pairs with YuNetDetector.MaxLongEdge = 1280 so the
-        // detector downsamples real detail instead of upsampling an already-small decode.
-        private const val FaceDetectionMaxEdge = 1536
+        // loadBitmapForFaceDetection). Because inSampleSize is a power of two, the decoded long
+        // edge lands anywhere in (FaceDetectionMaxEdge/2, FaceDetectionMaxEdge]; setting the cap
+        // to 2x YuNetDetector.MaxLongEdge (1280) guarantees the decode is never *below* the
+        // detector's cap, so every photo with enough native pixels runs detection at the full
+        // 1280 internal resolution instead of a sample-size-dependent 768-1280.
+        private const val FaceDetectionMaxEdge = 2560
         // Region crops decode at higher resolution than the 512px index bitmaps so small
         // selections still carry enough detail for the 256px CLIP encoder.
         private const val RegionDecodeMaxEdge = 2048
