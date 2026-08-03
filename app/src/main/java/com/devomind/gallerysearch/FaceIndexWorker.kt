@@ -66,7 +66,13 @@ class FaceIndexWorker(
         var alreadyIndexedSkipped: Int = 0,
         /** Entered the pipeline but resolved to an existing burst frame's exemplar. */
         var duplicateRectsSkipped: Int = 0,
-        var exemplarReplacements: Int = 0
+        var exemplarReplacements: Int = 0,
+        /** CLIP-gate verdicts that reused a stored MobileCLIP embedding (the spec's intended path). */
+        var clipReused: Int = 0,
+        /** CLIP-gate verdicts that had to re-encode the bitmap (stored embedding missing). */
+        var clipReencoded: Int = 0,
+        /** ElapsedRealtime at the start of doWork(); used for the throughput SLA report. */
+        var startedAtMs: Long = 0L
     )
 
     data class Progress(
@@ -92,9 +98,20 @@ class FaceIndexWorker(
                 return Result.success()
             }
 
-            val stats = Stats()
+            val stats = Stats(startedAtMs = android.os.SystemClock.elapsedRealtime())
             val total = images.size
             val mediaByUri = images.associateBy { it.uri.toString() }
+            // The MobileCLIP image embeddings IndexWorker just persisted — keyed by uri string.
+            // Loaded once and reused for every photo's CLIP person-gate so the gate reuses the
+            // stored embedding (spec: "reuse existing MobileCLIP-S2 embeddings") instead of
+            // re-decoding + re-encoding each photo. Empty when the CLIP pass hasn't run yet; in
+            // that case processOne falls back to a live encode of the already-decoded bitmap.
+            val clipEmbeddings = runCatching { repository.allEmbeddings() }.getOrDefault(emptyMap())
+            if (clipEmbeddings.isEmpty()) {
+                Log.w(Tag, "No stored CLIP embeddings found — gate will live-encode each photo.")
+            } else {
+                Log.i(Tag, "Reusing ${clipEmbeddings.size} stored CLIP embeddings for person-gate.")
+            }
             reportProgress(Progress(visited = 0, total = total, percent = 0, phase = "starting"))
 
             coroutineScope {
@@ -106,13 +123,14 @@ class FaceIndexWorker(
                 }
                 val workers = (1..PipelineConcurrency).map { workerIndex ->
                     async(Dispatchers.Default) {
-                        processItems(repository, pipeline, stats, total, mediaByUri)
+                        processItems(repository, pipeline, stats, total, mediaByUri, clipEmbeddings)
                     }
                 }
                 producer.join()
                 workers.awaitAll()
             }
 
+            logThroughput(stats)
             Log.i(Tag, "Face index done: $stats")
             reportProgress(Progress(visited = total, total = total, percent = 100, phase = "done"))
             return Result.success()
@@ -137,13 +155,14 @@ class FaceIndexWorker(
         pipeline: Channel<GalleryRepository.MediaItem>,
         stats: Stats,
         total: Int,
-        mediaByUri: Map<String, GalleryRepository.MediaItem>
+        mediaByUri: Map<String, GalleryRepository.MediaItem>,
+        clipEmbeddings: Map<String, FloatArray>
     ) {
         for (item in pipeline) {
             currentCoroutineContext().ensureActive()
             // Yield battery: between photos the OS is free to schedule other things.
             if (!isDevicePluggedIn()) throw CancellationException("Unplugged during indexing")
-            runCatching { processOne(item, repository, stats, total, mediaByUri) }
+            runCatching { processOne(item, repository, stats, total, mediaByUri, clipEmbeddings) }
                 .onFailure { Log.w(Tag, "per-item failure on ${item.uri}", it) }
         }
     }
@@ -153,7 +172,8 @@ class FaceIndexWorker(
         repository: GalleryRepository,
         stats: Stats,
         total: Int,
-        mediaByUri: Map<String, GalleryRepository.MediaItem>
+        mediaByUri: Map<String, GalleryRepository.MediaItem>,
+        clipEmbeddings: Map<String, FloatArray>
     ) {
         updateStats(stats) { visited++ }
 
@@ -193,16 +213,24 @@ class FaceIndexWorker(
             ).filter { it.uri != uriStr }
 
             // ── CLIP gate ───────────────────────────────────────────────────────────────────
+            // Spec: "reuse existing MobileCLIP-S2 embeddings". The IndexWorker pass that just
+            // finished already encoded every in-scope photo and persisted it to
+            // embedding_index.bin; we reuse that vector instead of re-decoding + re-encoding
+            // each photo here. Only when the stored embedding is missing (CLIP pass skipped the
+            // uri, e.g. a decode failure upstream) do we fall back to a live encode — and even
+            // then we reuse the 2560px face-detection bitmap we already decoded, so there's no
+            // second bitmap decode on the hot path.
             val personVerdict = runCatching {
                 val app = applicationContext as GallerySearchApp
-                val imageEncoder = app.sharedEncoders.getImageEncoder()
                 val textEncoder = app.sharedEncoders.getTextEncoder()
-                val clBitmap = repository.loadBitmap(uri)
-                if (clBitmap == null) null
-                else {
-                    val v = ClipPersonGate.score(imageEncoder, textEncoder, clBitmap, uriStr)
-                    clBitmap.recycle()
-                    v
+                val storedEmbedding = clipEmbeddings[uriStr]
+                if (storedEmbedding != null) {
+                    updateStats(stats) { clipReused++ }
+                    ClipPersonGate.scoreEmbedding(textEncoder, storedEmbedding, uriStr)
+                } else {
+                    updateStats(stats) { clipReencoded++ }
+                    val imageEncoder = app.sharedEncoders.getImageEncoder()
+                    ClipPersonGate.score(imageEncoder, textEncoder, bitmap, uriStr)
                 }
             }.getOrNull()
             val clipScore = personVerdict?.gateScore ?: 0f
@@ -372,6 +400,26 @@ class FaceIndexWorker(
         runCatching { IndexPreferences.setIndexProgressPercent(applicationContext, p.percent) }
     }
 
+    /**
+     * Phase 2 throughput SLA report (spec deliverable #14: "30–60 photos/min while charging").
+     * Logs the effective photos/min over the run and flags it against [ThroughputTargetPhotosPerMinute]
+     * so a backfill that drifts below the SLA is visible in logcat without a dedicated UI.
+     */
+    private fun logThroughput(stats: Stats) {
+        val elapsedMs = android.os.SystemClock.elapsedRealtime() - stats.startedAtMs
+        if (elapsedMs <= 0L || stats.visited <= 0) return
+        val photosPerMin = (stats.visited * 60_000f / elapsedMs).toInt()
+        val reused = stats.clipReused
+        val reencoded = stats.clipReencoded
+        val verdict = if (photosPerMin >= ThroughputTargetPhotosPerMinute) "met" else "below target"
+        Log.i(
+            Tag,
+            "Throughput: $photosPerMin photos/min over ${elapsedMs / 1000}s (${stats.visited} photos) " +
+                "— SLA ${ThroughputTargetPhotosPerMinute}/min $verdict. " +
+                "CLIP gate: $reused reused, $reencoded re-encoded."
+        )
+    }
+
     // ------------------------------------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------------------------------------
@@ -439,6 +487,8 @@ class FaceIndexWorker(
         private const val PipelineConcurrency = 2
         private const val ProgressEvery = 5
         private const val MaxRetries = 3
+        /** Phase 2 SLA target — photos/min while charging (spec: 30–60). Used by [logThroughput]. */
+        private const val ThroughputTargetPhotosPerMinute = 30
 
         /** Spec Phase 2 worker default — battery-gated, no network requirement. */
         fun enqueue(context: Context, replaceExisting: Boolean = false) {

@@ -59,20 +59,39 @@ object ClipPersonGate {
         val isGreyZone: Boolean
     )
 
-    private var cachedPerson: List<FloatArray>? = null
-    private var cachedNonPerson: List<FloatArray>? = null
+    // @Volatile: FaceIndexWorker runs PipelineConcurrency=2 parallel workers that both call
+    // score()/scoreEmbedding(); the cache is populated once under [cacheLock] in
+    // ensurePromptCache, then read concurrently here. Without @Volatile a worker could observe
+    // the pre-population null and trip the !! below.
+    @Volatile private var cachedPerson: List<FloatArray>? = null
+    @Volatile private var cachedNonPerson: List<FloatArray>? = null
     private val cacheLock = Any()
 
-    /** Score one photo bitmap against the prompt pools. Not thread-safe w.r.t. the lazy cache —
-     * callers should call this from a single-threaded indexing context (our worker). */
+    /**
+     * Score one photo bitmap against the prompt pools. Encodes the bitmap live via the shared
+     * MobileCLIP [imageEncoder] — use this only as a fallback when no stored CLIP embedding is
+     * available (the normal Phase 2 path reuses the embedding IndexWorker already persisted via
+     * [scoreEmbedding] to avoid a second decode + second CLIP inference per photo).
+     */
     fun score(
         imageEncoder: ImageEncoder,
         textEncoder: TextEncoder,
         bitmap: Bitmap,
         photoUri: String
+    ): GateVerdict = scoreEmbedding(textEncoder, imageEncoder.encode(bitmap), photoUri)
+
+    /**
+     * Score a *precomputed* MobileCLIP image embedding (already L2-normalized, e.g. read from
+     * `embedding_index.bin`) against the prompt pools. This is the spec's "reuse existing
+     * MobileCLIP-S2 embeddings" path: no bitmap decode, no image-encoder inference — just the
+     * 14 cached text-prompt embeddings vs. the stored image embedding.
+     */
+    fun scoreEmbedding(
+        textEncoder: TextEncoder,
+        imageEmbedding: FloatArray,
+        photoUri: String
     ): GateVerdict {
         ensurePromptCache(textEncoder)
-        val imageEmbedding = imageEncoder.encode(bitmap)
         val personScore = cachedPerson!!.maxOf { cosine(imageEmbedding, it) }
         val nonPersonScore = cachedNonPerson!!.maxOf { cosine(imageEmbedding, it) }
         val gate = personScore - nonPersonScore
