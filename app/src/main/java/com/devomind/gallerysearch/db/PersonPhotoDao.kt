@@ -54,6 +54,11 @@ interface PersonPhotoDao {
     @Query("UPDATE person_photos SET exemplarPhotoUri = :exemplarUri WHERE uri IN (:memberUris)")
     suspend fun setBurstExemplar(memberUris: List<String>, exemplarUri: String)
 
+    /** Reset a photo's status to unprocessed (preserving all other fields) so the pipeline
+     *  re-visits it — used by the Phase 2 consistency check to flag faces missing embeddings. */
+    @Query("UPDATE person_photos SET status = :status WHERE uri = :uri")
+    suspend fun setStatus(uri: String, status: String)
+
     @Query("SELECT COUNT(*) FROM person_photos")
     suspend fun countAll(): Int
 

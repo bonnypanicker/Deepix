@@ -98,6 +98,12 @@ class FaceIndexWorker(
                 return Result.success()
             }
 
+            // Phase 2 deliverable #12: repair any Face↔vector-index divergence (e.g. a crash
+            // between a Room commit and the last vector-index flush) before matching reads the
+            // index. Cheap at phone scale; backfills lost vectors from embeddingJson.
+            runCatching { FaceIndexConsistency.checkAndRepair(applicationContext) }
+                .onFailure { Log.w(Tag, "Consistency check failed (non-fatal).", it) }
+
             val stats = Stats(startedAtMs = android.os.SystemClock.elapsedRealtime())
             val total = images.size
             val mediaByUri = images.associateBy { it.uri.toString() }
@@ -132,6 +138,11 @@ class FaceIndexWorker(
 
             logThroughput(stats)
             Log.i(Tag, "Face index done: $stats")
+            // Persist any staged face embeddings to the mmap vector index so the next run /
+            // search starts from a consistent on-disk state. (Lost staging on a crash is
+            // recovered by FaceIndexConsistency on the next cold start from embeddingJson.)
+            runCatching { (applicationContext as GallerySearchApp).faceVectorIndex.flush() }
+                .onFailure { Log.w(Tag, "Vector index flush failed.", it) }
             reportProgress(Progress(visited = total, total = total, percent = 100, phase = "done"))
             return Result.success()
         } catch (cancelled: CancellationException) {

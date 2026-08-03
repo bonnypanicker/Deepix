@@ -10,31 +10,46 @@ import com.devomind.gallerysearch.db.PersonEntity
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.math.sqrt
 
 /**
- * Phase 2-person matching using the Room persistence (see commit message: mmap vector index is
- * deferred; we use Room directly at this scale).
+ * Phase 2 person matching.
  *
  * Algorithm, per new face:
- *  1. Find up to [MaxExemplarsPerPerson] existing exemplar faces (per person) and one centroid
- *     vector per person (just the mean of those exemplars, L2-renormalized).
- *  2. Compute cosine similarity of the new face's embedding to each person's exemplars. The
- *     person-level support is the *median* of the sims (less sensitive to a single outlier
- *     exemplar than the mean).
- *  3. If the best support is >= [PersonMatchThreshold], assign the face to that person. If two
- *     persons both clear the threshold, the one with the higher median wins.
- *  4. Otherwise create a new Person with this face as the seed exemplar.
+ *  1. **Centroid pre-filter:** compute the cosine of the new embedding against each person's
+ *     centroid (mean of that person's exemplar embeddings, L2-renormalized) — one dot product
+ *     per person, cheap. Keep only the top [CentroidCandidates] whose centroid sim is at least
+ *     [CentroidPreFilterFloor]. If none clear the floor, skip straight to creating a new person.
+ *  2. **Exemplar-vote:** for each surviving candidate, compute cosine to its top
+ *     [MaxExemplarsPerPerson] exemplar faces; the person-level support is the *median* of those
+ *     sims (less sensitive to a single outlier exemplar than the mean).
+ *  3. If the best support ≥ [PersonMatchThreshold], assign; otherwise create a new Person.
  *
- * After assignment, the person's centroid + exemplar set are re-derived (exemplars stay ≤
- * [MaxExemplarsPerPerson], rotated by quality — a better-quality face replaces
- * the lowest-quality exemplar, which keeps the set diverse over time).
+ * After assignment, exemplars are rotated by quality (a better face evicts the lowest-quality
+ * exemplar, keeping the set diverse). The person's centroid + exemplar caches are invalidated
+ * on any exemplar change so the next face sees fresh state.
+ *
+ * Persistence: embeddings live in the Room `faces.embeddingJson` column (durable source through
+ * Phase 2) **and** are mirrored into the memory-mapped [FaceVectorIndex] (fast-read overlay).
+ * The embedding is staged to the vector index immediately after the Face row is committed; the
+ * worker flushes it to disk periodically, and [FaceIndexConsistency] backfills any vectors lost
+ * to a crash on the next cold start. Reading goes through the vector index with a JSON fallback.
  */
 class PersonMatcher(private val context: Context) {
 
     private val database: GalleryDatabase = GalleryDatabase.getInstance(context)
     private val faceDao: FaceDao = database.faceDao()
     private val personDao: PersonDao = database.personDao()
+    private val vectorIndex: FaceVectorIndex =
+        (context.applicationContext as GallerySearchApp).faceVectorIndex
     private val matchMutex = Mutex()
+
+    // ── In-memory caches (rebuilt lazily, invalidated on person/exemplar changes) ──────────
+    private val cacheLock = ReentrantLock()
+    @Volatile private var personsCache: List<PersonEntity>? = null
+    @Volatile private var exemplarIdsCache: HashMap<Long, List<Long>>? = null
+    @Volatile private var centroidCache: HashMap<Long, FloatArray>? = null
 
     /** Outcome of processing one detected face in the indexing pass. */
     data class MatchOutcome(
@@ -57,38 +72,50 @@ class PersonMatcher(private val context: Context) {
         val embeddingJson = newFace.embeddingJson ?: return null
         val newEmbedding = decodeEmbedding(embeddingJson) ?: return null
 
-        val allPersons = personDao.all().filter { !it.isHidden }
-        if (allPersons.isEmpty()) {
-            return createPerson(newFace)
+        val persons = persons() ?: emptyList()
+        if (persons.isEmpty()) {
+            return createPerson(newFace, newEmbedding)
         }
 
-        // Build a per-person similarity snapshot: exemplar embeddings + median sim.
-        val evaluations = allPersons.mapNotNull { person ->
-            val exemplarFaces = faceDao.findByPerson(person.personId)
-                .filter { it.isExemplar && it.embeddingJson != null }
-                .sortedByDescending { it.qualityScore }
-                .take(MaxExemplarsPerPerson)
-            if (exemplarFaces.isEmpty()) return@mapNotNull null
-            val sims = exemplarFaces.mapNotNull { ef ->
-                decodeEmbedding(ef.embeddingJson!!)?.let { cosine(newEmbedding, it) }
+        // ── centroid pre-filter ──────────────────────────────────────────────────────
+        val centroids = centroids() ?: emptyMap()
+        val candidates = persons
+            .mapNotNull { person ->
+                val centroid = centroids[person.personId] ?: return@mapNotNull null
+                person to cosine(newEmbedding, centroid)
             }
-            if (sims.isEmpty()) return@mapNotNull null
-            val support = median(sims)
-            Triple(person, support, exemplarFaces)
-        }
-        if (evaluations.isEmpty()) {
-            return createPerson(newFace)
+            .sortedByDescending { it.second }
+            .takeWhile { it.second >= CentroidPreFilterFloor }
+            .take(CentroidCandidates)
+
+        if (candidates.isEmpty()) {
+            return createPerson(newFace, newEmbedding)
         }
 
-        val (bestPerson, bestSupport, _) = evaluations.maxByOrNull { it.second }!!
-        return if (bestSupport >= PersonMatchThreshold) {
-            assignFaceToPerson(newFace, bestPerson.personId, bestSupport)
+        // ── exemplar-vote on the surviving candidates ─────────────────────────────────
+        val exemplarIds = exemplarIds() ?: emptyMap()
+        var bestPerson: PersonEntity? = null
+        var bestSupport = Float.NEGATIVE_INFINITY
+        for ((person, _) in candidates) {
+            val faceIds = exemplarIds[person.personId].orEmpty()
+            if (faceIds.isEmpty()) continue
+            val sims = faceIds.mapNotNull { fid -> vectorIndex.get(fid)?.let { cosine(newEmbedding, it) } }
+            if (sims.isEmpty()) continue
+            val support = median(sims)
+            if (support > bestSupport) {
+                bestSupport = support
+                bestPerson = person
+            }
+        }
+
+        return if (bestPerson != null && bestSupport >= PersonMatchThreshold) {
+            assignFaceToPerson(newFace, newEmbedding, bestPerson.personId, bestSupport)
         } else {
-            createPerson(newFace)
+            createPerson(newFace, newEmbedding)
         }
     }
 
-    private suspend fun createPerson(newFace: FaceEntity): MatchOutcome {
+    private suspend fun createPerson(newFace: FaceEntity, embedding: FloatArray): MatchOutcome {
         val person = PersonEntity(
             nameLabel = null,
             exemplarFaceId = 0L,
@@ -99,7 +126,9 @@ class PersonMatcher(private val context: Context) {
         val personId = personDao.insert(person)
         val stored = newFace.copy(personId = personId, isExemplar = true)
         val faceId = faceDao.insert(stored)
+        vectorIndex.put(faceId, embedding)
         personDao.setExemplarFace(personId, faceId)
+        invalidateCaches()
         Log.i(Tag, "Created person id=$personId for face id=$faceId")
         return MatchOutcome(
             personId = personId,
@@ -111,12 +140,13 @@ class PersonMatcher(private val context: Context) {
 
     private suspend fun assignFaceToPerson(
         newFace: FaceEntity,
+        embedding: FloatArray,
         personId: Long,
         confidence: Float
     ): MatchOutcome {
-        // Insert the face with the resolved person; then possibly promote to exemplar.
         val stored = newFace.copy(personId = personId, isExemplar = false)
         val faceId = faceDao.insert(stored)
+        vectorIndex.put(faceId, embedding)
         val becameExemplar = maybeRotateExemplar(personId, faceId, stored)
         Log.d(Tag, "Assigned face id=$faceId → person id=$personId (conf=%.3f)".format(confidence))
         return MatchOutcome(
@@ -137,6 +167,7 @@ class PersonMatcher(private val context: Context) {
             if (exemplars.lastOrNull()?.qualityScore ?: Float.NEGATIVE_INFINITY < face.qualityScore) {
                 personDao.setExemplarFace(personId, faceId)
             }
+            invalidateCaches()
             return true
         }
         val lowest = exemplars.first()
@@ -144,7 +175,67 @@ class PersonMatcher(private val context: Context) {
         faceDao.setExemplar(faceId, true)
         faceDao.setExemplar(lowest.faceId, false)
         personDao.setExemplarFace(personId, faceId)
+        invalidateCaches()
         return true
+    }
+
+    // ── Cache management ───────────────────────────────────────────────────────────────────
+
+    private fun invalidateCaches() = cacheLock.withLock {
+        personsCache = null
+        exemplarIdsCache = null
+        centroidCache = null
+    }
+
+    private suspend fun persons(): List<PersonEntity>? {
+        personsCache?.let { return it }
+        val loaded = personDao.all().filter { !it.isHidden }
+        cacheLock.withLock { personsCache = loaded }
+        return loaded
+    }
+
+    private suspend fun exemplarIds(): Map<Long, List<Long>>? {
+        exemplarIdsCache?.let { return it }
+        val personsList = persons() ?: return null
+        val map = HashMap<Long, List<Long>>(personsList.size)
+        for (person in personsList) {
+            val ids = faceDao.findByPerson(person.personId)
+                .filter { it.isExemplar && it.embeddingJson != null }
+                .sortedByDescending { it.qualityScore }
+                .take(MaxExemplarsPerPerson)
+                .map { it.faceId }
+            if (ids.isNotEmpty()) map[person.personId] = ids
+        }
+        cacheLock.withLock { exemplarIdsCache = map }
+        return map
+    }
+
+    /**
+     * Per-person centroid = mean of the top [MaxExemplarsPerPerson] exemplar embeddings,
+     * L2-renormalized. Embeddings are read from the vector index (mmap) with a JSON fallback so
+     * a cold start before the first flush still works.
+     */
+    private suspend fun centroids(): Map<Long, FloatArray>? {
+        centroidCache?.let { return it }
+        val ids = exemplarIds() ?: return null
+        val map = HashMap<Long, FloatArray>(ids.size)
+        val accum = FloatArray(FaceEmbedder.EmbeddingDim)
+        for ((personId, faceIds) in ids) {
+            java.util.Arrays.fill(accum, 0f)
+            var count = 0
+            for (fid in faceIds) {
+                val emb = vectorIndex.get(fid)
+                    ?: faceDao.findById(fid)?.embeddingJson?.let { decodeEmbedding(it) }
+                    ?: continue
+                for (i in accum.indices) accum[i] += emb[i]
+                count++
+            }
+            if (count == 0) continue
+            for (i in accum.indices) accum[i] /= count
+            map[personId] = l2Normalize(accum.copyOf())
+        }
+        cacheLock.withLock { centroidCache = map }
+        return map
     }
 
     private fun decodeEmbedding(json: String): FloatArray? =
@@ -158,6 +249,13 @@ class PersonMatcher(private val context: Context) {
         var dot = 0f
         for (i in a.indices) dot += a[i] * b[i]
         return dot
+    }
+
+    private fun l2Normalize(v: FloatArray): FloatArray {
+        var sum = 0f
+        for (x in v) sum += x * x
+        val norm = sqrt(sum).takeIf { it > 1e-6f } ?: return FloatArray(v.size)
+        return FloatArray(v.size) { i -> v[i] / norm }
     }
 
     private fun median(values: List<Float>): Float {
@@ -181,5 +279,21 @@ class PersonMatcher(private val context: Context) {
 
         /** Cap on per-person exemplar set: grow up to this many, then rotate by quality. */
         private const val MaxExemplarsPerPerson = 10
+
+        /**
+         * Loose floor for the centroid pre-filter — well below [PersonMatchThreshold] so the
+         * pre-filter only discards clearly-unrelated persons; borderline cases still go to the
+         * full exemplar-vote. Keeps recall high while skipping the O(exemplars) work for the
+         * long tail of unrelated persons.
+         */
+        private const val CentroidPreFilterFloor = 0.40f
+
+        /** Max persons passed from the centroid pre-filter into the exemplar-vote. */
+        private const val CentroidCandidates = 8
     }
+}
+
+private inline fun <T> ReentrantLock.withLock(action: () -> T): T {
+    lock()
+    try { return action() } finally { unlock() }
 }

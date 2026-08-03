@@ -20,6 +20,9 @@ interface FaceDao {
     @Query("SELECT * FROM faces WHERE personId = :personId ORDER BY qualityScore DESC")
     suspend fun findByPerson(personId: Long): List<FaceEntity>
 
+    @Query("SELECT * FROM faces WHERE faceId = :faceId")
+    suspend fun findById(faceId: Long): FaceEntity?
+
     @Query("UPDATE faces SET isExemplar = :isExemplar WHERE faceId = :faceId")
     suspend fun setExemplar(faceId: Long, isExemplar: Boolean)
 

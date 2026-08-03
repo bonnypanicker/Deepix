@@ -2,11 +2,17 @@ package com.devomind.gallerysearch
 
 import android.app.Application
 import android.os.StrictMode
+import android.util.Log
 import kotlin.concurrent.thread
 
 class GallerySearchApp : Application() {
     val sharedEncoders: SharedEncoders by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         SharedEncoders(applicationContext)
+    }
+
+    /** Phase 2 flat face-embedding vector index — shared by PersonMatcher + the consistency check. */
+    val faceVectorIndex: FaceVectorIndex by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        FaceVectorIndex(applicationContext)
     }
 
     override fun onCreate() {
@@ -26,6 +32,12 @@ class GallerySearchApp : Application() {
         }
         // Enforce the Recycle Bin's 30-day retention off the main thread on each cold start.
         thread(isDaemon = true) { runCatching { BinManager.purgeExpired(applicationContext) } }
+        // Phase 2: repair any Face↔vector-index divergence (e.g. a crash between Room commit and
+        // the last vector-index flush) before PersonMatcher reads the index. Cheap at phone scale.
+        thread(isDaemon = true) {
+            runCatching { kotlinx.coroutines.runBlocking { FaceIndexConsistency.checkAndRepair(applicationContext) } }
+                .onFailure { Log.w("GallerySearchApp", "Face index consistency check failed", it) }
+        }
     }
 }
 
