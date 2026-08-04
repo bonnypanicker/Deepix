@@ -38,6 +38,10 @@ class GallerySearchApp : Application() {
             runCatching { kotlinx.coroutines.runBlocking { FaceIndexConsistency.checkAndRepair(applicationContext) } }
                 .onFailure { Log.w("GallerySearchApp", "Face index consistency check failed", it) }
         }
+        // Phase 3: register the nightly face maintenance (split/merge detection + vector-index
+        // corruption recovery). Battery-gated, no-network; runs behind WorkManager, NOT during
+        // per-photo indexing so the two don't contend.
+        FaceMaintenanceWorker.schedule(applicationContext)
     }
 }
 
@@ -89,6 +93,30 @@ class SharedEncoders(private val context: android.content.Context) {
     fun getFaceDetector(): YuNetDetector {
         return faceDetector ?: synchronized(detectorLock) {
             faceDetector ?: YuNetDetector(context).also { faceDetector = it }
+        }
+    }
+
+    /**
+     * Close the shared [FaceEmbedder] if loaded. Freed OrtSession memory returns to the OS;
+     * the next [getFaceEmbedder] call recreates the session. Called by [MemoryBudget] under
+     * system memory pressure (both foreground and WorkManager contexts).
+     */
+    fun closeFaceEmbedder() {
+        synchronized(faceLock) {
+            faceEmbedder?.let {
+                runCatching { it.close() }.onFailure { Log.w("SharedEncoders", "close faceEmbedder", it) }
+            }
+            faceEmbedder = null
+        }
+    }
+
+    /** Symmetric to [closeFaceEmbedder] for the YuNet detector. */
+    fun closeFaceDetector() {
+        synchronized(detectorLock) {
+            faceDetector?.let {
+                runCatching { it.close() }.onFailure { Log.w("SharedEncoders", "close faceDetector", it) }
+            }
+            faceDetector = null
         }
     }
 }

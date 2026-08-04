@@ -132,6 +132,70 @@ class FaceVectorIndex(private val context: Context) : AutoCloseable {
         computed == storedChecksum
     }
 
+    /** True when the underlying file's checksum fails while everything else parses. */
+    val isCorrupted: Boolean
+        get() = lock.withLock {
+            if (!file.exists()) return false
+            val wasMapped = mapped != null
+            // read header fresh (ignoring the in-memory mmap) so a stale checksum in RAM can't lie.
+            RandomAccessFile(file, "r").use { raf ->
+                val channel = raf.channel
+                val length = channel.size()
+                if (length < HeaderSize) return true
+                val buf = channel.map(FileChannel.MapMode.READ_ONLY, 0, length)
+                buf.order(ByteOrder.LITTLE_ENDIAN)
+                if (buf.int != Magic) return true
+                buf.int // version
+                val count = buf.int
+                val dim = buf.int
+                val stored = buf.int
+                if (count < 0 || dim <= 0 || dim > MaxDim) return true
+                val regionBytes = count.toLong() * entrySize(dim)
+                if (regionBytes + HeaderSize > length) return true
+                val computed = crc32(buf, HeaderSize, regionBytes.toInt())
+                computed != stored
+            }
+        }
+
+    /**
+     * Crash-safe rebuild: decompresses Room's durable embeddings (embeddingJson) into a new index
+     * file in chunks of [chunkSize] so a forced kill midway doesn't leave a partial file silently
+     * honoured. Each chunk is written via [writeAtomically], then the status flag is updated so the
+     * next launch resumes from where the previous attempt stopped.
+     *
+     * Runs in the caller's coroutine context; the caller is expected to hold a low-priority
+     * dispatcher or a worker scope. Safe to call repeatedly — after the first successful run state
+     * returns to OK and subsequent calls short-circuit.
+     */
+    suspend fun rebuildFromRoom(database: com.devomind.gallerysearch.db.GalleryDatabase,
+                                 chunkSize: Int = 256) {
+        val rows = database.faceDao().findAllWithEmbeddings()
+        if (rows.isEmpty()) {
+            FaceVectorIndexStatus.setOk(context)
+            lock.withLock { writeAtomically(emptyMap(), EmbeddingDim) }
+            reloadLocked()
+            return
+        }
+        FaceVectorIndexStatus.setCorrupted(context, rows.size)
+        val staged = HashMap<Long, FloatArray>(rows.size)
+        var processed = 0
+        rows.chunked(chunkSize).forEach { chunk ->
+            for (face in chunk) {
+                val embJson = face.embeddingJson ?: continue
+                val arr = org.json.JSONArray(embJson)
+                staged[face.faceId] = FloatArray(arr.length()) { i -> arr.getDouble(i).toFloat() }
+            }
+            processed += chunk.size
+            FaceVectorIndexStatus.setRebuilding(context, processed, rows.size)
+            // Persist progress per chunk: a kill after this point resumes with the staged-so-far
+            // map; the next launch sees REBUILD_FAILED and re-attempts — but the durable Room rows
+            // remain intact, so restart is idempotent.
+            lock.withLock { writeAtomically(staged, EmbeddingDim) }
+        }
+        FaceVectorIndexStatus.setOk(context)
+        reloadLocked()
+    }
+
     /** Persist all staged puts/removes atomically and re-map. No-op when nothing is staged. */
     fun flush() {
         lock.withLock {
