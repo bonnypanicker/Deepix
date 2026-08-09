@@ -35,13 +35,17 @@ class GallerySearchApp : Application() {
         // Phase 2: repair any Face↔vector-index divergence (e.g. a crash between Room commit and
         // the last vector-index flush) before PersonMatcher reads the index. Cheap at phone scale.
         thread(isDaemon = true) {
-            runCatching { kotlinx.coroutines.runBlocking { FaceIndexConsistency.checkAndRepair(applicationContext) } }
-                .onFailure { Log.w("GallerySearchApp", "Face index consistency check failed", it) }
+            val readyForMaintenance = runCatching {
+                kotlinx.coroutines.runBlocking {
+                    FaceEmbeddingModelMigration.ensureCurrent(applicationContext)
+                    FaceIndexConsistency.checkAndRepair(applicationContext)
+                }
+            }.onFailure { Log.w("GallerySearchApp", "Face index consistency check failed", it) }.isSuccess
+            if (readyForMaintenance) FaceMaintenanceWorker.schedule(applicationContext)
         }
         // Phase 3: register the nightly face maintenance (split/merge detection + vector-index
         // corruption recovery). Battery-gated, no-network; runs behind WorkManager, NOT during
         // per-photo indexing so the two don't contend.
-        FaceMaintenanceWorker.schedule(applicationContext)
     }
 }
 

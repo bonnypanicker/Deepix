@@ -33,6 +33,9 @@ interface FaceDao {
     @Query("SELECT COUNT(*) FROM faces")
     suspend fun countAll(): Int
 
+    @Query("SELECT COUNT(*) FROM faces WHERE embeddingJson IS NOT NULL AND embeddingModelVersion != :modelVersion")
+    suspend fun countWithDifferentEmbeddingModel(modelVersion: String): Int
+
     @Query("SELECT COUNT(*) FROM faces WHERE personId IS NULL")
     suspend fun countUnassigned(): Int
 

@@ -68,7 +68,11 @@ object ClusterMaintenance {
         val vectorIndex = (context.applicationContext as GallerySearchApp).faceVectorIndex
         val facesByPerson = persons.associate { person ->
             val faces = faceDao.findByPerson(person.personId)
-                .filter { it.embeddingJson != null && it.isExemplar }
+                .filter {
+                    it.embeddingJson != null &&
+                        it.embeddingModelVersion == FaceEmbedder.ModelVersion &&
+                        it.isExemplar
+                }
                 .sortedByDescending { it.qualityScore }
                 .take(MaxExemplarsPerPerson)
             person.personId to faces
@@ -82,6 +86,7 @@ object ClusterMaintenance {
             val embeddings = faces.mapNotNull { f ->
                 vectorIndex.get(f.faceId)
                     ?: runCatching { decodeEmbedding(f.embeddingJson!!) }.getOrNull()
+                        ?.takeIf { it.size == FaceEmbedder.EmbeddingDim }
             }
             if (embeddings.isEmpty()) continue
             personExemplarEmbeddings[personId] = embeddings

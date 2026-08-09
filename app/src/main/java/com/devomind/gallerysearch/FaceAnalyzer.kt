@@ -89,6 +89,7 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
                 bboxJson = bboxToJson(det),
                 landmarksJson = landmarksToJson(det.landmarks),
                 embeddingJson = embedding?.let { embeddingToJson(it) },
+                embeddingModelVersion = FaceEmbedder.ModelVersion,
                 qualityScore = quality,
                 yaw = pose.yaw,
                 pitch = pose.pitch,
@@ -125,7 +126,7 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
     /** All embeddings previously persisted — lets the UI show cross-photo similarity checks. */
     suspend fun allStoredEmbeddings(): List<Pair<Long, FloatArray>> {
         return database.faceDao().findAllWithEmbeddings().mapNotNull { face ->
-            face.embeddingJson?.let { json ->
+            face.embeddingJson?.takeIf { face.embeddingModelVersion == FaceEmbedder.ModelVersion }?.let { json ->
                 runCatching { jsonToEmbedding(json) }.getOrNull()?.let { face.faceId to it }
             }
         }

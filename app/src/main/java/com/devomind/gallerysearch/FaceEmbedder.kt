@@ -2,24 +2,32 @@ package com.devomind.gallerysearch
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.Log
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import ai.onnxruntime.TensorInfo
 import java.nio.FloatBuffer
-import kotlin.math.sqrt
 
 /**
- * Runs InsightFace's MobileFaceNet (w600k_mbf, 512-D embeddings) on a 112×112 aligned crop.
- * Returns an L2-normalized embedding — cosine similarity is a plain dot product between two outputs.
+ * Runs the current face-embedding ONNX model (SFace 2021dec int8-quantized via `face_recognition_sface_2021dec_int8bq.onnx`)
+ * on a 112×112 aligned crop. Returns an L2-normalized embedding — cosine similarity is a plain dot product between outputs.
  *
- * Model: Apache 2.0, trained on WebFace600K. Input: 1×3×112×112 BGR, pixels in [-1, 1].
- * Session is shared app-wide via [GallerySearchApp.sharedEncoders] — create once, call embed() freely.
+ * Model: Apache 2.0, OpenCV Zoo SFace (see https://github.com/opencv/opencv_zoo). The workspace's int8 conversion
+ * contains DequantizeLinear / QuantizeLinear ops around the tensors; the public input/output remain fp32 from the
+ * caller's side. Input: 1×3×112×112 BGR, image normalized to [-1.0, +1.0] via `pixel / 127.5 − 1.0`.
+ *
+ * Session is shared app-wide via [GallerySearchApp.sharedEncoders] — created once, reused freely across the app.
  */
 class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.DefaultThreadCount) : AutoCloseable {
 
     private val environment: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
     private val inputName: String
+    private val outputName: String
+
+    /** Embedding vector width, read from the live session's output tensor info. */
+    val embeddingDim: Int
 
     init {
         val model = AssetUtils.readAssetBytes(context, ModelAsset)
@@ -28,40 +36,47 @@ class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.Defau
         }
         session = environment.createSession(model, OnnxSessionOptions.create(Tag, threadCount))
         inputName = session.inputNames.firstOrNull() ?: error("FaceEmbedder model has no input")
+        outputName = session.outputNames.firstOrNull() ?: error("FaceEmbedder model has no output")
+        val outputInfo = session.outputInfo[outputName]?.info
+            ?: error("No output info for $outputName")
+        val shape = (outputInfo as? TensorInfo)?.getShape()
+            ?: error("FaceEmbedder output isn't a numeric tensor")
+        embeddingDim = shape.lastOrNull()?.toInt() ?: error("Output shape ends unbounded: ${shape.contentToString()}")
+        Log.i(Tag, "SFace session up: input=$inputName output=$outputName dim=$embeddingDim (inputs=${session.inputNames} outputs=${session.outputNames})")
     }
 
     /**
-     * Embed the 112×112 [aligned] face crop. Returns a 512-float L2-normalized vector.
+     * Embed the 112×112 [aligned] face crop. Returns an L2-normalized vector of [embeddingDim] floats.
      */
     fun embed(aligned: Bitmap): FloatArray {
         val tensor = FaceNormalizer.toTensor(aligned)
         val shape = longArrayOf(1, 3, FaceNormalizer.InputSize.toLong(), FaceNormalizer.InputSize.toLong())
         OnnxTensor.createTensor(environment, FloatBuffer.wrap(tensor), shape).use { input ->
             session.run(mapOf(inputName to input)).use { result ->
-                val raw = OnnxOutput.flattenFloatArray(result[0].value)
-                return l2Normalize(raw)
+                val raw = result.get(outputName).orElseThrow {
+                    IllegalStateException("SFace model did not return '$outputName'")
+                }.value.let(OnnxOutput::flattenFloatArray)
+                check(raw.size == embeddingDim) {
+                    "SFace returned ${raw.size} values; expected $embeddingDim"
+                }
+                return EmbeddingUtils.l2Normalize(raw)
             }
         }
     }
 
     companion object {
         const val Tag = "FaceEmbedder"
-        const val ModelAsset = "mobilefacenet_w600k_mbf.onnx"
+        const val ModelAsset = "face_recognition_sface_2021dec_int8bq.onnx"
+        const val ModelVersion = "sface_2021dec_int8bq_v1"
+        /** Output width for OpenCV Zoo SFace / InsightFace MobileFaceNet embeddings: 512. */
         const val EmbeddingDim = 512
         const val MinModelBytes = 1_000_000
 
         fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
-            check(a.size == EmbeddingDim && b.size == EmbeddingDim) { "Expected $EmbeddingDim-dim embeddings" }
+            check(a.size == b.size) { "cosine on shape mismatch ${a.size} vs ${b.size}" }
             var dot = 0f
-            for (i in 0 until EmbeddingDim) dot += a[i] * b[i]
-            return dot // both inputs are L2-normalized, so dot == cosine similarity
-        }
-
-        private fun l2Normalize(vector: FloatArray): FloatArray {
-            var sum = 0f
-            for (v in vector) sum += v * v
-            val norm = sqrt(sum).takeIf { it > 1e-6f } ?: return FloatArray(vector.size)
-            return FloatArray(vector.size) { i -> vector[i] / norm }
+            for (i in 0 until a.size) dot += a[i] * b[i]
+            return dot
         }
     }
 

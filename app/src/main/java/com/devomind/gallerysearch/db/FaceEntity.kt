@@ -45,8 +45,9 @@ data class FaceEntity(
     val bboxJson: String,
     val landmarksJson: String,
     val embeddingJson: String? = null,
+    // Retain the SQL default for schema compatibility; all current inserts use the Kotlin value.
     @ColumnInfo(defaultValue = "w600k_mbf_v1")
-    val embeddingModelVersion: String = "w600k_mbf_v1",
+    val embeddingModelVersion: String = "sface_2021dec_int8bq_v1",
     val qualityScore: Float = 0f,
     val yaw: Float = 0f,
     val pitch: Float = 0f,

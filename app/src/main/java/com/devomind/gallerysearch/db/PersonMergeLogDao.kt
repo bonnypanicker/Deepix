@@ -30,6 +30,10 @@ interface PersonMergeLogDao {
     @Query("SELECT COUNT(*) FROM person_merge_log")
     suspend fun count(): Int
 
+    /** A model replacement starts a new embedding space, so old derived suggestions are invalid. */
+    @Query("DELETE FROM person_merge_log")
+    suspend fun deleteAll()
+
     /** All events ≥ sinceTs and originating from the system, used by dedupe suggestions today. */
     @Query(
         "SELECT * FROM person_merge_log WHERE origin = 'system' AND createdAt >= :sinceTs ORDER BY id ASC"

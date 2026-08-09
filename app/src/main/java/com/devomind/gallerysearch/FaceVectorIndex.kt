@@ -78,7 +78,7 @@ class FaceVectorIndex(private val context: Context) : AutoCloseable {
     fun put(faceId: Long, embedding: FloatArray) {
         require(embedding.size == EmbeddingDim) { "Expected $EmbeddingDim-dim embedding, got ${embedding.size}" }
         lock.withLock {
-            pendingPuts[faceId] = embedding
+            pendingPuts[faceId] = embedding.copyOf()
             pendingRemoves.remove(faceId)
         }
     }
@@ -183,7 +183,8 @@ class FaceVectorIndex(private val context: Context) : AutoCloseable {
             for (face in chunk) {
                 val embJson = face.embeddingJson ?: continue
                 val arr = org.json.JSONArray(embJson)
-                staged[face.faceId] = FloatArray(arr.length()) { i -> arr.getDouble(i).toFloat() }
+                val embedding = FloatArray(arr.length()) { i -> arr.getDouble(i).toFloat() }
+                if (embedding.size == EmbeddingDim) staged[face.faceId] = embedding
             }
             processed += chunk.size
             FaceVectorIndexStatus.setRebuilding(context, processed, rows.size)
@@ -226,6 +227,18 @@ class FaceVectorIndex(private val context: Context) : AutoCloseable {
 
     /** Drop the in-memory map and reload from disk. Mainly for tests / repair flows. */
     fun reload() = lock.withLock { reloadLocked() }
+
+    /** Drop all vectors after an embedding-model replacement. Room is reset before this call. */
+    fun clear() = lock.withLock {
+        mapped?.let { unmap(it) }
+        mapped = null
+        idToIndex.clear()
+        persistedCount = 0
+        pendingPuts.clear()
+        pendingRemoves.clear()
+        file.delete()
+        File(file.parentFile, "${file.name}.tmp").delete()
+    }
 
     private fun reloadLocked() {
         mapped?.let { unmap(it) }
@@ -346,8 +359,8 @@ class FaceVectorIndex(private val context: Context) : AutoCloseable {
         private const val Tag = "FaceVectorIndex"
         private const val FileName = "face_vector_index.bin"
         private const val Magic = 0x46564958 // "FVIX"
-        private const val Version = 1
-        const val EmbeddingDim = 512
+        private const val Version = 2
+        const val EmbeddingDim = FaceEmbedder.EmbeddingDim
         private const val FaceIdBytes = 8
         private const val FloatBytes = 4
         private const val HeaderSize = 24 // magic, version, count, dim, checksum, reserved

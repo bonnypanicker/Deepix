@@ -51,9 +51,16 @@ object FaceIndexConsistency {
         val faces = runCatching { faceDao.findAllWithEmbeddings() }.getOrDefault(emptyList())
         for (face in faces) {
             checked++
+            if (face.embeddingModelVersion != FaceEmbedder.ModelVersion) {
+                runCatching {
+                    photoDao.setStatus(face.photoUri, com.devomind.gallerysearch.db.PersonPhotoEntity.Status.UNPROCESSED)
+                }
+                flagged++
+                continue
+            }
             if (vectorIndex.contains(face.faceId)) continue
             val emb = face.embeddingJson?.let { decodeEmbedding(it) }
-            if (emb != null) {
+            if (emb?.size == FaceEmbedder.EmbeddingDim) {
                 vectorIndex.put(face.faceId, emb)
                 repaired++
             } else if (face.personId != null) {

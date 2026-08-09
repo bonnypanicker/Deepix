@@ -31,6 +31,9 @@ interface PersonDao {
     @Query("UPDATE persons SET isHidden = 1, updatedAt = :now WHERE personId = :id")
     suspend fun hide(id: Long, now: Long = System.currentTimeMillis())
 
+    @Query("DELETE FROM persons")
+    suspend fun deleteAll()
+
     @Query(
         """
         UPDATE persons SET exemplarFaceId = :faceId, updatedAt = :now

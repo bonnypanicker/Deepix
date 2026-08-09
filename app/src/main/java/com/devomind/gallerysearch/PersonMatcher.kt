@@ -242,7 +242,7 @@ class PersonMatcher(private val context: Context) {
         runCatching {
             val arr = JSONArray(json)
             FloatArray(arr.length()) { i -> arr.getDouble(i).toFloat() }
-        }.getOrNull()
+        }.getOrNull()?.takeIf { it.size == FaceEmbedder.EmbeddingDim }
 
     private fun cosine(a: FloatArray, b: FloatArray): Float {
         check(a.size == b.size) { "cosine: shape mismatch ${a.size} vs ${b.size}" }
@@ -275,7 +275,7 @@ class PersonMatcher(private val context: Context) {
          * score 0.42–0.82; photos of *different* people score 0.0–0.35. Setting this between those
          * peaks gives good recall without precision collapse.
          */
-        private const val PersonMatchThreshold = 0.55f
+        private const val PersonMatchThreshold = 0.45f
 
         /** Cap on per-person exemplar set: grow up to this many, then rotate by quality. */
         private const val MaxExemplarsPerPerson = 10
@@ -286,7 +286,7 @@ class PersonMatcher(private val context: Context) {
          * full exemplar-vote. Keeps recall high while skipping the O(exemplars) work for the
          * long tail of unrelated persons.
          */
-        private const val CentroidPreFilterFloor = 0.40f
+        private const val CentroidPreFilterFloor = 0.30f
 
         /** Max persons passed from the centroid pre-filter into the exemplar-vote. */
         private const val CentroidCandidates = 8
