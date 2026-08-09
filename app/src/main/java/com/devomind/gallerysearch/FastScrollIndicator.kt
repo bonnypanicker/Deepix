@@ -81,7 +81,7 @@ class FastScrollIndicator @JvmOverloads constructor(
         this.adapter = imageAdapter
         rv.addOnScrollListener(scrollListener)
         alpha = 0f
-        visibility = View.VISIBLE
+        visibility = VISIBLE
     }
 
     fun detach() {

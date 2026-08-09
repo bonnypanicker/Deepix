@@ -136,7 +136,7 @@ class FaceVectorIndex(private val context: Context) : AutoCloseable {
     val isCorrupted: Boolean
         get() = lock.withLock {
             if (!file.exists()) return false
-            val wasMapped = mapped != null
+            mapped != null
             // read header fresh (ignoring the in-memory mmap) so a stale checksum in RAM can't lie.
             RandomAccessFile(file, "r").use { raf ->
                 val channel = raf.channel
@@ -313,7 +313,7 @@ class FaceVectorIndex(private val context: Context) : AutoCloseable {
         val crc = CRC32()
         val saved = buf.position()
         buf.position(offset)
-        val limit = offset + length
+        offset + length
         val temp = ByteArray(8192)
         var remaining = length
         while (remaining > 0) {

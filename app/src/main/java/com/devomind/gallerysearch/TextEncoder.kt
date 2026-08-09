@@ -19,8 +19,12 @@ class TextEncoder(
     val tokenizer = ClipTokenizer(context)
 
     init {
-        val modelBytes = AssetUtils.readAssetBytes(context, "text_model_int8.onnx")
-        val options = OnnxSessionOptions.create(Tag, threadCount)
+        val modelBytes = AssetUtils.readAssetBytes(context, resolveTextModelAssetName(context))
+        val options = OnnxSessionOptions.create(
+            tag = Tag,
+            threadCount = threadCount,
+            modelFormat = OnnxSessionOptions.ModelFormat.ORT
+        )
         session = environment.createSession(modelBytes, options)
         val inputNames = session.inputNames.toList()
         inputIdsName = inputNames.firstOrNull { it.contains("input_ids", ignoreCase = true) }
@@ -65,5 +69,14 @@ class TextEncoder(
 
     companion object {
         private const val Tag = "CLIP"
+        private const val TextModelAsset = "text_model_int8.ort"
+
+        internal fun resolveTextModelAssetName(context: Context): String {
+            val available = context.assets.list("")?.toSet().orEmpty()
+            check(TextModelAsset in available) {
+                "Missing required ORT text model asset: $TextModelAsset"
+            }
+            return TextModelAsset
+        }
     }
 }

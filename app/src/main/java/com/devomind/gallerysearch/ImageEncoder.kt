@@ -26,7 +26,11 @@ class ImageEncoder private constructor(
     private val sessionLock = Any()
 
     init {
-        val options = OnnxSessionOptions.create(Tag, threadCount)
+        val options = OnnxSessionOptions.create(
+            tag = Tag,
+            threadCount = threadCount,
+            modelFormat = OnnxSessionOptions.ModelFormat.ORT
+        )
         session = environment.createSession(modelBytes, options)
         inputName = session.inputNames.first()
         outputName = session.outputNames.first()
@@ -205,20 +209,17 @@ class ImageEncoder private constructor(
 
     companion object {
         private const val Tag = "CLIP"
-        private val PreferredVisionModels = listOf(
-            "vision_model_fp16.onnx",
-            "vision_model_android_int8.onnx",
-            "vision_model.onnx",
-            "vision_model_int8.onnx"
-        )
+        private const val VisionModelAsset = "vision_model_fp16.ort"
         const val ImageSize = 256
         private val Mean = floatArrayOf(0.48145466f, 0.4578275f, 0.40821073f)
         private val Std = floatArrayOf(0.26862954f, 0.26130258f, 0.27577711f)
 
         internal fun resolveVisionModelAssetName(context: Context): String {
             val available = context.assets.list("")?.toSet().orEmpty()
-            return PreferredVisionModels.firstOrNull { it in available }
-                ?: error("No vision model asset found. Checked: ${PreferredVisionModels.joinToString()}")
+            check(VisionModelAsset in available) {
+                "Missing required ORT vision model asset: $VisionModelAsset"
+            }
+            return VisionModelAsset
         }
 
         /** Reads the vision model asset bytes — pure IO for eager preload paths. */

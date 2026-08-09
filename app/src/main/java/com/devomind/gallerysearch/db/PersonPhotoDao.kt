@@ -75,7 +75,7 @@ interface PersonPhotoDao {
     @Query(
         "SELECT EXISTS(SELECT 1 FROM person_photos WHERE uri = :uri AND status IN (:terminalStatuses))"
     )
-    suspend fun isProcessed(uri: String, terminalStatuses: List<String> = Companion.TerminalStatuses): Boolean
+    suspend fun isProcessed(uri: String, terminalStatuses: List<String> = TerminalStatuses): Boolean
 
     companion object {
         /** Stable terminal values — avoid marking work done repeatedly. */

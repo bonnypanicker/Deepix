@@ -187,7 +187,7 @@ class PersonMatcher(private val context: Context) {
         centroidCache = null
     }
 
-    private suspend fun persons(): List<PersonEntity>? {
+    private suspend fun persons(): List<PersonEntity> {
         personsCache?.let { return it }
         val loaded = personDao.all().filter { !it.isHidden }
         cacheLock.withLock { personsCache = loaded }

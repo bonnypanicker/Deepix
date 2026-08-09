@@ -450,7 +450,7 @@ class ViewerActivity : AppCompatActivity() {
         // Neutralise zoom/rotation so the crop rect maps 1:1 onto the displayed image.
         photoView.resetRotation()
         runCatching { photoView.setScale(1f, false) }
-        photoView.setZoomable(false)
+        photoView.isZoomable = false
         binding.viewPager.isUserInputEnabled = false
 
         binding.topBar.visibility = View.GONE
@@ -470,7 +470,7 @@ class ViewerActivity : AppCompatActivity() {
         cropMode = false
         binding.cropOverlay.visibility = View.GONE
         binding.cropBar.visibility = View.GONE
-        getCurrentPageViewHolder()?.binding?.photoView?.setZoomable(true)
+        getCurrentPageViewHolder()?.binding?.photoView?.isZoomable = true
         binding.viewPager.isUserInputEnabled = true
         binding.topBar.visibility = View.VISIBLE
         binding.bottomControls.visibility = View.VISIBLE
@@ -974,7 +974,7 @@ class ViewerActivity : AppCompatActivity() {
                     mediaView?.scaleX = scale
                     mediaView?.scaleY = scale
                     binding.viewerRoot.setBackgroundColor(
-                        android.graphics.Color.argb(
+                        Color.argb(
                             (progress * 180).toInt().coerceIn(0, 180),
                             0, 0, 0
                         )
@@ -1058,7 +1058,7 @@ class ViewerActivity : AppCompatActivity() {
         }
         binding.viewerRoot.animate()
             .setDuration(220)
-            .withEndAction { binding.viewerRoot.setBackgroundColor(android.graphics.Color.BLACK) }
+            .withEndAction { binding.viewerRoot.setBackgroundColor(Color.BLACK) }
             .start()
         val targetAlpha = if (controlsVisible) 1f else 0f
         binding.topBar.animate().alpha(targetAlpha).setDuration(220).start()

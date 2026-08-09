@@ -67,7 +67,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var faceResultStore: FaceResultStore
     private var imageEncoder: ImageEncoder? = null
     private var nsfwClassifier: NsfwClassifier? = null
-    private var nsfwComputeJob: kotlinx.coroutines.Job? = null
+    private var nsfwComputeJob: Job? = null
     private var textEncoder: TextEncoder? = null
     // Tracks the one-shot CLIP encoder load. The ~135 MB models are only warmed eagerly when a
     // background index pass will run; otherwise they load lazily on the first search so idle/paused
@@ -111,7 +111,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingDeleteNeedsRetry = false
     private var pendingAllFilesDeleteUris: List<Uri> = emptyList()
     private var topInsetPx = 0
-    
+
     // Infinite scroll state for search results
     // Supports lazy loading with 20 results per page, capped at 80 total
     private var fullSearchResults: List<PhotoSearchResult> = emptyList()
@@ -328,7 +328,7 @@ class MainActivity : AppCompatActivity() {
         val scaleGestureDetector = android.view.ScaleGestureDetector(this, scaleGestureListener)
 
         @android.annotation.SuppressLint("ClickableViewAccessibility")
-        val touchListener = android.view.View.OnTouchListener { _, event ->
+        val touchListener = View.OnTouchListener { _, event ->
             scaleGestureDetector.onTouchEvent(event)
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> {
@@ -402,7 +402,7 @@ class MainActivity : AppCompatActivity() {
         binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
         binding.addAlbumBtn.setOnClickListener { showCreateSmartAlbumDialog() }
         binding.searchSparkle.setOnClickListener {
-            startActivity(android.content.Intent(this, IndexingActivity::class.java))
+            startActivity(Intent(this, IndexingActivity::class.java))
         }
         binding.searchTrailingBtn.setOnClickListener {
             if (currentMode == Mode.Search) showSortFilterSheet() else openSearch()
@@ -612,7 +612,7 @@ class MainActivity : AppCompatActivity() {
             durationMs = 8000
         ) {
             startActivity(
-                android.content.Intent(
+                Intent(
                     android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                     Uri.parse("package:$packageName")
                 )
@@ -633,7 +633,7 @@ class MainActivity : AppCompatActivity() {
             onNegative = { finish() },
             onPositive = {
                 startActivity(
-                    android.content.Intent(
+                    Intent(
                         android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                         Uri.parse("package:$packageName")
                     )
@@ -735,7 +735,7 @@ class MainActivity : AppCompatActivity() {
         val ready = kotlinx.coroutines.CompletableDeferred<Boolean>()
         encodersReady = ready
         lifecycleScope.launch {
-            if (warmupDelayMs > 0) kotlinx.coroutines.delay(warmupDelayMs)
+            if (warmupDelayMs > 0) delay(warmupDelayMs)
             val sharedEncoders = (application as GallerySearchApp).sharedEncoders
             val encoders = withContext(Dispatchers.IO) {
                 // Persist the fixed ORT thread count before encoder construction so every startup
@@ -929,11 +929,11 @@ class MainActivity : AppCompatActivity() {
         searchJob?.cancel()
         searchDebounceJob?.cancel()
         renderJob?.cancel()
-        
+
         // Reset search pagination state
         fullSearchResults = emptyList()
         currentDisplayedSearchResultCount = 0
-        
+
         activeSection = section
         currentAlbum = null
         currentFolder = null
@@ -1690,12 +1690,12 @@ class MainActivity : AppCompatActivity() {
 
         val tagNameToUris = if (tagFilters.isNotEmpty()) {
             val allTags = db.getAllTags()
-            val tagNameMap = allTags.associateBy { it.name.lowercase(java.util.Locale.getDefault()) }
+            val tagNameMap = allTags.associateBy { it.name.lowercase(Locale.getDefault()) }
             tagFilters.mapNotNull { filter ->
-                val tag = tagNameMap[filter.value.lowercase(java.util.Locale.getDefault())]
+                val tag = tagNameMap[filter.value.lowercase(Locale.getDefault())]
                     ?: return@mapNotNull null
                 val uris = db.getMediaUrisForTag(tag.id)
-                tag.name.lowercase(java.util.Locale.getDefault()) to uris.toSet()
+                tag.name.lowercase(Locale.getDefault()) to uris.toSet()
             }.toMap()
         } else {
             emptyMap()
@@ -2748,7 +2748,7 @@ class MainActivity : AppCompatActivity() {
             if (!imageSearchActive) return@launch
             if (bitmap != null) {
                 com.bumptech.glide.Glide.with(this@MainActivity).clear(binding.searchImageThumb)
-                binding.searchImageThumb.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                binding.searchImageThumb.scaleType = ImageView.ScaleType.CENTER_CROP
                 binding.searchImageThumb.setImageBitmap(bitmap)
             } else {
                 com.bumptech.glide.Glide.with(this@MainActivity).load(uri).centerCrop().into(binding.searchImageThumb)
@@ -3016,7 +3016,7 @@ class MainActivity : AppCompatActivity() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_smart_album, null)
         val nameInput = dialogView.findViewById<EditText>(R.id.smartAlbumName)
         val promptInput = dialogView.findViewById<EditText>(R.id.smartAlbumPrompt)
-        val suggestionRow = dialogView.findViewById<android.widget.LinearLayout>(R.id.smartAlbumSuggestions)
+        val suggestionRow = dialogView.findViewById<LinearLayout>(R.id.smartAlbumSuggestions)
         val cancelBtn = dialogView.findViewById<TextView>(R.id.smartAlbumCancel)
         val createBtn = dialogView.findViewById<TextView>(R.id.smartAlbumCreate)
 
@@ -3123,7 +3123,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun refreshSmartAlbum(smart: SmartAlbum): SmartAlbum? {
-        val repo = repository ?: return null
+        repository ?: return null
         val resultUris = runSearchPipeline(
             query = smart.prompt,
             mode = try { SearchMode.valueOf(smart.searchMode) } catch (_: Exception) { SearchMode.Hybrid },
@@ -3880,7 +3880,7 @@ class MainActivity : AppCompatActivity() {
         updateBottomPanelState()
     }
 
-    private fun updateBottomTab(tab: View, icon: android.widget.ImageView, active: Boolean) {
+    private fun updateBottomTab(tab: View, icon: ImageView, active: Boolean) {
         tab.alpha = if (active) 1f else 0.72f
         icon.imageTintList = ColorStateList.valueOf(
             if (active) DesignTokens.accent(this) else ContextCompat.getColor(this, R.color.metroTextTertiary)

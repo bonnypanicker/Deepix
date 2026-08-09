@@ -126,7 +126,7 @@ sealed class GalleryCell {
 }
 
 class ImageAdapter(
-    private val onPhotoClick: (GalleryRepository.MediaItem, android.widget.ImageView) -> Unit,
+    private val onPhotoClick: (GalleryRepository.MediaItem, ImageView) -> Unit,
     private val onSelectionChanged: (Int) -> Unit,
     private val onAlbumClick: (GalleryRepository.Album) -> Unit,
     private val onAlbumLongClick: (GalleryRepository.Album, View) -> Unit,
@@ -571,7 +571,7 @@ class ImageAdapter(
 
     class PhotoViewHolder(
         private val binding: ItemImageBinding,
-        private val onPhotoClick: (GalleryRepository.MediaItem, android.widget.ImageView) -> Unit,
+        private val onPhotoClick: (GalleryRepository.MediaItem, ImageView) -> Unit,
         private val onSelectionTap: (Uri) -> Unit,
         private val onSelectionGestureStart: (Uri) -> Unit,
         private val isBlurred: (GalleryRepository.MediaItem) -> Boolean = { false },
@@ -620,7 +620,7 @@ class ImageAdapter(
             if (!useCollageLayout) {
                 val gridGutterSpacing = (DesignTokens.GRID_THUMBNAIL_SPACING_DP * metrics.density).toInt()
                 val cellSize = ((metrics.widthPixels - gridGutterSpacing * (gridColumnCount - 1)) / gridColumnCount).coerceAtLeast(1)
-                
+
                 binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
                     this.height = cellSize
                 }
@@ -700,7 +700,7 @@ class ImageAdapter(
 
     class CollageViewHolder(
         private val binding: ItemCollageBinding,
-        private val onPhotoClick: (GalleryRepository.MediaItem, android.widget.ImageView) -> Unit,
+        private val onPhotoClick: (GalleryRepository.MediaItem, ImageView) -> Unit,
         private val onSelectionTap: (Uri) -> Unit,
         private val onSelectionGestureStart: (Uri) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {

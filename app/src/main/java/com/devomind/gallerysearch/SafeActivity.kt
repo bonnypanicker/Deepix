@@ -527,7 +527,7 @@ class SafeActivity : AppCompatActivity() {
             .setView(view)
             .create()
         view.findViewById<TextView>(R.id.copyPasswordBtn).setOnClickListener {
-            val clip = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
             clip.setPrimaryClip(ClipData.newPlainText("Safe password", password))
             MetroBanner.show(this, "Password copied")
         }

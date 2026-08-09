@@ -370,7 +370,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         binding.rowFaceValidation.apply {
-            if (BuildConfig.DEBUG) visibility = android.view.View.VISIBLE
+            if (BuildConfig.DEBUG) visibility = View.VISIBLE
             setOnClickListener { FaceValidationActivity.launch(this@SettingsActivity) }
         }
 
