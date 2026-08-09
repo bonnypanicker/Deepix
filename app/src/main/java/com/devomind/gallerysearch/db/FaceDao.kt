@@ -36,6 +36,14 @@ interface FaceDao {
     @Query("SELECT COUNT(*) FROM faces WHERE embeddingJson IS NOT NULL AND embeddingModelVersion != :modelVersion")
     suspend fun countWithDifferentEmbeddingModel(modelVersion: String): Int
 
+    /** Move all faces of a person to another. Used by merge. */
+    @Query("UPDATE faces SET personId = :toPersonId WHERE personId = :fromPersonId")
+    suspend fun reassignPerson(fromPersonId: Long, toPersonId: Long)
+
+    /** Move a hand-picked list of face ids to a specific person. Used by split. */
+    @Query("UPDATE faces SET personId = :toPersonId WHERE faceId IN (:faceIds)")
+    suspend fun reassignFaces(faceIds: List<Long>, toPersonId: Long)
+
     @Query("SELECT COUNT(*) FROM faces WHERE personId IS NULL")
     suspend fun countUnassigned(): Int
 

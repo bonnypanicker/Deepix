@@ -232,4 +232,24 @@
     <string name="face_validation_perf">decode %1$dms · detect %2$dms · embed %3$dms</string>
     <string name="face_validation_run_people_index">run people index</string>
     <string name="face_validation_people_index">PEOPLE INDEX</string>
+
+    <!-- People Phase 4 -->
+    <string name="people_title">People</string>
+    <string name="people_title_singular">Person</string>
+    <string name="people_title_lower">people</string>
+    <string name="people_empty">No people yet</string>
+    <string name="people_empty_hint">Faces from your photos will cluster here as indexing runs.</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_merge">Merge</string>
+    <string name="action_hide">Hide</string>
+    <string name="action_split">Split</string>
+    <string name="action_undo">Undo</string>
+
+    <!-- First-run onboarding -->
+    <string name="first_run_title">Meet People</string>
+    <string name="first_run_subtitle">Let Deepix find the people in your photos.</string>
+    <string name="first_run_body">Deepix will scan your library in the background and group photos by who appears in them. The results appear under the People tab in your library. All processing happens on this phone — never in the cloud.</string>
+    <string name="first_run_scan_now">Start scan</string>
+    <string name="first_run_skip">Not now</string>
+    <string name="faces_section">FACES</string>
 </resources>

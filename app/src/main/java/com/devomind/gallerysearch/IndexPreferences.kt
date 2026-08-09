@@ -26,10 +26,22 @@ object IndexPreferences {
     private const val KeySkipDeleteConfirm = "skip_delete_confirm"
     private const val KeySafeStorageRoot = "safe_storage_root"
     private const val KeyAccentColor = "accent_color"
+    /** Set once the user takes the FirstRun onboarding path. */
+    private const val KeyFirstRunDone = "first_run_done"
 
     /** Public directory the encrypted Safe zip lives under. */
     const val SAFE_ROOT_PICTURES = "pictures"
     const val SAFE_ROOT_DOCUMENTS = "documents"
+
+    fun hasSeenFirstRun(context: Context): Boolean =
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE).getBoolean(KeyFirstRunDone, false)
+
+    fun setFirstRunDone(context: Context, done: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyFirstRunDone, done)
+            .apply()
+    }
 
     fun saveLastIndexedTime(context: Context) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)

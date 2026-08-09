@@ -431,6 +431,10 @@ class MainActivity : AppCompatActivity() {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             openSafe()
         }
+        binding.drawerPeople.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            startActivity(Intent(this, PersonAlbumsActivity::class.java))
+        }
         binding.drawerBin.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             startActivity(Intent(this, BinActivity::class.java))

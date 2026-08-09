@@ -561,6 +561,11 @@
             android:text="@string/safe_lower" />
 
         <TextView
+            android:id="@+id/drawerPeople"
+            style="@style/MetroDrawerItem"
+            android:text="@string/people_title_lower" />
+
+        <TextView
             android:id="@+id/drawerBin"
             style="@style/MetroDrawerItem"
             android:text="@string/bin_title" />

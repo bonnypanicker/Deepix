@@ -117,6 +117,18 @@
             android:exported="false"
             android:theme="@style/Theme.GallerySearch" />
 
+        <!-- Phase 4 People surface -->
+        <activity
+            android:name=".PersonAlbumsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".PersonDetailActivity"
+            android:exported="false" />
+        <activity
+            android:name=".FirstRunActivity"
+            android:exported="false"
+            android:showForAllUsers="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
