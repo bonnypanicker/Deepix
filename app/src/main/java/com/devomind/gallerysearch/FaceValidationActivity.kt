@@ -319,7 +319,7 @@ class FaceValidationActivity : AppCompatActivity() {
                         pairs.appendLine("A#%d  ×  B#%d   cos=%.3f  %s".format(
                             i + 1, j + 1, sim,
                             when {
-                                sim >= 0.55f -> "◀ same person?"
+                                sim >= FaceEmbedder.MatchThresholdCosine -> "◀ same person?"
                                 sim <= 0.30f -> "(likely different)"
                                 else -> ""
                             }
@@ -349,6 +349,11 @@ class FaceValidationActivity : AppCompatActivity() {
             style = Paint.Style.FILL
             color = 0xFFFFEB3B.toInt()
         }
+        val lmLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFEB3B.toInt()
+            textSize = 22f
+            typeface = android.graphics.Typeface.MONOSPACE
+        }
         val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0xFF4CAF50.toInt()
             textSize = 32f
@@ -357,8 +362,14 @@ class FaceValidationActivity : AppCompatActivity() {
         faces.forEach { face ->
             val d = face.detection
             canvas.drawRect(RectF(d.left, d.top, d.right, d.bottom), bboxPaint)
-            d.landmarks.forEach { pt ->
+            // Labels are in canonical order: 0:LE 1:RE 2:N 3:LM 4:RM. If these sit on the wrong
+            // physical feature, the detector's delivered landmark order is inverted — flip the
+            // reorder in YuNetDetector.decodeStride. (Embeddings stay correct either way: the
+            // aligner auto-detects the order that best fits the canonical template.)
+            val lmLabels = arrayOf("0:LE", "1:RE", "2:N", "3:LM", "4:RM")
+            d.landmarks.forEachIndexed { i, pt ->
                 canvas.drawCircle(pt[0], pt[1], 6f, landmarkPaint)
+                canvas.drawText(lmLabels.getOrElse(i) { "$i" }, pt[0] + 8, pt[1] - 8, lmLabelPaint)
             }
             canvas.drawText("%.2f · q=%.2f".format(d.confidence, face.quality), d.left + 4, d.top - 8, labelPaint)
         }

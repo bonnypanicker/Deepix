@@ -29,7 +29,8 @@ import java.util.zip.CRC32
  * on load. On mismatch the index is treated as empty (corruption recovery is Phase 3's job — here
  * we just refuse to serve stale data and let the consistency check rebuild from Room).
  *
- * Keyed by `faceId: Long` (the Room `faces` PK). 512-dim L2-normalized MobileFaceNet embeddings.
+ * Keyed by `faceId: Long` (the Room `faces` PK). Stores the current face-model embedding width
+ * from [FaceEmbedder.EmbeddingDim].
  */
 class FaceVectorIndex(private val context: Context) : AutoCloseable {
 

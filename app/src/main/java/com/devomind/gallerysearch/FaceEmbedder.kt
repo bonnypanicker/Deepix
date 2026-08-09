@@ -10,12 +10,16 @@ import ai.onnxruntime.TensorInfo
 import java.nio.FloatBuffer
 
 /**
- * Runs the current face-embedding ONNX model (SFace 2021dec int8-quantized via `face_recognition_sface_2021dec_int8bq.onnx`)
- * on a 112×112 aligned crop. Returns an L2-normalized embedding — cosine similarity is a plain dot product between outputs.
+ * Runs the current face-embedding ONNX model (OpenCV Zoo SFace 2021dec int8 block-quantized via
+ * `face_recognition_sface_2021dec_int8bq.onnx`) on a 112×112 aligned crop.
+ *
+ * Returns an L2-normalized embedding — cosine similarity is a plain dot product between outputs.
  *
  * Model: Apache 2.0, OpenCV Zoo SFace (see https://github.com/opencv/opencv_zoo). The workspace's int8 conversion
  * contains DequantizeLinear / QuantizeLinear ops around the tensors; the public input/output remain fp32 from the
- * caller's side. Input: 1×3×112×112 BGR, image normalized to [-1.0, +1.0] via `pixel / 127.5 − 1.0`.
+ * caller's side. Input contract (authoritative: `cv::FaceRecognizerSF::feature`): 1×3×112×112 **RGB** in **[0, 255]**,
+ * no mean subtraction / scaling — see [FaceNormalizer]. OpenCV Zoo's published SFace model emits 128-d features, so the
+ * rest of the pipeline keys off that width and rejects any unexpected model swap at startup.
  *
  * Session is shared app-wide via [GallerySearchApp.sharedEncoders] — created once, reused freely across the app.
  */
@@ -42,6 +46,9 @@ class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.Defau
         val shape = (outputInfo as? TensorInfo)?.getShape()
             ?: error("FaceEmbedder output isn't a numeric tensor")
         embeddingDim = shape.lastOrNull()?.toInt() ?: error("Output shape ends unbounded: ${shape.contentToString()}")
+        check(embeddingDim == EmbeddingDim) {
+            "$ModelAsset returned $embeddingDim-dim embeddings; expected $EmbeddingDim"
+        }
         Log.i(Tag, "SFace session up: input=$inputName output=$outputName dim=$embeddingDim (inputs=${session.inputNames} outputs=${session.outputNames})")
     }
 
@@ -67,9 +74,11 @@ class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.Defau
     companion object {
         const val Tag = "FaceEmbedder"
         const val ModelAsset = "face_recognition_sface_2021dec_int8bq.onnx"
-        const val ModelVersion = "sface_2021dec_int8bq_v1"
-        /** Output width for OpenCV Zoo SFace / InsightFace MobileFaceNet embeddings: 512. */
-        const val EmbeddingDim = 512
+        const val ModelVersion = "sface_2021dec_int8bq_v3"
+        /** Output width for the exact OpenCV Zoo SFace 2021dec model used by this app. */
+        const val EmbeddingDim = 128
+        /** OpenCV Zoo's published cosine decision threshold for SFace. */
+        const val MatchThresholdCosine = 0.363f
         const val MinModelBytes = 1_000_000
 
         fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {

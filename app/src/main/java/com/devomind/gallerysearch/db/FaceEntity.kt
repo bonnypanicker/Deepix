@@ -14,7 +14,7 @@ import androidx.room.PrimaryKey
  * @param photoUri MediaStore uri for the source photo.
  * @param bboxJson [x, y, width, height] in original photo pixels.
  * @param landmarksJson five (x, y) landmark pairs — YuNet semantic order.
- * @param embeddingJson 512-float embedding (L2-normalized), null when not yet computed.
+ * @param embeddingJson face embedding (L2-normalized), null when not yet computed.
  *            Kept as JSON so Phase 2 can swap in a vector index without a DB migration.
  * @param embeddingModelVersion version tag of the model that produced [embeddingJson] — lets
  *            Phase 2/3 invalidate stale embeddings.
@@ -47,7 +47,7 @@ data class FaceEntity(
     val embeddingJson: String? = null,
     // Retain the SQL default for schema compatibility; all current inserts use the Kotlin value.
     @ColumnInfo(defaultValue = "w600k_mbf_v1")
-    val embeddingModelVersion: String = "sface_2021dec_int8bq_v1",
+    val embeddingModelVersion: String = "sface_2021dec_int8bq_v3",
     val qualityScore: Float = 0f,
     val yaw: Float = 0f,
     val pitch: Float = 0f,

@@ -42,10 +42,15 @@ class YuNetDetector(
     fun detectFaceCount(bitmap: Bitmap): Int = detectFaces(bitmap).size
 
     /**
-     * Full decode: bounding box, confidence, and the five semantic landmarks YuNet exposes
-     * (left eye, right eye, nose, left mouth corner, right mouth corner). Coordinates are in
-     * the space of the caller-supplied [bitmap]. Returns at most [MaxDetections] results,
-     * post-NMS, ordered by confidence.
+     * Full decode: bounding box, confidence, and five semantic landmarks in the app's canonical
+     * order: (left eye, right eye, nose, left mouth corner, right mouth corner).
+     *
+     * OpenCV YuNet itself emits the landmarks as (right eye, left eye, nose, right mouth,
+     * left mouth). We normalize to left/right order here once so downstream alignment and pose
+     * code can use a stable convention.
+     *
+     * Coordinates are in the space of the caller-supplied [bitmap]. Returns at most
+     * [MaxDetections] results, post-NMS, ordered by confidence.
      */
     fun detectFaces(bitmap: Bitmap): List<FaceDetection> = detectOnce(bitmap)
 
@@ -171,12 +176,19 @@ class YuNetDetector(
                 val centerX = (x + bbox[offset]) * stride
                 val centerY = (y + bbox[offset + 1]) * stride
                 val kpOffset = index * 10
-                val landmarks = Array(5) { landmarkIndex ->
+                val rawLandmarks = Array(5) { landmarkIndex ->
                     floatArrayOf(
                         (x + kps[kpOffset + landmarkIndex * 2]) * stride,
                         (y + kps[kpOffset + landmarkIndex * 2 + 1]) * stride
                     )
                 }
+                val landmarks = arrayOf(
+                    rawLandmarks[1], // left eye
+                    rawLandmarks[0], // right eye
+                    rawLandmarks[2], // nose
+                    rawLandmarks[4], // left mouth corner
+                    rawLandmarks[3]  // right mouth corner
+                )
                 add(Detection(centerX - width / 2f, centerY - height / 2f, width, height, confidence, landmarks))
             }
         }.also { kept ->

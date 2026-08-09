@@ -9,7 +9,7 @@ import com.devomind.gallerysearch.db.GalleryDatabase
 import org.json.JSONArray
 
 /**
- * Phase 1 orchestrator: photo → detected faces → quality / pose / aligned crop → 512-d embedding
+ * Phase 1 orchestrator: photo → detected faces → quality / pose / aligned crop → face embedding
  * → persisted into Room. Returns a per-photo result bundle the validation UI can render.
  */
 class FaceAnalyzer(context: Context) : AutoCloseable {
