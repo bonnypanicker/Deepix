@@ -74,7 +74,7 @@ class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.Defau
     companion object {
         const val Tag = "FaceEmbedder"
         const val ModelAsset = "face_recognition_sface_2021dec_int8bq.onnx"
-        const val ModelVersion = "sface_2021dec_int8bq_v3"
+        const val ModelVersion = "sface_2021dec_int8bq_v4"
         /** Output width for the exact OpenCV Zoo SFace 2021dec model used by this app. */
         const val EmbeddingDim = 128
         /** OpenCV Zoo's published cosine decision threshold for SFace. */

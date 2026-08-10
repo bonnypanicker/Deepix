@@ -270,23 +270,24 @@ class PersonMatcher(private val context: Context) {
         private const val Tag = "PersonMatcher"
 
         /**
-         * Cosine similarity threshold for assigning a new face to an existing person. Empirically on
-         * this pair of models, photos of the same person across very different lighting/backdrops
-         * score 0.42–0.82; photos of *different* people score 0.0–0.35. Setting this between those
-         * peaks gives good recall without precision collapse.
+         * Cosine similarity threshold for assigning a new face to an existing person. Anchored to
+         * SFace's published decision threshold ([FaceEmbedder.MatchThresholdCosine] = 0.363): sit
+         * slightly above it so the exemplar-vote median stays precise without collapsing recall.
+         * (Was 0.45f under the old MobileFaceNet model — too high for SFace's cosine distribution,
+         * which rejected genuine same-person matches and spawned singleton "persons".)
          */
-        private const val PersonMatchThreshold = 0.45f
+        private const val PersonMatchThreshold = 0.38f
 
         /** Cap on per-person exemplar set: grow up to this many, then rotate by quality. */
         private const val MaxExemplarsPerPerson = 10
 
         /**
-         * Loose floor for the centroid pre-filter — well below [PersonMatchThreshold] so the
-         * pre-filter only discards clearly-unrelated persons; borderline cases still go to the
-         * full exemplar-vote. Keeps recall high while skipping the O(exemplars) work for the
-         * long tail of unrelated persons.
+         * Loose floor for the centroid pre-filter — well below [PersonMatchThreshold] so it only
+         * discards clearly-unrelated persons; borderline cases still go to the full exemplar-vote.
+         * SFace same-person centroid cosines can dip to ~0.20, so the floor sits there to avoid
+         * starving the vote. (Was 0.30f under MobileFaceNet, which dropped most true matches.)
          */
-        private const val CentroidPreFilterFloor = 0.30f
+        private const val CentroidPreFilterFloor = 0.20f
 
         /** Max persons passed from the centroid pre-filter into the exemplar-vote. */
         private const val CentroidCandidates = 8

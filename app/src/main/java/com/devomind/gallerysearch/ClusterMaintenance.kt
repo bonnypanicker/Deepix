@@ -248,11 +248,20 @@ object ClusterMaintenance {
 
     private const val Tag = "ClusterMaintenance"
 
-    /** Below this intrapair cosine, a cluster is considered bimodal (spec default ~0.7). */
-    private const val SplitThreshold = 0.70f
+    /**
+     * Below this intrapair cosine, a cluster is considered bimodal. SFace-tuned: sits just under
+     * [FaceEmbedder.MatchThresholdCosine] (0.363) so a person cluster only splits when its two
+     * closest exemplars are clearly different identities. (Was 0.70f — MobileFaceNet-era.)
+     */
+    private const val SplitThreshold = 0.34f
 
-    /** Above this centroid-to-centroid cosine, two persons should merge (spec default ~0.65–0.7). */
-    private const val MergeThreshold = 0.65f
+    /**
+     * Above this centroid-to-centroid cosine, two persons should merge. SFace-tuned: just under
+     * PersonMatcher's assignment gate (0.38) so the nightly maintenance re-merges the
+     * over-fragmented singletons the online matcher missed. (Was 0.65f — MobileFaceNet-era, far
+     * above SFace's same-person centroid range, so no merges were ever proposed.)
+     */
+    private const val MergeThreshold = 0.36f
 
     /** Cap on exemplar faces considered per person when computing divergence. */
     private const val MaxExemplarsPerPerson = 10
