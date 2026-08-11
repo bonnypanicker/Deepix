@@ -15,6 +15,10 @@ interface PersonPhotoDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(photos: List<PersonPhotoEntity>)
 
+    /** Creates a processing claim without replacing a candidate created by the CLIP pass. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(photo: PersonPhotoEntity): Long
+
     @Update
     suspend fun update(photo: PersonPhotoEntity)
 
@@ -24,6 +28,28 @@ interface PersonPhotoDao {
     /** Rows awaiting work, ordered by recency. */
     @Query("SELECT * FROM person_photos WHERE status = :status ORDER BY lastAnalyzedAt DESC LIMIT :limit")
     suspend fun findByStatus(status: String, limit: Int): List<PersonPhotoEntity>
+
+    @Query(
+        "UPDATE person_photos SET status = :processingStatus, lastAnalyzedAt = :claimedAt " +
+            "WHERE uri = :uri AND status IN (:eligibleStatuses)"
+    )
+    suspend fun claimForFaceProcessing(
+        uri: String,
+        eligibleStatuses: List<String>,
+        processingStatus: String,
+        claimedAt: Long
+    ): Int
+
+    /** A killed worker must not strand a photo forever in its transient claim state. */
+    @Query(
+        "UPDATE person_photos SET status = :unprocessedStatus " +
+            "WHERE status = :processingStatus AND lastAnalyzedAt < :olderThan"
+    )
+    suspend fun releaseStaleProcessing(
+        processingStatus: String,
+        unprocessedStatus: String,
+        olderThan: Long
+    ): Int
 
     /** Photos sharing a burst signature — used by DuplicateGuard to find near-duplicate frames.
      *  Keys off [PersonPhotoEntity.capturedAt] (capture timestamp) rather than `createdAt` because

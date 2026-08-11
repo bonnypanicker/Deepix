@@ -28,9 +28,12 @@ object ClipPersonGate {
         "a selfie",
         "a group of people",
         "portrait photograph",
+        "a close-up photo of a face",
         "people talking",
         "family photo",
-        "a man or woman standing"
+        "a man or woman standing",
+        "people at a party",
+        "people at a social function or event"
     )
 
     private val NonPersonPrompts = arrayOf(
@@ -45,7 +48,7 @@ object ClipPersonGate {
 
     /**
      * Reference embeddings for the prompt pools are computed once per process against the shared
-     * TextEncoder, then cached. Cheap: 14 tiny text inferences the first time.
+     * TextEncoder, then cached. Cheap: 17 tiny text inferences the first time.
      */
     data class GateVerdict(
         val photoUri: String,
@@ -59,7 +62,7 @@ object ClipPersonGate {
         val isGreyZone: Boolean
     )
 
-    // @Volatile: FaceIndexWorker runs PipelineConcurrency=2 parallel workers that both call
+    // @Volatile: foreground search and background indexing can both call this cache.
     // score()/scoreEmbedding(); the cache is populated once under [cacheLock] in
     // ensurePromptCache, then read concurrently here. Without @Volatile a worker could observe
     // the pre-population null and trip the !! below.
@@ -84,7 +87,7 @@ object ClipPersonGate {
      * Score a *precomputed* MobileCLIP image embedding (already L2-normalized, e.g. read from
      * `embedding_index.bin`) against the prompt pools. This is the spec's "reuse existing
      * MobileCLIP-S2 embeddings" path: no bitmap decode, no image-encoder inference — just the
-     * 14 cached text-prompt embeddings vs. the stored image embedding.
+     * cached text-prompt embeddings vs. the stored image embedding.
      */
     fun scoreEmbedding(
         textEncoder: TextEncoder,

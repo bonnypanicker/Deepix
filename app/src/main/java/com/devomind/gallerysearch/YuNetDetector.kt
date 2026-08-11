@@ -259,7 +259,7 @@ class YuNetDetector(
          */
         private const val MaxLongEdge = 1280
         private const val StrideAlignment = 32
-        private const val ThreadCount = 2
+        private const val ThreadCount = 1
         private const val NmsThreshold = 0.3f
         private const val MaxDetections = 64
         private val Strides = intArrayOf(8, 16, 32)

@@ -85,7 +85,7 @@ class SharedEncoders(private val context: android.content.Context) {
     /** Phase 1 sessions are created lazily and shared process-wide; spec asks 2–4 intra-op threads. */
     fun getFaceEmbedder(): FaceEmbedder {
         return faceEmbedder ?: synchronized(faceLock) {
-            faceEmbedder ?: FaceEmbedder(context, threadCount = 2).also { faceEmbedder = it }
+            faceEmbedder ?: FaceEmbedder(context, threadCount = 1).also { faceEmbedder = it }
         }
     }
 

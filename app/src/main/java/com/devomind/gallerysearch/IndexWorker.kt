@@ -113,14 +113,16 @@ class IndexWorker(
             val items = repository.getImageItemsForAlbumIds(scope)
             if (items.isEmpty()) {
                 // No images in scope — prune the index to empty, then finish.
-                repository.buildIndex(items) { _, _ -> }
+                repository.buildIndex(items, onProgress = { _, _ -> })
                 IndexPreferences.saveLastIndexedTime(applicationContext)
                 IndexPreferences.setIndexProgressPercent(applicationContext, 100)
                 return Result.success()
             }
             val total = max(1, items.size)
+            val mediaByUri = items.associateBy { it.uri.toString() }
+            val faceCandidateQueue = FaceCandidateQueue(applicationContext)
 
-            repository.buildIndex(items) { current, _ ->
+            repository.buildIndex(items, onProgress = { current, _ ->
                 if (IndexPreferences.isIndexPaused(applicationContext)) {
                     throw IndexPausedException()
                 }
@@ -142,7 +144,11 @@ class IndexWorker(
                 if (foregroundActive && shouldRefreshForeground(bounded, progressPercent, total)) {
                     setForegroundAsync(createForegroundInfo(bounded, total))
                 }
-            }
+            }, onEmbeddingsStored = { indexed ->
+                if (faceCandidateQueue.enqueueCandidates(indexed, mediaByUri) > 0) {
+                    FaceIndexWorker.enqueueCandidates(applicationContext)
+                }
+            })
             if (IndexPreferences.isIndexPaused(applicationContext)) {
                 throw IndexPausedException()
             }
@@ -157,7 +163,7 @@ class IndexWorker(
             // just worked through, so detection has fresh CLIP artifacts to reuse. Uses
             // APPEND_OR_REPLACE on this worker's unique name so it runs *behind* us instead of
             // competing (and never cancels this pass mid-flight).
-            FaceIndexWorker.enqueueAfterClip(applicationContext)
+            FaceIndexWorker.enqueueRemainderAfterClip(applicationContext)
 
             // Save timestamp so next run only processes new photos
             IndexPreferences.saveLastIndexedTime(applicationContext)

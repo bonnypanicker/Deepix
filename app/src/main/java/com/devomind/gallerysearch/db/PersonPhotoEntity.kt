@@ -42,7 +42,13 @@ data class PersonPhotoEntity(
 ) {
     object Status {
         const val UNPROCESSED = "unprocessed"
+        /** CLIP marked this as person-like; the low-priority face worker can pick it up immediately. */
+        const val CLIP_CANDIDATE = "clip_candidate"
+        /** Claimed by a face worker. Stale claims are released on the next worker start. */
+        const val FACE_PROCESSING = "face_processing"
         const val GATED_NO_FACES = "gated_no_faces"
+        /** No stored CLIP vector was available, so no second CLIP image inference is attempted. */
+        const val CLIP_UNAVAILABLE = "clip_unavailable"
         const val HAS_FACES_UNMATCHED = "has_faces_unmatched"
         const val RESOLVED_TO_PERSON = "resolved_to_person"
         const val NO_FACES = "no_faces"

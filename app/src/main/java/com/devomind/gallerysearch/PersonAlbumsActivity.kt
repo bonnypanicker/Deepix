@@ -60,6 +60,31 @@ class PersonAlbumsActivity : AppCompatActivity() {
         loadPeople()
     }
 
+    override fun onStart() {
+        super.onStart()
+        // Live face-index ticker: refresh stamps when the worker advances.
+        // WorkManager.getInstance(this).getWorkInfosForUniqueWorkLiveData(FaceIndexWorker.WorkName)
+        androidx.work.WorkManager.getInstance(this)
+            .getWorkInfosForUniqueWorkLiveData(FaceIndexWorker.WorkName)
+            .observe(this) { work ->
+                val info = work.firstOrNull() ?: return@observe
+                val progress = info.progress
+                val visited = progress.getInt(FaceIndexWorker.ProgressVisitedKey, -1)
+                val total = progress.getInt(FaceIndexWorker.ProgressTotalKey, -1)
+                val faces = progress.getInt(FaceIndexWorker.StatsFacesKey, 0)
+                val persons = progress.getInt(FaceIndexWorker.StatsPersonsKey, 0)
+                val running = info.state == androidx.work.WorkInfo.State.RUNNING
+                binding.liveStatus.apply {
+                    visibility = if (running) View.VISIBLE else View.GONE
+                    text = if (running && visited >= 0 && total > 0) {
+                        "Indexing… $visited / $total photos · $faces faces · $persons persons"
+                    } else ""
+                }
+                // Pull fresh contents from DB when the worker finishes a chunk so the grid reflects them.
+                if (running) loadPeople()
+            }
+    }
+
     private fun applyInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())

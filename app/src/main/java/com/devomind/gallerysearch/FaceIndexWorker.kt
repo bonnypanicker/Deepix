@@ -17,30 +17,26 @@ import com.devomind.gallerysearch.db.FaceEntity
 import com.devomind.gallerysearch.db.GalleryDatabase
 import com.devomind.gallerysearch.db.PersonPhotoEntity
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.util.concurrent.TimeUnit
 
 /**
  * Phase 2 indexing pipeline:
- *   enumerate → dHash + DuplicateGuard → CLIP person-gate → YuNet → quality/pose → MobileFaceNet →
+ *   enumerate → CLIP person-gate → dHash + DuplicateGuard → YuNet → quality/pose → SFace →
  *   PersonMatcher → Room (faces + person_photos + persons).
  *
- * Battery-gated + no-network (per spec Phase 2). Single-process, shares the ORT environment with
+ * Runs only when indexing is allowed by the user's charging preference. Single-process, shares the ORT environment with
  * the CLIP encoders via [GallerySearchApp.sharedEncoders]. Designed so a forced kill mid-photo
  * leaves Room consistent: every photo insert bundles the photo + all its faces + resolution in one
  * coroutine; a crash drops that photo — never a partial row.
  *
  * Pipeline shape: a small bounded channel ([PipelineConcurrency]) pulls photos off MediaStore in
- * mocked LRU order; each item is decoded → gated → detected → embedded → clustered → persisted
- * sequentially per item so backpressure is natural.
+ * mocked LRU order; each item reuses a stored CLIP embedding when possible, falls back to a small
+ * decode for gating / dHash, and only then pays the full face-detection decode before clustering
+ * and persistence.
  */
 class FaceIndexWorker(
     appContext: Context,
@@ -69,8 +65,6 @@ class FaceIndexWorker(
         var exemplarReplacements: Int = 0,
         /** CLIP-gate verdicts that reused a stored MobileCLIP embedding (the spec's intended path). */
         var clipReused: Int = 0,
-        /** CLIP-gate verdicts that had to re-encode the bitmap (stored embedding missing). */
-        var clipReencoded: Int = 0,
         /** ElapsedRealtime at the start of doWork(); used for the throughput SLA report. */
         var startedAtMs: Long = 0L
     )
@@ -84,10 +78,12 @@ class FaceIndexWorker(
 
     override suspend fun doWork(): Result {
         try {
-            // Battery gate before any work starts.
-            if (!isDevicePluggedIn()) {
-                Log.i(Tag, "Not charging; deferring face index.")
-                return Result.retry()
+            // Battery gate before any work starts. On battery-down we don't retry — every
+            // photo we'd have written is likewise deferred to a charging plug-in so the OS
+            // doesn't see us as a battery vampire.
+            if (IndexPreferences.isChargingOnlyIndexing(applicationContext) && !isDevicePluggedIn()) {
+                Log.i(Tag, "Charging-only indexing is enabled; deferred face index.")
+                return Result.success()
             }
 
             val repository = GalleryRepository(applicationContext)
@@ -101,39 +97,63 @@ class FaceIndexWorker(
             // Phase 2 deliverable #12: repair any Face↔vector-index divergence (e.g. a crash
             // between a Room commit and the last vector-index flush) before matching reads the
             // index. Cheap at phone scale; backfills lost vectors from embeddingJson.
-            runCatching { FaceIndexConsistency.checkAndRepair(applicationContext) }
-                .onFailure { Log.w(Tag, "Consistency check failed (non-fatal).", it) }
+            val mode = inputData.getString(ModeKey) ?: Mode.REMAINDER
+            if (mode == Mode.REMAINDER) {
+                runCatching { FaceIndexConsistency.checkAndRepair(applicationContext) }
+                    .onFailure { Log.w(Tag, "Consistency check failed (non-fatal).", it) }
+            }
 
+            val released = photoDao.releaseStaleProcessing(
+                processingStatus = PersonPhotoEntity.Status.FACE_PROCESSING,
+                unprocessedStatus = PersonPhotoEntity.Status.UNPROCESSED,
+                olderThan = android.os.SystemClock.uptimeMillis() - StaleClaimMillis
+            )
+            if (released > 0) Log.w(Tag, "Released $released stale face-processing claims.")
             val stats = Stats(startedAtMs = android.os.SystemClock.elapsedRealtime())
-            val total = images.size
             val mediaByUri = images.associateBy { it.uri.toString() }
             // The MobileCLIP image embeddings IndexWorker just persisted — keyed by uri string.
             // Loaded once and reused for every photo's CLIP person-gate so the gate reuses the
             // stored embedding (spec: "reuse existing MobileCLIP-S2 embeddings") instead of
             // re-decoding + re-encoding each photo. Empty when the CLIP pass hasn't run yet; in
             // that case processOne falls back to a live encode of the already-decoded bitmap.
-            val clipEmbeddings = runCatching { repository.allEmbeddings() }.getOrDefault(emptyMap())
+            val clipEmbeddings = if (mode == Mode.REMAINDER) {
+                runCatching { repository.allEmbeddings() }.getOrDefault(emptyMap())
+            } else {
+                emptyMap()
+            }
             if (clipEmbeddings.isEmpty()) {
                 Log.w(Tag, "No stored CLIP embeddings found — gate will live-encode each photo.")
             } else {
                 Log.i(Tag, "Reusing ${clipEmbeddings.size} stored CLIP embeddings for person-gate.")
             }
+            val work = when (mode) {
+                Mode.CANDIDATES -> photoDao.findByStatus(
+                    PersonPhotoEntity.Status.CLIP_CANDIDATE,
+                    CandidateBatchLimit
+                ).mapNotNull { row -> mediaByUri[row.uri]?.let { it to row.clipPersonScore } }
+                else -> images.map { it to null }
+            }
+            if (work.isEmpty()) {
+                Log.d(Tag, "No $mode face work is pending.")
+                return Result.success()
+            }
+            val total = work.size
             reportProgress(Progress(visited = 0, total = total, percent = 0, phase = "starting"))
 
-            coroutineScope {
-                // Bounded decode pool: 2 max, the ORT session on the main-path is shared globally.
-                val pipeline = Channel<GalleryRepository.MediaItem>(capacity = PipelineConcurrency)
-                val producer = launch(Dispatchers.IO) {
-                    images.forEach { pipeline.send(it) }
-                    pipeline.close()
+            for ((item, queuedClipScore) in work) {
+                currentCoroutineContext().ensureActive()
+                if (IndexPreferences.isChargingOnlyIndexing(applicationContext) && !isDevicePluggedIn()) {
+                    Log.i(Tag, "Charging-only indexing is enabled; pausing face work.")
+                    return Result.retry()
                 }
-                val workers = (1..PipelineConcurrency).map { workerIndex ->
-                    async(Dispatchers.Default) {
-                        processItems(repository, pipeline, stats, total, mediaByUri, clipEmbeddings)
-                    }
+                if (!claim(item, mode)) continue
+                try {
+                    processOne(item, repository, stats, total, mediaByUri, clipEmbeddings, queuedClipScore)
+                } catch (t: Throwable) {
+                    photoDao.setStatus(item.uri.toString(), PersonPhotoEntity.Status.UNPROCESSED)
+                    Log.w(Tag, "per-item failure on ${item.uri}", t)
                 }
-                producer.join()
-                workers.awaitAll()
+                if (mode == Mode.REMAINDER) delay(ResidualPhotoIdleMillis)
             }
 
             logThroughput(stats)
@@ -161,30 +181,14 @@ class FaceIndexWorker(
     // Per-photo pipeline
     // ------------------------------------------------------------------------------------------------
 
-    private suspend fun processItems(
-        repository: GalleryRepository,
-        pipeline: Channel<GalleryRepository.MediaItem>,
-        stats: Stats,
-        total: Int,
-        mediaByUri: Map<String, GalleryRepository.MediaItem>,
-        clipEmbeddings: Map<String, FloatArray>
-    ) {
-        for (item in pipeline) {
-            currentCoroutineContext().ensureActive()
-            // Yield battery: between photos the OS is free to schedule other things.
-            if (!isDevicePluggedIn()) throw CancellationException("Unplugged during indexing")
-            runCatching { processOne(item, repository, stats, total, mediaByUri, clipEmbeddings) }
-                .onFailure { Log.w(Tag, "per-item failure on ${item.uri}", it) }
-        }
-    }
-
     private suspend fun processOne(
         item: GalleryRepository.MediaItem,
         repository: GalleryRepository,
         stats: Stats,
         total: Int,
         mediaByUri: Map<String, GalleryRepository.MediaItem>,
-        clipEmbeddings: Map<String, FloatArray>
+        clipEmbeddings: Map<String, FloatArray>,
+        queuedClipScore: Float?
     ) {
         updateStats(stats) { visited++ }
 
@@ -199,52 +203,33 @@ class FaceIndexWorker(
             return
         }
 
-        // ── decode ──────────────────────────────────────────────────────────────────────────
-        val bitmap = repository.loadBitmapForFaceDetection(uri)
-        if (bitmap == null) {
-            updateStats(stats) { decodeFailures++ }
-            photoDao.insert(
-                PersonPhotoEntity(
-                    uri = uriStr,
-                    status = PersonPhotoEntity.Status.DECODE_FAILED,
-                    lastAnalyzedAt = android.os.SystemClock.uptimeMillis(),
-                    capturedAt = item.dateMillis
-                )
-            )
-            reportProgress(stats, total)
-            return
-        }
-
+        var lightweightBitmap: android.graphics.Bitmap? = null
+        var faceBitmap: android.graphics.Bitmap? = null
         try {
-            // ── hash + duplicate check ────────────────────────────────────────────────────────
-            val dhash = PhashUtils.hash(bitmap)
-            val siblings = photoDao.findBurstCandidates(
-                capturedAtMillis = item.dateMillis,
-                burstWindowMillis = PhashUtils.BurstWindowMillis
-            ).filter { it.uri != uriStr }
-
             // ── CLIP gate ───────────────────────────────────────────────────────────────────
-            // Spec: "reuse existing MobileCLIP-S2 embeddings". The IndexWorker pass that just
-            // finished already encoded every in-scope photo and persisted it to
-            // embedding_index.bin; we reuse that vector instead of re-decoding + re-encoding
-            // each photo here. Only when the stored embedding is missing (CLIP pass skipped the
-            // uri, e.g. a decode failure upstream) do we fall back to a live encode — and even
-            // then we reuse the 2560px face-detection bitmap we already decoded, so there's no
-            // second bitmap decode on the hot path.
-            val personVerdict = runCatching {
-                val app = applicationContext as GallerySearchApp
-                val textEncoder = app.sharedEncoders.getTextEncoder()
+            // Reuse the stored CLIP embedding when available. If not, fall back to a cheap
+            // 512px decode for the gate; only photos that survive the gate pay the 2560px
+            // face-detection decode.
+            val personVerdict = if (queuedClipScore == null) {
                 val storedEmbedding = clipEmbeddings[uriStr]
-                if (storedEmbedding != null) {
-                    updateStats(stats) { clipReused++ }
-                    ClipPersonGate.scoreEmbedding(textEncoder, storedEmbedding, uriStr)
-                } else {
-                    updateStats(stats) { clipReencoded++ }
-                    val imageEncoder = app.sharedEncoders.getImageEncoder()
-                    ClipPersonGate.score(imageEncoder, textEncoder, bitmap, uriStr)
+                if (storedEmbedding == null) {
+                    photoDao.insert(
+                        PersonPhotoEntity(
+                            uri = uriStr,
+                            status = PersonPhotoEntity.Status.CLIP_UNAVAILABLE,
+                            lastAnalyzedAt = android.os.SystemClock.uptimeMillis(),
+                            capturedAt = item.dateMillis
+                        )
+                    )
+                    return
                 }
-            }.getOrNull()
-            val clipScore = personVerdict?.gateScore ?: 0f
+                updateStats(stats) { clipReused++ }
+                val textEncoder = (applicationContext as GallerySearchApp).sharedEncoders.getTextEncoder()
+                ClipPersonGate.scoreEmbedding(textEncoder, storedEmbedding, uriStr)
+            } else {
+                null
+            }
+            val clipScore = queuedClipScore ?: personVerdict?.gateScore ?: 0f
 
             // Grey-zone negatives deliberately reach YuNet: this preserves recall and gives us
             // persisted score/outcome pairs for threshold calibration.
@@ -252,7 +237,7 @@ class FaceIndexWorker(
                 updateStats(stats) { gatedOut++ }
                 photoDao.insert(
                     PersonPhotoEntity(
-                        uri = uriStr, dhash = dhash, clipPersonScore = clipScore,
+                        uri = uriStr, clipPersonScore = clipScore,
                         status = PersonPhotoEntity.Status.GATED_NO_FACES,
                         lastAnalyzedAt = android.os.SystemClock.uptimeMillis(), capturedAt = item.dateMillis
                     )
@@ -260,11 +245,48 @@ class FaceIndexWorker(
                 return
             }
 
+            // ── lightweight hash + duplicate window lookup ───────────────────────────────────
+            val hashBitmap = lightweightBitmap ?: repository.loadBitmap(uri)
+            if (hashBitmap == null) {
+                updateStats(stats) { decodeFailures++ }
+                photoDao.insert(
+                    PersonPhotoEntity(
+                        uri = uriStr,
+                        clipPersonScore = clipScore,
+                        status = PersonPhotoEntity.Status.DECODE_FAILED,
+                        lastAnalyzedAt = android.os.SystemClock.uptimeMillis(),
+                        capturedAt = item.dateMillis
+                    )
+                )
+                reportProgress(stats, total)
+                return
+            }
+            if (lightweightBitmap == null) lightweightBitmap = hashBitmap
+            val dhash = PhashUtils.hash(hashBitmap)
+            val siblings = photoDao.findBurstCandidates(
+                capturedAtMillis = item.dateMillis,
+                burstWindowMillis = PhashUtils.BurstWindowMillis
+            ).filter { it.uri != uriStr }
+
             // ── face detect + embed ─────────────────────────────────────────────────────────
-            // Reuses the bitmap decoded above for the dHash; both want the same
-            // loadBitmapForFaceDetection scale, and detection coords land in that space.
+            faceBitmap = repository.loadBitmapForFaceDetectionForIndexing(item)
+            if (faceBitmap == null) {
+                updateStats(stats) { decodeFailures++ }
+                photoDao.insert(
+                    PersonPhotoEntity(
+                        uri = uriStr,
+                        dhash = dhash,
+                        clipPersonScore = clipScore,
+                        status = PersonPhotoEntity.Status.DECODE_FAILED,
+                        lastAnalyzedAt = android.os.SystemClock.uptimeMillis(),
+                        capturedAt = item.dateMillis
+                    )
+                )
+                reportProgress(stats, total)
+                return
+            }
             val photoResult = analyzer.analyze(
-                uri, persist = false, includeAlignedCrops = false, decoded = bitmap
+                uri, persist = false, includeAlignedCrops = false, decoded = faceBitmap
             )
             if (photoResult.faces.isEmpty()) {
                 updateStats(stats) { noFaces++ }
@@ -365,8 +387,42 @@ class FaceIndexWorker(
                 reportProgress(stats, total)
             }
         } finally {
-            bitmap.recycle()
+            lightweightBitmap?.recycle()
+            faceBitmap?.recycle()
         }
+    }
+
+    /** Acquire a durable per-photo claim so the candidate bench and residual sweep cannot overlap. */
+    private suspend fun claim(item: GalleryRepository.MediaItem, mode: String): Boolean {
+        val uri = item.uri.toString()
+        val now = android.os.SystemClock.uptimeMillis()
+        if (mode == Mode.CANDIDATES) {
+            return photoDao.claimForFaceProcessing(
+                uri = uri,
+                eligibleStatuses = listOf(PersonPhotoEntity.Status.CLIP_CANDIDATE),
+                processingStatus = PersonPhotoEntity.Status.FACE_PROCESSING,
+                claimedAt = now
+            ) > 0
+        }
+        val inserted = photoDao.insertIfAbsent(
+            PersonPhotoEntity(
+                uri = uri,
+                status = PersonPhotoEntity.Status.FACE_PROCESSING,
+                capturedAt = item.dateMillis,
+                lastAnalyzedAt = now
+            )
+        )
+        if (inserted != -1L) return true
+        return photoDao.claimForFaceProcessing(
+            uri = uri,
+            eligibleStatuses = listOf(
+                PersonPhotoEntity.Status.UNPROCESSED,
+                PersonPhotoEntity.Status.CLIP_CANDIDATE,
+                PersonPhotoEntity.Status.HAS_FACES_UNMATCHED
+            ),
+            processingStatus = PersonPhotoEntity.Status.FACE_PROCESSING,
+            claimedAt = now
+        ) > 0
     }
 
     // ------------------------------------------------------------------------------------------------
@@ -421,13 +477,12 @@ class FaceIndexWorker(
         if (elapsedMs <= 0L || stats.visited <= 0) return
         val photosPerMin = (stats.visited * 60_000f / elapsedMs).toInt()
         val reused = stats.clipReused
-        val reencoded = stats.clipReencoded
         val verdict = if (photosPerMin >= ThroughputTargetPhotosPerMinute) "met" else "below target"
         Log.i(
             Tag,
             "Throughput: $photosPerMin photos/min over ${elapsedMs / 1000}s (${stats.visited} photos) " +
                 "— SLA ${ThroughputTargetPhotosPerMinute}/min $verdict. " +
-                "CLIP gate: $reused reused, $reencoded re-encoded."
+                "CLIP gate: $reused stored vectors reused; no image vectors re-encoded."
         )
     }
 
@@ -484,7 +539,13 @@ class FaceIndexWorker(
 
     companion object {
         const val WorkName = "gallery_face_index"
+        private const val CandidateWorkName = "gallery_face_candidates"
         const val WorkTag = "gallery_face_index_work"
+        private const val ModeKey = "face_index_mode"
+        private object Mode {
+            const val CANDIDATES = "candidates"
+            const val REMAINDER = "remainder"
+        }
         const val ProgressVisitedKey = "visited"
         const val ProgressTotalKey = "total"
         const val ProgressPercentKey = "percent"
@@ -495,32 +556,31 @@ class FaceIndexWorker(
         const val StatsGatedKey = "stats_gated"
         const val StatsSkippedKey = "stats_skipped"
         private const val Tag = "FaceIndexWorker"
-        private const val PipelineConcurrency = 2
         private const val ProgressEvery = 5
         private const val MaxRetries = 3
+        private const val CandidateBatchLimit = 24
+        private const val ResidualPhotoIdleMillis = 900L
+        private const val ResidualStartDelaySeconds = 20L
+        private const val StaleClaimMillis = 20 * 60 * 1000L
         /** Phase 2 SLA target — photos/min while charging (spec: 30–60). Used by [logThroughput]. */
         private const val ThroughputTargetPhotosPerMinute = 30
 
         /** Spec Phase 2 worker default — battery-gated, no network requirement. */
         fun enqueue(context: Context, replaceExisting: Boolean = false) {
-            val request = OneTimeWorkRequestBuilder<FaceIndexWorker>()
-                .addTag(WorkTag)
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiresBatteryNotLow(true)
-                        .setRequiredNetworkType(androidx.work.NetworkType.NOT_REQUIRED)
-                        .build()
-                )
-                .setBackoffCriteria(
-                    androidx.work.BackoffPolicy.LINEAR,
-                    DesignTokens.INDEX_BACKOFF_SECONDS,
-                    TimeUnit.SECONDS
-                )
-                .build()
+            val request = buildRequest(context, Mode.REMAINDER)
             WorkManager.getInstance(context).enqueueUniqueWork(
                 WorkName,
                 if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
                 request
+            )
+        }
+
+        /** Starts promptly when CLIP finds person-like images, but only one photo is ever active. */
+        fun enqueueCandidates(context: Context) {
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                CandidateWorkName,
+                ExistingWorkPolicy.KEEP,
+                buildRequest(context, Mode.CANDIDATES)
             )
         }
 
@@ -529,32 +589,46 @@ class FaceIndexWorker(
          * APPEND_OR_REPLACE against IndexWorker's unique name, which appends behind any in-flight
          * work instead of forcing a sibling cancel — the failure mode we hit before this change.
          */
-        fun enqueueAfterClip(context: Context) {
-            val request = OneTimeWorkRequestBuilder<FaceIndexWorker>()
-                .addTag(WorkTag)
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiresBatteryNotLow(true)
-                        .setRequiredNetworkType(androidx.work.NetworkType.NOT_REQUIRED)
-                        .build()
-                )
-                .setBackoffCriteria(
-                    androidx.work.BackoffPolicy.LINEAR,
-                    DesignTokens.INDEX_BACKOFF_SECONDS,
-                    TimeUnit.SECONDS
-                )
-                .build()
+        fun enqueueRemainderAfterClip(context: Context) {
+            val request = buildRequest(context, Mode.REMAINDER, ResidualStartDelaySeconds)
             WorkManager.getInstance(context).enqueueUniqueWork(
-                IndexWorker.WorkName,
+                WorkName,
                 ExistingWorkPolicy.APPEND_OR_REPLACE,
                 request
             )
         }
 
+        private fun buildRequest(
+            context: Context,
+            mode: String,
+            initialDelaySeconds: Long = 0L
+        ) = OneTimeWorkRequestBuilder<FaceIndexWorker>()
+            .addTag(WorkTag)
+            .setInputData(workDataOf(ModeKey to mode))
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiresBatteryNotLow(true)
+                    .setRequiredNetworkType(androidx.work.NetworkType.NOT_REQUIRED)
+                    .apply {
+                        if (IndexPreferences.isChargingOnlyIndexing(context)) setRequiresCharging(true)
+                    }
+                    .build()
+            )
+            .apply {
+                if (initialDelaySeconds > 0L) setInitialDelay(initialDelaySeconds, TimeUnit.SECONDS)
+            }
+            .setBackoffCriteria(
+                androidx.work.BackoffPolicy.LINEAR,
+                DesignTokens.INDEX_BACKOFF_SECONDS,
+                TimeUnit.SECONDS
+            )
+            .build()
+
         /** Photo-row terminal statuses: any of these means the pipeline won't re-visit this URI. */
         private val PhotoRowTerminalStatuses = listOf(
             PersonPhotoEntity.Status.RESOLVED_TO_PERSON,
             PersonPhotoEntity.Status.GATED_NO_FACES,
+            PersonPhotoEntity.Status.CLIP_UNAVAILABLE,
             PersonPhotoEntity.Status.NO_FACES,
             PersonPhotoEntity.Status.DECODE_FAILED,
             PersonPhotoEntity.Status.DUPLICATE_IN_BURST

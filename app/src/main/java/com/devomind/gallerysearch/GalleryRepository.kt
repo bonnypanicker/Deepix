@@ -53,6 +53,9 @@ class GalleryRepository(
 
     data class SemanticSearchHit(val uri: Uri, val score: Float)
 
+    /** A newly persisted CLIP vector, exposed to the face-candidate queue without re-encoding it. */
+    data class IndexedEmbedding(val uri: Uri, val vector: FloatArray)
+
     /** Attaches the MobileCLIP encoders once they finish loading on a background thread. */
     fun attachEncoders(image: ImageEncoder, text: TextEncoder?) {
         this.imageEncoder = image
@@ -317,6 +320,16 @@ class GalleryRepository(
     fun loadBitmapForFaceDetection(uri: Uri): Bitmap? = decodeOrientedBitmap(uri, FaceDetectionMaxEdge)
 
     /**
+     * Indexing-only fast path for face detection. Uses the MediaStore rotation degrees already
+     * read into [MediaItem.orientationDegrees], avoiding a fresh EXIF parse / extra stream open on
+     * every photo in the background face worker. Falls back to full EXIF handling if the fast path
+     * fails so correctness wins over speed.
+     */
+    fun loadBitmapForFaceDetectionForIndexing(item: MediaItem): Bitmap? =
+        decodeOrientedBitmapForIndexing(item.uri, FaceDetectionMaxEdge, item.orientationDegrees)
+            ?: loadBitmapForFaceDetection(item.uri)
+
+    /**
      * Builds the embedding index using a parallel decode/preprocess pool feeding batched inference.
      *
      * Architecture:
@@ -335,7 +348,11 @@ class GalleryRepository(
      * correctness (embeddings are stored in a URI-keyed map), so workers don't need to preserve
      * input order.
      */
-    suspend fun buildIndex(items: List<MediaItem>, onProgress: (current: Int, total: Int) -> Unit) {
+    suspend fun buildIndex(
+        items: List<MediaItem>,
+        onProgress: (current: Int, total: Int) -> Unit,
+        onEmbeddingsStored: suspend (List<IndexedEmbedding>) -> Unit = {}
+    ) {
         val uriSet = items.mapTo(HashSet()) { it.uri.toString() }
         // Reconcile against the requested set: keep in-scope embeddings, drop everything else
         // (e.g. photos from a folder the user unchecked).
@@ -416,7 +433,8 @@ class GalleryRepository(
             val batchBuffer = ArrayList<PreparedItem>(batchSize)
             suspend fun flushBatch() {
                 if (batchBuffer.isEmpty()) return
-                encodeAndStore(batchBuffer, dirty)
+                val indexed = encodeAndStore(batchBuffer, dirty)
+                if (indexed.isNotEmpty()) onEmbeddingsStored(indexed)
                 processedNew += batchBuffer.size
                 onProgress(alreadyDone + processedNew, total)
                 batchBuffer.clear()
@@ -437,32 +455,37 @@ class GalleryRepository(
 
     /** Runs inference on a prepared batch and stores valid embeddings; falls back to per-image
      *  encoding (reusing the already-preprocessed data, no re-decode) if the batch call fails. */
-    private fun encodeAndStore(batch: List<PreparedItem>, dirty: AtomicBoolean) {
+    private fun encodeAndStore(batch: List<PreparedItem>, dirty: AtomicBoolean): List<IndexedEmbedding> {
         val encoder = imageEncoder ?: error("Image encoder not attached yet; indexing must wait for model load")
+        val indexed = ArrayList<IndexedEmbedding>(batch.size)
         try {
             val results = encoder.encodeBatchPrepared(batch.map { it.floats })
-            batch.zip(results).forEach { (entry, embedding) -> storeEmbedding(entry.uri, embedding, dirty) }
+            batch.zip(results).forEach { (entry, embedding) ->
+                storeEmbedding(entry.uri, embedding, dirty)?.let(indexed::add)
+            }
         } catch (error: Throwable) {
             Log.w(Tag, "Batch encoding failed, falling back to single-image", error)
             for (entry in batch) {
                 try {
-                    storeEmbedding(entry.uri, encoder.encodePrepared(entry.floats), dirty)
+                    storeEmbedding(entry.uri, encoder.encodePrepared(entry.floats), dirty)?.let(indexed::add)
                 } catch (e: Throwable) {
                     Log.w(Tag, "Failed to encode ${entry.uri}", e)
                 }
             }
         }
+        return indexed
     }
 
-    private fun storeEmbedding(uri: Uri, embedding: FloatArray, dirty: AtomicBoolean) {
+    private fun storeEmbedding(uri: Uri, embedding: FloatArray, dirty: AtomicBoolean): IndexedEmbedding? {
         if (!isEmbeddingValid(embedding)) {
             Log.w(Tag, "Skipping invalid embedding for $uri")
-            return
+            return null
         }
         synchronized(indexLock) {
             embeddings[uri.toString()] = embedding
         }
         dirty.set(true)
+        return IndexedEmbedding(uri, embedding)
     }
 
     /** Decodes, orients, and preprocesses one image for indexing; the bitmap never leaves this call. */
