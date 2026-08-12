@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.net.Uri
 import android.os.Bundle
+import android.provider.MediaStore
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -108,10 +109,61 @@ class PersonAlbumsActivity : AppCompatActivity() {
                     }
                     .sortedByDescending { it.faceCount }
             }
+            // Resolve original photo dimensions for each exemplar face so the cover can be cropped
+            // to the actual face (bbox is in source-image pixels).
+            val exemplarUris = people.mapNotNull { it.exemplarFace?.photoUri }.toHashSet()
+            val dimensions = withContext(Dispatchers.IO) { resolvePhotoDimensions(exemplarUris) }
+            adapter.photoDimensions = dimensions
             adapter.submitList(people)
             binding.emptyState.visibility = if (people.isEmpty()) View.VISIBLE else View.GONE
             binding.peopleGrid.visibility = if (people.isEmpty()) View.GONE else View.VISIBLE
         }
+    }
+
+    /**
+     * Queries MediaStore for the original width/height of the given photo URIs in one pass. Returns
+     * a map keyed by the uri string → intArrayOf [width, height]. Used by [FaceCropTransform] to
+     * scale the face bbox from source-image pixels into the decoded bitmap's coordinate space.
+     */
+    private fun resolvePhotoDimensions(uris: Set<String>): Map<String, IntArray> {
+        if (uris.isEmpty()) return emptyMap()
+        val idToUri = LinkedHashMap<Long, String>()
+        for (u in uris) {
+            val id = runCatching {
+                Uri.parse(u).lastPathSegment?.toLongOrNull()
+            }.getOrNull()
+            if (id != null && id > 0) idToUri[id] = u
+        }
+        if (idToUri.isEmpty()) return emptyMap()
+        val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
+        val ids = idToUri.keys.joinToString(",")
+        val out = HashMap<String, IntArray>(idToUri.size)
+        val cursor = runCatching {
+            contentResolver.query(
+                collection,
+                arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.WIDTH, MediaStore.Images.Media.HEIGHT),
+                "${MediaStore.Images.Media._ID} IN ($ids)",
+                null,
+                null
+            )
+        }.getOrNull() ?: return out
+        cursor.use {
+            val idIdx = it.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            val wIdx = it.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
+            val hIdx = it.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
+            while (it.moveToNext()) {
+                val id = it.getLong(idIdx)
+                val w = it.getInt(wIdx)
+                val h = it.getInt(hIdx)
+                val uriStr = idToUri[id] ?: continue
+                if (w > 0 && h > 0) out[uriStr] = intArrayOf(w, h)
+            }
+        }
+        return out
     }
 
     private fun openPerson(person: PersonSummary) {
@@ -138,6 +190,10 @@ class PersonAlbumsActivity : AppCompatActivity() {
             override fun areContentsTheSame(a: PersonSummary, b: PersonSummary) = a == b
         }
     ) {
+
+        /** uri string → [origW, origH]; set before submitList so covers crop to the face. */
+        var photoDimensions: Map<String, IntArray> = emptyMap()
+
         inner class Holder(val b: ItemPersonAlbumBinding) : androidx.recyclerview.widget.RecyclerView.ViewHolder(b.root)
 
         override fun onCreateViewHolder(parent: android.view.ViewGroup, vt: Int): Holder =
@@ -147,10 +203,6 @@ class PersonAlbumsActivity : AppCompatActivity() {
             val item = getItem(position)
             holder.b.personName.text = item.person.nameLabel ?: "Person #${item.person.personId}"
             holder.b.personCount.text = "${item.faceCount} photos"
-            // Exemplar crop: load the photo endpoint and bitmap-crop to the face bounds.
-            // Spec Phase 4 UI wants the *face* crop eagerly rendered; here we shortcut via Glide
-            // with the photo URI, optimizing for obviousness. The crop is stored in the person row
-            // later by PersonDetail when persons take action.
             loadCoverFor(holder, item)
             holder.b.root.setOnClickListener { onClick(item) }
         }
@@ -166,11 +218,16 @@ class PersonAlbumsActivity : AppCompatActivity() {
                     arr.getDouble(2).toFloat(),
                     arr.getDouble(3).toFloat()
                 )
-            }.getOrNull() ?: return
-            Glide.with(this@PersonAlbumsActivity)
-                .load(photoUri)
-                .centerCrop()
-                .into(holder.b.personCover)
+            }.getOrNull()
+            val dims = photoDimensions[face.photoUri]
+            val request = Glide.with(this@PersonAlbumsActivity).load(photoUri)
+            if (bbox != null && dims != null && dims.size >= 2 && dims[0] > 0 && dims[1] > 0) {
+                request.transform(FaceCropTransform(bbox, dims[0], dims[1]))
+                    .into(holder.b.personCover)
+            } else {
+                // Fallback: no bbox or no dimensions — show the full photo.
+                request.centerCrop().into(holder.b.personCover)
+            }
         }
     }
 

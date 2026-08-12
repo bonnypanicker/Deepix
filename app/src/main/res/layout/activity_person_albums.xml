@@ -23,16 +23,6 @@
             android:padding="12dp"
             android:src="@drawable/ic_fluent_back_24_regular"
             android:tint="@color/metroTextPrimary" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:fontFamily="sans-serif-light"
-            android:includeFontPadding="false"
-            android:text="@string/people_title"
-            android:textColor="@color/metroTextPrimary"
-            android:textSize="20sp" />
     </FrameLayout>
 
     <FrameLayout

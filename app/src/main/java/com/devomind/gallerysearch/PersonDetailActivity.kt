@@ -4,32 +4,59 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import android.widget.ImageView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
 import com.devomind.gallerysearch.databinding.ActivityPersonDetailBinding
 import com.devomind.gallerysearch.db.GalleryDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
- * Person detail: sampled faces of one Person (photo grid, paginated). User actions:
- *  - rename
- *  - merge with another Person (writes MERGE log row)
- *  - hide/archive (isHidden=true)
- *  - split a subset of faces into a new Person (writes SPLIT log row)
- *  - undo via PersonMergeLog auto-reversal (UNDO events)
- *
- * Only committed-on-disk PersonMutations apply; system suggestions in PersonMergeLog are for
- * ClusterMaintenance-generated ideas. Phase 4 UI is minimal and driven by DB state.
+ * Person detail: a proper paged timeline of the unique photos that contain a face of this Person,
+ * reusing the same ImageAdapter + sticky day-header infrastructure as the main browse view.
+ * User actions: rename, merge, hide, split, undo — unchanged from the Phase 4 mockup; only the
+ * photo rendering was replaced (was a manual 3-column LinearLayout capped at 20 faces with a
+ * fixed 140dp centerCrop that clipped aspect ratios).
  */
 class PersonDetailActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPersonDetailBinding
+    private lateinit var adapter: ImageAdapter
+    private lateinit var gridLayoutManager: GridLayoutManager
+
+    private val personPhotos = ArrayList<GalleryRepository.MediaItem>()
+    private var pagedDisplayedCount = 0
+    private var pagedLastDay: String? = null
+    private var pagingInFlight = false
+    private var personId: Long = 0L
+
+    private val monthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
+        .withZone(ZoneId.systemDefault())
+    private val dayFormatter = DateTimeFormatter.ofPattern("EEE, d", Locale.getDefault())
+        .withZone(ZoneId.systemDefault())
+
+    private val viewerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.data?.getBooleanExtra(ViewerActivity.ExtraContentChanged, false) == true) {
+            loadPerson(personId)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AccentPalette.apply(this)
@@ -43,11 +70,45 @@ class PersonDetailActivity : AppCompatActivity() {
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
 
-        val personId = intent.getLongExtra(ExtraPersonId, -1L)
+        personId = intent.getLongExtra(ExtraPersonId, -1L)
         if (personId <= 0) {
             finish()
             return
         }
+
+        adapter = ImageAdapter(
+            onPhotoClick = { item, sharedView -> openMedia(item, sharedView) },
+            onSelectionChanged = {},
+            onAlbumClick = {},
+            onAlbumLongClick = { _, _ -> }
+        )
+        adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
+
+        gridLayoutManager = GridLayoutManager(this, adapter.gridColumnCount)
+        gridLayoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+            override fun getSpanSize(position: Int): Int =
+                adapter.spanSizeAt(position, gridLayoutManager.spanCount)
+        }
+        binding.facesGrid.layoutManager = gridLayoutManager
+        binding.facesGrid.adapter = adapter
+        binding.facesGrid.setHasFixedSize(true)
+        binding.facesGrid.setItemViewCacheSize(12)
+        binding.facesGrid.recycledViewPool.setMaxRecycledViews(ImageAdapter.ViewTypePhoto, 24)
+        binding.facesGrid.addItemDecoration(StickyHeaderDecoration(adapter))
+        binding.facesGrid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                if (dy <= 0) return
+                val lastVisible = gridLayoutManager.findLastVisibleItemPosition()
+                val total = adapter.itemCount
+                if (!pagingInFlight &&
+                    pagedDisplayedCount < personPhotos.size &&
+                    lastVisible >= total - PAGE_PREFETCH
+                ) {
+                    paginateNext()
+                }
+            }
+        })
+
         loadPerson(personId)
     }
 
@@ -55,29 +116,29 @@ class PersonDetailActivity : AppCompatActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             binding.topBar.updatePadding(top = bars.top)
-            binding.root.updatePadding(bottom = bars.bottom)
+            binding.facesGrid.updatePadding(bottom = bars.bottom + 20)
             insets
         }
     }
 
-    private fun loadPerson(personId: Long) {
+    private fun loadPerson(pid: Long) {
         lifecycleScope.launch {
-            val db = com.devomind.gallerysearch.db.GalleryDatabase.getInstance(applicationContext)
-            val person = withContext(Dispatchers.IO) { db.personDao().findById(personId) }
+            val db = GalleryDatabase.getInstance(applicationContext)
+            val person = withContext(Dispatchers.IO) { db.personDao().findById(pid) }
             if (person == null) {
                 binding.personNameLabel.text = "Unknown person"
                 binding.personCountLabel.text = ""
-                binding.facesContainer.visibility = View.GONE
+                adapter.replaceCells(
+                    listOf(GalleryCell.Empty("No photos", "This person no longer exists."))
+                )
                 return@launch
             }
-            binding.personNameLabel.text = person.nameLabel ?: "Person #${person.personId}"
-            val facePhotoList = withContext(Dispatchers.IO) { db.faceDao().findByPerson(personId) }
-            binding.personCountLabel.text = "${facePhotoList.size} photos"
+            binding.personNameLabel.text = person.nameLabel ?: "Person #$pid"
 
             binding.btnRename.setOnClickListener { showRename(person) }
             binding.btnHide.setOnClickListener {
                 lifecycleScope.launch {
-                    db.personDao().hide(personId)
+                    withContext(Dispatchers.IO) { db.personDao().hide(pid) }
                     finish()
                 }
             }
@@ -85,40 +146,124 @@ class PersonDetailActivity : AppCompatActivity() {
             binding.btnSplitLearnt.setOnClickListener { showSplit(person) }
             binding.btnUndo.setOnClickListener { showUndo(person) }
 
-            renderFacesPreview(facePhotoList)
+            // Faces → unique source photos → MediaItems (date-sorted). A photo with two faces of
+            // the same person collapses to a single tile here.
+            val faces = withContext(Dispatchers.IO) { db.faceDao().findByPerson(pid) }
+            val photoUriKeys = faces.map { it.photoUri }.toHashSet()
+            val items = withContext(Dispatchers.IO) {
+                val repo = GalleryRepository(applicationContext)
+                repo.getImageItemsForAlbumIds(emptySet())
+                    .filter { it.uri.toString() in photoUriKeys }
+                    .sortedByDescending { it.dateMillis }
+            }
+            personPhotos.clear()
+            personPhotos.addAll(items)
+            binding.personCountLabel.text = "${items.size} photos"
+
+            if (items.isEmpty()) {
+                adapter.replaceCells(
+                    listOf(GalleryCell.Empty("No photos yet", "This person has no indexed photos."))
+                )
+                return@launch
+            }
+            renderFirstPage()
         }
     }
 
-    private fun renderFacesPreview(faces: List<com.devomind.gallerysearch.db.FaceEntity>) {
-        // Lazy pattern: top N first; supports scrolling deeper later. Three-column grid, manually.
-        binding.facesContainer.removeAllViews()
-        val excerpts = faces.take(20)
-        excerpts.chunked(3).forEach { rowFaces ->
-            val row = android.widget.LinearLayout(this).apply {
-                orientation = android.widget.LinearLayout.HORIZONTAL
+    private fun renderFirstPage() {
+        pagedDisplayedCount = 0
+        pagedLastDay = null
+        pagingInFlight = false
+        val to = pageEnd(0)
+        val (cells, lastDay) = buildTimelineCells(0, to, null)
+        pagedDisplayedCount = to
+        pagedLastDay = lastDay
+        adapter.replaceCells(cells)
+        binding.facesGrid.scrollToPosition(0)
+    }
+
+    private fun paginateNext() {
+        val from = pagedDisplayedCount
+        if (from >= personPhotos.size) return
+        pagingInFlight = true
+        val to = pageEnd(from)
+        val continuing = pagedLastDay
+        lifecycleScope.launch {
+            val (cells, lastDay) = withContext(Dispatchers.Default) {
+                buildTimelineCells(from, to, continuing)
             }
-            rowFaces.forEach { face ->
-                val card = layoutInflater.inflate(
-                    R.layout.item_person_face,
-                    row,
-                    /* attachToRoot = */ false
-                )
-                val cover = card.findViewById<android.widget.ImageView>(R.id.faceCover)
-                com.bumptech.glide.Glide.with(this)
-                    .load(face.photoUri)
-                    .centerCrop()
-                    .into(cover)
-                // Three equal columns per row.
-                card.layoutParams = android.widget.LinearLayout.LayoutParams(
-                    0,
-                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                    1f
-                ).apply { marginEnd = 6 }
-                row.addView(card)
-            }
-            binding.facesContainer.addView(row)
+            pagedDisplayedCount = to
+            pagedLastDay = lastDay
+            adapter.updateCells(adapter.cells + cells)
+            pagingInFlight = false
         }
-        binding.facesCount.text = "${faces.size} total faces" + if (faces.size > 20) " (first 20 shown)" else ""
+    }
+
+    /** End index (exclusive) of the page starting at [from]: ~PAGE_SIZE, extended to the day
+     *  boundary so a justified/grid row isn't split mid-day. */
+    private fun pageEnd(from: Int): Int {
+        val size = personPhotos.size
+        var end = minOf(from + PAGE_SIZE, size)
+        if (end in (from + 1) until size) {
+            val boundaryDay = safeFormat(dayFormatter, personPhotos[end - 1].dateMillis, "")
+            while (end < size &&
+                (end - from) < PAGE_MAX &&
+                safeFormat(dayFormatter, personPhotos[end].dateMillis, "") == boundaryDay
+            ) {
+                end++
+            }
+        }
+        return end
+    }
+
+    private fun buildTimelineCells(
+        from: Int,
+        to: Int,
+        continuingDay: String?
+    ): Pair<List<GalleryCell>, String?> {
+        val cells = ArrayList<GalleryCell>()
+        var lastDay: String? = continuingDay
+        var currentDayItems = ArrayList<GalleryRepository.MediaItem>()
+        for (i in from until to) {
+            val item = personPhotos[i]
+            val dayKey = safeFormat(dayFormatter, item.dateMillis, "")
+            if (dayKey != lastDay) {
+                if (currentDayItems.isNotEmpty()) {
+                    currentDayItems.forEach { cells += GalleryCell.Photo(it) }
+                    currentDayItems = ArrayList()
+                }
+                if (dayKey.isNotEmpty()) {
+                    cells += GalleryCell.Header(
+                        title = dayHeaderTitle(item.dateMillis),
+                        subtitle = safeFormat(monthFormatter, item.dateMillis, "")
+                    )
+                    lastDay = dayKey
+                }
+            }
+            currentDayItems.add(item)
+        }
+        if (currentDayItems.isNotEmpty()) {
+            currentDayItems.forEach { cells += GalleryCell.Photo(it) }
+        }
+        return cells to lastDay
+    }
+
+    private fun openMedia(item: GalleryRepository.MediaItem, sharedView: ImageView) {
+        ViewerItemsHolder.store(personPhotos)
+        val position = personPhotos.indexOfFirst { it.uri == item.uri }.let { if (it < 0) 0 else it }
+        val transitionName = ViewCompat.getTransitionName(sharedView) ?: ""
+        val intent = Intent(this, ViewerActivity::class.java).apply {
+            putExtra(ViewerActivity.ExtraMarker, item.uri.toString())
+            putExtra(ViewerActivity.ExtraPosition, position)
+            if (transitionName.isNotEmpty()) putExtra(ViewerActivity.ExtraTransitionName, transitionName)
+        }
+        if (transitionName.isNotEmpty()) {
+            val options = androidx.core.app.ActivityOptionsCompat
+                .makeSceneTransitionAnimation(this, sharedView, transitionName)
+            viewerLauncher.launch(intent, options)
+        } else {
+            viewerLauncher.launch(intent)
+        }
     }
 
     private fun showRename(person: com.devomind.gallerysearch.db.PersonEntity) {
@@ -158,11 +303,8 @@ class PersonDetailActivity : AppCompatActivity() {
                     val (_, targetId) = others[which]
                     lifecycleScope.launch {
                         withContext(Dispatchers.IO) {
-                            // 1) Move all faces from `person` to `target`.
                             db.faceDao().reassignPerson(person.personId, targetId)
-                            // 2) Mark source hidden so it no longer shows in lists.
                             db.personDao().hide(person.personId)
-                            // 3) Write the PersonMergeLog.
                             db.personMergeLogDao().insert(
                                 com.devomind.gallerysearch.db.PersonMergeLogEntity(
                                     eventKind = com.devomind.gallerysearch.db.PersonMergeLogEntity.Event.MERGE,
@@ -189,15 +331,12 @@ class PersonDetailActivity : AppCompatActivity() {
                 android.widget.Toast.makeText(this@PersonDetailActivity, "Need at least two faces to split", android.widget.Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            // Shortcut picker for now: split off the most divergent face (highest dissimilarity to centroid)
-            // Then propose the new person with the leftover faces. Full UI can come in Phase 5 polish.
             android.app.AlertDialog.Builder(this@PersonDetailActivity)
                 .setTitle("Split?")
                 .setMessage("Move the most divergent face to a new Person?")
                 .setPositiveButton("Split") { _, _ ->
                     lifecycleScope.launch {
                         withContext(Dispatchers.IO) {
-                            val db = GalleryDatabase.getInstance(applicationContext)
                             val centroid = faces.mapNotNull { it.embeddingJson }.firstOrNull()?.let { decodeEmbedding(it) }
                             if (centroid != null) {
                                 val faceToRemove = faces.maxByOrNull { face ->
@@ -207,7 +346,6 @@ class PersonDetailActivity : AppCompatActivity() {
                                     } ?: 0f
                                 }
                                 if (faceToRemove != null) {
-                                    // Create a new Person and move the face.
                                     val newPerson = com.devomind.gallerysearch.db.PersonEntity(
                                         nameLabel = null,
                                         exemplarFaceId = faceToRemove.faceId
@@ -252,7 +390,19 @@ class PersonDetailActivity : AppCompatActivity() {
         }
     }
 
-    // Helpers
+    private fun safeFormat(formatter: DateTimeFormatter, millis: Long, fallback: String): String =
+        runCatching { formatter.format(Instant.ofEpochMilli(millis)) }.getOrDefault(fallback)
+
+    private fun dayHeaderTitle(millis: Long): String {
+        val date = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
+        val today = LocalDate.now(ZoneId.systemDefault())
+        return when (date) {
+            today -> getString(R.string.today)
+            today.minusDays(1) -> getString(R.string.yesterday)
+            else -> safeFormat(dayFormatter, millis, "")
+        }
+    }
+
     private fun cosine(a: FloatArray, b: FloatArray): Float {
         if (a.size != b.size) return 0f
         var dot = 0f
@@ -267,6 +417,10 @@ class PersonDetailActivity : AppCompatActivity() {
 
     companion object {
         const val ExtraPersonId = "personId"
+
+        private const val PAGE_SIZE = 120
+        private const val PAGE_MAX = 320
+        private const val PAGE_PREFETCH = 12
 
         fun launch(context: Context, personId: Long) {
             context.startActivity(Intent(context, PersonDetailActivity::class.java).apply {
