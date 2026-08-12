@@ -360,6 +360,12 @@ class FaceIndexWorker(
             }
             val matchOutcomes = faceEntities.mapNotNull { face ->
                 if (face.embeddingJson == null) return@mapNotNull null
+                // Quality gate: low-quality faces (blurry, extreme pose, tiny) produce unreliable
+                // embeddings that sit near the global mean and are the dominant source of cross-
+                // identity false positives. Still store them (they count toward the photo's face
+                // tally and show in detail), but don't let them join or create a person cluster —
+                // a singleton from a clean face is better than a contaminated cluster from a noisy one.
+                if (face.isLowQuality) return@mapNotNull null
                 personMatcher.match(face)
             }
             updateStats(stats) {

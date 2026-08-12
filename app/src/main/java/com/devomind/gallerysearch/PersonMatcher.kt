@@ -96,6 +96,7 @@ class PersonMatcher(private val context: Context) {
         val exemplarIds = exemplarIds() ?: emptyMap()
         var bestPerson: PersonEntity? = null
         var bestSupport = Float.NEGATIVE_INFINITY
+        var secondSupport = Float.NEGATIVE_INFINITY
         for ((person, _) in candidates) {
             val faceIds = exemplarIds[person.personId].orEmpty()
             if (faceIds.isEmpty()) continue
@@ -103,12 +104,22 @@ class PersonMatcher(private val context: Context) {
             if (sims.isEmpty()) continue
             val support = median(sims)
             if (support > bestSupport) {
+                secondSupport = bestSupport
                 bestSupport = support
                 bestPerson = person
+            } else if (support > secondSupport) {
+                secondSupport = support
             }
         }
 
-        return if (bestPerson != null && bestSupport >= PersonMatchThreshold) {
+        // Margin guard: when the top two candidates are nearly tied, the face is ambiguous between
+        // two identities — a classic cross-identity false positive. Reject the assignment and
+        // create a new person instead of forcing a choice. Only applies when there are 2+ real
+        // candidates (secondSupport > -Inf).
+        val ambiguous = secondSupport > Float.NEGATIVE_INFINITY &&
+            (bestSupport - secondSupport) < AssignmentMargin
+
+        return if (bestPerson != null && bestSupport >= PersonMatchThreshold && !ambiguous) {
             assignFaceToPerson(newFace, newEmbedding, bestPerson.personId, bestSupport)
         } else {
             createPerson(newFace, newEmbedding)
@@ -270,13 +281,29 @@ class PersonMatcher(private val context: Context) {
         private const val Tag = "PersonMatcher"
 
         /**
-         * Cosine similarity threshold for assigning a new face to an existing person. Anchored to
-         * SFace's published decision threshold ([FaceEmbedder.MatchThresholdCosine] = 0.363): sit
-         * slightly above it so the exemplar-vote median stays precise without collapsing recall.
-         * (Was 0.45f under the old MobileFaceNet model — too high for SFace's cosine distribution,
-         * which rejected genuine same-person matches and spawned singleton "persons".)
+         * Cosine similarity threshold for assigning a new face to an existing person.
+         *
+         * The OpenCV Zoo published 0.363 decision threshold is calibrated for the **fp32** SFace
+         * export. We ship the **int8 block-quantized** model (`face_recognition_sface_2021dec_int8bq`),
+         * which compresses the cosine distribution: same-person cosines dip slightly and cross-
+         * identity cosines rise, narrowing the decision gap. 0.38 (the previous value, only +0.017
+         * above the fp32 floor) let cross-identity pairs through — false positives.
+         *
+         * 0.42 sits in the middle of the narrowed int8 gap: same-person pairs on SFace int8
+         * typically score 0.48–0.85, while different-person pairs rarely exceed 0.40. An earlier
+         * attempt at 0.45 over-rejected same-person matches and spawned singletons, so the operating
+         * point stays below that.
          */
-        private const val PersonMatchThreshold = 0.38f
+        private const val PersonMatchThreshold = 0.42f
+
+        /**
+         * Minimum margin between the top and second-best candidate support to accept an assignment.
+         * When two persons are nearly equidistant from a face, the match is ambiguous — forcing a
+         * choice there is the classic cross-identity false positive. 0.06 is wide enough to reject
+         * hard ambiguous cases but narrow enough not to reject a clear winner sitting just above a
+         * distant second.
+         */
+        private const val AssignmentMargin = 0.06f
 
         /** Cap on per-person exemplar set: grow up to this many, then rotate by quality. */
         private const val MaxExemplarsPerPerson = 10
@@ -284,10 +311,11 @@ class PersonMatcher(private val context: Context) {
         /**
          * Loose floor for the centroid pre-filter — well below [PersonMatchThreshold] so it only
          * discards clearly-unrelated persons; borderline cases still go to the full exemplar-vote.
-         * SFace same-person centroid cosines can dip to ~0.20, so the floor sits there to avoid
-         * starving the vote. (Was 0.30f under MobileFaceNet, which dropped most true matches.)
+         * Raised from 0.20 (which passed nearly every person as a candidate) to 0.28: still catches
+         * genuine same-person centroids on SFace int8 (which sit ~0.35–0.60) while dropping clearly
+         * unrelated persons, shrinking the candidate set that the margin guard has to reason about.
          */
-        private const val CentroidPreFilterFloor = 0.20f
+        private const val CentroidPreFilterFloor = 0.28f
 
         /** Max persons passed from the centroid pre-filter into the exemplar-vote. */
         private const val CentroidCandidates = 8
