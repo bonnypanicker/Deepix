@@ -237,6 +237,7 @@
     <string name="people_title">People</string>
     <string name="people_title_singular">Person</string>
     <string name="people_title_lower">people</string>
+    <string name="people_unnamed">Unnamed person</string>
     <string name="people_empty">No people yet</string>
     <string name="people_empty_hint">Faces from your photos will cluster here as indexing runs.</string>
     <string name="action_rename">Rename</string>

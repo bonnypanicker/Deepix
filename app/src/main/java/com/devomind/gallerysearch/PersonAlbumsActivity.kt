@@ -107,7 +107,12 @@ class PersonAlbumsActivity : AppCompatActivity() {
                             ?: faces.filter { it.isExemplar }.maxByOrNull { it.qualityScore }
                         PersonSummary(person = p, faceCount = faces.size, exemplarFace = exemplarFace)
                     }
-                    .sortedByDescending { it.faceCount }
+                    .sortedWith(
+                        compareBy<PersonSummary> { it.person.nameLabel.isNullOrBlank() }
+                            .thenBy { it.person.nameLabel?.trim()?.lowercase() ?: "" }
+                            .thenByDescending { it.faceCount }
+                            .thenBy { it.person.personId }
+                    )
             }
             // Resolve original photo dimensions for each exemplar face so the cover can be cropped
             // to the actual face (bbox is in source-image pixels).
@@ -201,14 +206,21 @@ class PersonAlbumsActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: Holder, position: Int) {
             val item = getItem(position)
-            holder.b.personName.text = item.person.nameLabel ?: "Person #${item.person.personId}"
-            holder.b.personCount.text = "${item.faceCount} photos"
+            holder.b.personName.text = item.person.nameLabel
+                ?.takeIf { it.isNotBlank() }
+                ?: getString(R.string.people_unnamed)
             loadCoverFor(holder, item)
             holder.b.root.setOnClickListener { onClick(item) }
         }
 
         private fun loadCoverFor(holder: Holder, item: PersonSummary) {
-            val face = item.exemplarFace ?: return
+            val glide = Glide.with(this@PersonAlbumsActivity)
+            val face = item.exemplarFace
+            if (face == null) {
+                glide.clear(holder.b.personCover)
+                holder.b.personCover.setImageDrawable(null)
+                return
+            }
             val photoUri = Uri.parse(face.photoUri)
             val bbox = runCatching {
                 val arr = org.json.JSONArray(face.bboxJson)
@@ -220,12 +232,11 @@ class PersonAlbumsActivity : AppCompatActivity() {
                 )
             }.getOrNull()
             val dims = photoDimensions[face.photoUri]
-            val request = Glide.with(this@PersonAlbumsActivity).load(photoUri)
+            val request = glide.load(photoUri)
             if (bbox != null && dims != null && dims.size >= 2 && dims[0] > 0 && dims[1] > 0) {
                 request.transform(FaceCropTransform(bbox, dims[0], dims[1]))
                     .into(holder.b.personCover)
             } else {
-                // Fallback: no bbox or no dimensions — show the full photo.
                 request.centerCrop().into(holder.b.personCover)
             }
         }

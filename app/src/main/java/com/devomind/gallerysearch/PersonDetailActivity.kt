@@ -41,7 +41,7 @@ class PersonDetailActivity : AppCompatActivity() {
 
     private val personPhotos = ArrayList<GalleryRepository.MediaItem>()
     private var pagedDisplayedCount = 0
-    private var pagedLastDay: String? = null
+    private var pagedLastDay: LocalDate? = null
     private var pagingInFlight = false
     private var personId: Long = 0L
 
@@ -133,7 +133,9 @@ class PersonDetailActivity : AppCompatActivity() {
                 )
                 return@launch
             }
-            binding.personNameLabel.text = person.nameLabel ?: "Person #$pid"
+            binding.personNameLabel.text = person.nameLabel
+                ?.takeIf { it.isNotBlank() }
+                ?: getString(R.string.people_unnamed)
 
             binding.btnRename.setOnClickListener { showRename(person) }
             binding.btnHide.setOnClickListener {
@@ -205,10 +207,10 @@ class PersonDetailActivity : AppCompatActivity() {
         val size = personPhotos.size
         var end = minOf(from + PAGE_SIZE, size)
         if (end in (from + 1) until size) {
-            val boundaryDay = safeFormat(dayFormatter, personPhotos[end - 1].dateMillis, "")
+            val boundaryDay = dayKey(personPhotos[end - 1].dateMillis)
             while (end < size &&
                 (end - from) < PAGE_MAX &&
-                safeFormat(dayFormatter, personPhotos[end].dateMillis, "") == boundaryDay
+                dayKey(personPhotos[end].dateMillis) == boundaryDay
             ) {
                 end++
             }
@@ -219,20 +221,20 @@ class PersonDetailActivity : AppCompatActivity() {
     private fun buildTimelineCells(
         from: Int,
         to: Int,
-        continuingDay: String?
-    ): Pair<List<GalleryCell>, String?> {
+        continuingDay: LocalDate?
+    ): Pair<List<GalleryCell>, LocalDate?> {
         val cells = ArrayList<GalleryCell>()
-        var lastDay: String? = continuingDay
+        var lastDay: LocalDate? = continuingDay
         var currentDayItems = ArrayList<GalleryRepository.MediaItem>()
         for (i in from until to) {
             val item = personPhotos[i]
-            val dayKey = safeFormat(dayFormatter, item.dateMillis, "")
+            val dayKey = dayKey(item.dateMillis)
             if (dayKey != lastDay) {
                 if (currentDayItems.isNotEmpty()) {
                     currentDayItems.forEach { cells += GalleryCell.Photo(it) }
                     currentDayItems = ArrayList()
                 }
-                if (dayKey.isNotEmpty()) {
+                if (dayKey != null) {
                     cells += GalleryCell.Header(
                         title = dayHeaderTitle(item.dateMillis),
                         subtitle = safeFormat(monthFormatter, item.dateMillis, "")
@@ -392,6 +394,10 @@ class PersonDetailActivity : AppCompatActivity() {
 
     private fun safeFormat(formatter: DateTimeFormatter, millis: Long, fallback: String): String =
         runCatching { formatter.format(Instant.ofEpochMilli(millis)) }.getOrDefault(fallback)
+
+    private fun dayKey(millis: Long): LocalDate? =
+        runCatching { Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate() }
+            .getOrNull()
 
     private fun dayHeaderTitle(millis: Long): String {
         val date = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()

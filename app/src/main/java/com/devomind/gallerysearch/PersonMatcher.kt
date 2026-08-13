@@ -96,8 +96,9 @@ class PersonMatcher(private val context: Context) {
         val exemplarIds = exemplarIds() ?: emptyMap()
         var bestPerson: PersonEntity? = null
         var bestSupport = Float.NEGATIVE_INFINITY
+        var bestCentroidSupport = Float.NEGATIVE_INFINITY
         var secondSupport = Float.NEGATIVE_INFINITY
-        for ((person, _) in candidates) {
+        for ((person, centroidSupport) in candidates) {
             val faceIds = exemplarIds[person.personId].orEmpty()
             if (faceIds.isEmpty()) continue
             val sims = faceIds.mapNotNull { fid -> vectorIndex.get(fid)?.let { cosine(newEmbedding, it) } }
@@ -106,6 +107,7 @@ class PersonMatcher(private val context: Context) {
             if (support > bestSupport) {
                 secondSupport = bestSupport
                 bestSupport = support
+                bestCentroidSupport = centroidSupport
                 bestPerson = person
             } else if (support > secondSupport) {
                 secondSupport = support
@@ -118,8 +120,14 @@ class PersonMatcher(private val context: Context) {
         // candidates (secondSupport > -Inf).
         val ambiguous = secondSupport > Float.NEGATIVE_INFINITY &&
             (bestSupport - secondSupport) < AssignmentMargin
+        val centroidConfirmed = bestCentroidSupport >= CentroidConfirmThreshold
 
-        return if (bestPerson != null && bestSupport >= PersonMatchThreshold && !ambiguous) {
+        return if (
+            bestPerson != null &&
+            bestSupport >= PersonMatchThreshold &&
+            centroidConfirmed &&
+            !ambiguous
+        ) {
             assignFaceToPerson(newFace, newEmbedding, bestPerson.personId, bestSupport)
         } else {
             createPerson(newFace, newEmbedding)
@@ -289,21 +297,18 @@ class PersonMatcher(private val context: Context) {
          * identity cosines rise, narrowing the decision gap. 0.38 (the previous value, only +0.017
          * above the fp32 floor) let cross-identity pairs through — false positives.
          *
-         * 0.42 sits in the middle of the narrowed int8 gap: same-person pairs on SFace int8
-         * typically score 0.48–0.85, while different-person pairs rarely exceed 0.40. An earlier
-         * attempt at 0.45 over-rejected same-person matches and spawned singletons, so the operating
-         * point stays below that.
+         * 0.43 trims another sliver of the overlap without jumping all the way to 0.45, which
+         * previously over-rejected valid matches and spawned too many singletons.
          */
-        private const val PersonMatchThreshold = 0.42f
+        private const val PersonMatchThreshold = 0.43f
 
         /**
          * Minimum margin between the top and second-best candidate support to accept an assignment.
          * When two persons are nearly equidistant from a face, the match is ambiguous — forcing a
-         * choice there is the classic cross-identity false positive. 0.06 is wide enough to reject
-         * hard ambiguous cases but narrow enough not to reject a clear winner sitting just above a
-         * distant second.
+         * choice there is the classic cross-identity false positive. Nudged up slightly so near
+         * ties fall out into a new cluster instead of contaminating an existing one.
          */
-        private const val AssignmentMargin = 0.06f
+        private const val AssignmentMargin = 0.08f
 
         /** Cap on per-person exemplar set: grow up to this many, then rotate by quality. */
         private const val MaxExemplarsPerPerson = 10
@@ -311,11 +316,18 @@ class PersonMatcher(private val context: Context) {
         /**
          * Loose floor for the centroid pre-filter — well below [PersonMatchThreshold] so it only
          * discards clearly-unrelated persons; borderline cases still go to the full exemplar-vote.
-         * Raised from 0.20 (which passed nearly every person as a candidate) to 0.28: still catches
+         * Raised from 0.20 (which passed nearly every person as a candidate) to 0.30: still catches
          * genuine same-person centroids on SFace int8 (which sit ~0.35–0.60) while dropping clearly
          * unrelated persons, shrinking the candidate set that the margin guard has to reason about.
          */
-        private const val CentroidPreFilterFloor = 0.28f
+        private const val CentroidPreFilterFloor = 0.30f
+
+        /**
+         * Even when an exemplar vote is strong, the assignment should still agree with the person's
+         * centroid. This extra check prevents a single lookalike exemplar from absorbing a different
+         * person when the cluster as a whole does not line up.
+         */
+        private const val CentroidConfirmThreshold = 0.34f
 
         /** Max persons passed from the centroid pre-filter into the exemplar-vote. */
         private const val CentroidCandidates = 8
