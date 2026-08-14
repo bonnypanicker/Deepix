@@ -69,8 +69,12 @@ class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.Defau
         const val ModelAsset = "mobilefacenet_w600k_mbf.onnx"
         const val ModelVersion = "w600k_mbf_v2"
         const val EmbeddingDim = 512
-        /** Baseline good-face cosine threshold used by validation UI labels. */
-        const val MatchThresholdCosine = 0.76f
+        /** 
+         * Baseline good-face cosine threshold used by validation UI labels.
+         * NOTE: The actual clustering thresholds are defined in PersonMatcher.kt.
+         * This value is kept for reference/UI purposes only.
+         */
+        const val MatchThresholdCosine = 0.62f
         const val MinModelBytes = 1_000_000
 
         fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
