@@ -251,8 +251,8 @@ object ClusterMaintenance {
     /** Below this intrapair cosine, a cluster is considered bimodal (ArcFace default ~0.7). */
     private const val SplitThreshold = 0.70f
 
-    /** Above this centroid-to-centroid cosine, two persons should merge (ArcFace default ~0.65–0.7). */
-    private const val MergeThreshold = 0.65f
+    /** Above this centroid-to-centroid cosine, two persons are close enough to suggest a merge. */
+    private const val MergeThreshold = 0.70f
 
     /** Cap on exemplar faces considered per person when computing divergence. */
     private const val MaxExemplarsPerPerson = 10

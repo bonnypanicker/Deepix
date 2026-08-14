@@ -132,7 +132,7 @@ class FaceIndexWorker(
                     CandidateBatchLimit
                 ).mapNotNull { row -> mediaByUri[row.uri]?.let { it to row.clipPersonScore } }
                 else -> images.map { it to null }
-            }
+            }.sortedByDescending { it.first.dateMillis }
             if (work.isEmpty()) {
                 Log.d(Tag, "No $mode face work is pending.")
                 return Result.success()
@@ -163,6 +163,10 @@ class FaceIndexWorker(
             // recovered by FaceIndexConsistency on the next cold start from embeddingJson.)
             runCatching { (applicationContext as GallerySearchApp).faceVectorIndex.flush() }
                 .onFailure { Log.w(Tag, "Vector index flush failed.", it) }
+            runCatching {
+                val merged = personMatcher.reconcileSplits()
+                if (merged > 0) Log.i(Tag, "Merged $merged similar person clusters after indexing.")
+            }.onFailure { Log.w(Tag, "Person reconcile failed.", it) }
             reportProgress(Progress(visited = total, total = total, percent = 100, phase = "done"))
             return Result.success()
         } catch (cancelled: CancellationException) {
@@ -347,7 +351,9 @@ class FaceIndexWorker(
             }
 
             // ── face → Person matching ──────────────────────────────────────────────────────
-            val faceEntities = photoResult.faces.map { af ->
+            val faceEntities = photoResult.faces
+                .sortedByDescending { it.quality }
+                .map { af ->
                 FaceEntity(
                     photoUri = uriStr,
                     bboxJson = bboxToJson(af.detection),
@@ -360,12 +366,6 @@ class FaceIndexWorker(
             }
             val matchOutcomes = faceEntities.mapNotNull { face ->
                 if (face.embeddingJson == null) return@mapNotNull null
-                // Quality gate: low-quality faces (blurry, extreme pose, tiny) produce unreliable
-                // embeddings that sit near the global mean and are the dominant source of cross-
-                // identity false positives. Still store them (they count toward the photo's face
-                // tally and show in detail), but don't let them join or create a person cluster —
-                // a singleton from a clean face is better than a contaminated cluster from a noisy one.
-                if (face.isLowQuality) return@mapNotNull null
                 personMatcher.match(face)
             }
             updateStats(stats) {

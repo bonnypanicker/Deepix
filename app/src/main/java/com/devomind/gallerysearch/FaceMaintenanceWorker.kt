@@ -67,8 +67,12 @@ class FaceMaintenanceWorker(
             }
         }
 
-        // Step 3 — cluster maintenance: split / merge detection via ClusterMaintenance. Lint-style:
-        // suggestions are written to PersonMergeLog; no auto-apply.
+        // Step 3 — apply mean-based reconciliation over existing person clusters, then surface
+        // leftover split/merge suggestions for anything still ambiguous.
+        runCatching {
+            val merged = PersonMatcher(applicationContext).reconcileSplits()
+            if (merged > 0) Log.i(Tag, "Merged $merged similar person clusters during maintenance.")
+        }.onFailure { Log.w(Tag, "Person reconcile failed.", it) }
         val result = try {
             ClusterMaintenance.analyze(applicationContext)
         } catch (t: Throwable) {

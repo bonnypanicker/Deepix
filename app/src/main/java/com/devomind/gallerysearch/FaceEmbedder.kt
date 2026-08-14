@@ -69,8 +69,8 @@ class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.Defau
         const val ModelAsset = "mobilefacenet_w600k_mbf.onnx"
         const val ModelVersion = "w600k_mbf_v2"
         const val EmbeddingDim = 512
-        /** Validated cross-photo ArcFace decision threshold from the previously working pipeline. */
-        const val MatchThresholdCosine = 0.55f
+        /** Baseline good-face cosine threshold used by validation UI labels. */
+        const val MatchThresholdCosine = 0.76f
         const val MinModelBytes = 1_000_000
 
         fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
