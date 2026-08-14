@@ -379,16 +379,42 @@ class PersonMatcher(private val context: Context) {
     private companion object {
         private const val Tag = "PersonMatcher"
 
-        /** Ente-style good-face incremental clustering threshold. */
-        private const val GoodFaceMatchThreshold = 0.76f
+        /** 
+         * Incremental clustering threshold for good-quality faces.
+         * 
+         * MobileFaceNet/ArcFace typically produces same-person similarities of 0.65-0.95
+         * depending on pose, lighting, and image quality. Different-person similarities
+         * typically range 0.10-0.50. A threshold of 0.62 provides robust same-person
+         * recall while maintaining separation between different identities.
+         * 
+         * This threshold must be >= MeanMergeThreshold to avoid hysteresis where faces
+         * are split during incremental clustering but would merge during reconciliation.
+         */
+        private const val GoodFaceMatchThreshold = 0.62f
 
-        /** Ente-style stricter threshold for low-quality or sideways faces. */
-        private const val BadFaceMatchThreshold = 0.84f
+        /** 
+         * Stricter threshold for low-quality or sideways faces.
+         * 
+         * Poor quality faces (blurry, small, extreme pose) have less reliable embeddings.
+         * We require higher similarity to prevent noisy faces from incorrectly merging
+         * into existing person clusters. Set lower than the original 0.84 which was
+         * unrealistically strict for ArcFace embeddings.
+         */
+        private const val BadFaceMatchThreshold = 0.70f
 
         /** Cap on per-person exemplar set: grow up to this many, then rotate by quality. */
         private const val MaxExemplarsPerPerson = 10
 
-        /** Mean-cluster merge threshold from Ente's complete-clustering reconciliation pass. */
+        /** 
+         * Mean-cluster merge threshold for reconciliation pass.
+         * 
+         * After incremental clustering, we compare cluster centroids and merge those
+         * with mean similarity >= this threshold. This catches cases where:
+         * - Two photos of the same person were taken under very different conditions
+         * - The incremental threshold split a continuous identity due to ordering
+         * 
+         * Must be <= GoodFaceMatchThreshold to ensure reconciliation can repair splits.
+         */
         private const val MeanMergeThreshold = 0.70f
 
         private const val SidewaysYawDegrees = 18f

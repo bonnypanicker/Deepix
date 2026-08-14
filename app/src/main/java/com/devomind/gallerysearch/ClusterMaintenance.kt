@@ -248,10 +248,21 @@ object ClusterMaintenance {
 
     private const val Tag = "ClusterMaintenance"
 
-    /** Below this intrapair cosine, a cluster is considered bimodal (ArcFace default ~0.7). */
-    private const val SplitThreshold = 0.70f
+    /** 
+     * Below this intrapair cosine, a cluster is considered bimodal (split candidate).
+     * 
+     * This threshold detects when faces within a single person cluster are too dissimilar,
+     * suggesting the cluster may contain multiple different people. Set to 0.55 to catch
+     * clear splits while avoiding false positives from normal within-person variation.
+     */
+    private const val SplitThreshold = 0.55f
 
-    /** Above this centroid-to-centroid cosine, two persons are close enough to suggest a merge. */
+    /** 
+     * Above this centroid-to-centroid cosine, two persons are close enough to suggest a merge.
+     * 
+     * This is used by the maintenance analyzer to surface merge suggestions to the user.
+     * Should align with MeanMergeThreshold in PersonMatcher for consistency.
+     */
     private const val MergeThreshold = 0.70f
 
     /** Cap on exemplar faces considered per person when computing divergence. */
