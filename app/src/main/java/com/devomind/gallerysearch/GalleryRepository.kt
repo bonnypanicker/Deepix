@@ -1052,7 +1052,7 @@ class GalleryRepository(
         // to 2x YuNetDetector.MaxLongEdge (1280) guarantees the decode is never *below* the
         // detector's cap, so every photo with enough native pixels runs detection at the full
         // 1280 internal resolution instead of a sample-size-dependent 768-1280.
-        private const val FaceDetectionMaxEdge = 2560
+        internal const val FaceDetectionMaxEdge = 2560
         // Region crops decode at higher resolution than the 512px index bitmaps so small
         // selections still carry enough detail for the 256px CLIP encoder.
         private const val RegionDecodeMaxEdge = 2048

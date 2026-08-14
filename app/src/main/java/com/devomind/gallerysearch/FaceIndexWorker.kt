@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Phase 2 indexing pipeline:
- *   enumerate → CLIP person-gate → dHash + DuplicateGuard → YuNet → quality/pose → SFace →
+ *   enumerate → CLIP person-gate → dHash + DuplicateGuard → YuNet → quality/pose → MobileFaceNet →
  *   PersonMatcher → Room (faces + person_photos + persons).
  *
  * Runs only when indexing is allowed by the user's charging preference. Single-process, shares the ORT environment with

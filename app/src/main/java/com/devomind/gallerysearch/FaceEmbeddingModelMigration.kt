@@ -54,7 +54,7 @@ object FaceEmbeddingModelMigration {
             database.personPhotoDao().resetForEmbeddingModel()
         }
         // Persist the marker last. A kill before it is stored repeats this idempotent reset on the
-        // next launch instead of comparing stale vectors with SFace embeddings.
+        // next launch instead of comparing stale vectors with MobileFaceNet embeddings.
         app.faceVectorIndex.clear()
         FaceVectorIndexStatus.setOk(appContext)
         prefs.edit().putString(KeyVersion, FaceEmbedder.ModelVersion).commit()

@@ -12,7 +12,10 @@ import androidx.room.PrimaryKey
  *
  * @param faceId auto-generated primary key.
  * @param photoUri MediaStore uri for the source photo.
- * @param bboxJson [x, y, width, height] in original photo pixels.
+ * @param bboxJson [x, y, width, height] in face-detection-bitmap pixels (the oriented decode
+ *            capped at GalleryRepository.FaceDetectionMaxEdge with power-of-two inSampleSize),
+ *            NOT full-resolution photo pixels. Callers rendering a crop must scale by the
+ *            detection bitmap's dims — see PersonAlbumsActivity.resolvePhotoDimensions.
  * @param landmarksJson five (x, y) landmark pairs — YuNet semantic order.
  * @param embeddingJson face embedding (L2-normalized), null when not yet computed.
  *            Kept as JSON so Phase 2 can swap in a vector index without a DB migration.
@@ -46,8 +49,8 @@ data class FaceEntity(
     val landmarksJson: String,
     val embeddingJson: String? = null,
     // Retain the SQL default for schema compatibility; all current inserts use the Kotlin value.
-    @ColumnInfo(defaultValue = "w600k_mbf_v1")
-    val embeddingModelVersion: String = "sface_2021dec_int8bq_v4",
+    @ColumnInfo(defaultValue = "w600k_mbf_v2")
+    val embeddingModelVersion: String = "w600k_mbf_v2",
     val qualityScore: Float = 0f,
     val yaw: Float = 0f,
     val pitch: Float = 0f,

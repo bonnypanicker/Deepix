@@ -8,19 +8,10 @@ import kotlin.math.sqrt
 
 /**
  * Least-squares Umeyama-style similarity transform mapping five facial landmarks onto the
- * canonical 112x112 template, producing the aligned crop the face embedder expects.
- *
- * ## SFace handshake contract (single source of truth)
- * The active embedder is OpenCV Zoo SFace 2021dec (int8bq). Its expected input is identical to
- * what OpenCV's `cv::FaceRecognizerSF` produces internally:
- *   - 1×3×112×112 NCHW, **RGB** channel order
- *   - raw **[0, 255]** pixel values, no mean subtraction / scaling   (see [FaceNormalizer])
- *   - 5-point **InsightFace template** below; canonical order is
- *     (left eye, right eye, nose, left mouth corner, right mouth corner)
- *   - 128-d feature, cosine decision threshold 0.363   (see [FaceEmbedder])
+ * canonical 112x112 InsightFace/ArcFace template, producing the aligned crop MobileFaceNet expects.
  *
  * The detector is expected to deliver landmarks already in canonical order, but the raw kps order
- * of the active `face_detection_yunet_2026may.onnx` is unverified. To make the YuNet↔SFace
+ * of the active `face_detection_yunet_2026may.onnx` is unverified. To make the YuNet↔ArcFace
  * handshake robust regardless, we fit two candidate matrices — one per plausible ordering — and
  * pick the one that lands closest to the template. **Each matrix is scored against the same source
  * point set it was derived from**; scoring a matrix against the wrong set makes the comparison
@@ -30,7 +21,7 @@ object FaceAligner {
 
     /**
      * Target landmark locations for an upright 112x112 face crop — the InsightFace 5-point
-     * template that OpenCV's SFace `alignCrop` uses internally. Order:
+     * template that InsightFace's MobileFaceNet/ArcFace alignCrop uses internally. Order:
      * (left eye, right eye, nose, left mouth corner, right mouth corner).
      */
     private val CanonicalLandmarks: Array<FloatArray> = arrayOf(

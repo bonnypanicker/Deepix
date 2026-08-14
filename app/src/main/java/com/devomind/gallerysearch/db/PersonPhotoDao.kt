@@ -85,7 +85,7 @@ interface PersonPhotoDao {
     @Query("UPDATE person_photos SET status = :status WHERE uri = :uri")
     suspend fun setStatus(uri: String, status: String)
 
-    /** Keep the photo inventory but force the pipeline to derive fresh SFace state. */
+    /** Keep the photo inventory but force the pipeline to derive fresh MobileFaceNet state. */
     @Query(
         "UPDATE person_photos SET status = 'unprocessed', faceCount = 0, exemplarQuality = 0, " +
             "exemplarPhotoUri = NULL, lastAnalyzedAt = 0"

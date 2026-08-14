@@ -289,45 +289,36 @@ class PersonMatcher(private val context: Context) {
         private const val Tag = "PersonMatcher"
 
         /**
-         * Cosine similarity threshold for assigning a new face to an existing person.
-         *
-         * The OpenCV Zoo published 0.363 decision threshold is calibrated for the **fp32** SFace
-         * export. We ship the **int8 block-quantized** model (`face_recognition_sface_2021dec_int8bq`),
-         * which compresses the cosine distribution: same-person cosines dip slightly and cross-
-         * identity cosines rise, narrowing the decision gap. 0.38 (the previous value, only +0.017
-         * above the fp32 floor) let cross-identity pairs through — false positives.
-         *
-         * 0.43 trims another sliver of the overlap without jumping all the way to 0.45, which
-         * previously over-rejected valid matches and spawned too many singletons.
+         * Cosine similarity threshold for assigning a new face to an existing person. This is the
+         * value validated with MobileFaceNet/ArcFace cross-photo comparisons: same-person pairs
+         * generally sat above it while unrelated faces remained lower. The newer near-tie guard
+         * below still rejects ambiguous assignments instead of weakening this gate.
          */
-        private const val PersonMatchThreshold = 0.43f
+        private const val PersonMatchThreshold = 0.55f
 
         /**
-         * Minimum margin between the top and second-best candidate support to accept an assignment.
-         * When two persons are nearly equidistant from a face, the match is ambiguous — forcing a
-         * choice there is the classic cross-identity false positive. Nudged up slightly so near
-         * ties fall out into a new cluster instead of contaminating an existing one.
+         * Minimum margin between top and second-best candidate support to accept an assignment.
+         * Rejects only true near-ties; the historical MobileFaceNet gate already had enough
+         * separation for ordinary matches, so this is deliberately narrower than SFace's tuning.
          */
-        private const val AssignmentMargin = 0.08f
+        private const val AssignmentMargin = 0.05f
 
         /** Cap on per-person exemplar set: grow up to this many, then rotate by quality. */
         private const val MaxExemplarsPerPerson = 10
 
         /**
-         * Loose floor for the centroid pre-filter — well below [PersonMatchThreshold] so it only
-         * discards clearly-unrelated persons; borderline cases still go to the full exemplar-vote.
-         * Raised from 0.20 (which passed nearly every person as a candidate) to 0.30: still catches
-         * genuine same-person centroids on SFace int8 (which sit ~0.35–0.60) while dropping clearly
-         * unrelated persons, shrinking the candidate set that the margin guard has to reason about.
+         * Loose floor for the centroid pre-filter — below [PersonMatchThreshold] so borderline
+         * same-person candidates still reach the full exemplar vote. This is the value validated
+         * with MobileFaceNet/ArcFace.
          */
-        private const val CentroidPreFilterFloor = 0.30f
+        private const val CentroidPreFilterFloor = 0.40f
 
         /**
-         * Even when an exemplar vote is strong, the assignment should still agree with the person's
-         * centroid. This extra check prevents a single lookalike exemplar from absorbing a different
-         * person when the cluster as a whole does not line up.
+         * Even when an exemplar vote is strong, assignment must also agree with the person's
+         * centroid. Kept at the proven prefilter floor so it blocks contradictions without
+         * changing ordinary MobileFaceNet assignments.
          */
-        private const val CentroidConfirmThreshold = 0.34f
+        private const val CentroidConfirmThreshold = 0.40f
 
         /** Max persons passed from the centroid pre-filter into the exemplar-vote. */
         private const val CentroidCandidates = 8

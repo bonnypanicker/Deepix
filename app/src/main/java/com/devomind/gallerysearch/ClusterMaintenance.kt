@@ -248,24 +248,11 @@ object ClusterMaintenance {
 
     private const val Tag = "ClusterMaintenance"
 
-    /**
-     * Below this intrapair cosine, a cluster is considered bimodal. SFace-tuned for the int8
-     * quantized model: sits at the assignment gate ([PersonMatcher.PersonMatchThreshold] = 0.43)
-     * so a person cluster splits when its two closest exemplars fall below the same bar the
-     * online matcher uses to assign — i.e. when the cluster contains faces the matcher would
-     * have put in different persons. Matching the online gate lets maintenance surface clusters
-     * that were accepted under weaker evidence and now need cleanup.
-     */
-    private const val SplitThreshold = 0.43f
+    /** Below this intrapair cosine, a cluster is considered bimodal (ArcFace default ~0.7). */
+    private const val SplitThreshold = 0.70f
 
-    /**
-     * Above this centroid-to-centroid cosine, two persons should merge. Must sit AT OR ABOVE
-     * [PersonMatcher.PersonMatchThreshold] so maintenance doesn't re-merge persons the online
-     * matcher correctly separated. (Was 0.36f — below the old assignment gate, so the nightly
-     * sweep actively collapsed correct splits back into false-positive clusters.) 0.43 matches
-     * the gate; cross-identity centroid pairs on SFace int8 rarely exceed 0.38.
-     */
-    private const val MergeThreshold = 0.43f
+    /** Above this centroid-to-centroid cosine, two persons should merge (ArcFace default ~0.65–0.7). */
+    private const val MergeThreshold = 0.65f
 
     /** Cap on exemplar faces considered per person when computing divergence. */
     private const val MaxExemplarsPerPerson = 10
