@@ -96,6 +96,8 @@ class MainActivity : AppCompatActivity() {
     private var peopleCollection: GalleryRepository.Album? = null
     private var peopleCollectionRefreshGeneration = 0
     private var lastFaceIndexPeopleRefresh = -1
+    /** Prevent worker callbacks from rendering or pruning pins before MediaStore is loaded. */
+    private var librarySnapshotReady = false
     private var folderTreeRoots = listOf<FolderNode>()
     private var folderSort = FolderSort.Name
     private var currentMode = Mode.Browse
@@ -886,6 +888,7 @@ class MainActivity : AppCompatActivity() {
         val scope = IndexScopeStore.getFolderIds(applicationContext)
         indexScopeUris = if (scope.isEmpty()) allUris
         else snapshot.imageItems.filter { it.bucketId in scope }.map { it.uri }
+        librarySnapshotReady = true
     }
 
     private val favoriteItems: List<GalleryRepository.MediaItem>
@@ -1264,7 +1267,7 @@ class MainActivity : AppCompatActivity() {
 
         // Pinned-albums strip is prepended to the Collections page (cheap; from in-memory state).
         val prefix = mutableListOf<GalleryCell>()
-        if (expectedSection == Section.Collection) {
+        if (expectedSection == Section.Collection && librarySnapshotReady) {
             val validIds = albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet()
             albumPinStore.cleanup(validIds)
             ensureDefaultPins()
@@ -2605,9 +2608,11 @@ class MainActivity : AppCompatActivity() {
             val updated = withContext(Dispatchers.IO) { loadPeopleCollection() }
             if (requestGeneration != peopleCollectionRefreshGeneration || updated == peopleCollection) return@launch
             peopleCollection = updated
-            if (activeSection == Section.Collection && currentMode == Mode.Browse) {
+            if (librarySnapshotReady && activeSection == Section.Collection && currentMode == Mode.Browse) {
                 binding.imageGrid.post {
-                    if (!isFinishing && activeSection == Section.Collection && currentMode == Mode.Browse) {
+                    if (!isFinishing && librarySnapshotReady &&
+                        activeSection == Section.Collection && currentMode == Mode.Browse
+                    ) {
                         renderCurrentSection()
                     }
                 }
