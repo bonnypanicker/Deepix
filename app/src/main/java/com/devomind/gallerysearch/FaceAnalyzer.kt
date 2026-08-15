@@ -29,6 +29,8 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
         val detection: YuNetDetector.FaceDetection,
         val quality: Float,
         val pose: FacePoseEstimator.Pose,
+        /** Whether the detection is eligible to contribute an identity embedding / person match. */
+        val recognitionEligible: Boolean,
         val embedding: FloatArray?,
         val alignedCrop: Bitmap?
     )
@@ -78,11 +80,15 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
             // Belt-and-braces sanitize: NaN propagates through Score → Room's NOT NULL bind.
             val quality = if (qualityRaw.isNaN()) 0f else qualityRaw.coerceIn(0f, 1f)
             val pose = FacePoseEstimator.estimate(det)
-            val isLowQuality = quality < LowQualityThreshold
+            val recognitionEligible = FaceRecognizabilityGate.isEligible(det, quality, pose)
 
-            val embedding = runCatching { embedder.embed(aligned) }
-                .onFailure { Log.w(Tag, "Embedding failed for face", it) }
-                .getOrNull()
+            val embedding = if (recognitionEligible) {
+                runCatching { embedder.embed(aligned) }
+                    .onFailure { Log.w(Tag, "Embedding failed for face", it) }
+                    .getOrNull()
+            } else {
+                null
+            }
 
             entities += FaceEntity(
                 photoUri = photoUri.toString(),
@@ -94,13 +100,14 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
                 yaw = pose.yaw,
                 pitch = pose.pitch,
                 roll = pose.roll,
-                isLowQuality = isLowQuality
+                isLowQuality = !recognitionEligible
             )
 
             analyzed += AnalyzedFace(
                 detection = det,
                 quality = quality,
                 pose = pose,
+                recognitionEligible = recognitionEligible,
                 embedding = embedding,
                 alignedCrop = if (includeAlignedCrops) aligned else aligned.also { it.recycle() }
             )
@@ -159,6 +166,5 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
 
     private companion object {
         const val Tag = "FaceAnalyzer"
-        const val LowQualityThreshold = 0.35f
     }
 }

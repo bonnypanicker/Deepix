@@ -69,9 +69,9 @@ class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.Defau
         const val ModelAsset = "mobilefacenet_w600k_mbf.onnx"
         // RGB preprocessing is not comparable to the earlier BGR embedding space. Changing this
         // value makes FaceEmbeddingModelMigration discard and rebuild those stale embeddings.
-        // Includes the detector-input orientation and clustering contracts. Advancing the value
-        // rebuilds existing person assignments when either changes.
-        const val ModelVersion = "w600k_mbf_rgb_oriented_matching_v5"
+        // Includes the detector-input orientation and recognizability contracts. Advancing the
+        // value rebuilds assignments so poor samples cannot leave behind one-photo persons.
+        const val ModelVersion = "w600k_mbf_rgb_oriented_recognizability_v6"
         const val EmbeddingDim = 512
         /** Cross-photo same-person label threshold validated in the working ArcFace pipeline. */
         const val MatchThresholdCosine = 0.50f

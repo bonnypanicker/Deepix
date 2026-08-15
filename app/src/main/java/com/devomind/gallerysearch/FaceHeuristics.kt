@@ -1,6 +1,7 @@
 package com.devomind.gallerysearch
 
 import android.graphics.Bitmap
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.sqrt
 
@@ -143,4 +144,68 @@ object FacePoseEstimator {
     /** Approximate face width/height aspect (square ~1.0). */
     fun aspectRatio(detection: YuNetDetector.FaceDetection): Float =
         if (detection.height > 1e-6f) detection.width / detection.height else 1f
+}
+
+/**
+ * Decides whether a YuNet detection carries enough visible facial structure for identity matching.
+ *
+ * Inspired by Ente's clustering policy: retain weak detections for display/debugging, but do not
+ * let low-confidence, blurry, sideways, or geometrically implausible samples create a Person.
+ * This is deliberately stricter than YuNet's detection threshold, which answers only "face-like?".
+ */
+object FaceRecognizabilityGate {
+
+    private const val MinDetectorConfidence = 0.80f
+    private const val MinFaceSidePx = 64f
+    private const val MinQuality = 0.45f
+    private const val MinEyeSeparationFraction = 0.20f
+    private const val MinMouthSeparationFraction = 0.10f
+    private const val MinVerticalFeatureFraction = 0.08f
+    private const val MaxNoseOffsetFromEyeMid = 0.65f
+    private const val MaxYawDegrees = 25f
+    private const val MaxPitchDegrees = 30f
+
+    fun isEligible(
+        detection: YuNetDetector.FaceDetection,
+        quality: Float,
+        pose: FacePoseEstimator.Pose
+    ): Boolean {
+        if (detection.confidence < MinDetectorConfidence ||
+            minOf(detection.width, detection.height) < MinFaceSidePx ||
+            quality < MinQuality ||
+            abs(pose.yaw) > MaxYawDegrees ||
+            abs(pose.pitch) > MaxPitchDegrees
+        ) return false
+
+        val landmarks = detection.landmarks
+        if (landmarks.size != 5 || landmarks.any { it.size < 2 || !it[0].isFinite() || !it[1].isFinite() }) {
+            return false
+        }
+        val leftEye = landmarks[0]
+        val rightEye = landmarks[1]
+        val nose = landmarks[2]
+        val mouthL = landmarks[3]
+        val mouthR = landmarks[4]
+        val eyeDistance = distance(leftEye, rightEye)
+        val mouthDistance = distance(mouthL, mouthR)
+        if (eyeDistance < detection.width * MinEyeSeparationFraction ||
+            mouthDistance < detection.width * MinMouthSeparationFraction
+        ) return false
+
+        val eyeMidX = (leftEye[0] + rightEye[0]) / 2f
+        val eyeMidY = (leftEye[1] + rightEye[1]) / 2f
+        val mouthMidY = (mouthL[1] + mouthR[1]) / 2f
+        if (abs(nose[0] - eyeMidX) > eyeDistance * MaxNoseOffsetFromEyeMid ||
+            nose[1] - eyeMidY < detection.height * MinVerticalFeatureFraction ||
+            mouthMidY - nose[1] < detection.height * MinVerticalFeatureFraction
+        ) return false
+
+        return true
+    }
+
+    private fun distance(a: FloatArray, b: FloatArray): Float {
+        val dx = a[0] - b[0]
+        val dy = a[1] - b[1]
+        return sqrt(dx * dx + dy * dy)
+    }
 }

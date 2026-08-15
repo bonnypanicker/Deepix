@@ -354,17 +354,22 @@ class FaceIndexWorker(
                     photoUri = uriStr,
                     bboxJson = bboxToJson(af.detection),
                     landmarksJson = landmarksToJson(af.detection.landmarks),
+                    // Unrecognizable detections stay in Room for diagnostics, but carry no
+                    // identity vector and can never create a one-photo Person cluster.
                     embeddingJson = af.embedding?.let { embeddingToJson(it) },
                     // Keep this explicit: the Room entity's SQL default is retained for old
                     // schema compatibility, while new embeddings must carry the live version.
                     embeddingModelVersion = FaceEmbedder.ModelVersion,
                     qualityScore = af.quality,
                     yaw = af.pose.yaw, pitch = af.pose.pitch, roll = af.pose.roll,
-                    isLowQuality = af.quality < LowQualityFloor
+                    isLowQuality = !af.recognitionEligible
                 )
             }
+            // PersonMatcher persists matched faces itself. Persist rejected / failed-embedding
+            // detections here so face counts and diagnostic overlays remain complete.
+            faceDao.insertAll(faceEntities.filter { it.embeddingJson == null })
             val matchOutcomes = faceEntities.mapNotNull { face ->
-                if (face.embeddingJson == null) return@mapNotNull null
+                if (face.isLowQuality || face.embeddingJson == null) return@mapNotNull null
                 personMatcher.match(face)
             }
             updateStats(stats) {
@@ -639,7 +644,5 @@ class FaceIndexWorker(
             PersonPhotoEntity.Status.DUPLICATE_IN_BURST
         )
 
-        /** Low-quality floor — faces below this are stored but never become exemplars. */
-        const val LowQualityFloor = 0.35f
     }
 }

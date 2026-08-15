@@ -274,7 +274,7 @@ class FaceValidationActivity : AppCompatActivity() {
         appendLine("  confidence: %.3f".format(d.confidence))
         appendLine("  quality: %.2f %s".format(
             face.quality,
-            if (face.quality < 0.35f) "(excluded from exemplars)" else ""
+            if (!face.recognitionEligible) "(excluded from person matching)" else ""
         ))
         appendLine("  pose → yaw %.1f°  pitch %.1f°  roll %.1f°".format(
             face.pose.yaw, face.pose.pitch, face.pose.roll
