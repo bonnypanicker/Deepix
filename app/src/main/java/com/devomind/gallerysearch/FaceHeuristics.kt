@@ -156,15 +156,15 @@ object FacePoseEstimator {
  */
 object FaceRecognizabilityGate {
 
-    private const val MinDetectorConfidence = 0.65f
-    private const val MinFaceSidePx = 48f
-    private const val MinQuality = 0.30f
-    private const val MinEyeSeparationFraction = 0.12f
-    private const val MinMouthSeparationFraction = 0.06f
-    private const val MinVerticalFeatureFraction = 0.04f
-    private const val MaxNoseOffsetFromEyeMid = 0.95f
-    private const val MaxYawDegrees = 40f
-    private const val MaxPitchDegrees = 40f
+    private const val MinDetectorConfidence = 0.70f
+    private const val MinFaceSidePx = 56f
+    private const val MinQuality = 0.35f
+    private const val MinEyeSeparationFraction = 0.15f
+    private const val MinMouthSeparationFraction = 0.08f
+    private const val MinVerticalFeatureFraction = 0.06f
+    private const val MaxNoseOffsetFromEyeMid = 0.80f
+    private const val MaxYawDegrees = 35f
+    private const val MaxPitchDegrees = 35f
 
     fun isEligible(
         detection: YuNetDetector.FaceDetection,
