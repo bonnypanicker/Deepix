@@ -64,7 +64,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var favoritesStore: FavoritesStore
     private lateinit var albumPinStore: AlbumPinStore
     private lateinit var smartAlbumStore: SmartAlbumStore
-    private lateinit var faceResultStore: FaceResultStore
     private var imageEncoder: ImageEncoder? = null
     private var nsfwClassifier: NsfwClassifier? = null
     private var nsfwComputeJob: Job? = null
@@ -93,6 +92,10 @@ class MainActivity : AppCompatActivity() {
     private var currentFolder: FolderNode? = null
     private var currentSmartAlbum: SmartAlbum? = null
     private var smartAlbums: List<SmartAlbum> = emptyList()
+    /** Non-persisted virtual collection, rebuilt from the Room face index. */
+    private var peopleCollection: GalleryRepository.Album? = null
+    private var peopleCollectionRefreshGeneration = 0
+    private var lastFaceIndexPeopleRefresh = -1
     private var folderTreeRoots = listOf<FolderNode>()
     private var folderSort = FolderSort.Name
     private var currentMode = Mode.Browse
@@ -293,7 +296,6 @@ class MainActivity : AppCompatActivity() {
         favoritesStore = FavoritesStore(this)
         albumPinStore = AlbumPinStore(this)
         smartAlbumStore = SmartAlbumStore(this)
-        faceResultStore = FaceResultStore(this)
 
         adapter = ImageAdapter(
             onPhotoClick = { item, view -> openMedia(item, view) },
@@ -386,7 +388,7 @@ class MainActivity : AppCompatActivity() {
         // pending, which previously lost the notification prompt on first launch.
         requestGalleryPermission()
         observeIndexWorker()
-        observeFaceScanWorker()
+        observeFaceIndexWorker()
     }
 
     private fun ensureNotificationPermission() {
@@ -665,6 +667,7 @@ class MainActivity : AppCompatActivity() {
                     loadLibrarySnapshot(repo)
                 }
                 applyLibrarySnapshot(snapshot)
+                peopleCollection = withContext(Dispatchers.IO) { loadPeopleCollection() }
                 smartAlbums = withContext(Dispatchers.IO) { smartAlbumStore.getAll() }
                 currentAlbum = null
                 lastProgressRefresh = -1
@@ -894,10 +897,6 @@ class MainActivity : AppCompatActivity() {
     private val albumDetailItems: List<GalleryRepository.MediaItem>
         get() {
             val album = currentAlbum ?: return emptyList()
-            if (album.id == PeopleAlbumId) {
-                val faceUris = faceResultStore.load(imageItems.mapTo(HashSet()) { it.uri.toString() }).faceCounts.keys
-                return collectionItems.filter { it.uri.toString() in faceUris }
-            }
             return if (smartAlbumStore.isSmartId(album.id)) {
                 val sa = smartAlbumStore.get(album.id) ?: return emptyList()
                 val order = sa.memberUris.withIndex().associate { (i, u) -> u to i }
@@ -1272,8 +1271,11 @@ class MainActivity : AppCompatActivity() {
             val pinnedIds = albumPinStore.getPinnedAlbumIds()
             val smartById = smartAlbums.associate { it.id to it.toAlbum() }
             val albumById = (albums + smartById.values).associateBy { it.id }
-            val pinnedAlbums = listOfNotNull(peopleAlbumOrNull()) + pinnedIds.mapNotNull { albumById[it] }
-            if (IndexPreferences.isShowPinnedInCollections(this) && pinnedAlbums.isNotEmpty()) {
+            val pinnedAlbums = listOfNotNull(peopleCollection) +
+                pinnedIds.filterNot { it == PeopleAlbumId }.mapNotNull { albumById[it] }
+            if ((peopleCollection != null || IndexPreferences.isShowPinnedInCollections(this)) &&
+                pinnedAlbums.isNotEmpty()
+            ) {
                 prefix += GalleryCell.PinnedAlbumsHeader(pinnedAlbums)
             }
         }
@@ -2581,18 +2583,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** A virtual collection backed by local YuNet results, intentionally kept ahead of user pins. */
-    private fun peopleAlbumOrNull(): GalleryRepository.Album? {
-        val imageByUri = imageItems.associateBy { it.uri.toString() }
-        val snapshot = faceResultStore.load(imageByUri.keys)
-        if (snapshot.totalFaces < MinPeopleFaces || snapshot.faceCounts.isEmpty()) return null
-        val cover = imageItems.firstOrNull { it.uri.toString() in snapshot.faceCounts }?.uri
+    /** Builds the fixed-first People chip from persisted face data, never from a transient scan cache. */
+    private suspend fun loadPeopleCollection(): GalleryRepository.Album? {
+        val faceDao = com.devomind.gallerysearch.db.GalleryDatabase
+            .getInstance(applicationContext)
+            .faceDao()
+        val faceCount = faceDao.countAll()
+        if (faceCount < MinPeopleFaces) return null
         return GalleryRepository.Album(
             id = PeopleAlbumId,
-            name = "People",
-            count = snapshot.faceCounts.size,
-            coverUri = cover
+            name = getString(R.string.people_title),
+            count = faceCount,
+            coverUri = faceDao.bestRecognizedFacePhotoUri()?.let(Uri::parse)
         )
+    }
+
+    /** Refreshes only when People visibility, count, or cover actually changes. */
+    private fun refreshPeopleCollection() {
+        val requestGeneration = ++peopleCollectionRefreshGeneration
+        lifecycleScope.launch {
+            val updated = withContext(Dispatchers.IO) { loadPeopleCollection() }
+            if (requestGeneration != peopleCollectionRefreshGeneration || updated == peopleCollection) return@launch
+            peopleCollection = updated
+            if (activeSection == Section.Collection && currentMode == Mode.Browse) {
+                binding.imageGrid.post {
+                    if (!isFinishing && activeSection == Section.Collection && currentMode == Mode.Browse) {
+                        renderCurrentSection()
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -2862,7 +2882,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openAlbum(album: GalleryRepository.Album) {
-        if (album.isSmart) {
+        if (album.id == PeopleAlbumId) {
+            startActivity(Intent(this, PersonAlbumsActivity::class.java))
+        } else if (album.isSmart) {
             val smart = smartAlbums.find { it.id == album.id }
             if (smart != null) {
                 renderSmartAlbumDetail(smart)
@@ -3385,19 +3407,19 @@ class MainActivity : AppCompatActivity() {
                     tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
                 }
             }
+            val refreshedPeopleCollection = loadPeopleCollection()
             withContext(Dispatchers.Main) {
                 allTags = refreshedTags
                 tagUriMap = refreshedTagUriMap
                 applyLibrarySnapshot(snapshot)
+                peopleCollectionRefreshGeneration++
+                peopleCollection = refreshedPeopleCollection
                 // A finished pass had its chance at every in-scope photo; whatever is still missing
                 // can't be encoded, so stop counting it as outstanding work.
                 if (afterCompletedIndexPass) {
                     permanentlyUnindexedUris = repo.unindexedUris(indexScopeUris).toSet()
                 }
-                currentAlbum = currentAlbum?.let { current ->
-                    if (current.id == PeopleAlbumId) peopleAlbumOrNull()
-                    else albums.firstOrNull { it.id == current.id }
-                }
+                currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
                 binding.statusText.text = indexedSummary(repo.indexedCount)
                 val pinnedAlbum = currentAlbum
                 when {
@@ -3525,16 +3547,24 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
-    /** Refreshes Collections silently when the background face pass completes. */
-    private fun observeFaceScanWorker() {
+    /** Keeps the virtual People collection in sync with the Room face index, without polling. */
+    private fun observeFaceIndexWorker() {
         WorkManager.getInstance(this)
-            .getWorkInfosForUniqueWorkLiveData(FaceScanWorker.WorkName)
+            .getWorkInfosByTagLiveData(FaceIndexWorker.WorkTag)
             .observe(this) { infos ->
-                val work = infos.firstOrNull() ?: return@observe
-                if (work.state == WorkInfo.State.SUCCEEDED &&
-                    activeSection == Section.Collection && currentMode == Mode.Browse
+                val work = infos.firstOrNull { it.state == WorkInfo.State.RUNNING }
+                    ?: infos.firstOrNull { it.state == WorkInfo.State.ENQUEUED }
+                    ?: infos.firstOrNull()
+                    ?: return@observe
+                val indexedFaces = work.progress.getInt(FaceIndexWorker.StatsFacesKey, -1)
+                if (work.state == WorkInfo.State.RUNNING &&
+                    indexedFaces >= MinPeopleFaces && indexedFaces != lastFaceIndexPeopleRefresh
                 ) {
-                    renderCurrentSection()
+                    lastFaceIndexPeopleRefresh = indexedFaces
+                    refreshPeopleCollection()
+                }
+                if (work.state == WorkInfo.State.SUCCEEDED) {
+                    refreshPeopleCollection()
                 }
             }
     }

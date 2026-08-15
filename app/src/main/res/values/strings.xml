@@ -235,16 +235,9 @@
 
     <!-- People Phase 4 -->
     <string name="people_title">People</string>
-    <string name="people_title_singular">Person</string>
     <string name="people_title_lower">people</string>
-    <string name="people_unnamed">Unnamed person</string>
     <string name="people_empty">No people yet</string>
     <string name="people_empty_hint">Faces from your photos will cluster here as indexing runs.</string>
-    <string name="action_rename">Rename</string>
-    <string name="action_merge">Merge</string>
-    <string name="action_hide">Hide</string>
-    <string name="action_split">Split</string>
-    <string name="action_undo">Undo</string>
 
     <!-- First-run onboarding -->
     <string name="first_run_title">Meet People</string>

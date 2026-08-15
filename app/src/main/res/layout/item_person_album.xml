@@ -5,21 +5,25 @@
     android:orientation="vertical"
     android:padding="6dp">
 
-    <com.devomind.gallerysearch.SquareImageView
+    <ImageView
         android:id="@+id/personCover"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_width="92dp"
+        android:layout_height="92dp"
+        android:layout_gravity="center_horizontal"
+        android:background="@drawable/album_cover_rounded_bg"
+        android:clipToOutline="true"
         android:contentDescription="@null"
         android:scaleType="centerCrop" />
 
     <TextView
         android:id="@+id/personName"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
         android:layout_marginTop="8dp"
         android:ellipsize="end"
         android:maxLines="1"
-        android:textColor="@color/metroTextPrimary"
-        android:textSize="14sp" />
+        android:textColor="@color/metroTextSecondary"
+        android:textSize="13sp" />
 
 </LinearLayout>

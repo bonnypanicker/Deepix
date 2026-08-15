@@ -126,37 +126,26 @@ class PersonDetailActivity : AppCompatActivity() {
             val db = GalleryDatabase.getInstance(applicationContext)
             val person = withContext(Dispatchers.IO) { db.personDao().findById(pid) }
             if (person == null) {
-                binding.personNameLabel.text = "Unknown person"
+                binding.personNameLabel.text = getString(R.string.people_title)
                 binding.personCountLabel.text = ""
                 adapter.replaceCells(
                     listOf(GalleryCell.Empty("No photos", "This person no longer exists."))
                 )
                 return@launch
             }
-            binding.personNameLabel.text = person.nameLabel
-                ?.takeIf { it.isNotBlank() }
-                ?: getString(R.string.people_unnamed)
-
-            binding.btnRename.setOnClickListener { showRename(person) }
-            binding.btnHide.setOnClickListener {
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) { db.personDao().hide(pid) }
-                    finish()
-                }
-            }
-            binding.btnMerge.setOnClickListener { showMergePicker(person) }
-            binding.btnSplitLearnt.setOnClickListener { showSplit(person) }
-            binding.btnUndo.setOnClickListener { showUndo(person) }
+            binding.personNameLabel.text = getString(R.string.people_title)
 
             // Faces → unique source photos → MediaItems (date-sorted). A photo with two faces of
             // the same person collapses to a single tile here.
-            val items = withContext(Dispatchers.IO) {
+            val (items, faceCount) = withContext(Dispatchers.IO) {
                 val repo = GalleryRepository(applicationContext)
-                repo.getImageItemsForUris(db.faceDao().distinctPhotoUrisByPerson(pid))
+                val faceDao = db.faceDao()
+                repo.getImageItemsForUris(faceDao.distinctPhotoUrisByPerson(pid)) to
+                    faceDao.countByPerson(pid)
             }
             personPhotos.clear()
             personPhotos.addAll(items)
-            binding.personCountLabel.text = "${items.size} photos"
+            binding.personCountLabel.text = collectionCountText(items.size, faceCount)
 
             if (items.isEmpty()) {
                 adapter.replaceCells(
@@ -178,6 +167,12 @@ class PersonDetailActivity : AppCompatActivity() {
         pagedLastDay = lastDay
         adapter.replaceCells(cells)
         binding.facesGrid.scrollToPosition(0)
+    }
+
+    private fun collectionCountText(photoCount: Int, faceCount: Int): String {
+        val photos = if (photoCount == 1) "1 photo" else "$photoCount photos"
+        val faces = if (faceCount == 1) "1 face" else "$faceCount faces"
+        return "$photos · $faces"
     }
 
     private fun paginateNext() {

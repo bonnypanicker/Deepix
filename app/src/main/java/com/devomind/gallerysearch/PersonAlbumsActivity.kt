@@ -1,10 +1,6 @@
 package com.devomind.gallerysearch
 
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.RectF
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
@@ -17,6 +13,7 @@ import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.DecodeFormat
 import com.devomind.gallerysearch.databinding.ActivityPersonAlbumsBinding
 import com.devomind.gallerysearch.databinding.ItemPersonAlbumBinding
 import com.devomind.gallerysearch.db.GalleryDatabase
@@ -36,6 +33,7 @@ class PersonAlbumsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPersonAlbumsBinding
     private lateinit var adapter: PersonAlbumsAdapter
+    private var peopleLoadGeneration = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AccentPalette.apply(this)
@@ -63,6 +61,8 @@ class PersonAlbumsActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        /*
+        super.onStart()
         // Live face-index ticker: refresh stamps when the worker advances.
         // WorkManager.getInstance(this).getWorkInfosForUniqueWorkLiveData(FaceIndexWorker.WorkName)
         androidx.work.WorkManager.getInstance(this)
@@ -86,6 +86,9 @@ class PersonAlbumsActivity : AppCompatActivity() {
             }
     }
 
+        */
+    }
+
     private fun applyInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -96,20 +99,26 @@ class PersonAlbumsActivity : AppCompatActivity() {
     }
 
     private fun loadPeople() {
+        val requestGeneration = ++peopleLoadGeneration
         lifecycleScope.launch {
             val db = GalleryDatabase.getInstance(applicationContext)
             val people = withContext(Dispatchers.IO) {
                 db.personDao().allVisible()
                     .map { p ->
                         val faces = db.faceDao().findByPerson(p.personId)
+                        val photoCount = faces.mapTo(HashSet()) { it.photoUri }.size
                         val exemplarFace = p.exemplarFaceId.takeIf { it > 0 }
                             ?.let { id -> faces.find { it.faceId == id } }
                             ?: faces.filter { it.isExemplar }.maxByOrNull { it.qualityScore }
-                        PersonSummary(person = p, faceCount = faces.size, exemplarFace = exemplarFace)
+                        PersonSummary(
+                            person = p,
+                            faceCount = faces.size,
+                            photoCount = photoCount,
+                            exemplarFace = exemplarFace
+                        )
                     }
                     .sortedWith(
-                        compareBy<PersonSummary> { it.person.nameLabel.isNullOrBlank() }
-                            .thenBy { it.person.nameLabel?.trim()?.lowercase() ?: "" }
+                        compareByDescending<PersonSummary> { it.photoCount }
                             .thenByDescending { it.faceCount }
                             .thenBy { it.person.personId }
                     )
@@ -118,6 +127,7 @@ class PersonAlbumsActivity : AppCompatActivity() {
             // to the actual face (bbox is in source-image pixels).
             val exemplarUris = people.mapNotNull { it.exemplarFace?.photoUri }.toHashSet()
             val dimensions = withContext(Dispatchers.IO) { resolvePhotoDimensions(exemplarUris) }
+            if (requestGeneration != peopleLoadGeneration) return@launch
             adapter.photoDimensions = dimensions
             adapter.submitList(people)
             binding.emptyState.visibility = if (people.isEmpty()) View.VISIBLE else View.GONE
@@ -205,6 +215,7 @@ class PersonAlbumsActivity : AppCompatActivity() {
     data class PersonSummary(
         val person: PersonEntity,
         val faceCount: Int,
+        val photoCount: Int,
         /** Either cropped face URI or null; backed by person.exemplarFaceId -> photoUri on lookup. */
         val exemplarFace: com.devomind.gallerysearch.db.FaceEntity?
     )
@@ -228,12 +239,13 @@ class PersonAlbumsActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: Holder, position: Int) {
             val item = getItem(position)
-            holder.b.personName.text = item.person.nameLabel
-                ?.takeIf { it.isNotBlank() }
-                ?: getString(R.string.people_unnamed)
+            holder.b.personName.text = photoCountText(item.photoCount)
             loadCoverFor(holder, item)
             holder.b.root.setOnClickListener { onClick(item) }
         }
+
+        private fun photoCountText(count: Int): String =
+            if (count == 1) "1 photo" else "$count photos"
 
         private fun loadCoverFor(holder: Holder, item: PersonSummary) {
             val glide = Glide.with(this@PersonAlbumsActivity)
@@ -255,6 +267,8 @@ class PersonAlbumsActivity : AppCompatActivity() {
             }.getOrNull()
             val dims = photoDimensions[face.photoUri]
             val request = glide.load(photoUri)
+                .override(CoverDecodePx, CoverDecodePx)
+                .format(DecodeFormat.PREFER_ARGB_8888)
             if (bbox != null && dims != null && dims.size >= 2 && dims[0] > 0 && dims[1] > 0) {
                 request.transform(FaceCropTransform(bbox, dims[0], dims[1]))
                     .into(holder.b.personCover)
@@ -266,16 +280,6 @@ class PersonAlbumsActivity : AppCompatActivity() {
 
     companion object {
         private const val SPAN_COUNT = 3
+        private const val CoverDecodePx = 320
     }
-}
-
-/** Rounds a bitmap to pseudo-circle; used for face chips. Cheap copies. */
-fun Bitmap.toCircular(size: Int): Bitmap {
-    val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    Canvas(out).apply {
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        paint.shader = android.graphics.BitmapShader(this@toCircular, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP)
-        drawRoundRect(RectF(0f, 0f, size.toFloat(), size.toFloat()), size / 2f, size / 2f, paint)
-    }
-    return out
 }

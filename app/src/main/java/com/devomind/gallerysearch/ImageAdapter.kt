@@ -955,10 +955,13 @@ class ImageAdapter(
                 LinearLayoutManager(binding.root.context, LinearLayoutManager.HORIZONTAL, false)
             binding.pinnedAlbumsList.adapter = chipAdapter
             binding.pinnedAlbumsList.setHasFixedSize(true)
+            binding.pinnedAlbumsList.itemAnimator = null
         }
 
         fun bind(cell: GalleryCell.PinnedAlbumsHeader) {
-            chipAdapter.submitList(cell.albums)
+            // A detached snapshot avoids mutating the nested RecyclerView's backing list while
+            // its parent is calculating timeline layout.
+            chipAdapter.submitList(cell.albums.toList())
         }
     }
 
@@ -970,6 +973,12 @@ class ImageAdapter(
             override fun areContentsTheSame(old: GalleryRepository.Album, new: GalleryRepository.Album) = old == new
         }
     ) {
+        init {
+            setHasStableIds(true)
+        }
+
+        override fun getItemId(position: Int): Long = getItem(position).id.hashCode().toLong()
+
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ChipViewHolder {
             val binding = ItemPinnedAlbumChipBinding.inflate(LayoutInflater.from(parent.context), parent, false)
             return ChipViewHolder(binding)
