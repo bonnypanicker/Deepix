@@ -355,6 +355,9 @@ class FaceIndexWorker(
                     bboxJson = bboxToJson(af.detection),
                     landmarksJson = landmarksToJson(af.detection.landmarks),
                     embeddingJson = af.embedding?.let { embeddingToJson(it) },
+                    // Keep this explicit: the Room entity's SQL default is retained for old
+                    // schema compatibility, while new embeddings must carry the live version.
+                    embeddingModelVersion = FaceEmbedder.ModelVersion,
                     qualityScore = af.quality,
                     yaw = af.pose.yaw, pitch = af.pose.pitch, roll = af.pose.roll,
                     isLowQuality = af.quality < LowQualityFloor

@@ -12,7 +12,7 @@ import java.nio.FloatBuffer
 /**
  * Runs InsightFace MobileFaceNet (w600k_mbf / ArcFace) on a five-point-aligned 112×112 crop.
  *
- * The model expects NCHW BGR pixels normalized to [-1, 1] (see [FaceNormalizer]) and produces a
+ * The model expects NCHW RGB pixels normalized to [-1, 1] (see [FaceNormalizer]) and produces a
  * 512-D ArcFace feature. Outputs are L2-normalized so cosine similarity is their dot product.
  *
  * The session is shared process-wide by [GallerySearchApp.sharedEncoders].
@@ -67,7 +67,9 @@ class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.Defau
     companion object {
         const val Tag = "FaceEmbedder"
         const val ModelAsset = "mobilefacenet_w600k_mbf.onnx"
-        const val ModelVersion = "w600k_mbf_v2"
+        // RGB preprocessing is not comparable to the earlier BGR embedding space. Changing this
+        // value makes FaceEmbeddingModelMigration discard and rebuild those stale embeddings.
+        const val ModelVersion = "w600k_mbf_rgb_v3"
         const val EmbeddingDim = 512
         /** Cross-photo same-person label threshold validated in the working ArcFace pipeline. */
         const val MatchThresholdCosine = 0.55f

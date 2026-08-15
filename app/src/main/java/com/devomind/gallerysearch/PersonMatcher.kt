@@ -19,11 +19,12 @@ import kotlin.math.sqrt
  * Algorithm, per new face:
  *  1. **Centroid pre-filter:** compute the cosine of the new embedding against each person's
  *     centroid (mean of that person's exemplar embeddings, L2-renormalized) — one dot product
- *     per person, cheap. Keep only the top [CentroidCandidates] whose centroid sim is at least
- *     [CentroidPreFilterFloor]. If none clear the floor, skip straight to creating a new person.
- *  2. **Exemplar-vote:** for each surviving candidate, compute cosine to its top
- *     [MaxExemplarsPerPerson] exemplar faces; the person-level support is the *median* of those
- *     sims (less sensitive to a single outlier exemplar than the mean).
+ *     per person, cheap. Keep the top [CentroidCandidates] as candidates, without a hard
+ *     similarity floor: a profile face can be close to one exemplar but far from the centroid.
+ *  2. **Exemplar match:** for each surviving candidate, compute cosine to its top
+ *     [MaxExemplarsPerPerson] exemplar faces; the person-level support is the *maximum* of those
+ *     similarities. An identity's exemplar set intentionally covers different pose and lighting,
+ *     so requiring a majority to match would fragment real people.
  *  3. If the best support ≥ [PersonMatchThreshold], assign; otherwise create a new Person.
  *
  * After assignment, exemplars are rotated by quality (a better face evicts the lowest-quality
@@ -85,12 +86,7 @@ class PersonMatcher(private val context: Context) {
                 person to cosine(newEmbedding, centroid)
             }
             .sortedByDescending { it.second }
-            .takeWhile { it.second >= CentroidPreFilterFloor }
             .take(CentroidCandidates)
-
-        if (candidates.isEmpty()) {
-            return createPerson(newFace, newEmbedding)
-        }
 
         // ── exemplar-vote on the surviving candidates ─────────────────────────────────
         val exemplarIds = exemplarIds() ?: emptyMap()
@@ -101,7 +97,7 @@ class PersonMatcher(private val context: Context) {
             if (faceIds.isEmpty()) continue
             val sims = faceIds.mapNotNull { fid -> vectorIndex.get(fid)?.let { cosine(newEmbedding, it) } }
             if (sims.isEmpty()) continue
-            val support = median(sims)
+            val support = sims.maxOrNull() ?: continue
             if (support > bestSupport) {
                 bestSupport = support
                 bestPerson = person
@@ -258,14 +254,6 @@ class PersonMatcher(private val context: Context) {
         return FloatArray(v.size) { i -> v[i] / norm }
     }
 
-    private fun median(values: List<Float>): Float {
-        if (values.isEmpty()) return 0f
-        val sorted = values.sorted()
-        val midpoint = sorted.size / 2
-        return if (sorted.size % 2 == 0) (sorted[midpoint - 1] + sorted[midpoint]) / 2f
-        else sorted[midpoint]
-    }
-
     private companion object {
         private const val Tag = "PersonMatcher"
 
@@ -280,15 +268,7 @@ class PersonMatcher(private val context: Context) {
         /** Cap on per-person exemplar set: grow up to this many, then rotate by quality. */
         private const val MaxExemplarsPerPerson = 10
 
-        /**
-         * Loose floor for the centroid pre-filter — well below [PersonMatchThreshold] so the
-         * pre-filter only discards clearly-unrelated persons; borderline cases still go to the
-         * full exemplar-vote. Keeps recall high while skipping the O(exemplars) work for the
-         * long tail of unrelated persons.
-         */
-        private const val CentroidPreFilterFloor = 0.40f
-
-        /** Max persons passed from the centroid pre-filter into the exemplar-vote. */
+        /** Max persons passed from the centroid ranking into the exemplar match. */
         private const val CentroidCandidates = 8
     }
 }

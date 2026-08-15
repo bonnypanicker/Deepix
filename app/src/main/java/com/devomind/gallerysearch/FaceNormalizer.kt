@@ -5,14 +5,14 @@ import android.graphics.Color
 
 /**
  * Normalizes a five-point-aligned 112×112 crop for InsightFace MobileFaceNet (w600k_mbf /
- * ArcFace): NCHW [1, 3, 112, 112], BGR channel order, and `(pixel / 255 - 0.5) / 0.5` so values
+ * ArcFace): NCHW [1, 3, 112, 112], RGB channel order, and `(pixel / 255 - 0.5) / 0.5` so values
  * land in [-1, 1]. This contract is model-specific and must not be reused for another recognizer.
  */
 object FaceNormalizer {
 
     const val InputSize = 112
 
-    /** Preprocess: 112×112 bitmap → NCHW BGR float array in [-1, 1]. */
+    /** Preprocess: 112×112 bitmap → NCHW RGB float array in [-1, 1]. */
     fun toTensor(aligned: Bitmap): FloatArray {
         check(aligned.width == InputSize && aligned.height == InputSize) {
             "FaceNormalizer expects ${InputSize}x${InputSize} bitmap, got ${aligned.width}x${aligned.height}"
@@ -22,9 +22,11 @@ object FaceNormalizer {
         val plane = InputSize * InputSize
         return FloatArray(plane * 3).also { tensor ->
             pixels.forEachIndexed { index, color ->
-                tensor[index] = normalizeChannel(Color.blue(color))
+                // InsightFace's ArcFace ONNX preprocessing uses OpenCV's swapRB=true.
+                // Android Bitmaps are ARGB, so the model must receive R, G, B planes here.
+                tensor[index] = normalizeChannel(Color.red(color))
                 tensor[plane + index] = normalizeChannel(Color.green(color))
-                tensor[plane * 2 + index] = normalizeChannel(Color.red(color))
+                tensor[plane * 2 + index] = normalizeChannel(Color.blue(color))
             }
         }
     }
