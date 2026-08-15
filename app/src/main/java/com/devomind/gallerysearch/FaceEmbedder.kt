@@ -69,7 +69,9 @@ class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.Defau
         const val ModelAsset = "mobilefacenet_w600k_mbf.onnx"
         // RGB preprocessing is not comparable to the earlier BGR embedding space. Changing this
         // value makes FaceEmbeddingModelMigration discard and rebuild those stale embeddings.
-        const val ModelVersion = "w600k_mbf_rgb_v3"
+        // Includes the detector-input orientation contract: embeddings from an unrotated EXIF
+        // landscape image are not comparable with the corrected pipeline.
+        const val ModelVersion = "w600k_mbf_rgb_oriented_v4"
         const val EmbeddingDim = 512
         /** Cross-photo same-person label threshold validated in the working ArcFace pipeline. */
         const val MatchThresholdCosine = 0.55f

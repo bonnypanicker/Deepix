@@ -320,14 +320,13 @@ class GalleryRepository(
     fun loadBitmapForFaceDetection(uri: Uri): Bitmap? = decodeOrientedBitmap(uri, FaceDetectionMaxEdge)
 
     /**
-     * Indexing-only fast path for face detection. Uses the MediaStore rotation degrees already
-     * read into [MediaItem.orientationDegrees], avoiding a fresh EXIF parse / extra stream open on
-     * every photo in the background face worker. Falls back to full EXIF handling if the fast path
-     * fails so correctness wins over speed.
+     * Decodes an upright bitmap for the face-index worker. EXIF is authoritative: MediaStore's
+     * ORIENTATION column is frequently left at zero for imported landscape photos even when the
+     * JPEG/HEIC has a 90°/270° EXIF transform. The MediaStore value remains a fallback for formats
+     * whose orientation lives only in the provider metadata.
      */
     fun loadBitmapForFaceDetectionForIndexing(item: MediaItem): Bitmap? =
         decodeOrientedBitmapForIndexing(item.uri, FaceDetectionMaxEdge, item.orientationDegrees)
-            ?: loadBitmapForFaceDetection(item.uri)
 
     /**
      * Builds the embedding index using a parallel decode/preprocess pool feeding batched inference.
@@ -674,8 +673,11 @@ class GalleryRepository(
         return crop
     }
 
-    /** Decodes [uri] downsampled so the longest edge is ~[maxEdge], with EXIF orientation applied. */
-    private fun decodeOrientedBitmap(uri: Uri, maxEdge: Int): Bitmap? {
+    /** Decodes [uri] downsampled so the longest edge is ~[maxEdge], with orientation applied. */
+    private fun decodeOrientedBitmap(uri: Uri, maxEdge: Int): Bitmap? =
+        decodeOrientedBitmap(uri, maxEdge, readMediaStoreOrientationDegrees(uri))
+
+    private fun decodeOrientedBitmap(uri: Uri, maxEdge: Int, mediaStoreDegrees: Int): Bitmap? {
         return try {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             context.contentResolver.openInputStream(uri)?.use {
@@ -696,7 +698,7 @@ class GalleryRepository(
                 BitmapFactory.decodeStream(it, null, opts)
             } ?: return null
 
-            applyExifOrientation(decoded, readExifOrientation(uri))
+            applyExifOrientation(decoded, readExifOrientation(uri), mediaStoreDegrees)
         } catch (t: Throwable) {
             Log.w(Tag, "decodeOrientedBitmap failed for $uri", t)
             null
@@ -713,8 +715,21 @@ class GalleryRepository(
         } ?: androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
     }.getOrDefault(androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL)
 
+    /** Provider rotation fallback for media whose stream has no usable EXIF orientation. */
+    private fun readMediaStoreOrientationDegrees(uri: Uri): Int = runCatching {
+        context.contentResolver.query(
+            uri,
+            arrayOf(MediaStore.Images.Media.ORIENTATION),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        } ?: 0
+    }.getOrDefault(0)
+
     /** Returns [bitmap] rotated/flipped to upright per the EXIF [orientation]; recycles the source if replaced. */
-    private fun applyExifOrientation(bitmap: Bitmap, orientation: Int): Bitmap {
+    private fun applyExifOrientation(bitmap: Bitmap, orientation: Int, mediaStoreDegrees: Int = 0): Bitmap {
         val matrix = android.graphics.Matrix()
         when (orientation) {
             androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
@@ -724,6 +739,12 @@ class GalleryRepository(
             androidx.exifinterface.media.ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
             androidx.exifinterface.media.ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.postRotate(90f); matrix.postScale(-1f, 1f) }
             androidx.exifinterface.media.ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.postScale(-1f, 1f) }
+            androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL,
+            androidx.exifinterface.media.ExifInterface.ORIENTATION_UNDEFINED -> {
+                val degrees = ((mediaStoreDegrees % 360) + 360) % 360
+                if (degrees == 0) return bitmap
+                matrix.postRotate(degrees.toFloat())
+            }
             else -> return bitmap
         }
         val rotated = runCatching {
@@ -734,50 +755,11 @@ class GalleryRepository(
     }
 
     /**
-     * Indexing-only fast path: rotates by the MediaStore ORIENTATION degrees already fetched with
-     * the media query, skipping the 3rd stream-open + EXIF byte parse that [decodeOrientedBitmap]
-     * needs. Loses flip/mirror handling (rare in real EXIF data, already an accepted trade-off for
-     * display purposes elsewhere in the app). [loadBitmap]/[decodeRegionBitmap] are untouched and
-     * keep full EXIF correctness for the interactive crop-search path.
+     * Indexed face detection must use the same full EXIF transform as interactive validation.
+     * The passed MediaStore rotation is retained only as fallback when EXIF is absent.
      */
     private fun decodeOrientedBitmapForIndexing(uri: Uri, maxEdge: Int, degrees: Int): Bitmap? {
-        return try {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            context.contentResolver.openInputStream(uri)?.use {
-                BitmapFactory.decodeStream(it, null, bounds)
-            }
-            val rawW = bounds.outWidth
-            val rawH = bounds.outHeight
-            if (rawW <= 0 || rawH <= 0) return null
-
-            var sample = 1
-            while (maxOf(rawW, rawH) / sample > maxEdge) sample *= 2
-
-            val opts = BitmapFactory.Options().apply {
-                inSampleSize = sample
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-            }
-            val decoded = context.contentResolver.openInputStream(uri)?.use {
-                BitmapFactory.decodeStream(it, null, opts)
-            } ?: return null
-
-            applyRotationDegrees(decoded, degrees)
-        } catch (t: Throwable) {
-            Log.w(Tag, "decodeOrientedBitmapForIndexing failed for $uri", t)
-            null
-        }
-    }
-
-    /** Returns [bitmap] rotated by [degrees] (a MediaStore rotation value: 0/90/180/270); recycles the source if replaced. */
-    private fun applyRotationDegrees(bitmap: Bitmap, degrees: Int): Bitmap {
-        val normalized = ((degrees % 360) + 360) % 360
-        if (normalized == 0) return bitmap
-        val matrix = android.graphics.Matrix().apply { postRotate(normalized.toFloat()) }
-        val rotated = runCatching {
-            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-        }.getOrNull() ?: return bitmap
-        if (rotated !== bitmap) bitmap.recycle()
-        return rotated
+        return decodeOrientedBitmap(uri, maxEdge, degrees)
     }
 
     /** Image-to-image search: cosine of [query] against every indexed embedding, ranked desc. */
