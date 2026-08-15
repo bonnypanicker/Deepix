@@ -71,10 +71,10 @@ class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.Defau
         // value makes FaceEmbeddingModelMigration discard and rebuild those stale embeddings.
         // Includes the detector-input orientation and recognizability contracts. Advancing the
         // value rebuilds assignments whenever the eligibility policy changes.
-        const val ModelVersion = "w600k_mbf_rgb_oriented_recognizability_v10"
+        const val ModelVersion = "w600k_mbf_rgb_oriented_recognizability_v11"
         const val EmbeddingDim = 512
         /** Cross-photo same-person label threshold validated in the working ArcFace pipeline. */
-        const val MatchThresholdCosine = 0.35f
+        const val MatchThresholdCosine = 0.30f
         const val MinModelBytes = 1_000_000
 
         fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
