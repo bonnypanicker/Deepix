@@ -20,6 +20,10 @@ interface FaceDao {
     @Query("SELECT * FROM faces WHERE personId = :personId ORDER BY qualityScore DESC")
     suspend fun findByPerson(personId: Long): List<FaceEntity>
 
+    /** Lightweight detail-page query: avoids loading every stored embedding just to open a person. */
+    @Query("SELECT DISTINCT photoUri FROM faces WHERE personId = :personId")
+    suspend fun distinctPhotoUrisByPerson(personId: Long): List<String>
+
     @Query("SELECT * FROM faces WHERE faceId = :faceId")
     suspend fun findById(faceId: Long): FaceEntity?
 

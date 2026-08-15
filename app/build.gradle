@@ -48,6 +48,18 @@ android {
             useLegacyPackaging = true
         }
     }
+
+    // ONNX Runtime bundles a native library per CPU architecture. Emit the normal device-specific
+    // APKs instead of one universal APK containing all four copies; every supported ABI remains
+    // available, while each installed APK is substantially smaller.
+    splits {
+        abi {
+            enable true
+            reset()
+            include "arm64-v8a", "armeabi-v7a", "x86", "x86_64"
+            universalApk false
+        }
+    }
 }
 
 dependencies {

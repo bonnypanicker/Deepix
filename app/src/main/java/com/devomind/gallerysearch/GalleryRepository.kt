@@ -143,11 +143,32 @@ class GalleryRepository(
         return queryImageItems(albumIds)
     }
 
+    /**
+     * Resolves just the requested MediaStore images. Used by a People detail page so opening one
+     * person does not enumerate the user's entire photo library and discard almost all results.
+     */
+    fun getImageItemsForUris(uris: Collection<String>): List<MediaItem> {
+        val ids = uris.asSequence()
+            .mapNotNull { uri -> runCatching { Uri.parse(uri).lastPathSegment?.toLongOrNull() }.getOrNull() }
+            .filter { it > 0L }
+            .distinct()
+            .toList()
+        if (ids.isEmpty()) return emptyList()
+
+        return ids.chunked(MediaStoreQueryChunkSize)
+            .flatMap { chunk -> queryImageItems(emptySet(), chunk) }
+            .distinctBy { it.uri.toString() }
+            .sortedByDescending { it.dateMillis }
+    }
+
     fun getVideoItemsForAlbumIds(albumIds: Set<String>): List<MediaItem> {
         return queryVideoItems(albumIds)
     }
 
-    private fun queryImageItems(albumIds: Set<String>): List<MediaItem> {
+    private fun queryImageItems(
+        albumIds: Set<String>,
+        imageIds: List<Long>? = null
+    ): List<MediaItem> {
         val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
         } else {
@@ -173,7 +194,12 @@ class GalleryRepository(
         val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
         val items = ArrayList<MediaItem>()
 
-        context.contentResolver.query(collection, projection, null, null, sortOrder)?.use { cursor ->
+        val selection = imageIds?.joinToString(
+            prefix = "${MediaStore.Images.Media._ID} IN (",
+            postfix = ")"
+        ) { "?" }
+        val selectionArgs = imageIds?.map(Long::toString)?.toTypedArray()
+        context.contentResolver.query(collection, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
             val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
@@ -1039,6 +1065,8 @@ class GalleryRepository(
         // selections still carry enough detail for the 256px CLIP encoder.
         private const val RegionDecodeMaxEdge = 2048
         private const val RegionThumbnailMaxEdge = 256
+        /** Keep each MediaStore IN query safely below SQLite's bind-parameter limit. */
+        private const val MediaStoreQueryChunkSize = 900
         private const val SaveIntervalMillis = 10_000L
         private const val MaxDecodeConcurrency = 4
         private const val MaxUriBytes = 4096

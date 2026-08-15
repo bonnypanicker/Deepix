@@ -150,13 +150,9 @@ class PersonDetailActivity : AppCompatActivity() {
 
             // Faces → unique source photos → MediaItems (date-sorted). A photo with two faces of
             // the same person collapses to a single tile here.
-            val faces = withContext(Dispatchers.IO) { db.faceDao().findByPerson(pid) }
-            val photoUriKeys = faces.map { it.photoUri }.toHashSet()
             val items = withContext(Dispatchers.IO) {
                 val repo = GalleryRepository(applicationContext)
-                repo.getImageItemsForAlbumIds(emptySet())
-                    .filter { it.uri.toString() in photoUriKeys }
-                    .sortedByDescending { it.dateMillis }
+                repo.getImageItemsForUris(db.faceDao().distinctPhotoUrisByPerson(pid))
             }
             personPhotos.clear()
             personPhotos.addAll(items)
