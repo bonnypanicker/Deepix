@@ -67,12 +67,8 @@ class FaceMaintenanceWorker(
             }
         }
 
-        // Step 3 — apply mean-based reconciliation over existing person clusters, then surface
-        // leftover split/merge suggestions for anything still ambiguous.
-        runCatching {
-            val merged = PersonMatcher(applicationContext).reconcileSplits()
-            if (merged > 0) Log.i(Tag, "Merged $merged similar person clusters during maintenance.")
-        }.onFailure { Log.w(Tag, "Person reconcile failed.", it) }
+        // Step 3 — surface split/merge suggestions for ambiguous clusters; the incremental
+        // matcher's exemplar-vote handles ordinary assignment, no post-hoc reconciliation pass.
         val result = try {
             ClusterMaintenance.analyze(applicationContext)
         } catch (t: Throwable) {

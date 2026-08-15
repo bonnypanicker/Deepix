@@ -163,10 +163,6 @@ class FaceIndexWorker(
             // recovered by FaceIndexConsistency on the next cold start from embeddingJson.)
             runCatching { (applicationContext as GallerySearchApp).faceVectorIndex.flush() }
                 .onFailure { Log.w(Tag, "Vector index flush failed.", it) }
-            runCatching {
-                val merged = personMatcher.reconcileSplits()
-                if (merged > 0) Log.i(Tag, "Merged $merged similar person clusters after indexing.")
-            }.onFailure { Log.w(Tag, "Person reconcile failed.", it) }
             reportProgress(Progress(visited = total, total = total, percent = 100, phase = "done"))
             return Result.success()
         } catch (cancelled: CancellationException) {

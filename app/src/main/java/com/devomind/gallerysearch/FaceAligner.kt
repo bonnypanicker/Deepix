@@ -7,22 +7,18 @@ import android.util.Log
 import kotlin.math.sqrt
 
 /**
- * Least-squares Umeyama-style similarity transform mapping five facial landmarks onto the
- * canonical 112x112 InsightFace/ArcFace template, producing the aligned crop MobileFaceNet expects.
+ * Least-squares Umeyama-style similarity transform mapping the five YuNet landmarks onto the
+ * canonical 112x112 InsightFace/ArcFace layout, producing the aligned crop MobileFaceNet expects.
  *
- * The detector is expected to deliver landmarks already in canonical order, but the raw kps order
- * of the active `face_detection_yunet_2026may.onnx` is unverified. To make the YuNet↔ArcFace
- * handshake robust regardless, we fit two candidate matrices — one per plausible ordering — and
- * pick the one that lands closest to the template. **Each matrix is scored against the same source
- * point set it was derived from**; scoring a matrix against the wrong set makes the comparison
- * meaningless and selects a reflection-fit that collapses the embedding space.
+ * YuNet emits landmarks (left eye, right eye, nose, mouth left, mouth right) in face space.
+ * This class computes (scale, rotation, tx, ty) aligning them to [CanonicalLandmarks], then
+ * extracts the region from the source bitmap.
  */
 object FaceAligner {
 
     /**
-     * Target landmark locations for an upright 112x112 face crop — the InsightFace 5-point
-     * template that InsightFace's MobileFaceNet/ArcFace alignCrop uses internally. Order:
-     * (left eye, right eye, nose, left mouth corner, right mouth corner).
+     * Target landmark locations for an upright 112x112 face crop, matching the reference points
+     * used in InsightFace's ArcFace preprocessing note.
      */
     private val CanonicalLandmarks: Array<FloatArray> = arrayOf(
         floatArrayOf(38.2946f, 51.6963f),
@@ -46,38 +42,16 @@ object FaceAligner {
      * OFF the output bitmap yielding a blank crop — which then collapses the embedding space.
      */
     fun align(source: Bitmap, landmarks: Array<FloatArray>): Bitmap {
-        val chosen = runCatching { bestMatrix(landmarks) }.getOrNull()
-        if (chosen == null || chosen.rmse > MaxLandmarkRmsePx || !scaleInRange(chosen.matrix)) {
-            Log.w(Tag, "Falling back to landmark-bounds crop for unstable alignment (rmse=${chosen?.rmse})")
+        val matrix = runCatching { forwardSimilarityMatrix(landmarks, CanonicalLandmarks) }.getOrNull()
+        if (matrix == null || !passesSanityCheck(matrix, landmarks, CanonicalLandmarks)) {
+            Log.w(Tag, "Falling back to landmark-bounds crop for unstable alignment")
             return fallbackAlignedCrop(source, landmarks)
         }
         return Bitmap.createBitmap(AlignedSize, AlignedSize, Bitmap.Config.ARGB_8888).also { out ->
             Canvas(out).apply {
-                drawBitmap(source, chosen.matrix, null)
+                drawBitmap(source, matrix, null)
             }
         }
-    }
-
-    /**
-     * Fit both candidate orderings and return the matrix with lower RMSE — each evaluated against
-     * the source set it was fit from.
-     */
-    private fun bestMatrix(landmarks: Array<FloatArray>): ChosenMatrix {
-        val swapped = reorderOpenCvOrder(landmarks)
-        val appOrder = forwardSimilarityMatrix(landmarks, CanonicalLandmarks)
-        val swapOrder = forwardSimilarityMatrix(swapped, CanonicalLandmarks)
-        val appRmse = landmarkRmse(appOrder, landmarks, CanonicalLandmarks)
-        val swapRmse = landmarkRmse(swapOrder, swapped, CanonicalLandmarks)
-        return if (appRmse <= swapRmse) ChosenMatrix(appOrder, appRmse) else ChosenMatrix(swapOrder, swapRmse)
-    }
-
-    private data class ChosenMatrix(val matrix: Matrix, val rmse: Float)
-
-    private fun scaleInRange(matrix: Matrix): Boolean {
-        val values = FloatArray(9)
-        matrix.getValues(values)
-        val scale = sqrt(values[Matrix.MSCALE_X] * values[Matrix.MSCALE_X] + values[Matrix.MSKEW_Y] * values[Matrix.MSKEW_Y])
-        return scale.isFinite() && scale in 0.05f..20f
     }
 
     /**
@@ -132,11 +106,11 @@ object FaceAligner {
         return floatArrayOf(a, b, tx, ty)
     }
 
-    private fun landmarkRmse(
+    private fun passesSanityCheck(
         matrix: Matrix,
         source: Array<FloatArray>,
         destination: Array<FloatArray>
-    ): Float {
+    ): Boolean {
         val sourcePoints = FloatArray(source.size * 2) { index ->
             source[index / 2][index % 2]
         }
@@ -146,21 +120,16 @@ object FaceAligner {
         for (index in source.indices) {
             val dx = mapped[index * 2] - destination[index][0]
             val dy = mapped[index * 2 + 1] - destination[index][1]
-            if (!dx.isFinite() || !dy.isFinite()) return Float.POSITIVE_INFINITY
+            if (!dx.isFinite() || !dy.isFinite()) return false
             sumSq += dx * dx + dy * dy
         }
-        return sqrt(sumSq / source.size)
-    }
+        val rmse = sqrt(sumSq / source.size)
+        if (rmse > MaxLandmarkRmsePx) return false
 
-    private fun reorderOpenCvOrder(landmarks: Array<FloatArray>): Array<FloatArray> {
-        require(landmarks.size == 5) { "Need 5 landmarks, got ${landmarks.size}" }
-        return arrayOf(
-            landmarks[1], // left eye
-            landmarks[0], // right eye
-            landmarks[2], // nose
-            landmarks[4], // left mouth corner
-            landmarks[3]  // right mouth corner
-        )
+        val values = FloatArray(9)
+        matrix.getValues(values)
+        val scale = sqrt(values[Matrix.MSCALE_X] * values[Matrix.MSCALE_X] + values[Matrix.MSKEW_Y] * values[Matrix.MSKEW_Y])
+        return scale.isFinite() && scale in 0.05f..20f
     }
 
     private fun fallbackAlignedCrop(source: Bitmap, landmarks: Array<FloatArray>): Bitmap {
