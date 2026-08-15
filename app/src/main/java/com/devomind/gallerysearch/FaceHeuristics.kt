@@ -150,20 +150,21 @@ object FacePoseEstimator {
  * Decides whether a YuNet detection carries enough visible facial structure for identity matching.
  *
  * Inspired by Ente's clustering policy: retain weak detections for display/debugging, but do not
- * let low-confidence, blurry, sideways, or geometrically implausible samples create a Person.
- * This is deliberately stricter than YuNet's detection threshold, which answers only "face-like?".
+ * let only clearly unusable or geometrically implausible samples create a Person. This is a
+ * last-resort guard, not a frontal-face filter: valid profile and low-light photos still belong
+ * in an identity cluster.
  */
 object FaceRecognizabilityGate {
 
-    private const val MinDetectorConfidence = 0.80f
-    private const val MinFaceSidePx = 64f
-    private const val MinQuality = 0.45f
-    private const val MinEyeSeparationFraction = 0.20f
-    private const val MinMouthSeparationFraction = 0.10f
-    private const val MinVerticalFeatureFraction = 0.08f
-    private const val MaxNoseOffsetFromEyeMid = 0.65f
-    private const val MaxYawDegrees = 25f
-    private const val MaxPitchDegrees = 30f
+    private const val MinDetectorConfidence = 0.65f
+    private const val MinFaceSidePx = 48f
+    private const val MinQuality = 0.30f
+    private const val MinEyeSeparationFraction = 0.12f
+    private const val MinMouthSeparationFraction = 0.06f
+    private const val MinVerticalFeatureFraction = 0.04f
+    private const val MaxNoseOffsetFromEyeMid = 0.95f
+    private const val MaxYawDegrees = 40f
+    private const val MaxPitchDegrees = 40f
 
     fun isEligible(
         detection: YuNetDetector.FaceDetection,
