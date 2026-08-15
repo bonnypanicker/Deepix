@@ -263,7 +263,7 @@ class PersonMatcher(private val context: Context) {
          * score 0.42–0.82; photos of *different* people score 0.0–0.35. Setting this between those
          * peaks gives good recall without precision collapse.
          */
-        private const val PersonMatchThreshold = 0.35f
+        private const val PersonMatchThreshold = 0.34f
 
         /** Cap on per-person exemplar set: grow up to this many, then rotate by quality. */
         private const val MaxExemplarsPerPerson = 10
