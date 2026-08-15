@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
+import android.util.LruCache
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -19,6 +20,7 @@ import com.devomind.gallerysearch.databinding.ItemPersonAlbumBinding
 import com.devomind.gallerysearch.db.GalleryDatabase
 import com.devomind.gallerysearch.db.PersonEntity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -34,6 +36,10 @@ class PersonAlbumsActivity : AppCompatActivity() {
     private lateinit var binding: ActivityPersonAlbumsBinding
     private lateinit var adapter: PersonAlbumsAdapter
     private var peopleLoadGeneration = 0
+    private val coverCache = object : LruCache<String, android.graphics.Bitmap>(CoverCacheKb) {
+        override fun sizeOf(key: String, bitmap: android.graphics.Bitmap): Int =
+            bitmap.allocationByteCount / 1024
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AccentPalette.apply(this)
@@ -238,7 +244,10 @@ class PersonAlbumsActivity : AppCompatActivity() {
         /** uri string → [origW, origH]; set before submitList so covers crop to the face. */
         var photoDimensions: Map<String, IntArray> = emptyMap()
 
-        inner class Holder(val b: ItemPersonAlbumBinding) : androidx.recyclerview.widget.RecyclerView.ViewHolder(b.root)
+        inner class Holder(val b: ItemPersonAlbumBinding) : androidx.recyclerview.widget.RecyclerView.ViewHolder(b.root) {
+            var coverJob: Job? = null
+            var coverKey: String? = null
+        }
 
         override fun onCreateViewHolder(parent: android.view.ViewGroup, vt: Int): Holder =
             Holder(ItemPersonAlbumBinding.inflate(layoutInflater, parent, false))
@@ -255,9 +264,11 @@ class PersonAlbumsActivity : AppCompatActivity() {
 
         private fun loadCoverFor(holder: Holder, item: PersonSummary) {
             val glide = Glide.with(this@PersonAlbumsActivity)
+            holder.coverJob?.cancel()
+            holder.coverJob = null
+            glide.clear(holder.b.personCover)
             val face = item.exemplarFace
             if (face == null) {
-                glide.clear(holder.b.personCover)
                 holder.b.personCover.setImageDrawable(null)
                 return
             }
@@ -272,10 +283,50 @@ class PersonAlbumsActivity : AppCompatActivity() {
                 )
             }.getOrNull()
             val dims = photoDimensions[face.photoUri]
-            val request = glide.load(photoUri)
+            if (bbox != null && dims != null && dims.size >= 2 && dims[0] > 0 && dims[1] > 0) {
+                val coverKey = "${face.faceId}:${face.bboxJson}"
+                holder.coverKey = coverKey
+                coverCache.get(coverKey)?.let { cached ->
+                    holder.b.personCover.setImageBitmap(cached)
+                    return
+                }
+                holder.b.personCover.setImageDrawable(null)
+                holder.coverJob = lifecycleScope.launch {
+                    val decoded = withContext(Dispatchers.IO) {
+                        OriginalFaceCoverDecoder.decode(
+                            applicationContext,
+                            photoUri,
+                            bbox,
+                            dims[0],
+                            dims[1],
+                            CoverSourceEdge
+                        )
+                    }
+                    if (holder.coverKey != coverKey) return@launch
+                    if (decoded != null) {
+                        coverCache.put(coverKey, decoded)
+                        holder.b.personCover.setImageBitmap(decoded)
+                    } else {
+                        loadFallbackCover(holder, photoUri, bbox, dims)
+                    }
+                }
+            } else {
+                holder.coverKey = null
+                loadFallbackCover(holder, photoUri, null, null)
+            }
+        }
+
+        private fun loadFallbackCover(
+            holder: Holder,
+            photoUri: Uri,
+            bbox: FloatArray?,
+            dims: IntArray?
+        ) {
+            val request = Glide.with(this@PersonAlbumsActivity)
+                .load(photoUri)
                 .override(CoverDecodePx, CoverDecodePx)
                 .format(DecodeFormat.PREFER_ARGB_8888)
-            if (bbox != null && dims != null && dims.size >= 2 && dims[0] > 0 && dims[1] > 0) {
+            if (bbox != null && dims != null && dims.size >= 2) {
                 request.transform(FaceCropTransform(bbox, dims[0], dims[1]))
                     .into(holder.b.personCover)
             } else {
@@ -288,5 +339,7 @@ class PersonAlbumsActivity : AppCompatActivity() {
         private const val SPAN_COUNT = 3
         // Display-only quality; this does not change the detector or MobileFaceNet input.
         private const val CoverDecodePx = 512
+        private const val CoverSourceEdge = 768
+        private const val CoverCacheKb = 12 * 1024
     }
 }
