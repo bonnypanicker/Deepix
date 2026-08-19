@@ -1655,10 +1655,34 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // Encoders may have been deferred at startup — load them on demand for AI search.
+                // The CLIP pass is the slow part: show a loading screen, but when the fast metadata
+                // pass already found matches, keep them visible underneath (progressive results).
                 if (textEncoder == null) {
                     ensureEncodersLoaded().await()
                     if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
                 }
+                val interimResults = if (metadataHits.isNotEmpty()) {
+                    withContext(Dispatchers.Default) {
+                        buildMergedPhotoSearchResults(filteredItems, metadataHits, emptyList())
+                    }
+                } else {
+                    emptyList()
+                }
+                if (interimResults.isNotEmpty()) {
+                    renderSearchResults(
+                        query = query,
+                        results = interimResults,
+                        emptyText = "No matching results",
+                        statusText = "Searching with AI…",
+                        preserveSelection = true
+                    )
+                } else {
+                    clearSearchSections()
+                    adapter.replaceCells(listOf(GalleryCell.Loading(getString(R.string.search_loading))))
+                    resetGridToTop()
+                    binding.searchResultSummary.text = getString(R.string.search_loading)
+                }
+
                 val semanticResults = if (textEncoder == null) {
                     emptyList()
                 } else {
@@ -1677,7 +1701,8 @@ class MainActivity : AppCompatActivity() {
                     query = query,
                     results = finalResults,
                     emptyText = "No matching results",
-                    statusText = indexedSummary(repo.indexedCount)
+                    statusText = indexedSummary(repo.indexedCount),
+                    preserveSelection = interimResults.isNotEmpty()
                 )
             } catch (cancelled: CancellationException) {
                 Log.d(TAG, "Search job cancelled.", cancelled)
@@ -2105,13 +2130,21 @@ class MainActivity : AppCompatActivity() {
         query: String,
         results: List<PhotoSearchResult>,
         emptyText: String,
-        statusText: String
+        statusText: String,
+        preserveSelection: Boolean = false
     ) {
         searchResultsMaster = results
         lastSearchStatusText = statusText
         currentDisplayedSearchResultCount = 0
         searchSectionResults = buildSearchSections(query, results)
-        selectedSearchSection = searchSectionResults.firstOrNull()?.section
+        // Progressive renders (metadata first, AI merged in later) keep the user's tab choice
+        // while it still has results; fresh searches default to the first available section.
+        selectedSearchSection = if (preserveSelection) {
+            searchSectionResults.firstOrNull { it.section == selectedSearchSection }?.section
+                ?: searchSectionResults.firstOrNull()?.section
+        } else {
+            searchSectionResults.firstOrNull()?.section
+        }
         searchLandingVisible = false
         searchSectionAdapter.selected = selectedSearchSection
         searchSectionAdapter.submitList(searchSectionResults)
@@ -2454,6 +2487,10 @@ class MainActivity : AppCompatActivity() {
         binding.progressBar.visibility = View.VISIBLE
         binding.statusText.text = if (isRegion) "Finding photos similar to this region…" else "Finding similar photos…"
         binding.resultCount.text = ""
+        // Consistent with text search: a loading screen while the embedding pass runs.
+        adapter.replaceCells(listOf(GalleryCell.Loading(getString(R.string.search_loading))))
+        resetGridToTop()
+        binding.searchResultSummary.text = getString(R.string.search_loading)
 
         searchJob?.cancel()
         searchJob = lifecycleScope.launch {

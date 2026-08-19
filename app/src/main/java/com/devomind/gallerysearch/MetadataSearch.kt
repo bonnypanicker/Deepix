@@ -11,7 +11,7 @@ data class SearchSources(
         get() = ai || metadata
 }
 
-internal data class PhotoSearchResult(
+data class PhotoSearchResult(
     val item: GalleryRepository.MediaItem,
     val sources: SearchSources,
     val score: Float

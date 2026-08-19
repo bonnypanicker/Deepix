@@ -89,6 +89,7 @@
     <string name="tab_favorites">Favorites</string>
     <string name="tab_folders">Folders</string>
     <string name="loading_gallery">Loading your gallery</string>
+    <string name="search_loading">Searching…</string>
     <string name="drawer_collection">collection</string>
     <string name="drawer_albums">albums</string>
     <string name="drawer_search">search</string>

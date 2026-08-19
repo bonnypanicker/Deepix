@@ -25,6 +25,7 @@ import com.devomind.gallerysearch.databinding.ItemFolderBinding
 import com.devomind.gallerysearch.databinding.ItemImageBinding
 import com.devomind.gallerysearch.databinding.ItemPinnedAlbumChipBinding
 import com.devomind.gallerysearch.databinding.ItemPinnedAlbumsHeaderBinding
+import com.devomind.gallerysearch.databinding.ItemSearchLoadingBinding
 import com.devomind.gallerysearch.databinding.ItemSearchSectionBinding
 import com.devomind.gallerysearch.databinding.ItemSmartAlbumOnboardingBinding
 import com.devomind.gallerysearch.databinding.ItemSortRowBinding
@@ -129,6 +130,9 @@ sealed class GalleryCell {
         val actionLabel: String? = null,
         val onAction: (() -> Unit)? = null
     ) : GalleryCell()
+
+    /** Full-span search loading state shown while the CLIP pass is still running. */
+    data class Loading(val text: String) : GalleryCell()
 }
 
 class ImageAdapter(
@@ -227,6 +231,7 @@ class ImageAdapter(
             is GalleryCell.SearchSection -> ViewTypeSearchSection
             is GalleryCell.SmartAlbumOnboarding -> ViewTypeSmartOnboarding
             is GalleryCell.Empty -> ViewTypeEmpty
+            is GalleryCell.Loading -> ViewTypeLoading
         }
     }
 
@@ -253,6 +258,7 @@ class ImageAdapter(
                 ItemSearchSectionBinding.inflate(inflater, parent, false)
             )
             ViewTypeEmpty -> EmptyViewHolder(ItemEmptyBinding.inflate(inflater, parent, false))
+            ViewTypeLoading -> LoadingViewHolder(ItemSearchLoadingBinding.inflate(inflater, parent, false))
             ViewTypeSmartOnboarding -> SmartAlbumOnboardingViewHolder(
                 ItemSmartAlbumOnboardingBinding.inflate(inflater, parent, false),
                 onCreateSmartAlbum,
@@ -287,6 +293,7 @@ class ImageAdapter(
             is GalleryCell.SearchSection -> (holder as SearchSectionViewHolder).bind(cell)
             is GalleryCell.SmartAlbumOnboarding -> Unit
             is GalleryCell.Empty -> (holder as EmptyViewHolder).bind(cell)
+            is GalleryCell.Loading -> (holder as LoadingViewHolder).bind(cell)
         }
     }
 
@@ -309,6 +316,7 @@ class ImageAdapter(
             is GalleryCell.Header,
             is GalleryCell.SortRow,
             is GalleryCell.Empty,
+            is GalleryCell.Loading,
             is GalleryCell.PinnedAlbumsHeader,
             is GalleryCell.SearchSection -> totalSpanCount
             is GalleryCell.SmartAlbumOnboarding -> totalSpanCount
@@ -558,6 +566,7 @@ class ImageAdapter(
             is GalleryCell.SearchSection -> "search_section:${cell.section.section.name}"
             is GalleryCell.SmartAlbumOnboarding -> "smart_album_onboarding"
             is GalleryCell.Empty -> "empty:${cell.text}"
+            is GalleryCell.Loading -> "search_loading"
         }
         return key.fold(1125899906842597L) { hash, char -> 31L * hash + char.code.toLong() }
     }
@@ -1064,6 +1073,12 @@ class ImageAdapter(
         }
     }
 
+    class LoadingViewHolder(private val binding: ItemSearchLoadingBinding) : RecyclerView.ViewHolder(binding.root) {
+        fun bind(cell: GalleryCell.Loading) {
+            binding.loadingText.text = cell.text
+        }
+    }
+
     class SmartAlbumOnboardingViewHolder(
         binding: ItemSmartAlbumOnboardingBinding,
         onCreateSmartAlbum: () -> Unit,
@@ -1164,6 +1179,7 @@ class ImageAdapter(
         const val ViewTypeSmartOnboarding = 8
         const val ViewTypeSortRow = 9
         const val ViewTypeSearchSection = 10
+        const val ViewTypeLoading = 11
 
         private fun formatDuration(durationMs: Long): String {
             val totalSeconds = durationMs / 1000
