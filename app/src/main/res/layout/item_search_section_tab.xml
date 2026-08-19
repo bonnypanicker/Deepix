@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Flat section selector: label + count with a Metro accent underline when selected. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/sectionTab"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:clickable="true"
+    android:focusable="true"
+    android:background="?android:attr/selectableItemBackground"
+    android:paddingStart="4dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="2dp">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="32dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/sectionLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:maxWidth="120dp"
+            android:letterSpacing="0.06"
+            android:textColor="@color/metroTextSecondary"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/sectionCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:textColor="@color/metroTextTertiary"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/sectionIndicator"
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:background="?attr/accentColor"
+        android:visibility="invisible" />
+</LinearLayout>

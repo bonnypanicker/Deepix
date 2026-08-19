@@ -25,6 +25,7 @@ import com.devomind.gallerysearch.databinding.ItemFolderBinding
 import com.devomind.gallerysearch.databinding.ItemImageBinding
 import com.devomind.gallerysearch.databinding.ItemPinnedAlbumChipBinding
 import com.devomind.gallerysearch.databinding.ItemPinnedAlbumsHeaderBinding
+import com.devomind.gallerysearch.databinding.ItemSearchSectionBinding
 import com.devomind.gallerysearch.databinding.ItemSmartAlbumOnboardingBinding
 import com.devomind.gallerysearch.databinding.ItemSortRowBinding
 import com.devomind.gallerysearch.databinding.ItemTimelineHeaderBinding
@@ -109,6 +110,11 @@ sealed class GalleryCell {
     data class FolderCell(val node: FolderNode) : GalleryCell()
     data class PinnedAlbumsHeader(
         val albums: List<GalleryRepository.Album>
+    ) : GalleryCell()
+    data class SearchSection(
+        val section: SearchSectionResult,
+        val query: String,
+        val onClick: () -> Unit
     ) : GalleryCell()
     object SmartAlbumOnboarding : GalleryCell()
 
@@ -218,6 +224,7 @@ class ImageAdapter(
             is GalleryCell.AlbumCell -> ViewTypeAlbum
             is GalleryCell.FolderCell -> ViewTypeFolder
             is GalleryCell.PinnedAlbumsHeader -> ViewTypePinnedAlbumsHeader
+            is GalleryCell.SearchSection -> ViewTypeSearchSection
             is GalleryCell.SmartAlbumOnboarding -> ViewTypeSmartOnboarding
             is GalleryCell.Empty -> ViewTypeEmpty
         }
@@ -241,6 +248,9 @@ class ImageAdapter(
             ViewTypePinnedAlbumsHeader -> PinnedAlbumsHeaderViewHolder(
                 ItemPinnedAlbumsHeaderBinding.inflate(inflater, parent, false),
                 onAlbumClick
+            )
+            ViewTypeSearchSection -> SearchSectionViewHolder(
+                ItemSearchSectionBinding.inflate(inflater, parent, false)
             )
             ViewTypeEmpty -> EmptyViewHolder(ItemEmptyBinding.inflate(inflater, parent, false))
             ViewTypeSmartOnboarding -> SmartAlbumOnboardingViewHolder(
@@ -274,6 +284,7 @@ class ImageAdapter(
             is GalleryCell.AlbumCell -> (holder as AlbumViewHolder).bind(cell.album, showAlbumFolderSize)
             is GalleryCell.FolderCell -> (holder as FolderViewHolder).bind(cell.node, showAlbumFolderSize)
             is GalleryCell.PinnedAlbumsHeader -> (holder as PinnedAlbumsHeaderViewHolder).bind(cell)
+            is GalleryCell.SearchSection -> (holder as SearchSectionViewHolder).bind(cell)
             is GalleryCell.SmartAlbumOnboarding -> Unit
             is GalleryCell.Empty -> (holder as EmptyViewHolder).bind(cell)
         }
@@ -298,7 +309,8 @@ class ImageAdapter(
             is GalleryCell.Header,
             is GalleryCell.SortRow,
             is GalleryCell.Empty,
-            is GalleryCell.PinnedAlbumsHeader -> totalSpanCount
+            is GalleryCell.PinnedAlbumsHeader,
+            is GalleryCell.SearchSection -> totalSpanCount
             is GalleryCell.SmartAlbumOnboarding -> totalSpanCount
             is GalleryCell.Collage -> totalSpanCount
             is GalleryCell.AlbumCell -> totalSpanCount / 2
@@ -543,6 +555,7 @@ class ImageAdapter(
             is GalleryCell.AlbumCell -> "album:${cell.album.id}"
             is GalleryCell.FolderCell -> "folder:${cell.node.path}"
             is GalleryCell.PinnedAlbumsHeader -> "pinned_albums_header"
+            is GalleryCell.SearchSection -> "search_section:${cell.section.section.name}"
             is GalleryCell.SmartAlbumOnboarding -> "smart_album_onboarding"
             is GalleryCell.Empty -> "empty:${cell.text}"
         }
@@ -1004,6 +1017,40 @@ class ImageAdapter(
         }
     }
 
+    class SearchSectionViewHolder(
+        private val binding: ItemSearchSectionBinding
+    ) : RecyclerView.ViewHolder(binding.root) {
+        fun bind(cell: GalleryCell.SearchSection) {
+            val section = cell.section
+            binding.sectionTitle.text = section.section.label
+            binding.sectionQuery.text = cell.query.ifBlank { section.section.label }
+            binding.sectionCount.text = "${section.count} ${if (section.count == 1) "result" else "results"}"
+            binding.sectionIcon.setImageResource(sectionIcon(section.section))
+            val cover = section.results.maxByOrNull { it.score }?.item?.uri
+            if (cover == null) {
+                Glide.with(binding.sectionCover).clear(binding.sectionCover)
+                binding.sectionCover.setImageDrawable(ColorDrawable(Color.rgb(26, 26, 26)))
+            } else {
+                Glide.with(binding.sectionCover)
+                    .load(cover)
+                    .format(DecodeFormat.PREFER_RGB_565)
+                    .centerCrop()
+                    .placeholder(ColorDrawable(Color.rgb(26, 26, 26)))
+                    .into(binding.sectionCover)
+            }
+            binding.sectionCard.setOnClickListener { cell.onClick() }
+        }
+
+        private fun sectionIcon(section: SearchSection): Int = when (section) {
+            SearchSection.Smart -> R.drawable.ic_deepix_ai_orb_24
+            SearchSection.Metadata -> R.drawable.ic_fluent_image_search_24_regular
+            SearchSection.Albums -> R.drawable.ic_fluent_album_24_regular
+            SearchSection.Tags -> R.drawable.ic_fluent_tag_24_regular
+            SearchSection.People -> R.drawable.ic_fluent_fingerprint_24_regular
+            SearchSection.Locations -> R.drawable.ic_fluent_navigation_24_regular
+        }
+    }
+
     class EmptyViewHolder(private val binding: ItemEmptyBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(cell: GalleryCell.Empty) {
             binding.emptyText.text = cell.text
@@ -1116,6 +1163,7 @@ class ImageAdapter(
         const val ViewTypeFolder = 7
         const val ViewTypeSmartOnboarding = 8
         const val ViewTypeSortRow = 9
+        const val ViewTypeSearchSection = 10
 
         private fun formatDuration(durationMs: Long): String {
             val totalSeconds = durationMs / 1000

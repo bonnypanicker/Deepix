@@ -203,35 +203,11 @@
                         android:textSize="12sp" />
                 </LinearLayout>
 
-                <FrameLayout
-                    android:id="@+id/searchPillsRow"
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/searchSections"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:visibility="gone">
-
-                    <HorizontalScrollView
-                        android:id="@+id/searchQuickPillsScroll"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:clipToPadding="false"
-                        android:overScrollMode="never"
-                        android:scrollbars="none">
-
-                        <LinearLayout
-                            android:id="@+id/searchQuickPills"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal" />
-                    </HorizontalScrollView>
-
-                    <LinearLayout
-                        android:id="@+id/searchActivePills"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="start|center_vertical"
-                        android:orientation="horizontal" />
-                </FrameLayout>
+                    android:visibility="gone" />
             </LinearLayout>
         </LinearLayout>
 

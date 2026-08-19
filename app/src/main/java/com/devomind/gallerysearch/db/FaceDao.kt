@@ -40,6 +40,12 @@ interface FaceDao {
     @Query("SELECT COUNT(*) FROM faces")
     suspend fun countAll(): Int
 
+    @Query("SELECT DISTINCT personId FROM faces WHERE personId IS NOT NULL AND photoUri IN (:uris)")
+    suspend fun distinctPersonIdsForPhotos(uris: List<String>): List<Long>
+
+    @Query("SELECT DISTINCT photoUri FROM faces WHERE personId IS NOT NULL AND photoUri IN (:uris)")
+    suspend fun recognizedPhotoUris(uris: List<String>): List<String>
+
     /** A single good persisted face is enough for the virtual People collection cover. */
     @Query("SELECT photoUri FROM faces WHERE embeddingJson IS NOT NULL ORDER BY qualityScore DESC, faceId DESC LIMIT 1")
     suspend fun bestRecognizedFacePhotoUri(): String?

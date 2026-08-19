@@ -38,6 +38,7 @@ import androidx.core.view.updatePadding
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkInfo
@@ -61,6 +62,7 @@ import kotlin.math.roundToInt
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var adapter: ImageAdapter
+    private lateinit var searchSectionAdapter: SearchSectionAdapter
     private lateinit var favoritesStore: FavoritesStore
     private lateinit var albumPinStore: AlbumPinStore
     private lateinit var smartAlbumStore: SmartAlbumStore
@@ -120,6 +122,9 @@ class MainActivity : AppCompatActivity() {
     // Infinite scroll state for search results
     // Supports lazy loading with 20 results per page, capped at 80 total
     private var fullSearchResults: List<PhotoSearchResult> = emptyList()
+    private var searchSectionResults: List<SearchSectionResult> = emptyList()
+    private var selectedSearchSection: SearchSection? = null
+    private var searchLandingVisible = false
     private var currentDisplayedSearchResultCount = 0
     private var searchResultsMaster: List<PhotoSearchResult> = emptyList()
     /** Search-only ordering; null means relevance (ranked by score), which browse listings have no equivalent of. */
@@ -351,6 +356,13 @@ class MainActivity : AppCompatActivity() {
 
         binding.imageGrid.adapter = adapter
         binding.imageGrid.setHasFixedSize(true)
+        searchSectionAdapter = SearchSectionAdapter(::openSearchSection)
+        binding.searchSections.apply {
+            this.layoutManager = LinearLayoutManager(this@MainActivity, LinearLayoutManager.HORIZONTAL, false)
+            adapter = searchSectionAdapter
+            setHasFixedSize(true)
+            itemAnimator = null
+        }
         binding.imageGrid.setItemViewCacheSize(12)
         // Photo/collage rows dominate fling churn; a deeper recycle pool avoids re-inflation
         // (the default pool keeps only 5 per view type).
@@ -1610,6 +1622,7 @@ class MainActivity : AppCompatActivity() {
 
                 if (filteredItems.isEmpty()) {
                     renderSearchResults(
+                        query = query,
                         results = emptyList(),
                         emptyText = "No photos match the active filters",
                         statusText = "No filter matches"
@@ -1628,39 +1641,28 @@ class MainActivity : AppCompatActivity() {
                     emptyList()
                 }
 
-                if (searchMode != SearchMode.AiOnly) {
-                    val metadataResults = withContext(Dispatchers.Default) {
-                        buildMergedPhotoSearchResults(
-                            baseItems = filteredItems,
-                            metadataHits = metadataHits,
-                            semanticResults = emptyList()
-                        )
-                    }
-
+                if (!shouldSearchAi) {
                     if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
                     renderSearchResults(
-                        results = metadataResults,
+                        query = query,
+                        results = withContext(Dispatchers.Default) {
+                            buildMergedPhotoSearchResults(filteredItems, metadataHits, emptyList())
+                        },
                         emptyText = "No matching results",
-                        statusText = when {
-                            sessionMode == SearchMode.MetadataOnly -> indexedSummary(repo.indexedCount)
-                            parsedQuery.textQuery.isBlank() -> filterSummaryText(parsedQuery, metadataResults.size)
-                            textEncoder == null -> indexedSummary(repo.indexedCount)
-                            else -> indexedSummary(repo.indexedCount)
-                        }
+                        statusText = indexedSummary(repo.indexedCount)
                     )
+                    return@launch
                 }
-
-                if (!shouldSearchAi) return@launch
 
                 // Encoders may have been deferred at startup — load them on demand for AI search.
                 if (textEncoder == null) {
                     ensureEncodersLoaded().await()
                     if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
                 }
-                if (textEncoder == null) return@launch
-
-                val semanticResults = withContext(Dispatchers.Default) {
-                    repo.search(parsedQuery.textQuery)
+                val semanticResults = if (textEncoder == null) {
+                    emptyList()
+                } else {
+                    withContext(Dispatchers.Default) { repo.search(parsedQuery.textQuery) }
                 }
                 val finalResults = withContext(Dispatchers.Default) {
                     buildMergedPhotoSearchResults(
@@ -1672,6 +1674,7 @@ class MainActivity : AppCompatActivity() {
 
                 if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
                 renderSearchResults(
+                    query = query,
                     results = finalResults,
                     emptyText = "No matching results",
                     statusText = indexedSummary(repo.indexedCount)
@@ -2098,7 +2101,8 @@ class MainActivity : AppCompatActivity() {
             .toList()  // Return full list without hard cap
     }
 
-    private fun renderSearchResults(
+    private suspend fun renderSearchResults(
+        query: String,
         results: List<PhotoSearchResult>,
         emptyText: String,
         statusText: String
@@ -2106,8 +2110,14 @@ class MainActivity : AppCompatActivity() {
         searchResultsMaster = results
         lastSearchStatusText = statusText
         currentDisplayedSearchResultCount = 0
+        searchSectionResults = buildSearchSections(query, results)
+        selectedSearchSection = searchSectionResults.firstOrNull()?.section
+        searchLandingVisible = false
+        searchSectionAdapter.selected = selectedSearchSection
+        searchSectionAdapter.submitList(searchSectionResults)
+        binding.searchSections.visibility = if (searchSectionResults.isEmpty()) View.GONE else View.VISIBLE
 
-        if (results.isEmpty()) {
+        if (results.isEmpty() || selectedSearchSection == null) {
             fullSearchResults = emptyList()
             adapter.replaceCells(listOf(searchEmptyCell(emptyText)))
             resetGridToTop()
@@ -2115,7 +2125,7 @@ class MainActivity : AppCompatActivity() {
             binding.statusText.text = statusText
             return
         }
-        applySortAndShow()
+        openSearchSection(selectedSearchSection!!)
     }
 
     /**
@@ -2166,7 +2176,7 @@ class MainActivity : AppCompatActivity() {
      * pagination; date orders group results under month headers (the reference's philosophy).
      */
     private fun applySortAndShow() {
-        fullSearchResults = sortResults(searchResultsMaster, currentSearchSort)
+        fullSearchResults = sortResults(fullSearchResults, currentSearchSort)
         currentDisplayedSearchResultCount = 0
 
         if (currentSearchSort?.dateOrdered == true) {
@@ -2253,9 +2263,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSearchResultCount() {
-        val total = fullSearchResults.size
+        val section = searchSectionResults.firstOrNull { it.section == selectedSearchSection }
+        val total = section?.count ?: fullSearchResults.size
         binding.searchResultSummary.text = when {
             total == 0 -> getString(R.string.no_results)
+            section != null -> "${section.section.label} · $total"
             total == 1 -> resources.getQuantityString(R.plurals.result_count, 1, 1)
             else -> getString(R.string.photos_count_summary, total)
         }
@@ -2463,7 +2475,7 @@ class MainActivity : AppCompatActivity() {
             if (!imageSearchActive || currentMode != Mode.Search) return@launch
             if (hits == null) {
                 MetroBanner.show(this@MainActivity, "Couldn't analyze this image yet — try after indexing")
-                renderSearchResults(emptyList(), "No similar photos", "Similar photos")
+                renderSearchResults("", emptyList(), "No similar photos", "Similar photos")
                 return@launch
             }
             val results = hits.mapNotNull { hit ->
@@ -2473,7 +2485,7 @@ class MainActivity : AppCompatActivity() {
             }
             currentSearchSort = null
             val title = if (isRegion) "Similar to region" else "Similar to $name"
-            renderSearchResults(results, "No similar photos found", title)
+            renderSearchResults("", results, "No similar photos found", title)
         }
     }
 
@@ -2491,18 +2503,7 @@ class MainActivity : AppCompatActivity() {
             currentAlbum?.id == albumId
     }
 
-    private fun updateSearchPillState() {
-        if (binding.searchPanel.visibility != View.VISIBLE) return
-        if (imageSearchActive) {
-            binding.searchPillsRow.visibility = View.GONE
-            return
-        }
-        renderActiveSearchPills()
-        renderQuickSearchPills()
-        updateSearchPillRow()
-    }
-
-    /** Composes free-text + active filter chips + the Show filter into the query the engine runs. */
+    /** Composes free text, selected filters, and the media filter into the search query. */
     private fun effectiveQuery(): String {
         val text = binding.searchInput.text?.toString()?.trim().orEmpty()
         return (listOf(text) + activeFilters + listOf(showFilterToken()))
@@ -2511,31 +2512,13 @@ class MainActivity : AppCompatActivity() {
             .trim()
     }
 
-    private fun addFilter(token: String) {
-        val canonical = StructuredSearch.canonicalToken(token)
-        if (activeFilters.any { StructuredSearch.canonicalToken(it) == canonical }) return
-        val selectionLimit = if (currentSearchScopePill() == null) 3 else 2
-        if (activeFilters.size >= selectionLimit) {
-            MetroBanner.show(this, "You can keep up to three filters active")
-            return
-        }
-        activeFilters.add(token)
-        onFiltersChanged()
-    }
-
-    private fun removeFilter(token: String) {
-        val canonical = StructuredSearch.canonicalToken(token)
-        activeFilters.removeAll { StructuredSearch.canonicalToken(it) == canonical }
-        onFiltersChanged()
-    }
-
     private fun onFiltersChanged() {
         if (imageSearchActive) {
             imageSearchActive = false
             clearImageSearchThumb()
         }
-        updateSearchPillState()
         if (effectiveQuery().isBlank()) {
+            clearSearchSections()
             adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
             resetGridToTop()
             binding.resultCount.text = ""
@@ -2544,49 +2527,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun renderActiveSearchPills() {
-        binding.searchActivePills.removeAllViews()
-        val scopePill = currentSearchScopePill()
-        val parsedFilters = StructuredSearch.parse(activeFilters.joinToString(" ")).filters
-        scopePill?.let {
-            binding.searchActivePills.addView(
-                createSearchPillView(
-                    label = it,
-                    selected = true,
-                    clickable = false,
-                    onClick = {}
-                )
-            )
-        }
-        parsedFilters.forEach { filter ->
-            binding.searchActivePills.addView(
-                createSearchPill(
-                    label = filter.chipLabel,
-                    selected = true,
-                    dismissable = true,
-                    onClick = { removeFilter(filter.rawToken) }
-                )
-            )
-        }
-    }
-
-    private fun renderQuickSearchPills() {
-        binding.searchQuickPills.removeAllViews()
-        val activeCanonical = activeFilters.mapTo(HashSet()) { StructuredSearch.canonicalToken(it) }
-        val suggestions = buildQuickSearchPills()
-            .filter { StructuredSearch.canonicalToken(it.token) !in activeCanonical }
-        suggestions.forEach { pill ->
-            binding.searchQuickPills.addView(
-                createSearchPillView(
-                    label = pill.label,
-                    selected = false,
-                    onClick = { addFilter(pill.token) }
-                )
-            )
-        }
-    }
-
-    /** Builds the fixed-first People chip from persisted face data, never from a transient scan cache. */
+    /** Builds the virtual People collection from persisted recognized faces. */
     private suspend fun loadPeopleCollection(): GalleryRepository.Album? {
         val faceDao = com.devomind.gallerysearch.db.GalleryDatabase
             .getInstance(applicationContext)
@@ -2601,7 +2542,6 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    /** Refreshes only when People visibility, count, or cover actually changes. */
     private fun refreshPeopleCollection() {
         val requestGeneration = ++peopleCollectionRefreshGeneration
         lifecycleScope.launch {
@@ -2612,146 +2552,98 @@ class MainActivity : AppCompatActivity() {
                 binding.imageGrid.post {
                     if (!isFinishing && librarySnapshotReady &&
                         activeSection == Section.Collection && currentMode == Mode.Browse
-                    ) {
-                        renderCurrentSection()
-                    }
+                    ) renderCurrentSection()
                 }
             }
         }
     }
 
-    /**
-     * Active filters stay anchored at the leading edge. Suggestions share the same physical row
-     * and scroll behind that anchored area, so a selection never jumps into a separate line.
-     */
-    private fun updateSearchPillRow() {
-        val hasActivePills = binding.searchActivePills.childCount > 0
-        val hasQuickPills = binding.searchQuickPills.childCount > 0
-        binding.searchPillsRow.visibility = if (hasActivePills || hasQuickPills) View.VISIBLE else View.GONE
-        binding.searchQuickPillsScroll.visibility = if (hasQuickPills) View.VISIBLE else View.GONE
-        binding.searchActivePills.post {
-            val reservedStart = if (hasActivePills) binding.searchActivePills.width + dp(8) else dp(2)
-            binding.searchQuickPills.setPadding(reservedStart, 0, dp(2), 0)
-        }
+    private fun updateSearchPillState() {
+        if (binding.searchPanel.visibility != View.VISIBLE || effectiveQuery().isNotBlank()) return
+        clearSearchSections()
     }
 
-    private fun buildQuickSearchPills(): List<StructuredSearch.Pill> {
-        val items = currentSearchPhotoItems()
-        if (items.isEmpty()) return emptyList()
-
-        val pills = LinkedHashMap<String, StructuredSearch.Pill>()
-
-        fun addPill(label: String, token: String) {
-            val canonical = StructuredSearch.canonicalToken(token)
-            pills.putIfAbsent(canonical, StructuredSearch.Pill(label = label, token = token))
-        }
-
-        if (activeSection != Section.Favorites && favoriteItems.isNotEmpty()) {
-            addPill("favorites", "fav=yes")
-        }
-
-        val latest = items.maxByOrNull { it.dateMillis }
-        if (latest != null) {
-            val date = Instant.ofEpochMilli(latest.dateMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-            addPill(date.year.toString(), "year=${date.year}")
-            addPill("${date.month.name.lowercase(Locale.getDefault()).replaceFirstChar { it.titlecase(Locale.getDefault()) }} ${date.year}",
-                "date=${date.year}-${date.monthValue.toString().padStart(2, '0')}")
-        }
-
-        items.asSequence()
-            .mapNotNull { item ->
-                item.displayName.orEmpty().substringAfterLast('.', "").lowercase(Locale.ROOT).takeIf { it.isNotBlank() }
-            }
-            .groupingBy { it }
-            .eachCount()
-            .entries
-            .sortedByDescending { it.value }
-            .take(3)
-            .forEach { entry ->
-                addPill(entry.key.uppercase(Locale.ROOT), "ext=${entry.key}")
-            }
-
-        if (currentAlbum == null) {
-            items.groupingBy { it.bucketName }
-                .eachCount()
-                .entries
-                .sortedByDescending { it.value }
-                .take(3)
-                .forEach { entry ->
-                    addPill(entry.key.lowercase(Locale.getDefault()), formatSearchToken("album", entry.key))
-                }
-        }
-
-        if (items.any { it.height > it.width }) addPill("portrait", "orientation=portrait")
-        if (items.any { it.width > it.height }) addPill("landscape", "orientation=landscape")
-
-        allTags
-            .sortedByDescending { tag -> items.count { it.uri.toString() in tagUriMap[tag.id].orEmpty() } }
-            .take(3)
-            .forEach { tag ->
-                addPill(tag.name.lowercase(Locale.getDefault()), "tag=${tag.name}")
-            }
-
-        return pills.values.take(12).toList()
+    private fun clearSearchSections() {
+        searchSectionResults = emptyList()
+        selectedSearchSection = null
+        searchLandingVisible = false
+        searchSectionAdapter.selected = null
+        searchSectionAdapter.submitList(emptyList())
+        binding.searchSections.visibility = View.GONE
     }
 
-    private fun currentSearchScopePill(): String? {
-        return when {
-            currentAlbum != null -> currentAlbum?.name
-            activeSection == Section.Favorites -> "favorites"
-            else -> null
+    private fun openSearchSection(section: SearchSection) {
+        val group = searchSectionResults.firstOrNull { it.section == section } ?: return
+        selectedSearchSection = section
+        searchLandingVisible = false
+        searchSectionAdapter.selected = section
+        fullSearchResults = group.results
+        applySortAndShow()
+    }
+
+    private suspend fun buildSearchSections(
+        query: String,
+        results: List<PhotoSearchResult>
+    ): List<SearchSectionResult> {
+        if (results.isEmpty()) return emptyList()
+        val resultByUri = results.associateBy { it.item.uri.toString() }
+        fun fromUris(section: SearchSection, count: Int, uris: Set<String>): SearchSectionResult? {
+            val matches = uris.mapNotNull(resultByUri::get)
+            return matches.takeIf { it.isNotEmpty() && count > 0 }?.let { SearchSectionResult(section, count, it) }
+        }
+        val text = StructuredSearch.parse(query).textQuery.trim().lowercase(Locale.getDefault())
+        val smart = results.filter { it.sources.ai }
+        val metadata = results.filter { it.sources.metadata }
+        val matchedAlbums = if (text.isBlank()) emptyList() else albums.filter { it.name.lowercase(Locale.getDefault()).contains(text) }
+        val albumUris = matchedAlbums.flatMapTo(LinkedHashSet()) { album ->
+            currentSearchPhotoItems().asSequence().filter { it.bucketId == album.id }.map { it.uri.toString() }.toList()
+        }
+        val matchedTags = if (text.isBlank()) emptyList() else allTags.filter { it.name.lowercase(Locale.getDefault()).contains(text) }
+        val tagUris = matchedTags.flatMapTo(LinkedHashSet()) { tag -> tagUriMap[tag.id].orEmpty() }
+        val resultUris = results.map { it.item.uri.toString() }
+        val db = dbRepository
+        val people = db?.recognizedPeopleForPhotoUris(resultUris)
+        val locations = db?.photoUrisWithLocation(resultUris).orEmpty()
+        return buildList {
+            smart.takeIf { it.isNotEmpty() }?.let { add(SearchSectionResult(SearchSection.Smart, it.size, it)) }
+            metadata.takeIf { it.isNotEmpty() }?.let { add(SearchSectionResult(SearchSection.Metadata, it.size, it)) }
+            fromUris(SearchSection.Albums, matchedAlbums.size, albumUris)?.let(::add)
+            fromUris(SearchSection.Tags, matchedTags.size, tagUris)?.let(::add)
+            fromUris(SearchSection.People, people?.personIds?.size ?: 0, people?.photoUris.orEmpty())?.let(::add)
+            fromUris(SearchSection.Locations, locations.size, locations)?.let(::add)
         }
     }
 
     private fun createSearchPillView(
         label: String,
         selected: Boolean,
-        clickable: Boolean = true,
-        onClick: () -> Unit
-    ): View = createSearchPill(label, selected, dismissable = false, clickable = clickable, onClick = onClick)
-
-    private fun createSearchPill(
-        label: String,
-        selected: Boolean,
-        dismissable: Boolean = false,
-        clickable: Boolean = true,
         onClick: () -> Unit
     ): View {
-        val row = LinearLayout(this).apply {
+        return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
             background = ContextCompat.getDrawable(
                 this@MainActivity,
                 if (selected) R.drawable.search_filter_chip_active_bg else R.drawable.search_filter_chip_bg
             )
-            setPadding(dp(16), dp(10), if (dismissable) dp(12) else dp(16), dp(10))
+            setPadding(dp(16), dp(10), dp(16), dp(10))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { marginEnd = dp(8) }
-            isClickable = clickable
-            isFocusable = clickable
+            isClickable = true
+            isFocusable = true
+            addView(TextView(this@MainActivity).apply {
+                text = label
+                textSize = 14f
+                includeFontPadding = false
+                maxWidth = dp(160)
+                ellipsize = TextUtils.TruncateAt.END
+                setSingleLine()
+                setTextColor(if (selected) Color.WHITE else ContextCompat.getColor(this@MainActivity, R.color.metroTextPrimary))
+            })
             setOnClickListener { onClick() }
         }
-        val text = TextView(this).apply {
-            this.text = label
-            textSize = 14f
-            includeFontPadding = false
-            maxWidth = if (selected) dp(72) else dp(160)
-            ellipsize = TextUtils.TruncateAt.END
-            setSingleLine()
-            setTextColor(Color.WHITE)
-        }
-        row.addView(text)
-        if (dismissable) {
-            val close = ImageView(this).apply {
-                setImageResource(R.drawable.ic_fluent_dismiss_24_regular)
-                imageTintList = ColorStateList.valueOf(Color.WHITE)
-                layoutParams = LinearLayout.LayoutParams(dp(16), dp(16)).apply { marginStart = dp(8) }
-            }
-            row.addView(close)
-        }
-        return row
     }
 
     private fun showImageSearchThumb(uri: Uri, cropRect: FloatArray? = null) {

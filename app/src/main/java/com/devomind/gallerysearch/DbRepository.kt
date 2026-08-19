@@ -10,6 +10,11 @@ import com.devomind.gallerysearch.db.TagEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+data class SearchPeopleMatch(
+    val personIds: Set<Long>,
+    val photoUris: Set<String>
+)
+
 class DbRepository(context: Context) {
 
     private val database = GalleryDatabase.getInstance(context)
@@ -17,6 +22,7 @@ class DbRepository(context: Context) {
     private val exifDao = database.exifMetadataDao()
     private val favoriteDao = database.favoriteDao()
     private val tagDao = database.tagDao()
+    private val faceDao = database.faceDao()
 
     suspend fun upsertMedia(items: List<GalleryRepository.MediaItem>) {
         withContext(Dispatchers.IO) {
@@ -96,6 +102,26 @@ class DbRepository(context: Context) {
             uris.mapNotNull { uri ->
                 exifDao.getByUri(uri)?.toData()?.let { uri to it }
             }.toMap()
+        }
+    }
+
+    suspend fun recognizedPeopleForPhotoUris(uris: List<String>): SearchPeopleMatch {
+        if (uris.isEmpty()) return SearchPeopleMatch(emptySet(), emptySet())
+        return withContext(Dispatchers.IO) {
+            uris.distinct().chunked(RoomQueryChunkSize).fold(SearchPeopleMatch(emptySet(), emptySet())) { match, chunk ->
+                SearchPeopleMatch(
+                    personIds = match.personIds + faceDao.distinctPersonIdsForPhotos(chunk),
+                    photoUris = match.photoUris + faceDao.recognizedPhotoUris(chunk)
+                )
+            }
+        }
+    }
+
+    suspend fun photoUrisWithLocation(uris: List<String>): Set<String> {
+        if (uris.isEmpty()) return emptySet()
+        return withContext(Dispatchers.IO) {
+            uris.distinct().chunked(RoomQueryChunkSize)
+                .flatMapTo(LinkedHashSet()) { exifDao.photoUrisWithLocation(it) }
         }
     }
 
@@ -182,5 +208,9 @@ class DbRepository(context: Context) {
             gpsAltitude = gpsAltitude,
             dateTimeOriginal = dateTimeOriginal
         )
+    }
+
+    private companion object {
+        const val RoomQueryChunkSize = 900
     }
 }
