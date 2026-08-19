@@ -38,7 +38,6 @@ import androidx.core.view.updatePadding
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkInfo
@@ -62,7 +61,6 @@ import kotlin.math.roundToInt
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var adapter: ImageAdapter
-    private lateinit var searchSectionAdapter: SearchSectionAdapter
     private lateinit var favoritesStore: FavoritesStore
     private lateinit var albumPinStore: AlbumPinStore
     private lateinit var smartAlbumStore: SmartAlbumStore
@@ -356,13 +354,6 @@ class MainActivity : AppCompatActivity() {
 
         binding.imageGrid.adapter = adapter
         binding.imageGrid.setHasFixedSize(true)
-        searchSectionAdapter = SearchSectionAdapter(::openSearchSection)
-        binding.searchSections.apply {
-            this.layoutManager = LinearLayoutManager(this@MainActivity, LinearLayoutManager.HORIZONTAL, false)
-            adapter = searchSectionAdapter
-            setHasFixedSize(true)
-            itemAnimator = null
-        }
         binding.imageGrid.setItemViewCacheSize(12)
         // Photo/collage rows dominate fling churn; a deeper recycle pool avoids re-inflation
         // (the default pool keeps only 5 per view type).
@@ -562,6 +553,9 @@ class MainActivity : AppCompatActivity() {
                 when {
                     binding.drawerLayout.isDrawerOpen(GravityCompat.START) -> binding.drawerLayout.closeDrawer(GravityCompat.START)
                     adapter.selectionCount > 0 -> adapter.clearSelection()
+                    // Section grid returns to the category card landing before leaving search.
+                    currentMode == Mode.Search && !searchLandingVisible && searchSectionResults.size > 1 ->
+                        showSearchLanding()
                     currentMode == Mode.Search && !binding.searchInput.text.isNullOrBlank() -> binding.searchInput.text?.clear()
                     currentMode == Mode.Search -> closeSearch(clearQuery = false)
                     currentMode == Mode.AlbumDetail -> {
@@ -2137,20 +2131,10 @@ class MainActivity : AppCompatActivity() {
         lastSearchStatusText = statusText
         currentDisplayedSearchResultCount = 0
         searchSectionResults = buildSearchSections(query, results)
-        // Progressive renders (metadata first, AI merged in later) keep the user's tab choice
-        // while it still has results; fresh searches default to the first available section.
-        selectedSearchSection = if (preserveSelection) {
-            searchSectionResults.firstOrNull { it.section == selectedSearchSection }?.section
-                ?: searchSectionResults.firstOrNull()?.section
-        } else {
-            searchSectionResults.firstOrNull()?.section
-        }
-        searchLandingVisible = false
-        searchSectionAdapter.selected = selectedSearchSection
-        searchSectionAdapter.submitList(searchSectionResults)
-        binding.searchSections.visibility = if (searchSectionResults.isEmpty()) View.GONE else View.VISIBLE
 
-        if (results.isEmpty() || selectedSearchSection == null) {
+        if (results.isEmpty() || searchSectionResults.isEmpty()) {
+            selectedSearchSection = null
+            searchLandingVisible = false
             fullSearchResults = emptyList()
             adapter.replaceCells(listOf(searchEmptyCell(emptyText)))
             resetGridToTop()
@@ -2158,7 +2142,48 @@ class MainActivity : AppCompatActivity() {
             binding.statusText.text = statusText
             return
         }
-        openSearchSection(selectedSearchSection!!)
+
+        // The user drilled into a section grid before the slow AI pass landed:
+        // refresh that same grid in place instead of snapping back to the cards.
+        val selectedSection = selectedSearchSection
+        if (preserveSelection && selectedSection != null && !searchLandingVisible) {
+            searchSectionResults.firstOrNull { it.section == selectedSection }?.let { group ->
+                fullSearchResults = group.results
+                applySortAndShow()
+                return
+            }
+        }
+
+        if (imageSearchActive) {
+            // Image-similarity is itself a single scoped result set — skip the landing cards.
+            openSearchSection(searchSectionResults.first().section)
+        } else {
+            showSearchLanding()
+        }
+    }
+
+    /** Stacked category summary cards — one per section with results, in fixed taxonomy order. */
+    private fun showSearchLanding() {
+        // Landing is card-only; the grid's infinite scroll must not paginate section results.
+        fullSearchResults = emptyList()
+        currentDisplayedSearchResultCount = 0
+        val alreadyLanding = searchLandingVisible
+        adapter.updateCells(
+            searchSectionResults.map { section ->
+                GalleryCell.SearchSection(section = section) { openSearchSection(section.section) }
+            }
+        )
+        searchLandingVisible = true
+        // Progressive renders re-enter here as more categories resolve; only the first
+        // entry into the landing scrolls to top — later inserts stay in place.
+        if (!alreadyLanding) resetGridToTop()
+        val total = searchResultsMaster.size
+        binding.searchResultSummary.text = if (total == 1) {
+            resources.getQuantityString(R.plurals.result_count, 1, 1)
+        } else {
+            getString(R.string.photos_count_summary, total)
+        }
+        binding.statusText.text = lastSearchStatusText
     }
 
     /**
@@ -2604,16 +2629,12 @@ class MainActivity : AppCompatActivity() {
         searchSectionResults = emptyList()
         selectedSearchSection = null
         searchLandingVisible = false
-        searchSectionAdapter.selected = null
-        searchSectionAdapter.submitList(emptyList())
-        binding.searchSections.visibility = View.GONE
     }
 
     private fun openSearchSection(section: SearchSection) {
         val group = searchSectionResults.firstOrNull { it.section == section } ?: return
         selectedSearchSection = section
         searchLandingVisible = false
-        searchSectionAdapter.selected = section
         fullSearchResults = group.results
         applySortAndShow()
     }

@@ -1,86 +1,98 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Category summary card: compact section header (circular icon badge + label)
+     with ONE flat summary row below — thumbnail, bold label, muted count, chevron. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:paddingStart="16dp"
     android:paddingEnd="16dp"
-    android:paddingTop="18dp"
-    android:paddingBottom="2dp">
+    android:paddingTop="22dp"
+    android:paddingBottom="0dp">
 
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:gravity="center_vertical">
+
         <FrameLayout
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:background="@drawable/search_section_icon_bg">
+
             <ImageView
                 android:id="@+id/sectionIcon"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
                 android:layout_gravity="center"
                 android:contentDescription="@null"
                 android:tint="@color/metroTextPrimary" />
         </FrameLayout>
+
         <TextView
             android:id="@+id/sectionTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="14dp"
+            android:layout_marginStart="10dp"
             android:fontFamily="sans-serif-medium"
             android:includeFontPadding="false"
             android:textColor="@color/metroTextPrimary"
-            android:textSize="21sp" />
+            android:textSize="15sp" />
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/sectionCard"
         android:layout_width="match_parent"
-        android:layout_height="148dp"
-        android:layout_marginTop="14dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
         android:background="@drawable/search_section_card_bg"
         android:clickable="true"
         android:focusable="true"
+        android:foreground="?android:attr/selectableItemBackground"
         android:gravity="center_vertical"
-        android:paddingStart="20dp"
-        android:paddingEnd="16dp">
+        android:orientation="horizontal"
+        android:padding="12dp">
+
         <ImageView
             android:id="@+id/sectionCover"
-            android:layout_width="112dp"
-            android:layout_height="112dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:background="@drawable/album_cover_rounded_bg"
             android:contentDescription="@null"
             android:scaleType="centerCrop" />
+
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="24dp"
+            android:layout_marginStart="14dp"
             android:layout_weight="1"
             android:orientation="vertical">
+
             <TextView
-                android:id="@+id/sectionQuery"
+                android:id="@+id/sectionLabel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
                 android:includeFontPadding="false"
                 android:maxLines="1"
                 android:textColor="@color/metroTextPrimary"
-                android:textSize="20sp" />
+                android:textSize="15sp" />
+
             <TextView
                 android:id="@+id/sectionCount"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="2dp"
                 android:includeFontPadding="false"
-                android:textColor="@color/metroTextSecondary"
-                android:textSize="16sp" />
+                android:textColor="@color/metroTextTertiary"
+                android:textSize="12sp" />
         </LinearLayout>
+
         <ImageView
             android:id="@+id/sectionChevron"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
             android:contentDescription="@null"
             android:src="@drawable/ic_fluent_chevron_right_24_regular"
             android:tint="@color/metroTextSecondary" />

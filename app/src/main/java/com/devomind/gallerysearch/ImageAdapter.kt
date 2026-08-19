@@ -114,7 +114,6 @@ sealed class GalleryCell {
     ) : GalleryCell()
     data class SearchSection(
         val section: SearchSectionResult,
-        val query: String,
         val onClick: () -> Unit
     ) : GalleryCell()
     object SmartAlbumOnboarding : GalleryCell()
@@ -1032,8 +1031,8 @@ class ImageAdapter(
         fun bind(cell: GalleryCell.SearchSection) {
             val section = cell.section
             binding.sectionTitle.text = section.section.label
-            binding.sectionQuery.text = cell.query.ifBlank { section.section.label }
-            binding.sectionCount.text = "${section.count} ${if (section.count == 1) "result" else "results"}"
+            binding.sectionLabel.text = section.section.label
+            binding.sectionCount.text = sectionCountText(section.count)
             binding.sectionIcon.setImageResource(sectionIcon(section.section))
             val cover = section.results.maxByOrNull { it.score }?.item?.uri
             if (cover == null) {
@@ -1048,6 +1047,12 @@ class ImageAdapter(
                     .into(binding.sectionCover)
             }
             binding.sectionCard.setOnClickListener { cell.onClick() }
+        }
+
+        private fun sectionCountText(count: Int): String {
+            // Plain integer; comma separators only kick in above 999 (standard %,d grouping).
+            val number = String.format(java.util.Locale.US, "%,d", count)
+            return if (count == 1) "$number result" else "$number results"
         }
 
         private fun sectionIcon(section: SearchSection): Int = when (section) {
