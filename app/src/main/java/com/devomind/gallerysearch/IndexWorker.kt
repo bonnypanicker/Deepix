@@ -3,6 +3,7 @@ package com.devomind.gallerysearch
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -25,9 +26,6 @@ class IndexWorker(
     appContext: Context,
     params: WorkerParameters
 ) : CoroutineWorker(appContext, params) {
-    private var lastForegroundUpdateAt = -1
-    private var lastForegroundPercent = -1
-    private var foregroundActive = false
 
     /** True if the device is currently connected to power. */
     private fun isCurrentlyCharging(): Boolean {
@@ -65,8 +63,7 @@ class IndexWorker(
         }
 
         try {
-            setForeground(createForegroundInfo(0, 1))
-            foregroundActive = true
+            setForeground(createForegroundInfo())
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (e: Exception) {
@@ -141,9 +138,6 @@ class IndexWorker(
                         .putInt(ProgressPercentKey, progressPercent)
                         .build()
                 )
-                if (foregroundActive && shouldRefreshForeground(bounded, progressPercent, total)) {
-                    setForegroundAsync(createForegroundInfo(bounded, total))
-                }
             }, onEmbeddingsStored = { indexed ->
                 if (faceCandidateQueue.enqueueCandidates(indexed, mediaByUri) > 0) {
                     FaceIndexWorker.enqueueCandidates(applicationContext)
@@ -194,47 +188,9 @@ class IndexWorker(
         }
     }
 
-    private fun shouldRefreshForeground(current: Int, progressPercent: Int, total: Int): Boolean {
-        if (current <= 1 || current >= total) {
-            lastForegroundUpdateAt = current
-            lastForegroundPercent = progressPercent
-            return true
-        }
-        val currentStep = current / ForegroundItemStep
-        val previousStep = lastForegroundUpdateAt / ForegroundItemStep
-        val percentDelta = progressPercent - lastForegroundPercent
-        val shouldUpdate = currentStep > previousStep || percentDelta >= ForegroundPercentStep
-        if (shouldUpdate) {
-            lastForegroundUpdateAt = current
-            lastForegroundPercent = progressPercent
-        }
-        return shouldUpdate
-    }
-
-    private fun createForegroundInfo(current: Int, total: Int): ForegroundInfo {
+    private fun createForegroundInfo(): ForegroundInfo {
         ensureChannel()
-        val indeterminate = total <= 1
-        val percent = if (indeterminate) 0 else (current.coerceAtMost(total) * 100) / total
-        val text = if (indeterminate) "Starting…" else "${current.coerceAtMost(total)}/$total · $percent%"
-        val notification: Notification = NotificationCompat.Builder(applicationContext, ChannelId)
-            .setContentTitle("Indexing photos")
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setProgress(100, percent, indeterminate)
-            .addAction(
-                android.R.drawable.ic_media_pause,
-                "Pause",
-                IndexControlReceiver.pendingIntent(applicationContext, IndexControlReceiver.ActionPause)
-            )
-            .addAction(
-                android.R.drawable.ic_menu_close_clear_cancel,
-                "Stop",
-                IndexControlReceiver.pendingIntent(applicationContext, IndexControlReceiver.ActionStop)
-            )
-            .build()
-        return ForegroundInfo(NotificationId, notification)
+        return ForegroundInfo(NotificationId, buildStatusNotification(applicationContext))
     }
 
     private fun ensureChannel() {
@@ -258,8 +214,6 @@ class IndexWorker(
         private const val ChannelId = "gallery_index_channel"
         private const val NotificationId = 1001
         private const val PausedNotificationId = 1002
-        private const val ForegroundItemStep = 20
-        private const val ForegroundPercentStep = 2
 
         /**
          * Single source of truth for the index work request so every enqueue path
@@ -317,50 +271,40 @@ class IndexWorker(
             return maxOf(0L, (nextStart.timeInMillis - now.timeInMillis) / 1000)
         }
 
-        fun showPausedNotification(context: Context) {
-            ensureChannel(context)
-            val notification = NotificationCompat.Builder(context, ChannelId)
-                .setContentTitle("Indexing paused")
-                .setContentText("Tap Resume to continue")
+        /**
+         * Minimal locked pill shown while indexing is in flight (running, paused, or waiting for
+         * the charger). No progress details or action buttons — the in-app banner and the Indexing
+         * page carry those instead. The notification is ongoing (can't be swiped away) and tapping
+         * it opens the Indexing page.
+         */
+        private fun buildStatusNotification(context: Context): Notification {
+            val openIntent = Intent(context, IndexingActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            val contentIntent = PendingIntent.getActivity(
+                context,
+                0,
+                openIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            return NotificationCompat.Builder(context, ChannelId)
+                .setContentTitle("Pixa learning your photos")
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
-                .addAction(
-                    android.R.drawable.ic_media_play,
-                    "Resume",
-                    IndexControlReceiver.pendingIntent(context, IndexControlReceiver.ActionResume)
-                )
-                .addAction(
-                    android.R.drawable.ic_menu_close_clear_cancel,
-                    "Stop",
-                    IndexControlReceiver.pendingIntent(context, IndexControlReceiver.ActionStop)
-                )
+                .setContentIntent(contentIntent)
                 .build()
+        }
+
+        fun showPausedNotification(context: Context) {
+            ensureChannel(context)
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.notify(PausedNotificationId, notification)
+            manager.notify(PausedNotificationId, buildStatusNotification(context))
         }
 
         fun showWaitingForChargeNotification(context: Context) {
             ensureChannel(context)
-            val notification = NotificationCompat.Builder(context, ChannelId)
-                .setContentTitle("Waiting to charge")
-                .setContentText("Plug in to continue indexing")
-                .setSmallIcon(android.R.drawable.stat_notify_sync)
-                .setOngoing(true)
-                .setOnlyAlertOnce(true)
-                .addAction(
-                    android.R.drawable.ic_media_pause,
-                    "Pause",
-                    IndexControlReceiver.pendingIntent(context, IndexControlReceiver.ActionPause)
-                )
-                .addAction(
-                    android.R.drawable.ic_menu_close_clear_cancel,
-                    "Stop",
-                    IndexControlReceiver.pendingIntent(context, IndexControlReceiver.ActionStop)
-                )
-                .build()
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.notify(NotificationId, notification)
+            manager.notify(NotificationId, buildStatusNotification(context))
         }
 
         fun cancelStatusNotification(context: Context) {

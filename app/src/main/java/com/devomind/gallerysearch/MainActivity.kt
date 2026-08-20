@@ -185,6 +185,9 @@ class MainActivity : AppCompatActivity() {
         indexBannerDismissed = true
         refreshSearchEmptyStateIfVisible()
     }
+    private val onIndexBannerClick: () -> Unit = {
+        startActivity(Intent(this, IndexingActivity::class.java))
+    }
 
     // Incremental (paged) loading of the browse timeline grid so large libraries render fast.
     private var pagedItems: List<GalleryRepository.MediaItem> = emptyList()
@@ -710,9 +713,10 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             setBusy("Loading gallery…")
             try {
-                val repo = GalleryRepository(applicationContext)
+                // Repository constructors touch disk (prefs, filesDir) — keep them off the main thread.
+                val repo = withContext(Dispatchers.IO) { GalleryRepository(applicationContext) }
                 repository = repo
-                dbRepository = DbRepository(applicationContext)
+                dbRepository = withContext(Dispatchers.IO) { DbRepository(applicationContext) }
                 allTags = withContext(Dispatchers.IO) { dbRepository?.getAllTags().orEmpty() }
                 tagUriMap = withContext(Dispatchers.IO) {
                     allTags.associate { tag ->
@@ -2287,11 +2291,11 @@ class MainActivity : AppCompatActivity() {
         val pct = IndexPreferences.getIndexProgressPercent(this)
         return when {
             indexRunning && indexProgressTotal > 0 -> GalleryCell.IndexBanner(
-                IndexBannerStatus.Running, indexProgressCurrent, indexProgressTotal, onIndexBannerDismiss
+                IndexBannerStatus.Running, indexProgressCurrent, indexProgressTotal, onIndexBannerDismiss, onIndexBannerClick
             )
-            indexQueued -> GalleryCell.IndexBanner(IndexBannerStatus.Queued, 0, 0, onIndexBannerDismiss)
-            indexRunning -> GalleryCell.IndexBanner(IndexBannerStatus.Starting, 0, 0, onIndexBannerDismiss)
-            paused && pct in 1..99 -> GalleryCell.IndexBanner(IndexBannerStatus.Paused, 0, 0, onIndexBannerDismiss)
+            indexQueued -> GalleryCell.IndexBanner(IndexBannerStatus.Queued, 0, 0, onIndexBannerDismiss, onIndexBannerClick)
+            indexRunning -> GalleryCell.IndexBanner(IndexBannerStatus.Starting, 0, 0, onIndexBannerDismiss, onIndexBannerClick)
+            paused && pct in 1..99 -> GalleryCell.IndexBanner(IndexBannerStatus.Paused, 0, 0, onIndexBannerDismiss, onIndexBannerClick)
             else -> null
         }
     }
@@ -2404,6 +2408,7 @@ class MainActivity : AppCompatActivity() {
                     personId = person.personId,
                     displayName = person.nameLabel ?: "Person #${person.personId}",
                     photoUri = face?.photoUri?.let(Uri::parse),
+                    faceId = face?.faceId ?: 0L,
                     bboxJson = face?.bboxJson,
                     detectionWidth = dim?.get(0) ?: 0,
                     detectionHeight = dim?.get(1) ?: 0

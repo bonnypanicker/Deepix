@@ -1,6 +1,7 @@
 package com.devomind.gallerysearch
 
 import android.app.Application
+import android.content.Context
 import android.os.StrictMode
 import android.util.Log
 import kotlin.concurrent.thread
@@ -30,6 +31,16 @@ class GallerySearchApp : Application() {
                     .build()
             )
         }
+        // Warm every SharedPreferences file on a background thread while the first Activity
+        // inflates. The first touch of each file costs ~40–330 ms of disk I/O, and MainActivity's
+        // onCreate reads five of them on the main thread; pre-touching here moves that cost off the
+        // critical path (each getSharedPreferences loads its XML on a loader thread).
+        thread(isDaemon = true) {
+            val app = applicationContext
+            for (name in StartupSharedPreferences) {
+                runCatching { app.getSharedPreferences(name, Context.MODE_PRIVATE) }
+            }
+        }
         // Enforce the Recycle Bin's 30-day retention off the main thread on each cold start.
         thread(isDaemon = true) { runCatching { BinManager.purgeExpired(applicationContext) } }
         // Phase 2: repair any Face↔vector-index divergence (e.g. a crash between Room commit and
@@ -47,6 +58,25 @@ class GallerySearchApp : Application() {
         // corruption recovery). Battery-gated, no-network; runs behind WorkManager, NOT during
         // per-photo indexing so the two don't contend.
     }
+
+    /**
+     * Must mirror the PrefName/PrefsName constants in IndexPreferences, BottomBarConfig,
+     * FavoritesStore, AlbumPinStore, SmartAlbumStore, AlbumCoverStore, IndexScopeStore, SafeStore,
+     * FaceEmbeddingModelMigration and FaceVectorIndexStatus. A stale entry costs only a no-op read
+     * (an unknown name never creates a file), so drift here is harmless.
+     */
+    private val StartupSharedPreferences = listOf(
+        "index_prefs",
+        "bottom_bar_config",
+        "gallery_favorites",
+        "album_pins",
+        "smart_albums",
+        "album_covers",
+        "index_scope",
+        "photo_safe",
+        "face_embedding_model",
+        "face_vector_index_status"
+    )
 }
 
 class SharedEncoders(private val context: android.content.Context) {

@@ -1,8 +1,15 @@
 package com.devomind.gallerysearch
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
+import android.util.LruCache
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -42,6 +49,12 @@ import com.devomind.gallerysearch.databinding.ItemSmartAlbumOnboardingBinding
 import com.devomind.gallerysearch.databinding.ItemSortRowBinding
 import com.devomind.gallerysearch.databinding.ItemTimelineHeaderBinding
 import java.text.NumberFormat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Applies the Metro selection visuals to one thumbnail: an accent frame + corner
@@ -154,12 +167,13 @@ sealed class GalleryCell {
 
     // ---- Pre-query search empty-state sections ----
 
-    /** Indexing status banner; [onDismiss] hides it for the rest of the app session. */
+    /** Indexing status banner; tap opens the indexing page, [onDismiss] hides it for the session. */
     data class IndexBanner(
         val status: IndexBannerStatus,
         val current: Int,
         val total: Int,
-        val onDismiss: () -> Unit
+        val onDismiss: () -> Unit,
+        val onClick: () -> Unit
     ) : GalleryCell()
 
     /** Horizontal row of example semantic queries; tapping one executes it. */
@@ -1209,6 +1223,7 @@ class ImageAdapter(
                 }
             }
             binding.bannerClose.setOnClickListener { cell.onDismiss() }
+            binding.root.setOnClickListener { cell.onClick() }
         }
 
         private fun fmt(value: Int): String = countFormat.format(value)
@@ -1302,12 +1317,51 @@ class ImageAdapter(
             holder.bind(getItem(position), onPersonClick)
         }
 
+        companion object {
+            private const val CoverSourceEdge = 768
+            private const val CoverDecodePx = 512
+            private const val CoverCacheKb = 8 * 1024
+
+            /** Process-wide circular-cover cache shared by all search-people rows. */
+            private val coverCache = object : LruCache<String, Bitmap>(CoverCacheKb) {
+                override fun sizeOf(key: String, bitmap: Bitmap): Int = bitmap.allocationByteCount / 1024
+            }
+
+            /** Outlives individual holders; in-flight decode work is cancelled on rebind. */
+            private val coverScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+            /** Center-crops [source] to a circle (search-people rows are circular; People tiles are square). */
+            private fun circleMask(source: Bitmap): Bitmap {
+                val size = minOf(source.width, source.height)
+                val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(output)
+                val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+                canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+                paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+                val left = (source.width - size) / 2
+                val top = (source.height - size) / 2
+                canvas.drawBitmap(
+                    source,
+                    Rect(left, top, left + size, top + size),
+                    Rect(0, 0, size, size),
+                    paint
+                )
+                return output
+            }
+        }
+
         class PersonViewHolder(
             private val binding: ItemSearchPersonBinding
         ) : RecyclerView.ViewHolder(binding.root) {
+            private var coverJob: Job? = null
+            private var coverKey: String? = null
+
             fun bind(person: SearchPersonPreview, onClick: (SearchPersonPreview) -> Unit) {
                 binding.personName.text = person.displayName
                 val image = binding.personFace
+                coverJob?.cancel()
+                coverJob = null
+                coverKey = null
                 Glide.with(image.context).clear(image)
                 val placeholder = ColorDrawable(Color.rgb(41, 41, 41))
                 val photoUri = person.photoUri
@@ -1315,24 +1369,65 @@ class ImageAdapter(
                 if (photoUri == null) {
                     image.setImageDrawable(placeholder)
                 } else if (bbox != null && person.detectionWidth > 0 && person.detectionHeight > 0) {
-                    Glide.with(image.context)
-                        .load(photoUri)
-                        .format(DecodeFormat.PREFER_RGB_565)
-                        .transform(
-                            FaceCropTransform(bbox, person.detectionWidth, person.detectionHeight),
-                            CircleCrop()
-                        )
-                        .placeholder(placeholder)
-                        .into(image)
+                    // Same pipeline as PersonAlbumsActivity: region-decode the original photo at
+                    // CoverSourceEdge (full-quality face crop), circle-mask, LRU-cache. Glide's
+                    // whole-photo downsample + crop stays as the fallback.
+                    val key = "${person.faceId}:${person.bboxJson}"
+                    coverKey = key
+                    val cached = coverCache.get(key)
+                    if (cached != null) {
+                        image.setImageBitmap(cached)
+                    } else {
+                        image.setImageDrawable(placeholder)
+                        coverJob = coverScope.launch {
+                            val decoded = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    OriginalFaceCoverDecoder.decode(
+                                        image.context.applicationContext,
+                                        photoUri,
+                                        bbox,
+                                        person.detectionWidth,
+                                        person.detectionHeight,
+                                        CoverSourceEdge
+                                    )
+                                }.getOrNull()
+                            }
+                            if (decoded != null) {
+                                val circular = circleMask(decoded)
+                                coverCache.put(key, circular)
+                                if (coverKey == key) image.setImageBitmap(circular)
+                            } else if (coverKey == key) {
+                                loadGlideCover(image, photoUri, bbox, person.detectionWidth, person.detectionHeight, placeholder)
+                            }
+                        }
+                    }
                 } else {
-                    Glide.with(image.context)
-                        .load(photoUri)
-                        .format(DecodeFormat.PREFER_RGB_565)
-                        .circleCrop()
-                        .placeholder(placeholder)
-                        .into(image)
+                    loadGlideCover(image, photoUri, bbox, person.detectionWidth, person.detectionHeight, placeholder)
                 }
                 binding.root.setOnClickListener { onClick(person) }
+            }
+
+            /** Fallback path: Glide decode + face crop (mirrors PersonAlbumsActivity's fallback). */
+            private fun loadGlideCover(
+                image: ImageView,
+                photoUri: Uri,
+                bbox: FloatArray?,
+                detectionWidth: Int,
+                detectionHeight: Int,
+                placeholder: ColorDrawable
+            ) {
+                val request = Glide.with(image.context)
+                    .load(photoUri)
+                    .override(CoverDecodePx, CoverDecodePx)
+                    .format(DecodeFormat.PREFER_ARGB_8888)
+                    .placeholder(placeholder)
+                if (bbox != null && detectionWidth > 0 && detectionHeight > 0) {
+                    request
+                        .transform(FaceCropTransform(bbox, detectionWidth, detectionHeight), CircleCrop())
+                        .into(image)
+                } else {
+                    request.circleCrop().into(image)
+                }
             }
 
             private fun parseBbox(json: String): FloatArray? = runCatching {

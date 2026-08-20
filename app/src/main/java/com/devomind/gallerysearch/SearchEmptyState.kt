@@ -27,6 +27,8 @@ data class SearchPersonPreview(
     val personId: Long,
     val displayName: String,
     val photoUri: Uri?,
+    /** Cover face id — part of the cover cache key (crop changes when the exemplar changes). */
+    val faceId: Long,
     val bboxJson: String?,
     val detectionWidth: Int,
     val detectionHeight: Int
