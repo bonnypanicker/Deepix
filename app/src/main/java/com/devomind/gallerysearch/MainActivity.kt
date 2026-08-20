@@ -43,6 +43,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.devomind.gallerysearch.databinding.ActivityMainBinding
+import com.devomind.gallerysearch.db.PersonEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
@@ -53,8 +54,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
+import java.time.DayOfWeek
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -138,6 +142,49 @@ class MainActivity : AppCompatActivity() {
     private var indexProgressTotal = 0
     private val searchHintRunnable = Runnable { cycleSearchHint() }
     private val activeFilters = LinkedHashSet<String>()
+
+    // ---- Pre-query search empty state ----
+    private var searchPeoplePreviews: List<SearchPersonPreview> = emptyList()
+    private var recentSearchQueries: List<String> = emptyList()
+    private var searchBinShortcutVisible = false
+    /** True once people/recents/bin data has been loaded for this search session. */
+    private var searchEmptyDataLoaded = false
+    private var searchEmptyDataJob: Job? = null
+    /** True while the index worker sits ENQUEUED/BLOCKED on constraints (not actively running). */
+    private var indexQueued = false
+
+    // Stable callback references: GalleryCell equality depends on them — fresh lambdas per render
+    // would force every section to rebind on each indexing-progress tick.
+    private val onSearchEmptyQueryClick: (String) -> Unit = { runSearchQuery(it) }
+    private val onSearchPersonPreviewClick: (SearchPersonPreview) -> Unit = {
+        PersonDetailActivity.launch(this, it.personId)
+    }
+    private val onSearchTimeFilterClick: (SearchTimeFilter) -> Unit = { filter ->
+        if (filter.query.isBlank()) showYearPickerDialog() else runSearchQuery(filter.query)
+    }
+    private val onSearchShortcutClick: (SearchShortcutItem) -> Unit = { item ->
+        when (item.shortcut) {
+            SearchShortcut.Videos -> navigateToSection(Section.Videos)
+            SearchShortcut.Favorites -> navigateToSection(Section.Favorites)
+            SearchShortcut.Screenshots -> runSearchQuery("is:screenshot")
+            SearchShortcut.Selfies -> runSearchQuery("selfie")
+            SearchShortcut.RecentlyDeleted -> startActivity(Intent(this, BinActivity::class.java))
+        }
+    }
+    private val onRecentSearchRemove: (String) -> Unit = { query ->
+        recentSearchQueries = recentSearchQueries.filterNot { it == query }
+        refreshSearchEmptyStateIfVisible()
+        lifecycleScope.launch(Dispatchers.IO) { dbRepository?.removeRecentSearch(query) }
+    }
+    private val onRecentSearchesClear: () -> Unit = {
+        recentSearchQueries = emptyList()
+        refreshSearchEmptyStateIfVisible()
+        lifecycleScope.launch(Dispatchers.IO) { dbRepository?.clearRecentSearches() }
+    }
+    private val onIndexBannerDismiss: () -> Unit = {
+        indexBannerDismissed = true
+        refreshSearchEmptyStateIfVisible()
+    }
 
     // Incremental (paged) loading of the browse timeline grid so large libraries render fast.
     private var pagedItems: List<GalleryRepository.MediaItem> = emptyList()
@@ -472,6 +519,7 @@ class MainActivity : AppCompatActivity() {
         binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
                 searchDebounceJob?.cancel()
+                recordRecentSearchQuery(effectiveQuery())
                 submitSearch()
                 true
             } else {
@@ -844,9 +892,11 @@ class MainActivity : AppCompatActivity() {
         IndexPreferences.setIndexPaused(this, true)
         WorkManager.getInstance(this).cancelUniqueWork(INDEX_WORK_NAME)
         indexRunning = false
+        indexQueued = false
         binding.searchSparkle.setIndexing(false)
         binding.statusText.text = "Indexing paused"
         updateIndexDrawerLabel()
+        refreshSearchEmptyStateIfVisible()
         MetroBanner.show(this, "Indexing paused")
     }
 
@@ -855,6 +905,7 @@ class MainActivity : AppCompatActivity() {
         IndexPreferences.setIndexStopped(this, false)
         enqueueIndexWork(ExistingWorkPolicy.KEEP)
         updateIndexDrawerLabel()
+        refreshSearchEmptyStateIfVisible()
         MetroBanner.show(this, "Indexing resumed")
     }
 
@@ -1465,7 +1516,12 @@ class MainActivity : AppCompatActivity() {
         updateSearchPillState()
         if (effectiveQuery().isBlank()) {
             binding.searchResultSummary.text = ""
-            adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
+            if (imageSearchActive) {
+                // Similar-image search paints its own loading/results — skip the landing content.
+                adapter.replaceCells(listOf(GalleryCell.Empty("Photos similar to this image")))
+            } else {
+                renderSearchEmptyState()
+            }
             resetGridToTop()
         } else {
             submitSearch()
@@ -1492,12 +1548,16 @@ class MainActivity : AppCompatActivity() {
         searchDebounceJob?.cancel()
         binding.searchPanel.visibility = View.GONE
         if (clearQuery) {
+            // The text still in the box is the user's final formulation — commit it to history.
+            recordRecentSearchQuery(binding.searchInput.text?.toString().orEmpty())
             binding.searchInput.text?.clear()
             activeFilters.clear()
         }
         imageSearchActive = false
         clearImageSearchThumb()
         binding.searchInput.clearFocus()
+        // The next search session re-reads people/recent/bin data for its empty state.
+        searchEmptyDataLoaded = false
         currentMode = if (currentAlbum != null) Mode.AlbumDetail else Mode.Browse
         startSearchHintCycle()
         updateSearchTrailingIcon()
@@ -1506,14 +1566,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateSearchMetaText() {
         updateSearchPillState()
-    }
-
-    private fun searchPlaceholderText(): String {
-        return when {
-            currentAlbum != null -> "Search photos in this album"
-            activeSection == Section.Favorites -> "Search favorite photos"
-            else -> "Search photos"
-        }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -1591,7 +1643,7 @@ class MainActivity : AppCompatActivity() {
         val sessionSection = activeSection
 
         if (!parsedQuery.hasAnyCriteria) {
-            adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
+            renderSearchEmptyState()
             resetGridToTop()
             binding.resultCount.text = ""
             binding.statusText.text = indexedSummary(repo.indexedCount)
@@ -2186,6 +2238,198 @@ class MainActivity : AppCompatActivity() {
         binding.statusText.text = lastSearchStatusText
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Search page: pre-query empty state
+    //
+    // Priority order (top → bottom): indexing banner (conditional), suggestion chips, people row,
+    // quick time filters, content shortcuts, recent searches. Sections with no data are omitted.
+    // ---------------------------------------------------------------------------------------------
+
+    private fun renderSearchEmptyState() {
+        clearSearchSections()
+        fullSearchResults = emptyList()
+        currentDisplayedSearchResultCount = 0
+        ensureSearchEmptyStateData()
+        val cells = ArrayList<GalleryCell>(8)
+        currentIndexBannerCell()?.let(cells::add)
+        cells += GalleryCell.SuggestionChips(searchSessionSuggestions, onSearchEmptyQueryClick)
+        if (searchPeoplePreviews.isNotEmpty()) {
+            cells += GalleryCell.PeopleRow(searchPeoplePreviews, onSearchPersonPreviewClick)
+        }
+        cells += GalleryCell.TimeFilters(currentTimeFilters(), onSearchTimeFilterClick)
+        cells += GalleryCell.ContentShortcuts(currentContentShortcuts(), onSearchShortcutClick)
+        if (recentSearchQueries.isNotEmpty()) {
+            cells += GalleryCell.RecentSearches(
+                recentSearchQueries,
+                onSearchEmptyQueryClick,
+                onRecentSearchRemove,
+                onRecentSearchesClear
+            )
+        }
+        adapter.updateCells(cells)
+    }
+
+    /** Re-renders only while the pre-query empty state is actually on screen. */
+    private fun refreshSearchEmptyStateIfVisible() {
+        if (currentMode == Mode.Search && !imageSearchActive && effectiveQuery().isBlank()) {
+            renderSearchEmptyState()
+        }
+    }
+
+    /**
+     * The banner appears while indexing is running (determinate X / Y), queued on constraints, or
+     * paused with partial progress. Dismissal is per-session: [indexBannerDismissed] lives in the
+     * companion, so it resets on the next app start (banner re-appears if indexing is incomplete).
+     */
+    private fun currentIndexBannerCell(): GalleryCell.IndexBanner? {
+        if (indexBannerDismissed) return null
+        val paused = IndexPreferences.isIndexPaused(this)
+        val pct = IndexPreferences.getIndexProgressPercent(this)
+        return when {
+            indexRunning && indexProgressTotal > 0 -> GalleryCell.IndexBanner(
+                IndexBannerStatus.Running, indexProgressCurrent, indexProgressTotal, onIndexBannerDismiss
+            )
+            indexQueued -> GalleryCell.IndexBanner(IndexBannerStatus.Queued, 0, 0, onIndexBannerDismiss)
+            indexRunning -> GalleryCell.IndexBanner(IndexBannerStatus.Starting, 0, 0, onIndexBannerDismiss)
+            paused && pct in 1..99 -> GalleryCell.IndexBanner(IndexBannerStatus.Paused, 0, 0, onIndexBannerDismiss)
+            else -> null
+        }
+    }
+
+    /** Today/Yesterday/This week/This month map to concrete date tokens; "Year…" opens a picker. */
+    private fun currentTimeFilters(): List<SearchTimeFilter> {
+        val today = LocalDate.now()
+        val weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        return listOf(
+            SearchTimeFilter("Today", "date:$today"),
+            SearchTimeFilter("Yesterday", "date:${today.minusDays(1)}"),
+            SearchTimeFilter("This week", "after:$weekStart"),
+            SearchTimeFilter("This month", "date:${YearMonth.now()}"),
+            SearchTimeFilter("Year…", "")
+        )
+    }
+
+    private fun currentContentShortcuts(): List<SearchShortcutItem> {
+        return buildList {
+            add(SearchShortcutItem(SearchShortcut.Videos, "Videos", R.drawable.ic_fluent_video_24_regular))
+            add(SearchShortcutItem(SearchShortcut.Screenshots, "Screenshots", R.drawable.ic_fluent_crop_24_regular))
+            add(SearchShortcutItem(SearchShortcut.Favorites, "Favorites", R.drawable.ic_fluent_heart_24_regular))
+            add(SearchShortcutItem(SearchShortcut.Selfies, "Selfies", R.drawable.ic_fluent_perspective_24_regular))
+            if (searchBinShortcutVisible) {
+                add(SearchShortcutItem(SearchShortcut.RecentlyDeleted, "Recently deleted", R.drawable.ic_fluent_delete_24_regular))
+            }
+        }
+    }
+
+    /** Executes [query] as if typed into the search box (bypassing the input debounce). */
+    private fun runSearchQuery(query: String) {
+        suppressSearchInput = true
+        binding.searchInput.setText(query)
+        suppressSearchInput = false
+        binding.searchInput.setSelection(query.length)
+        recordRecentSearchQuery(query)
+        submitSearch()
+    }
+
+    /**
+     * Persists a committed query: chip/suggestion taps, IME search, or the final text when leaving
+     * search. Filter-only queries (date:/is:/fav=) carry no semantic text, so they aren't history.
+     */
+    private fun recordRecentSearchQuery(rawQuery: String) {
+        val query = rawQuery.trim()
+        if (query.length < 2 || query.length > 100) return
+        if (StructuredSearch.parse(query).textQuery.isBlank()) return
+        recentSearchQueries =
+            (listOf(query) + recentSearchQueries.filterNot { it.equals(query, ignoreCase = true) })
+                .take(MaxRecentSearchesShown)
+        lifecycleScope.launch(Dispatchers.IO) { dbRepository?.recordRecentSearch(query) }
+    }
+
+    /** Loads people previews, recent searches, and bin state once per search session. */
+    private fun ensureSearchEmptyStateData() {
+        if (searchEmptyDataLoaded || searchEmptyDataJob?.isActive == true) return
+        searchEmptyDataJob = lifecycleScope.launch {
+            searchPeoplePreviews = loadSearchPersonPreviews()
+            val stored = withContext(Dispatchers.IO) {
+                dbRepository?.recentSearches(MaxRecentSearchesShown).orEmpty()
+            }
+            // Anything recorded this session outranks stored rows with the same text.
+            recentSearchQueries = (recentSearchQueries + stored)
+                .distinctBy { it.lowercase() }
+                .take(MaxRecentSearchesShown)
+            searchBinShortcutVisible = withContext(Dispatchers.IO) {
+                IndexPreferences.isRecycleBinEnabled(applicationContext) &&
+                    BinManager.count(applicationContext) > 0
+            }
+            searchEmptyDataLoaded = true
+            refreshSearchEmptyStateIfVisible()
+        }
+    }
+
+    /**
+     * Top person clusters for the "Search by person" row. Counts come from the cheap distinct-uri
+     * query; full face rows (with embeddings) are loaded only for the few persons actually shown.
+     */
+    private suspend fun loadSearchPersonPreviews(): List<SearchPersonPreview> {
+        val db = dbRepository ?: return emptyList()
+        return withContext(Dispatchers.IO) {
+            val persons = db.visiblePeople()
+            if (persons.isEmpty()) return@withContext emptyList<SearchPersonPreview>()
+            val ranked = persons
+                .map { it to db.photoCountForPerson(it.personId) }
+                .filter { it.second > 0 }
+                .sortedWith(
+                    compareByDescending<Pair<PersonEntity, Int>> { it.second }
+                        .thenBy { it.first.personId }
+                )
+                .take(MaxPersonPreviews)
+            val exemplars = ranked.map { (person, _) ->
+                val faces = db.facesForPerson(person.personId)
+                // Mirror PersonAlbumsActivity: sharpest eligible embedded face, then the stored
+                // exemplar pointer, then best available quality.
+                val face = faces.asSequence()
+                    .filter { it.embeddingJson != null && !it.isLowQuality }
+                    .maxByOrNull { it.qualityScore }
+                    ?: person.exemplarFaceId.takeIf { it > 0 }?.let { id -> faces.find { f -> f.faceId == id } }
+                    ?: faces.maxByOrNull { it.qualityScore }
+                person to face
+            }
+            val dims = FaceDetectionDims.resolve(
+                contentResolver,
+                exemplars.mapNotNull { it.second?.photoUri }.toHashSet()
+            )
+            exemplars.map { (person, face) ->
+                val dim = face?.photoUri?.let { dims[it] }
+                SearchPersonPreview(
+                    personId = person.personId,
+                    displayName = person.nameLabel ?: "Person #${person.personId}",
+                    photoUri = face?.photoUri?.let(Uri::parse),
+                    bboxJson = face?.bboxJson,
+                    detectionWidth = dim?.get(0) ?: 0,
+                    detectionHeight = dim?.get(1) ?: 0
+                )
+            }
+        }
+    }
+
+    /** "Year…" chip: pick from years actually present in the library (fallback: last 20 years). */
+    private fun showYearPickerDialog() {
+        val currentYear = LocalDate.now().year
+        val oldestYear = imageItems.asSequence()
+            .map { Instant.ofEpochMilli(it.dateMillis).atZone(ZoneId.systemDefault()).year }
+            .minOrNull() ?: (currentYear - 20)
+        val years = (currentYear downTo oldestYear.coerceIn(1970, currentYear))
+            .map { it.toString() }
+            .toTypedArray()
+        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
+            .setTitle("Pick a year")
+            .setItems(years) { dialog, which ->
+                dialog.dismiss()
+                runSearchQuery("date:${years[which]}")
+            }
+            .show()
+    }
+
     /**
      * No-results state for search. If the index is still building, says so (partial results are
      * expected); otherwise nudges toward relaxing filters / trying different words.
@@ -2344,7 +2588,7 @@ class MainActivity : AppCompatActivity() {
         binding.searchInput.text?.clear()
         suppressSearchInput = false
         updateSearchPillState()
-        adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
+        renderSearchEmptyState()
         resetGridToTop()
         binding.searchResultSummary.text = ""
         binding.searchInput.requestFocus()
@@ -2458,7 +2702,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (effectiveQuery().isBlank()) {
-            adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
+            renderSearchEmptyState()
             resetGridToTop()
             binding.searchResultSummary.text = ""
         } else {
@@ -2581,7 +2825,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (effectiveQuery().isBlank()) {
             clearSearchSections()
-            adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
+            renderSearchEmptyState()
             resetGridToTop()
             binding.resultCount.text = ""
         } else {
@@ -2748,7 +2992,7 @@ class MainActivity : AppCompatActivity() {
         clearImageSearchThumb()
         updateSearchPillState()
         if (effectiveQuery().isBlank()) {
-            adapter.replaceCells(listOf(GalleryCell.Empty(searchPlaceholderText())))
+            renderSearchEmptyState()
             resetGridToTop()
             binding.resultCount.text = ""
         } else {
@@ -3459,6 +3703,7 @@ class MainActivity : AppCompatActivity() {
             .observe(this) { infos ->
                 val work = infos.firstOrNull() ?: return@observe
                 indexRunning = work.state == WorkInfo.State.RUNNING || work.state == WorkInfo.State.ENQUEUED
+                indexQueued = work.state == WorkInfo.State.ENQUEUED || work.state == WorkInfo.State.BLOCKED
                 binding.searchSparkle.setIndexing(work.state == WorkInfo.State.RUNNING)
                 updateIndexDrawerLabel()
                 when (work.state) {
@@ -3480,6 +3725,7 @@ class MainActivity : AppCompatActivity() {
                         binding.progressBar.visibility = View.GONE
                         if (IndexPreferences.isIndexPaused(this)) {
                             binding.statusText.text = "Indexing paused"
+                            refreshSearchEmptyStateIfVisible()
                             return@observe
                         }
                         refreshVisibleItems(afterCompletedIndexPass = true)
@@ -3499,6 +3745,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
+                refreshSearchEmptyStateIfVisible()
             }
     }
 
@@ -3520,6 +3767,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (work.state == WorkInfo.State.SUCCEEDED) {
                     refreshPeopleCollection()
+                    // New clusters may exist for the search page's people row — force a reload.
+                    searchEmptyDataLoaded = false
+                    refreshSearchEmptyStateIfVisible()
                 }
             }
     }
@@ -3939,6 +4189,22 @@ class MainActivity : AppCompatActivity() {
         // "Alive" search-bar hint rotation.
         private const val SEARCH_HINT_INTERVAL_MS = 4200L
         private const val SEARCH_HINT_FADE_MS = 220L
+        // Search empty state: past queries shown / person clusters in the face row.
+        private const val MaxRecentSearchesShown = 10
+        private const val MaxPersonPreviews = 10
+
+        /** Per-process dismissal of the search-screen indexing banner; resets on app start. */
+        @Volatile
+        private var indexBannerDismissed = false
+
+        /** Semantic-search discovery chips: a stable per-session subset of a curated pool. */
+        private val searchSessionSuggestions: List<String> by lazy {
+            listOf(
+                "beach", "birthday cake", "documents", "sunset", "pets", "receipts",
+                "handwritten note", "mountain hike", "concert", "wedding", "food on a plate",
+                "snow", "city at night", "kids playing"
+            ).shuffled().take(8)
+        }
     }
 
     private enum class SearchMode {

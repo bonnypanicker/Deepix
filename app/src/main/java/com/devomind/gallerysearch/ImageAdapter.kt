@@ -18,6 +18,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.resource.bitmap.CircleCrop
 import com.devomind.gallerysearch.databinding.ItemAlbumBinding
 import com.devomind.gallerysearch.databinding.ItemCollageBinding
 import com.devomind.gallerysearch.databinding.ItemEmptyBinding
@@ -25,11 +26,22 @@ import com.devomind.gallerysearch.databinding.ItemFolderBinding
 import com.devomind.gallerysearch.databinding.ItemImageBinding
 import com.devomind.gallerysearch.databinding.ItemPinnedAlbumChipBinding
 import com.devomind.gallerysearch.databinding.ItemPinnedAlbumsHeaderBinding
+import com.devomind.gallerysearch.databinding.ItemSearchChipBinding
+import com.devomind.gallerysearch.databinding.ItemSearchIndexBannerBinding
 import com.devomind.gallerysearch.databinding.ItemSearchLoadingBinding
+import com.devomind.gallerysearch.databinding.ItemSearchPeopleRowBinding
+import com.devomind.gallerysearch.databinding.ItemSearchPersonBinding
+import com.devomind.gallerysearch.databinding.ItemSearchRecentRowBinding
+import com.devomind.gallerysearch.databinding.ItemSearchRecentSearchesBinding
 import com.devomind.gallerysearch.databinding.ItemSearchSectionBinding
+import com.devomind.gallerysearch.databinding.ItemSearchShortcutBinding
+import com.devomind.gallerysearch.databinding.ItemSearchShortcutsBinding
+import com.devomind.gallerysearch.databinding.ItemSearchSuggestionsBinding
+import com.devomind.gallerysearch.databinding.ItemSearchTimeFiltersBinding
 import com.devomind.gallerysearch.databinding.ItemSmartAlbumOnboardingBinding
 import com.devomind.gallerysearch.databinding.ItemSortRowBinding
 import com.devomind.gallerysearch.databinding.ItemTimelineHeaderBinding
+import java.text.NumberFormat
 
 /**
  * Applies the Metro selection visuals to one thumbnail: an accent frame + corner
@@ -85,6 +97,13 @@ private fun bindSortChip(
     chip.setOnClickListener { onSortClick(it) }
 }
 
+/** One tappable chip for the empty-state suggestion / time-filter rows. */
+private fun inflateChip(row: LinearLayout, text: String): TextView {
+    val binding = ItemSearchChipBinding.inflate(LayoutInflater.from(row.context), row, false)
+    binding.chipText.text = text
+    return binding.root
+}
+
 sealed class GalleryCell {
     /**
      * A timeline group header. [sortLabel] is non-null on the single header that carries the sort
@@ -132,6 +151,48 @@ sealed class GalleryCell {
 
     /** Full-span search loading state shown while the CLIP pass is still running. */
     data class Loading(val text: String) : GalleryCell()
+
+    // ---- Pre-query search empty-state sections ----
+
+    /** Indexing status banner; [onDismiss] hides it for the rest of the app session. */
+    data class IndexBanner(
+        val status: IndexBannerStatus,
+        val current: Int,
+        val total: Int,
+        val onDismiss: () -> Unit
+    ) : GalleryCell()
+
+    /** Horizontal row of example semantic queries; tapping one executes it. */
+    data class SuggestionChips(
+        val queries: List<String>,
+        val onQueryClick: (String) -> Unit
+    ) : GalleryCell()
+
+    /** Horizontal row of face-cluster circles; tapping one opens the person's photos. */
+    data class PeopleRow(
+        val people: List<SearchPersonPreview>,
+        val onPersonClick: (SearchPersonPreview) -> Unit
+    ) : GalleryCell()
+
+    /** Horizontal row of quick date filters (Today / Yesterday / … / Year picker). */
+    data class TimeFilters(
+        val filters: List<SearchTimeFilter>,
+        val onSelect: (SearchTimeFilter) -> Unit
+    ) : GalleryCell()
+
+    /** Horizontal row of content-type shortcut tiles (Videos, Screenshots, Favorites, …). */
+    data class ContentShortcuts(
+        val items: List<SearchShortcutItem>,
+        val onSelect: (SearchShortcutItem) -> Unit
+    ) : GalleryCell()
+
+    /** Persisted past queries: tap re-runs, per-row remove, plus a clear-all action. */
+    data class RecentSearches(
+        val queries: List<String>,
+        val onQueryClick: (String) -> Unit,
+        val onRemove: (String) -> Unit,
+        val onClearAll: () -> Unit
+    ) : GalleryCell()
 }
 
 class ImageAdapter(
@@ -231,6 +292,12 @@ class ImageAdapter(
             is GalleryCell.SmartAlbumOnboarding -> ViewTypeSmartOnboarding
             is GalleryCell.Empty -> ViewTypeEmpty
             is GalleryCell.Loading -> ViewTypeLoading
+            is GalleryCell.IndexBanner -> ViewTypeIndexBanner
+            is GalleryCell.SuggestionChips -> ViewTypeSuggestionChips
+            is GalleryCell.PeopleRow -> ViewTypePeopleRow
+            is GalleryCell.TimeFilters -> ViewTypeTimeFilters
+            is GalleryCell.ContentShortcuts -> ViewTypeContentShortcuts
+            is GalleryCell.RecentSearches -> ViewTypeRecentSearches
         }
     }
 
@@ -258,6 +325,12 @@ class ImageAdapter(
             )
             ViewTypeEmpty -> EmptyViewHolder(ItemEmptyBinding.inflate(inflater, parent, false))
             ViewTypeLoading -> LoadingViewHolder(ItemSearchLoadingBinding.inflate(inflater, parent, false))
+            ViewTypeIndexBanner -> IndexBannerViewHolder(ItemSearchIndexBannerBinding.inflate(inflater, parent, false))
+            ViewTypeSuggestionChips -> SuggestionChipsViewHolder(ItemSearchSuggestionsBinding.inflate(inflater, parent, false))
+            ViewTypePeopleRow -> PeopleRowViewHolder(ItemSearchPeopleRowBinding.inflate(inflater, parent, false))
+            ViewTypeTimeFilters -> TimeFiltersViewHolder(ItemSearchTimeFiltersBinding.inflate(inflater, parent, false))
+            ViewTypeContentShortcuts -> ContentShortcutsViewHolder(ItemSearchShortcutsBinding.inflate(inflater, parent, false))
+            ViewTypeRecentSearches -> RecentSearchesViewHolder(ItemSearchRecentSearchesBinding.inflate(inflater, parent, false))
             ViewTypeSmartOnboarding -> SmartAlbumOnboardingViewHolder(
                 ItemSmartAlbumOnboardingBinding.inflate(inflater, parent, false),
                 onCreateSmartAlbum,
@@ -293,6 +366,12 @@ class ImageAdapter(
             is GalleryCell.SmartAlbumOnboarding -> Unit
             is GalleryCell.Empty -> (holder as EmptyViewHolder).bind(cell)
             is GalleryCell.Loading -> (holder as LoadingViewHolder).bind(cell)
+            is GalleryCell.IndexBanner -> (holder as IndexBannerViewHolder).bind(cell)
+            is GalleryCell.SuggestionChips -> (holder as SuggestionChipsViewHolder).bind(cell)
+            is GalleryCell.PeopleRow -> (holder as PeopleRowViewHolder).bind(cell)
+            is GalleryCell.TimeFilters -> (holder as TimeFiltersViewHolder).bind(cell)
+            is GalleryCell.ContentShortcuts -> (holder as ContentShortcutsViewHolder).bind(cell)
+            is GalleryCell.RecentSearches -> (holder as RecentSearchesViewHolder).bind(cell)
         }
     }
 
@@ -320,6 +399,12 @@ class ImageAdapter(
             is GalleryCell.SearchSection -> totalSpanCount
             is GalleryCell.SmartAlbumOnboarding -> totalSpanCount
             is GalleryCell.Collage -> totalSpanCount
+            is GalleryCell.IndexBanner,
+            is GalleryCell.SuggestionChips,
+            is GalleryCell.PeopleRow,
+            is GalleryCell.TimeFilters,
+            is GalleryCell.ContentShortcuts,
+            is GalleryCell.RecentSearches -> totalSpanCount
             is GalleryCell.AlbumCell -> totalSpanCount / 2
             is GalleryCell.FolderCell -> totalSpanCount
             is GalleryCell.Photo -> {
@@ -566,6 +651,12 @@ class ImageAdapter(
             is GalleryCell.SmartAlbumOnboarding -> "smart_album_onboarding"
             is GalleryCell.Empty -> "empty:${cell.text}"
             is GalleryCell.Loading -> "search_loading"
+            is GalleryCell.IndexBanner -> "search_index_banner"
+            is GalleryCell.SuggestionChips -> "search_suggestions"
+            is GalleryCell.PeopleRow -> "search_people_row"
+            is GalleryCell.TimeFilters -> "search_time_filters"
+            is GalleryCell.ContentShortcuts -> "search_shortcuts"
+            is GalleryCell.RecentSearches -> "search_recents"
         }
         return key.fold(1125899906842597L) { hash, char -> 31L * hash + char.code.toLong() }
     }
@@ -1084,6 +1175,196 @@ class ImageAdapter(
         }
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // Pre-query search empty-state holders
+    // ---------------------------------------------------------------------------------------------
+
+    class IndexBannerViewHolder(
+        private val binding: ItemSearchIndexBannerBinding
+    ) : RecyclerView.ViewHolder(binding.root) {
+        private val countFormat = NumberFormat.getIntegerInstance()
+
+        fun bind(cell: GalleryCell.IndexBanner) {
+            when (cell.status) {
+                IndexBannerStatus.Running -> {
+                    binding.bannerProgress.visibility = View.VISIBLE
+                    binding.bannerProgress.isIndeterminate = false
+                    binding.bannerProgress.max = cell.total.coerceAtLeast(1)
+                    binding.bannerProgress.progress = cell.current.coerceIn(0, cell.total.coerceAtLeast(1))
+                    binding.bannerLabel.text =
+                        "Indexing photos… ${fmt(cell.current)} / ${fmt(cell.total)}"
+                }
+                IndexBannerStatus.Starting -> {
+                    binding.bannerProgress.visibility = View.VISIBLE
+                    binding.bannerProgress.isIndeterminate = true
+                    binding.bannerLabel.text = "Indexing starting…"
+                }
+                IndexBannerStatus.Queued -> {
+                    binding.bannerProgress.visibility = View.GONE
+                    binding.bannerLabel.text = "Indexing queued — will resume when ready"
+                }
+                IndexBannerStatus.Paused -> {
+                    binding.bannerProgress.visibility = View.GONE
+                    binding.bannerLabel.text = "Paused — will resume"
+                }
+            }
+            binding.bannerClose.setOnClickListener { cell.onDismiss() }
+        }
+
+        private fun fmt(value: Int): String = countFormat.format(value)
+    }
+
+    class SuggestionChipsViewHolder(
+        private val binding: ItemSearchSuggestionsBinding
+    ) : RecyclerView.ViewHolder(binding.root) {
+        fun bind(cell: GalleryCell.SuggestionChips) {
+            binding.suggestionChipsRow.removeAllViews()
+            cell.queries.forEach { query ->
+                val chip = inflateChip(binding.suggestionChipsRow, query)
+                chip.setOnClickListener { cell.onQueryClick(query) }
+                binding.suggestionChipsRow.addView(chip)
+            }
+        }
+    }
+
+    class TimeFiltersViewHolder(
+        private val binding: ItemSearchTimeFiltersBinding
+    ) : RecyclerView.ViewHolder(binding.root) {
+        fun bind(cell: GalleryCell.TimeFilters) {
+            binding.timeFiltersRow.removeAllViews()
+            cell.filters.forEach { filter ->
+                val chip = inflateChip(binding.timeFiltersRow, filter.label)
+                chip.setOnClickListener { cell.onSelect(filter) }
+                binding.timeFiltersRow.addView(chip)
+            }
+        }
+    }
+
+    class ContentShortcutsViewHolder(
+        private val binding: ItemSearchShortcutsBinding
+    ) : RecyclerView.ViewHolder(binding.root) {
+        fun bind(cell: GalleryCell.ContentShortcuts) {
+            binding.shortcutsRow.removeAllViews()
+            val inflater = LayoutInflater.from(binding.root.context)
+            cell.items.forEach { item ->
+                val chipBinding = ItemSearchShortcutBinding.inflate(inflater, binding.shortcutsRow, false)
+                chipBinding.shortcutIcon.setImageResource(item.iconRes)
+                chipBinding.shortcutLabel.text = item.label
+                chipBinding.root.setOnClickListener { cell.onSelect(item) }
+                binding.shortcutsRow.addView(chipBinding.root)
+            }
+        }
+    }
+
+    class PeopleRowViewHolder(
+        binding: ItemSearchPeopleRowBinding
+    ) : RecyclerView.ViewHolder(binding.root) {
+        private val peopleAdapter = SearchPersonRowAdapter()
+
+        init {
+            binding.peopleRowList.layoutManager =
+                LinearLayoutManager(binding.root.context, LinearLayoutManager.HORIZONTAL, false)
+            binding.peopleRowList.adapter = peopleAdapter
+            binding.peopleRowList.itemAnimator = null
+        }
+
+        fun bind(cell: GalleryCell.PeopleRow) {
+            peopleAdapter.onPersonClick = cell.onPersonClick
+            // Detached snapshot, same as PinnedAlbumsHeaderViewHolder: the parent grid may be
+            // mid-layout when an empty-state refresh lands.
+            peopleAdapter.submitList(cell.people.toList())
+        }
+    }
+
+    class SearchPersonRowAdapter(
+        var onPersonClick: (SearchPersonPreview) -> Unit = {}
+    ) : ListAdapter<SearchPersonPreview, SearchPersonRowAdapter.PersonViewHolder>(
+        object : DiffUtil.ItemCallback<SearchPersonPreview>() {
+            override fun areItemsTheSame(old: SearchPersonPreview, new: SearchPersonPreview) =
+                old.personId == new.personId
+            override fun areContentsTheSame(old: SearchPersonPreview, new: SearchPersonPreview) =
+                old == new
+        }
+    ) {
+        init {
+            setHasStableIds(true)
+        }
+
+        override fun getItemId(position: Int): Long = getItem(position).personId
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PersonViewHolder {
+            return PersonViewHolder(
+                ItemSearchPersonBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+            )
+        }
+
+        override fun onBindViewHolder(holder: PersonViewHolder, position: Int) {
+            holder.bind(getItem(position), onPersonClick)
+        }
+
+        class PersonViewHolder(
+            private val binding: ItemSearchPersonBinding
+        ) : RecyclerView.ViewHolder(binding.root) {
+            fun bind(person: SearchPersonPreview, onClick: (SearchPersonPreview) -> Unit) {
+                binding.personName.text = person.displayName
+                val image = binding.personFace
+                Glide.with(image.context).clear(image)
+                val placeholder = ColorDrawable(Color.rgb(41, 41, 41))
+                val photoUri = person.photoUri
+                val bbox = person.bboxJson?.let(::parseBbox)
+                if (photoUri == null) {
+                    image.setImageDrawable(placeholder)
+                } else if (bbox != null && person.detectionWidth > 0 && person.detectionHeight > 0) {
+                    Glide.with(image.context)
+                        .load(photoUri)
+                        .format(DecodeFormat.PREFER_RGB_565)
+                        .transform(
+                            FaceCropTransform(bbox, person.detectionWidth, person.detectionHeight),
+                            CircleCrop()
+                        )
+                        .placeholder(placeholder)
+                        .into(image)
+                } else {
+                    Glide.with(image.context)
+                        .load(photoUri)
+                        .format(DecodeFormat.PREFER_RGB_565)
+                        .circleCrop()
+                        .placeholder(placeholder)
+                        .into(image)
+                }
+                binding.root.setOnClickListener { onClick(person) }
+            }
+
+            private fun parseBbox(json: String): FloatArray? = runCatching {
+                val arr = org.json.JSONArray(json)
+                floatArrayOf(
+                    arr.getDouble(0).toFloat(),
+                    arr.getDouble(1).toFloat(),
+                    arr.getDouble(2).toFloat(),
+                    arr.getDouble(3).toFloat()
+                )
+            }.getOrNull()
+        }
+    }
+
+    class RecentSearchesViewHolder(
+        private val binding: ItemSearchRecentSearchesBinding
+    ) : RecyclerView.ViewHolder(binding.root) {
+        fun bind(cell: GalleryCell.RecentSearches) {
+            binding.recentClearAll.setOnClickListener { cell.onClearAll() }
+            binding.recentRows.removeAllViews()
+            val inflater = LayoutInflater.from(binding.root.context)
+            cell.queries.forEach { query ->
+                val rowBinding = ItemSearchRecentRowBinding.inflate(inflater, binding.recentRows, false)
+                rowBinding.recentQuery.text = query
+                rowBinding.recentRowRoot.setOnClickListener { cell.onQueryClick(query) }
+                rowBinding.recentRemove.setOnClickListener { cell.onRemove(query) }
+                binding.recentRows.addView(rowBinding.root)
+            }
+        }
+    }
+
+
     class SmartAlbumOnboardingViewHolder(
         binding: ItemSmartAlbumOnboardingBinding,
         onCreateSmartAlbum: () -> Unit,
@@ -1185,6 +1466,12 @@ class ImageAdapter(
         const val ViewTypeSortRow = 9
         const val ViewTypeSearchSection = 10
         const val ViewTypeLoading = 11
+        const val ViewTypeIndexBanner = 12
+        const val ViewTypeSuggestionChips = 13
+        const val ViewTypePeopleRow = 14
+        const val ViewTypeTimeFilters = 15
+        const val ViewTypeContentShortcuts = 16
+        const val ViewTypeRecentSearches = 17
 
         private fun formatDuration(durationMs: Long): String {
             val totalSeconds = durationMs / 1000

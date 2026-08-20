@@ -2,10 +2,13 @@ package com.devomind.gallerysearch
 
 import android.content.Context
 import com.devomind.gallerysearch.db.ExifMetadataEntity
+import com.devomind.gallerysearch.db.FaceEntity
 import com.devomind.gallerysearch.db.FavoriteEntity
 import com.devomind.gallerysearch.db.GalleryDatabase
 import com.devomind.gallerysearch.db.MediaMetadataEntity
 import com.devomind.gallerysearch.db.MediaTagCrossRef
+import com.devomind.gallerysearch.db.PersonEntity
+import com.devomind.gallerysearch.db.RecentSearchEntity
 import com.devomind.gallerysearch.db.TagEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,6 +26,8 @@ class DbRepository(context: Context) {
     private val favoriteDao = database.favoriteDao()
     private val tagDao = database.tagDao()
     private val faceDao = database.faceDao()
+    private val personDao = database.personDao()
+    private val recentSearchDao = database.recentSearchDao()
 
     suspend fun upsertMedia(items: List<GalleryRepository.MediaItem>) {
         withContext(Dispatchers.IO) {
@@ -164,8 +169,55 @@ class DbRepository(context: Context) {
     }
 
     suspend fun deleteTag(tagId: Long) {
-        withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             tagDao.delete(tagId)
+        }
+    }
+
+    /** All visible person clusters — used by the search page's "Search by person" row. */
+    suspend fun visiblePeople(): List<PersonEntity> {
+        return withContext(Dispatchers.IO) {
+            personDao.allVisible()
+        }
+    }
+
+    /** Full face rows for exemplar picking; call only for the handful of persons being rendered. */
+    suspend fun facesForPerson(personId: Long): List<FaceEntity> {
+        return withContext(Dispatchers.IO) {
+            faceDao.findByPerson(personId)
+        }
+    }
+
+    /** Distinct photo count for ranking clusters without loading embeddings. */
+    suspend fun photoCountForPerson(personId: Long): Int {
+        return withContext(Dispatchers.IO) {
+            faceDao.distinctPhotoUrisByPerson(personId).size
+        }
+    }
+
+    suspend fun recentSearches(limit: Int): List<String> {
+        return withContext(Dispatchers.IO) {
+            recentSearchDao.recentQueries(limit)
+        }
+    }
+
+    /** Records/bumps a query and keeps the table bounded at [MaxRecentSearches]. */
+    suspend fun recordRecentSearch(query: String) {
+        withContext(Dispatchers.IO) {
+            recentSearchDao.upsert(RecentSearchEntity(query, System.currentTimeMillis()))
+            recentSearchDao.prune(MaxRecentSearches)
+        }
+    }
+
+    suspend fun removeRecentSearch(query: String) {
+        withContext(Dispatchers.IO) {
+            recentSearchDao.delete(query)
+        }
+    }
+
+    suspend fun clearRecentSearches() {
+        withContext(Dispatchers.IO) {
+            recentSearchDao.clearAll()
         }
     }
 
@@ -212,5 +264,6 @@ class DbRepository(context: Context) {
 
     private companion object {
         const val RoomQueryChunkSize = 900
+        const val MaxRecentSearches = 25
     }
 }

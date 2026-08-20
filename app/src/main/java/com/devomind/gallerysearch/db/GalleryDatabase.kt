@@ -17,9 +17,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PersonPhotoEntity::class,
         PersonEntity::class,
         FaceEntity::class,
-        PersonMergeLogEntity::class
+        PersonMergeLogEntity::class,
+        RecentSearchEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class GalleryDatabase : RoomDatabase() {
@@ -32,6 +33,7 @@ abstract class GalleryDatabase : RoomDatabase() {
     abstract fun personDao(): PersonDao
     abstract fun faceDao(): FaceDao
     abstract fun personMergeLogDao(): PersonMergeLogDao
+    abstract fun recentSearchDao(): RecentSearchDao
 
     companion object {
         private const val DATABASE_NAME = "gallery_metadata.db"
@@ -93,6 +95,24 @@ abstract class GalleryDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v5 → v6: adds recent_searches (search history for the pre-query empty state). New table,
+         * no existing data touched.
+         */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `recent_searches` (
+                        `query` TEXT NOT NULL,
+                        `searchedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`query`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         @Volatile
         private var instance: GalleryDatabase? = null
 
@@ -103,7 +123,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                     GalleryDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { instance = it }

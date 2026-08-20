@@ -247,4 +247,14 @@
     <string name="first_run_scan_now">Start scan</string>
     <string name="first_run_skip">Not now</string>
     <string name="faces_section">FACES</string>
+
+    <!-- Search page: pre-query empty state -->
+    <string name="search_empty_suggestions_header">Suggestions</string>
+    <string name="search_empty_people_header">Search by person</string>
+    <string name="search_empty_time_header">Jump to date</string>
+    <string name="search_empty_shortcuts_header">Browse by type</string>
+    <string name="search_empty_recent_header">Recent searches</string>
+    <string name="search_empty_clear_all">Clear all</string>
+    <string name="search_empty_remove_recent">Remove</string>
+    <string name="search_dismiss_index_banner">Dismiss indexing status</string>
 </resources>
