@@ -44,6 +44,7 @@ class PersonDetailActivity : AppCompatActivity() {
     private var pagedLastDay: LocalDate? = null
     private var pagingInFlight = false
     private var personId: Long = 0L
+    private var currentPerson: com.devomind.gallerysearch.db.PersonEntity? = null
 
     private val monthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
         .withZone(ZoneId.systemDefault())
@@ -69,6 +70,11 @@ class PersonDetailActivity : AppCompatActivity() {
         applyInsets()
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
+
+        // Tap the title to name the person or assign a relationship.
+        binding.personNameLabel.setOnClickListener {
+            currentPerson?.let { showIdentityEditor(it) }
+        }
 
         personId = intent.getLongExtra(ExtraPersonId, -1L)
         if (personId <= 0) {
@@ -133,7 +139,11 @@ class PersonDetailActivity : AppCompatActivity() {
                 )
                 return@launch
             }
-            binding.personNameLabel.text = getString(R.string.people_title)
+            currentPerson = person
+            // Named people and relationship-labelled people get their identity as the title;
+            // anonymous people keep the generic screen title (no "Person #id" placeholders).
+            binding.personNameLabel.text = PersonIdentity.displayName(person)
+                ?: getString(R.string.people_title)
 
             // Faces → unique source photos → MediaItems (date-sorted). A photo with two faces of
             // the same person collapses to a single tile here.
@@ -259,22 +269,8 @@ class PersonDetailActivity : AppCompatActivity() {
         }
     }
 
-    private fun showRename(person: com.devomind.gallerysearch.db.PersonEntity) {
-        val input = android.widget.EditText(this).apply {
-            setText(person.nameLabel ?: "")
-        }
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Name")
-            .setView(input)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                lifecycleScope.launch {
-                    GalleryDatabase.getInstance(applicationContext).personDao()
-                        .rename(person.personId, input.text.toString().ifBlank { null })
-                    loadPerson(person.personId)
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+    private fun showIdentityEditor(person: com.devomind.gallerysearch.db.PersonEntity) {
+        PersonIdentityEditor.show(this, person) { loadPerson(person.personId) }
     }
 
     private fun showMergePicker(person: com.devomind.gallerysearch.db.PersonEntity) {
@@ -283,7 +279,7 @@ class PersonDetailActivity : AppCompatActivity() {
             val others = withContext(Dispatchers.IO) {
                 db.personDao().all()
                     .filter { it.personId != person.personId && !it.isHidden }
-                    .map { "${it.nameLabel ?: "#" + it.personId}" to it.personId }
+                    .map { (PersonIdentity.displayName(it) ?: "#" + it.personId) to it.personId }
             }
             if (others.isEmpty()) {
                 android.widget.Toast.makeText(this@PersonDetailActivity, "No other people to merge into", android.widget.Toast.LENGTH_SHORT).show()
@@ -291,7 +287,7 @@ class PersonDetailActivity : AppCompatActivity() {
             }
             val labels = others.map { it.first }.toTypedArray()
             android.app.AlertDialog.Builder(this@PersonDetailActivity)
-                .setTitle("Merge ${person.nameLabel ?: "Person #" + person.personId} into…")
+                .setTitle("Merge ${PersonIdentity.displayName(person) ?: "Person #" + person.personId} into…")
                 .setSingleChoiceItems(labels, -1) { dialog, which ->
                     val (_, targetId) = others[which]
                     lifecycleScope.launch {

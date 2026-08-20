@@ -1666,7 +1666,18 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     StructuredSearch.FilterLookup()
                 }
-                val filteredItems = parsedQuery.filterItems(currentSearchPhotoItems(), favoriteKeys, filterLookup)
+                val structuredItems = parsedQuery.filterItems(currentSearchPhotoItems(), favoriteKeys, filterLookup)
+
+                // Natural-language people: "photos of john", "me and my brother at a beach".
+                // Person mentions become a photo-pool constraint (AND across mentions) and leave a
+                // stripped text that CLIP/metadata actually rank ("john" has no visual embedding).
+                val personClause = withContext(Dispatchers.IO) { resolvePersonQueryClause(parsedQuery.textQuery) }
+                val effectiveText = personClause?.strippedText ?: parsedQuery.textQuery
+                val filteredItems = if (personClause != null) {
+                    structuredItems.filter { it.uri.toString() in personClause.photoUris }
+                } else {
+                    structuredItems
+                }
 
                 if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
 
@@ -1682,10 +1693,10 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val shouldSearchMetadata = sessionMode != SearchMode.AiOnly
-                val shouldSearchAi = sessionMode != SearchMode.MetadataOnly && parsedQuery.textQuery.isNotBlank()
+                val shouldSearchAi = sessionMode != SearchMode.MetadataOnly && effectiveText.isNotBlank()
                 val metadataHits = if (shouldSearchMetadata) {
                     withContext(Dispatchers.Default) {
-                        buildMetadataHits(repo, parsedQuery, filteredItems)
+                        buildMetadataHits(repo, effectiveText, filteredItems)
                     }
                 } else {
                     emptyList()
@@ -1736,7 +1747,7 @@ class MainActivity : AppCompatActivity() {
                 val semanticResults = if (textEncoder == null) {
                     emptyList()
                 } else {
-                    withContext(Dispatchers.Default) { repo.search(parsedQuery.textQuery) }
+                    withContext(Dispatchers.Default) { repo.search(effectiveText) }
                 }
                 val finalResults = withContext(Dispatchers.Default) {
                     buildMergedPhotoSearchResults(
@@ -1799,11 +1810,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildMetadataHits(
         repo: GalleryRepository,
-        parsedQuery: StructuredSearch.ParsedQuery,
+        textQuery: String,
         items: List<GalleryRepository.MediaItem>
     ): List<MetadataSearch.Hit> {
         if (items.isEmpty()) return emptyList()
-        if (parsedQuery.textQuery.isBlank()) {
+        if (textQuery.isBlank()) {
             return items.sortedByDescending { it.dateMillis }
                 .mapIndexed { index, item ->
                     MetadataSearch.Hit(
@@ -1812,7 +1823,38 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
         }
-        return repo.searchMetadata(parsedQuery.textQuery, items)
+        return repo.searchMetadata(textQuery, items)
+    }
+
+    /**
+     * Named/labeled people mentioned in the query (resolved by [PersonQueryResolver]) as a concrete
+     * photo pool: AND across mentions ("me AND my brother"), OR within a mention (two "John"s).
+     * [strippedText] is the person-free remainder used for CLIP/metadata ranking.
+     */
+    private data class PersonQueryClause(
+        val strippedText: String,
+        val photoUris: Set<String>
+    )
+
+    private suspend fun resolvePersonQueryClause(textQuery: String): PersonQueryClause? {
+        val repo = dbRepository ?: return null
+        val people = repo.visiblePeople()
+        val match = PersonQueryResolver.resolve(textQuery, people) ?: return null
+        var pool: MutableSet<String>? = null
+        for (group in match.groups) {
+            val groupUris = HashSet<String>()
+            for (personId in group) {
+                repo.facesForPerson(personId).mapTo(groupUris) { it.photoUri }
+            }
+            val merged = pool
+            if (merged == null) {
+                pool = groupUris
+            } else {
+                merged.retainAll(groupUris)
+                if (merged.isEmpty()) break
+            }
+        }
+        return PersonQueryClause(strippedText = match.strippedText, photoUris = pool.orEmpty())
     }
 
     /**
@@ -2406,7 +2448,7 @@ class MainActivity : AppCompatActivity() {
                 val dim = face?.photoUri?.let { dims[it] }
                 SearchPersonPreview(
                     personId = person.personId,
-                    displayName = person.nameLabel ?: "Person #${person.personId}",
+                    displayName = PersonIdentity.displayName(person),
                     photoUri = face?.photoUri?.let(Uri::parse),
                     faceId = face?.faceId ?: 0L,
                     bboxJson = face?.bboxJson,
@@ -4151,6 +4193,9 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         startSearchHintCycle()
+        // Names/relationships saved on the People or person-detail screens feed the search row.
+        searchEmptyDataLoaded = false
+        refreshSearchEmptyStateIfVisible()
     }
 
     override fun onPause() {

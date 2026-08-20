@@ -1135,14 +1135,14 @@ class ImageAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(cell: GalleryCell.SearchSection) {
             val section = cell.section
-            binding.sectionTitle.text = section.section.label
             binding.sectionLabel.text = section.section.label
             binding.sectionCount.text = sectionCountText(section.count)
             binding.sectionIcon.setImageResource(sectionIcon(section.section))
             val cover = section.results.maxByOrNull { it.score }?.item?.uri
             if (cover == null) {
                 Glide.with(binding.sectionCover).clear(binding.sectionCover)
-                binding.sectionCover.setImageDrawable(ColorDrawable(Color.rgb(26, 26, 26)))
+                binding.sectionCover.setImageDrawable(null)
+                binding.sectionIcon.visibility = View.VISIBLE
             } else {
                 Glide.with(binding.sectionCover)
                     .load(cover)
@@ -1150,8 +1150,9 @@ class ImageAdapter(
                     .centerCrop()
                     .placeholder(ColorDrawable(Color.rgb(26, 26, 26)))
                     .into(binding.sectionCover)
+                binding.sectionIcon.visibility = View.GONE
             }
-            binding.sectionCard.setOnClickListener { cell.onClick() }
+            binding.root.setOnClickListener { cell.onClick() }
         }
 
         private fun sectionCountText(count: Int): String {
@@ -1358,6 +1359,8 @@ class ImageAdapter(
 
             fun bind(person: SearchPersonPreview, onClick: (SearchPersonPreview) -> Unit) {
                 binding.personName.text = person.displayName
+                binding.personName.visibility =
+                    if (person.displayName.isNullOrBlank()) View.GONE else View.VISIBLE
                 val image = binding.personFace
                 coverJob?.cancel()
                 coverJob = null

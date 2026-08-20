@@ -25,7 +25,8 @@ enum class IndexBannerStatus {
 /** One face-cluster entry in the "Search by person" row. */
 data class SearchPersonPreview(
     val personId: Long,
-    val displayName: String,
+    /** PersonIdentity label (name or relationship); null when anonymous — the row hides text. */
+    val displayName: String?,
     val photoUri: Uri?,
     /** Cover face id — part of the cover cache key (crop changes when the exemplar changes). */
     val faceId: Long,

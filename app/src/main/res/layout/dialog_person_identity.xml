@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Person identity editor: optional name + single-select relationship chips. Shown from the
+     People page (long-press a person) and the person detail title. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingTop="18dp"
+    android:paddingEnd="24dp"
+    android:paddingBottom="6dp">
+
+    <EditText
+        android:id="@+id/identityName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:backgroundTint="@color/metroTextSecondary"
+        android:hint="Name (optional)"
+        android:imeOptions="actionDone"
+        android:importantForAutofill="no"
+        android:inputType="textPersonName|textCapWords"
+        android:maxLines="1"
+        android:textColor="@color/metroTextPrimary"
+        android:textColorHint="@color/metroTextSecondary" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Relationship"
+        android:textColor="@color/metroTextSecondary"
+        android:textSize="13sp" />
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:overScrollMode="never"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/identityRelationshipChips"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
+    </HorizontalScrollView>
+</LinearLayout>

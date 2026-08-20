@@ -53,7 +53,13 @@ class PersonAlbumsActivity : AppCompatActivity() {
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
 
-        adapter = PersonAlbumsAdapter { person -> openPerson(person) }
+        adapter = PersonAlbumsAdapter(
+            onClick = { person -> openPerson(person) },
+            // Long-press assigns identity (name and/or relationship) without leaving the grid.
+            onLongClick = { person ->
+                PersonIdentityEditor.show(this, person.person) { loadPeople() }
+            }
+        )
         binding.peopleGrid.layoutManager = GridLayoutManager(this, SPAN_COUNT)
         binding.peopleGrid.adapter = adapter
 
@@ -174,7 +180,8 @@ class PersonAlbumsActivity : AppCompatActivity() {
     )
 
     private inner class PersonAlbumsAdapter(
-        private val onClick: (PersonSummary) -> Unit
+        private val onClick: (PersonSummary) -> Unit,
+        private val onLongClick: (PersonSummary) -> Unit
     ) : androidx.recyclerview.widget.ListAdapter<PersonSummary, PersonAlbumsAdapter.Holder>(
         object : androidx.recyclerview.widget.DiffUtil.ItemCallback<PersonSummary>() {
             override fun areItemsTheSame(a: PersonSummary, b: PersonSummary) = a.person.personId == b.person.personId
@@ -195,9 +202,28 @@ class PersonAlbumsActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: Holder, position: Int) {
             val item = getItem(position)
-            holder.b.personName.text = photoCountText(item.photoCount)
+            val label = PersonIdentity.displayName(item.person)
+            if (label != null) {
+                holder.b.personName.text = label
+                holder.b.personName.setTextColor(
+                    androidx.core.content.ContextCompat.getColor(holder.b.root.context, R.color.metroTextPrimary)
+                )
+                holder.b.personCount.text = photoCountText(item.photoCount)
+                holder.b.personCount.visibility = View.VISIBLE
+            } else {
+                // No label yet — show just the count; never a "Person #id" placeholder.
+                holder.b.personName.text = photoCountText(item.photoCount)
+                holder.b.personName.setTextColor(
+                    androidx.core.content.ContextCompat.getColor(holder.b.root.context, R.color.metroTextSecondary)
+                )
+                holder.b.personCount.visibility = View.GONE
+            }
             loadCoverFor(holder, item)
             holder.b.root.setOnClickListener { onClick(item) }
+            holder.b.root.setOnLongClickListener {
+                onLongClick(item)
+                true
+            }
         }
 
         private fun photoCountText(count: Int): String =

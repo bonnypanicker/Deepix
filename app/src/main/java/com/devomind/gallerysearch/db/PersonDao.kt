@@ -25,8 +25,8 @@ interface PersonDao {
     @Query("SELECT * FROM persons")
     suspend fun all(): List<PersonEntity>
 
-    @Query("UPDATE persons SET nameLabel = :label, updatedAt = :now WHERE personId = :id")
-    suspend fun rename(id: Long, label: String?, now: Long = System.currentTimeMillis())
+    @Query("UPDATE persons SET nameLabel = :name, relationship = :relationship, updatedAt = :now WHERE personId = :id")
+    suspend fun updateIdentity(id: Long, name: String?, relationship: String?, now: Long = System.currentTimeMillis())
 
     @Query("UPDATE persons SET isHidden = 1, updatedAt = :now WHERE personId = :id")
     suspend fun hide(id: Long, now: Long = System.currentTimeMillis())
