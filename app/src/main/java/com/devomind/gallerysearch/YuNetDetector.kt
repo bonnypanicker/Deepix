@@ -46,11 +46,18 @@ class YuNetDetector(
      * (left eye, right eye, nose, left mouth corner, right mouth corner). Coordinates are in
      * the space of the caller-supplied [bitmap]. Returns at most [MaxDetections] results,
      * post-NMS, ordered by confidence.
+     *
+     * [confidenceThreshold] overrides the instance floor for one call — used by the
+     * acceptance/rotation-retry policy to run the upright pass at [RotationRetryFloor] and the
+     * rotated re-detections at [AcceptConfidence].
      */
-    fun detectFaces(bitmap: Bitmap): List<FaceDetection> = detectOnce(bitmap)
+    fun detectFaces(
+        bitmap: Bitmap,
+        confidenceThreshold: Float = this.confidenceThreshold
+    ): List<FaceDetection> = detectOnce(bitmap, confidenceThreshold)
 
     /** Single detection pass at the current input resolution cap. */
-    private fun detectOnce(bitmap: Bitmap): List<FaceDetection> {
+    private fun detectOnce(bitmap: Bitmap, confidenceThreshold: Float): List<FaceDetection> {
         val (width, height) = targetSize(bitmap.width, bitmap.height)
         val resized = if (bitmap.width == width && bitmap.height == height) bitmap
         else Bitmap.createScaledBitmap(bitmap, width, height, true)
@@ -69,7 +76,8 @@ class YuNetDetector(
                             cls = output(result, "cls_$stride"),
                             obj = output(result, "obj_$stride"),
                             bbox = output(result, "bbox_$stride"),
-                            kps = output(result, "kps_$stride")
+                            kps = output(result, "kps_$stride"),
+                            confidenceThreshold = confidenceThreshold
                         )
                     }
                     nonMaximumSuppress(detections).map { d ->
@@ -140,7 +148,8 @@ class YuNetDetector(
         cls: FloatArray,
         obj: FloatArray,
         bbox: FloatArray,
-        kps: FloatArray
+        kps: FloatArray,
+        confidenceThreshold: Float
     ): List<Detection> {
         val cells = minOf(cls.size, obj.size, bbox.size / 4, kps.size / 10, columns * rows)
         var nanRejections = 0
@@ -254,6 +263,27 @@ class YuNetDetector(
 
         /** Spec default: confidence floor for accepting detections. */
         const val ConfidenceThreshold = 0.6f
+
+        /**
+         * Identity-pipeline accept floor: faces at or above this confidence are kept from the
+         * upright pass. Faces below it only survive if a rotated re-detection (see
+         * [RotationRetryFloor]) clears this value.
+         */
+        const val AcceptConfidence = 0.85f
+
+        /**
+         * Lower bound for the rotation-retry escape hatch: faces in
+         * [RotationRetryFloor, [AcceptConfidence]) get one re-detection pass per quarter-turn
+         * (+90°, then −90°, then 180°) and are kept only if the rotated pass reaches
+         * [AcceptConfidence]. Anything below this is discarded outright.
+         */
+        const val RotationRetryFloor = 0.65f
+
+        /**
+         * Minimum IoU between an upright retry candidate (mapped into the rotated frame) and a
+         * rotated detection to treat them as the same face.
+         */
+        const val RotationMatchIoU = 0.3f
 
         /** Spec default: minimum face side (px) on the detector's internal scale. */
         const val MinFaceSize = 40f
