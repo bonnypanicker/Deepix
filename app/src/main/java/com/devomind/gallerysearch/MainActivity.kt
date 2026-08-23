@@ -120,6 +120,8 @@ class MainActivity : AppCompatActivity() {
     private var pendingDeleteNeedsRetry = false
     private var pendingAllFilesDeleteUris: List<Uri> = emptyList()
     private var topInsetPx = 0
+    private var bottomSystemInsetPx = 0
+    private var imeBottomInsetPx = 0
 
     // Infinite scroll state for search results
     // Supports lazy loading with 20 results per page, capped at 80 total
@@ -568,23 +570,32 @@ class MainActivity : AppCompatActivity() {
 
     private fun configureEdgeToEdge() {
         configureCutoutMode()
+        // Grid content must start below the floating top overlay and stay scrollable above the
+        // nav bar / keyboard. The overlay's height changes after the initial inset pass (title
+        // hides in search, the summary panel collapses/expands), so sync on every overlay relayout
+        // instead of a one-shot measurement — otherwise content lands underneath the search bar.
+        val syncGridPadding = {
+            binding.imageGrid.updatePadding(
+                top = binding.topOverlay.height,
+                bottom = maxOf(bottomSystemInsetPx, imeBottomInsetPx) + dp(84)
+            )
+        }
+        binding.topOverlay.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if (bottom - top != oldBottom - oldTop) syncGridPadding()
+        }
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
             val systemInsets = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
             topInsetPx = systemInsets.top
+            bottomSystemInsetPx = systemInsets.bottom
+            imeBottomInsetPx = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
             binding.topOverlay.updatePadding(top = systemInsets.top)
             binding.drawerPanel.updatePadding(top = systemInsets.top + dp(28), bottom = systemInsets.bottom + dp(24))
 
-            // Wait for topOverlay to lay out to get its exact height, then apply it as top padding
-            // so the content starts below the transparent header rather than under it edge-to-edge
-            binding.topOverlay.post {
-                val overlayHeight = binding.topOverlay.height
-                binding.imageGrid.updatePadding(
-                    top = overlayHeight,
-                    bottom = systemInsets.bottom + dp(84)
-                )
-            }
+            // IME changes (adjustResize) reflow the decor without changing the overlay's height,
+            // while overlay relayouts cover padding/top changes; post so both happen post-layout.
+            binding.topOverlay.post(syncGridPadding)
             binding.bottomPanel.updatePadding(bottom = systemInsets.bottom)
             binding.selectionBar.updatePadding(bottom = systemInsets.bottom)
             insets
@@ -3090,7 +3101,11 @@ class MainActivity : AppCompatActivity() {
             smartSectionResults.takeIf { it.isNotEmpty() }?.let {
                 add(SearchSectionResult(SearchSection.Smart, it.size, it))
             }
-            metadata.takeIf { it.isNotEmpty() }?.let { add(SearchSectionResult(SearchSection.Metadata, it.size, it)) }
+            // Person-scoped sentences ("anusree and divya") already Smart-label every hit; re-listing
+            // the person photos under Metadata just duplicates the Smart section, so suppress it.
+            if (!personScoped) {
+                metadata.takeIf { it.isNotEmpty() }?.let { add(SearchSectionResult(SearchSection.Metadata, it.size, it)) }
+            }
             matchedAlbums.takeIf { it.isNotEmpty() }?.let {
                 val itemsByUri = currentSearchPhotoItems().associateBy { item -> item.uri }
                 val covers = it.mapIndexedNotNull { index, album ->

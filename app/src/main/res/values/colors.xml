@@ -5,6 +5,7 @@
     <color name="metroBgTertiary">#FF111111</color>
     <color name="metroBgCard">#FF1A1A1A</color>
     <color name="metroBgSurface">#FF1C1C1C</color>
+    <color name="metroBgSearch">#FF0F0F0F</color>
 
     <!-- Accent colors -->
     <color name="metroAccent">#FF3B9EFF</color>
