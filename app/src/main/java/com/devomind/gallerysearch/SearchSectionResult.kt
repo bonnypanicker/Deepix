@@ -12,5 +12,7 @@ enum class SearchSection(val label: String) {
 data class SearchSectionResult(
     val section: SearchSection,
     val count: Int,
-    val results: List<PhotoSearchResult>
+    val results: List<PhotoSearchResult> = emptyList(),
+    /** Album search is name-only: show the matching album tiles, never incidental photo hits. */
+    val albums: List<GalleryRepository.Album> = emptyList()
 )

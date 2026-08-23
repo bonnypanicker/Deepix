@@ -540,6 +540,11 @@ class MainActivity : AppCompatActivity() {
             updateSearchPillState()
             // searchPanel visibility is cosmetic (summary header); the session gate is the mode.
             if (currentMode == Mode.Search) {
+                // Do not leave a previous query's People/Smart cards on screen during debounce or
+                // while its cancelled coroutine unwinds. This is especially misleading for an
+                // unmatched / gibberish query.
+                searchJob?.cancel()
+                clearSearchPresentationForPendingInput()
                 searchDebounceJob?.cancel()
                 searchDebounceJob = lifecycleScope.launch {
                     delay(DesignTokens.SEARCH_INPUT_DEBOUNCE_MS)
@@ -606,7 +611,7 @@ class MainActivity : AppCompatActivity() {
                     binding.drawerLayout.isDrawerOpen(GravityCompat.START) -> binding.drawerLayout.closeDrawer(GravityCompat.START)
                     adapter.selectionCount > 0 -> adapter.clearSelection()
                     // Section grid returns to the category card landing before leaving search.
-                    currentMode == Mode.Search && !searchLandingVisible && searchSectionResults.size > 1 ->
+                    currentMode == Mode.Search && !searchLandingVisible && searchSectionResults.isNotEmpty() ->
                         showSearchLanding()
                     currentMode == Mode.Search && !binding.searchInput.text.isNullOrBlank() -> binding.searchInput.text?.clear()
                     currentMode == Mode.Search -> closeSearch(clearQuery = false)
@@ -1656,6 +1661,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         currentMode = Mode.Search
+        clearSearchPresentationForPendingInput()
         binding.progressBar.visibility = View.VISIBLE
         binding.statusText.text = "Searching..."
         val favoriteKeys = favoritesStore.all()
@@ -1672,13 +1678,54 @@ class MainActivity : AppCompatActivity() {
                 // Natural-language people: "photos of john", "me and my brother at a beach".
                 // Person mentions become a photo-pool constraint (AND across mentions) and leave a
                 // stripped text that CLIP/metadata actually rank ("john" has no visual embedding).
-                val personClause = withContext(Dispatchers.IO) { resolvePersonQueryClause(parsedQuery.textQuery) }
-                val effectiveText = personClause?.strippedText ?: parsedQuery.textQuery
-                val filteredItems = if (personClause != null) {
-                    structuredItems.filter { it.uri.toString() in personClause.photoUris }
-                } else {
-                    structuredItems
+                var personClause = withContext(Dispatchers.IO) { resolvePersonQueryClause(parsedQuery.textQuery) }
+                // A bare person word ("john", "me", "brother") is answered directly from the
+                // People index: the whole pool under the People pill, no CLIP pass (a name has no
+                // visual embedding). Person found but pool empty → drop the person reading and run
+                // the word as a plain smart search instead.
+                val barePersonWord = personClause != null &&
+                    parsedQuery.textQuery.trim().split(Regex("\\s+")).count { it.isNotEmpty() } == 1
+                val poolItems = personClause?.let { clause ->
+                    structuredItems.filter { it.uri.toString() in clause.photoUris }
                 }
+                if (barePersonWord && !poolItems.isNullOrEmpty()) {
+                    if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
+                    val now = System.currentTimeMillis().coerceAtLeast(1L).toDouble()
+                    val peopleResults = poolItems.sortedByDescending { it.dateMillis }.map { item ->
+                        PhotoSearchResult(
+                            item = item,
+                            sources = SearchSources(ai = false, metadata = false),
+                            score = (item.dateMillis / now).coerceIn(0.0, 1.0).toFloat()
+                        )
+                    }
+                    // A direct person lookup deliberately skips Smart/CLIP, but filename and
+                    // other metadata matches remain their own unmodified section.
+                    val metadataResults = if (sessionMode != SearchMode.AiOnly) {
+                        val metadataHits = withContext(Dispatchers.Default) {
+                            buildMetadataHits(repo, parsedQuery.textQuery, structuredItems)
+                        }
+                        withContext(Dispatchers.Default) {
+                            buildMergedPhotoSearchResults(structuredItems, metadataHits, emptyList())
+                        }
+                    } else {
+                        emptyList()
+                    }
+                    val results = mergePersonAndMetadataResults(peopleResults, metadataResults)
+                    renderSearchResults(
+                        query = query,
+                        results = results,
+                        emptyText = "No matching results",
+                        statusText = indexedSummary(repo.indexedCount),
+                        peopleResultUris = poolItems.mapTo(LinkedHashSet()) { it.uri.toString() }
+                    )
+                    return@launch
+                }
+                if (barePersonWord) personClause = null
+                // Person-scoped sentence ("me and my brother at the beach"): every result is
+                // already person-filtered, so the People pill would be redundant — suppress it.
+                val personScoped = personClause != null
+                val effectiveText = personClause?.strippedText ?: parsedQuery.textQuery
+                val filteredItems = if (personClause != null) poolItems.orEmpty() else structuredItems
 
                 if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
 
@@ -1711,7 +1758,9 @@ class MainActivity : AppCompatActivity() {
                             buildMergedPhotoSearchResults(filteredItems, metadataHits, emptyList())
                         },
                         emptyText = "No matching results",
-                        statusText = indexedSummary(repo.indexedCount)
+                        statusText = indexedSummary(repo.indexedCount),
+                        personScoped = personScoped,
+                        forceSmartSection = personScoped
                     )
                     return@launch
                 }
@@ -1736,7 +1785,9 @@ class MainActivity : AppCompatActivity() {
                         results = interimResults,
                         emptyText = "No matching results",
                         statusText = "Searching with AI…",
-                        preserveSelection = true
+                        preserveSelection = true,
+                        personScoped = personScoped,
+                        forceSmartSection = personScoped
                     )
                 } else {
                     clearSearchSections()
@@ -1764,7 +1815,9 @@ class MainActivity : AppCompatActivity() {
                     results = finalResults,
                     emptyText = "No matching results",
                     statusText = indexedSummary(repo.indexedCount),
-                    preserveSelection = interimResults.isNotEmpty()
+                    preserveSelection = interimResults.isNotEmpty(),
+                    personScoped = personScoped,
+                    forceSmartSection = personScoped
                 )
             } catch (cancelled: CancellationException) {
                 Log.d(TAG, "Search job cancelled.", cancelled)
@@ -2219,19 +2272,51 @@ class MainActivity : AppCompatActivity() {
             .toList()  // Return full list without hard cap
     }
 
+    /** Combines a direct people pool with metadata hits without allowing either to create Smart results. */
+    private fun mergePersonAndMetadataResults(
+        peopleResults: List<PhotoSearchResult>,
+        metadataResults: List<PhotoSearchResult>
+    ): List<PhotoSearchResult> {
+        val byUri = LinkedHashMap<Uri, PhotoSearchResult>()
+        metadataResults.forEach { byUri[it.item.uri] = it }
+        peopleResults.forEach { person ->
+            val metadata = byUri[person.item.uri]
+            byUri[person.item.uri] = person.copy(
+                sources = SearchSources(ai = false, metadata = metadata?.sources?.metadata == true),
+                score = maxOf(person.score, metadata?.score ?: 0f)
+            )
+        }
+        return byUri.values.sortedWith(
+            compareByDescending<PhotoSearchResult> { it.score }
+                .thenByDescending { it.item.dateMillis }
+        )
+    }
+
     private suspend fun renderSearchResults(
         query: String,
         results: List<PhotoSearchResult>,
         emptyText: String,
         statusText: String,
-        preserveSelection: Boolean = false
+        preserveSelection: Boolean = false,
+        /** Person-scoped sentence: every result is already person-filtered — hide the People pill. */
+        personScoped: Boolean = false,
+        /** Direct one-word person lookup: the explicit People card owns its result set. */
+        peopleResultUris: Set<String>? = null,
+        /** A people-containing sentence belongs in Smart even if its stripped scene text is blank. */
+        forceSmartSection: Boolean = false
     ) {
         searchResultsMaster = results
         lastSearchStatusText = statusText
         currentDisplayedSearchResultCount = 0
-        searchSectionResults = buildSearchSections(query, results)
+        searchSectionResults = buildSearchSections(
+            query = query,
+            results = results,
+            personScoped = personScoped,
+            peopleResultUris = peopleResultUris,
+            forceSmartSection = forceSmartSection
+        )
 
-        if (results.isEmpty() || searchSectionResults.isEmpty()) {
+        if (searchSectionResults.isEmpty()) {
             selectedSearchSection = null
             searchLandingVisible = false
             fullSearchResults = emptyList()
@@ -2277,7 +2362,10 @@ class MainActivity : AppCompatActivity() {
         // entry into the landing scrolls to top — later inserts stay in place.
         if (!alreadyLanding) resetGridToTop()
         val total = searchResultsMaster.size
-        setSearchResultSummary(if (total == 1) {
+        val albumOnlySection = searchSectionResults.singleOrNull { it.section == SearchSection.Albums }
+        setSearchResultSummary(if (total == 0 && albumOnlySection != null) {
+            "${SearchSection.Albums.label} · ${albumOnlySection.count}"
+        } else if (total == 1) {
             resources.getQuantityString(R.plurals.result_count, 1, 1)
         } else {
             getString(R.string.photos_count_summary, total)
@@ -2935,19 +3023,53 @@ class MainActivity : AppCompatActivity() {
         searchLandingVisible = false
     }
 
+    /** Clears every result owner before a changed query starts its debounce/search lifecycle. */
+    private fun clearSearchPresentationForPendingInput() {
+        searchResultsMaster = emptyList()
+        fullSearchResults = emptyList()
+        currentDisplayedSearchResultCount = 0
+        clearSearchSections()
+        if (effectiveQuery().isBlank() && !imageSearchActive) {
+            renderSearchEmptyState()
+            setSearchResultSummary("")
+            binding.resultCount.text = ""
+        } else {
+            adapter.replaceCells(listOf(GalleryCell.Loading(getString(R.string.search_loading))))
+            setSearchResultSummary(getString(R.string.search_loading))
+            binding.statusText.text = "Searching…"
+        }
+    }
+
     private fun openSearchSection(section: SearchSection) {
         val group = searchSectionResults.firstOrNull { it.section == section } ?: return
         selectedSearchSection = section
         searchLandingVisible = false
+        if (section == SearchSection.Albums && group.albums.isNotEmpty()) {
+            // Album search is based solely on album names. Open album tiles rather than turning
+            // every photo inside a matching album into a search hit.
+            fullSearchResults = emptyList()
+            currentDisplayedSearchResultCount = 0
+            adapter.replaceCells(group.albums.map(GalleryCell::AlbumCell))
+            resetGridToTop()
+            binding.resultCount.text = resources.getQuantityString(
+                R.plurals.result_count,
+                group.albums.size,
+                group.albums.size
+            )
+            binding.statusText.text = lastSearchStatusText
+            return
+        }
         fullSearchResults = group.results
         applySortAndShow()
     }
 
     private suspend fun buildSearchSections(
         query: String,
-        results: List<PhotoSearchResult>
+        results: List<PhotoSearchResult>,
+        personScoped: Boolean = false,
+        peopleResultUris: Set<String>? = null,
+        forceSmartSection: Boolean = false
     ): List<SearchSectionResult> {
-        if (results.isEmpty()) return emptyList()
         val resultByUri = results.associateBy { it.item.uri.toString() }
         fun fromUris(section: SearchSection, count: Int, uris: Set<String>): SearchSectionResult? {
             val matches = uris.mapNotNull(resultByUri::get)
@@ -2957,21 +3079,31 @@ class MainActivity : AppCompatActivity() {
         val smart = results.filter { it.sources.ai }
         val metadata = results.filter { it.sources.metadata }
         val matchedAlbums = if (text.isBlank()) emptyList() else albums.filter { it.name.lowercase(Locale.getDefault()).contains(text) }
-        val albumUris = matchedAlbums.flatMapTo(LinkedHashSet()) { album ->
-            currentSearchPhotoItems().asSequence().filter { it.bucketId == album.id }.map { it.uri.toString() }.toList()
-        }
         val matchedTags = if (text.isBlank()) emptyList() else allTags.filter { it.name.lowercase(Locale.getDefault()).contains(text) }
         val tagUris = matchedTags.flatMapTo(LinkedHashSet()) { tag -> tagUriMap[tag.id].orEmpty() }
         val resultUris = results.map { it.item.uri.toString() }
         val db = dbRepository
-        val people = db?.recognizedPeopleForPhotoUris(resultUris)
+        val explicitPeople = peopleResultUris?.mapNotNull(resultByUri::get).orEmpty()
         val locations = db?.photoUrisWithLocation(resultUris).orEmpty()
         return buildList {
-            smart.takeIf { it.isNotEmpty() }?.let { add(SearchSectionResult(SearchSection.Smart, it.size, it)) }
+            val smartSectionResults = if (forceSmartSection) results else smart
+            smartSectionResults.takeIf { it.isNotEmpty() }?.let {
+                add(SearchSectionResult(SearchSection.Smart, it.size, it))
+            }
             metadata.takeIf { it.isNotEmpty() }?.let { add(SearchSectionResult(SearchSection.Metadata, it.size, it)) }
-            fromUris(SearchSection.Albums, matchedAlbums.size, albumUris)?.let(::add)
+            matchedAlbums.takeIf { it.isNotEmpty() }?.let {
+                val itemsByUri = currentSearchPhotoItems().associateBy { item -> item.uri }
+                val covers = it.mapIndexedNotNull { index, album ->
+                    itemsByUri[album.coverUri]?.let { item ->
+                        PhotoSearchResult(item, SearchSources(), 1f - index * 0.01f)
+                    }
+                }
+                add(SearchSectionResult(SearchSection.Albums, it.size, covers, it))
+            }
             fromUris(SearchSection.Tags, matchedTags.size, tagUris)?.let(::add)
-            fromUris(SearchSection.People, people?.personIds?.size ?: 0, people?.photoUris.orEmpty())?.let(::add)
+            if (!personScoped && explicitPeople.isNotEmpty()) {
+                add(SearchSectionResult(SearchSection.People, explicitPeople.size, explicitPeople))
+            }
             fromUris(SearchSection.Locations, locations.size, locations)?.let(::add)
         }
     }

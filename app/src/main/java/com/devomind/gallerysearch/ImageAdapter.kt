@@ -18,6 +18,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -1148,7 +1149,9 @@ class ImageAdapter(
                     .load(cover)
                     .format(DecodeFormat.PREFER_RGB_565)
                     .centerCrop()
-                    .placeholder(ColorDrawable(Color.rgb(26, 26, 26)))
+                    .placeholder(ColorDrawable(
+                        ContextCompat.getColor(binding.sectionCover.context, R.color.metroBgCard)
+                    ))
                     .into(binding.sectionCover)
                 binding.sectionIcon.visibility = View.GONE
             }
