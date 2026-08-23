@@ -362,6 +362,7 @@ class FaceIndexWorker(
                     embeddingModelVersion = FaceEmbedder.ModelVersion,
                     qualityScore = af.quality,
                     yaw = af.pose.yaw, pitch = af.pose.pitch, roll = af.pose.roll,
+                    rotationDegrees = af.rotationDegrees,
                     isLowQuality = !af.recognitionEligible
                 )
             }

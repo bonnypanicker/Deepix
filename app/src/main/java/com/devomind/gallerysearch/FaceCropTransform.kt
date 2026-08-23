@@ -15,12 +15,16 @@ import java.util.Objects
  *
  * Used by the People grid so each person tile shows the actual face, not a full-photo centerCrop
  * that may not even contain the face in frame.
+ *
+ * [rotationDegrees] is the clockwise quarter-turn the face was accepted in (mid-confidence
+ * rotation-retry): the square crop is rotated by it so rotation-rescued faces show upright.
  */
 class FaceCropTransform(
     private val bbox: FloatArray,
     private val origW: Int,
     private val origH: Int,
-    private val marginFraction: Float = 0.25f
+    private val marginFraction: Float = 0.25f,
+    private val rotationDegrees: Int = 0
 ) : BitmapTransformation() {
 
     override fun transform(
@@ -52,7 +56,13 @@ class FaceCropTransform(
         if (top + cropH > toTransform.height) cropH = toTransform.height - top
         if (cropW <= 0 || cropH <= 0) return toTransform
 
-        return Bitmap.createBitmap(toTransform, left, top, cropW, cropH)
+        val cropped = Bitmap.createBitmap(toTransform, left, top, cropW, cropH)
+        val normalized = ((rotationDegrees % 360) + 360) % 360
+        if (normalized == 0) return cropped
+        val matrix = android.graphics.Matrix().apply { postRotate(normalized.toFloat()) }
+        return Bitmap.createBitmap(cropped, 0, 0, cropped.width, cropped.height, matrix, true).also { rotated ->
+            if (rotated !== cropped) cropped.recycle()
+        }
     }
 
     override fun equals(other: Any?): Boolean {
@@ -61,16 +71,17 @@ class FaceCropTransform(
         return bbox.contentEquals(other.bbox) &&
             origW == other.origW &&
             origH == other.origH &&
-            marginFraction == other.marginFraction
+            marginFraction == other.marginFraction &&
+            rotationDegrees == other.rotationDegrees
     }
 
     override fun hashCode(): Int = Objects.hash(
-        bbox.contentHashCode(), origW, origH, marginFraction
+        bbox.contentHashCode(), origW, origH, marginFraction, rotationDegrees
     )
 
     override fun updateDiskCacheKey(messageDigest: MessageDigest) {
         messageDigest.update(ID.toByteArray(Charsets.UTF_8))
-        val data = "$origW:$origH:$marginFraction:${bbox.joinToString(",")}"
+        val data = "$origW:$origH:$marginFraction:$rotationDegrees:${bbox.joinToString(",")}"
             .toByteArray(Charsets.UTF_8)
         messageDigest.update(data)
     }

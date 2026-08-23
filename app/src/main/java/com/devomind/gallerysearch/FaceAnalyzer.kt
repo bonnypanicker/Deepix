@@ -37,7 +37,9 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
         /** Whether the detection is eligible to contribute an identity embedding / person match. */
         val recognitionEligible: Boolean,
         val embedding: FloatArray?,
-        val alignedCrop: Bitmap?
+        val alignedCrop: Bitmap?,
+        /** Clockwise quarter-turn of the frame the face cleared the accept confidence in (0 = upright). */
+        val rotationDegrees: Int = 0
     )
 
     data class PhotoResult(
@@ -59,7 +61,9 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
         val original: YuNetDetector.FaceDetection,
         val source: Bitmap,
         val oriented: YuNetDetector.FaceDetection,
-        val ownedSource: Bitmap?
+        val ownedSource: Bitmap?,
+        /** Clockwise quarter-turn of [source] relative to the original (0 = upright pass). */
+        val rotationDegCw: Int
     )
 
     /**
@@ -78,7 +82,13 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
         val retry = ArrayList<YuNetDetector.FaceDetection>()
         for (det in primary) {
             if (det.confidence >= YuNetDetector.AcceptConfidence) {
-                resolved += ResolvedFace(original = det, source = bitmap, oriented = det, ownedSource = null)
+                resolved += ResolvedFace(
+                    original = det,
+                    source = bitmap,
+                    oriented = det,
+                    ownedSource = null,
+                    rotationDegCw = 0
+                )
             } else {
                 retry += det
             }
@@ -111,7 +121,8 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
                         original = mapDetection(best, bitmap.width, bitmap.height, rotation, inverse = true),
                         source = rotated,
                         oriented = best,
-                        ownedSource = rotated
+                        ownedSource = rotated,
+                        rotationDegCw = rotation
                     )
                 }
             }
@@ -246,6 +257,7 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
                 yaw = pose.yaw,
                 pitch = pose.pitch,
                 roll = pose.roll,
+                rotationDegrees = face.rotationDegCw,
                 isLowQuality = !recognitionEligible
             )
 
@@ -255,7 +267,8 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
                 pose = pose,
                 recognitionEligible = recognitionEligible,
                 embedding = embedding,
-                alignedCrop = if (includeAlignedCrops) aligned else aligned.also { it.recycle() }
+                alignedCrop = if (includeAlignedCrops) aligned else aligned.also { it.recycle() },
+                rotationDegrees = face.rotationDegCw
             )
         }
         val embedMs = SystemClock() - embedStart

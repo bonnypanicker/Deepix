@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Indexing status banner: label ("Indexing photos… 4,213 / 12,000" or paused/queued variant)
-     over a slim accent progress bar, with a per-session dismiss X on the trailing edge. -->
+     with a static explainer subtitle, over a slim accent progress bar, plus a per-session
+     dismiss X on the trailing edge. Tapping the banner opens IndexingActivity. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -8,7 +9,7 @@
     android:layout_marginTop="14dp"
     android:layout_marginEnd="16dp"
     android:layout_marginBottom="2dp"
-    android:background="@drawable/search_section_card_bg"
+    android:background="@drawable/search_index_banner_bg"
     android:clickable="true"
     android:focusable="true"
     android:foreground="?android:attr/selectableItemBackground"
@@ -44,6 +45,17 @@
             android:src="@drawable/ic_fluent_dismiss_24_regular"
             android:tint="@color/metroTextSecondary" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/bannerSubtitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:layout_marginEnd="4dp"
+        android:includeFontPadding="false"
+        android:text="@string/search_index_banner_subtitle"
+        android:textColor="@color/metroTextSecondary"
+        android:textSize="12sp" />
 
     <ProgressBar
         android:id="@+id/bannerProgress"

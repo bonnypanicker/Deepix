@@ -538,11 +538,12 @@ class MainActivity : AppCompatActivity() {
             // Pause the rotating hint while typing; resume it once the field is empty again.
             if (editable.isNullOrEmpty()) startSearchHintCycle() else stopSearchHintCycle()
             updateSearchPillState()
-            if (currentMode == Mode.Search && binding.searchPanel.visibility == View.VISIBLE) {
+            // searchPanel visibility is cosmetic (summary header); the session gate is the mode.
+            if (currentMode == Mode.Search) {
                 searchDebounceJob?.cancel()
                 searchDebounceJob = lifecycleScope.launch {
                     delay(DesignTokens.SEARCH_INPUT_DEBOUNCE_MS)
-                    if (currentMode == Mode.Search && binding.searchPanel.visibility == View.VISIBLE) {
+                    if (currentMode == Mode.Search) {
                         submitSearch()
                     }
                 }
@@ -1519,7 +1520,7 @@ class MainActivity : AppCompatActivity() {
         updateBottomPanelState()
         updateSearchPillState()
         if (effectiveQuery().isBlank()) {
-            binding.searchResultSummary.text = ""
+            setSearchResultSummary("")
             if (imageSearchActive) {
                 // Similar-image search paints its own loading/results — skip the landing content.
                 adapter.replaceCells(listOf(GalleryCell.Empty("Photos similar to this image")))
@@ -1741,7 +1742,7 @@ class MainActivity : AppCompatActivity() {
                     clearSearchSections()
                     adapter.replaceCells(listOf(GalleryCell.Loading(getString(R.string.search_loading))))
                     resetGridToTop()
-                    binding.searchResultSummary.text = getString(R.string.search_loading)
+                    setSearchResultSummary(getString(R.string.search_loading))
                 }
 
                 val semanticResults = if (textEncoder == null) {
@@ -2236,7 +2237,7 @@ class MainActivity : AppCompatActivity() {
             fullSearchResults = emptyList()
             adapter.replaceCells(listOf(searchEmptyCell(emptyText)))
             resetGridToTop()
-            binding.searchResultSummary.text = getString(R.string.no_results)
+            setSearchResultSummary(getString(R.string.no_results))
             binding.statusText.text = statusText
             return
         }
@@ -2276,11 +2277,11 @@ class MainActivity : AppCompatActivity() {
         // entry into the landing scrolls to top — later inserts stay in place.
         if (!alreadyLanding) resetGridToTop()
         val total = searchResultsMaster.size
-        binding.searchResultSummary.text = if (total == 1) {
+        setSearchResultSummary(if (total == 1) {
             resources.getQuantityString(R.plurals.result_count, 1, 1)
         } else {
             getString(R.string.photos_count_summary, total)
-        }
+        })
         binding.statusText.text = lastSearchStatusText
     }
 
@@ -2453,7 +2454,8 @@ class MainActivity : AppCompatActivity() {
                     faceId = face?.faceId ?: 0L,
                     bboxJson = face?.bboxJson,
                     detectionWidth = dim?.get(0) ?: 0,
-                    detectionHeight = dim?.get(1) ?: 0
+                    detectionHeight = dim?.get(1) ?: 0,
+                    rotationDegrees = face?.rotationDegrees ?: 0
                 )
             }
         }
@@ -2611,15 +2613,25 @@ class MainActivity : AppCompatActivity() {
         return MediaSorter.sort(results.map { it.item }, option).mapNotNull { byUri[it.uri] }
     }
 
+    /**
+     * Single funnel for the result summary header: an empty summary collapses the whole
+     * searchPanel (it only wraps this label), so the pre-query empty state has no dead
+     * header band between the search box and the indexing banner/suggestions.
+     */
+    private fun setSearchResultSummary(text: CharSequence) {
+        binding.searchResultSummary.text = text
+        binding.searchPanel.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
+    }
+
     private fun updateSearchResultCount() {
         val section = searchSectionResults.firstOrNull { it.section == selectedSearchSection }
         val total = section?.count ?: fullSearchResults.size
-        binding.searchResultSummary.text = when {
+        setSearchResultSummary(when {
             total == 0 -> getString(R.string.no_results)
             section != null -> "${section.section.label} · $total"
             total == 1 -> resources.getQuantityString(R.plurals.result_count, 1, 1)
             else -> getString(R.string.photos_count_summary, total)
-        }
+        })
     }
 
     private fun onSearchClear() {
@@ -2637,7 +2649,7 @@ class MainActivity : AppCompatActivity() {
         updateSearchPillState()
         renderSearchEmptyState()
         resetGridToTop()
-        binding.searchResultSummary.text = ""
+        setSearchResultSummary("")
         binding.searchInput.requestFocus()
     }
 
@@ -2751,7 +2763,7 @@ class MainActivity : AppCompatActivity() {
         if (effectiveQuery().isBlank()) {
             renderSearchEmptyState()
             resetGridToTop()
-            binding.searchResultSummary.text = ""
+            setSearchResultSummary("")
         } else {
             submitSearch()
         }
@@ -2806,7 +2818,7 @@ class MainActivity : AppCompatActivity() {
         // Consistent with text search: a loading screen while the embedding pass runs.
         adapter.replaceCells(listOf(GalleryCell.Loading(getString(R.string.search_loading))))
         resetGridToTop()
-        binding.searchResultSummary.text = getString(R.string.search_loading)
+        setSearchResultSummary(getString(R.string.search_loading))
 
         searchJob?.cancel()
         searchJob = lifecycleScope.launch {
@@ -2849,7 +2861,6 @@ class MainActivity : AppCompatActivity() {
         albumId: String?
     ): Boolean {
         return currentMode == Mode.Search &&
-            binding.searchPanel.visibility == View.VISIBLE &&
             effectiveQuery() == query &&
             searchMode == mode &&
             activeSection == section &&
@@ -2912,7 +2923,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSearchPillState() {
-        if (binding.searchPanel.visibility != View.VISIBLE || effectiveQuery().isNotBlank()) return
+        // Mode-gated, not visibility-gated: the summary panel now collapses when empty,
+        // which is precisely the blank-query state this function serves.
+        if (currentMode != Mode.Search || effectiveQuery().isNotBlank()) return
         clearSearchSections()
     }
 

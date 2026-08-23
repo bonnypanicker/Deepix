@@ -55,6 +55,13 @@ data class FaceEntity(
     val yaw: Float = 0f,
     val pitch: Float = 0f,
     val roll: Float = 0f,
+    /**
+     * Clockwise quarter-turn (0/90/180/270) the photo was rotated by when this face cleared
+     * the accept confidence (mid-confidence rotation-retry). bbox/landmarks remain in the
+     * original upright frame; cover crops must apply this rotation to show the face upright.
+     */
+    @ColumnInfo(defaultValue = "0")
+    val rotationDegrees: Int = 0,
     val isLowQuality: Boolean = false,
     @ColumnInfo(defaultValue = "0")
     val isExemplar: Boolean = false,

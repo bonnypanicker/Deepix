@@ -257,4 +257,5 @@
     <string name="search_empty_clear_all">Clear all</string>
     <string name="search_empty_remove_recent">Remove</string>
     <string name="search_dismiss_index_banner">Dismiss indexing status</string>
+    <string name="search_index_banner_subtitle">AI is learning what’s in your photos for better search</string>
 </resources>

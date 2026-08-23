@@ -20,7 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PersonMergeLogEntity::class,
         RecentSearchEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class GalleryDatabase : RoomDatabase() {
@@ -123,6 +123,18 @@ abstract class GalleryDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v7 → v8: adds faces.rotationDegrees — the clockwise quarter-turn (0/90/180/270) the
+         * face was accepted in under the rotation-retry policy. Cover rendering rotates the
+         * crop by this so sideways faces show upright. Existing faces were all detected
+         * upright → 0.
+         */
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `faces` ADD COLUMN `rotationDegrees` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         @Volatile
         private var instance: GalleryDatabase? = null
 
@@ -133,7 +145,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                     GalleryDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { instance = it }

@@ -266,7 +266,8 @@ class PersonAlbumsActivity : AppCompatActivity() {
                             bbox,
                             dims[0],
                             dims[1],
-                            CoverSourceEdge
+                            CoverSourceEdge,
+                            rotationDegrees = face.rotationDegrees
                         )
                     }
                     if (holder.coverKey != coverKey) return@launch
@@ -274,7 +275,7 @@ class PersonAlbumsActivity : AppCompatActivity() {
                         coverCache.put(coverKey, decoded)
                         holder.b.personCover.setImageBitmap(decoded)
                     } else {
-                        loadFallbackCover(holder, photoUri, bbox, dims)
+                        loadFallbackCover(holder, photoUri, bbox, dims, face.rotationDegrees)
                     }
                 }
             } else {
@@ -287,14 +288,15 @@ class PersonAlbumsActivity : AppCompatActivity() {
             holder: Holder,
             photoUri: Uri,
             bbox: FloatArray?,
-            dims: IntArray?
+            dims: IntArray?,
+            rotationDegrees: Int = 0
         ) {
             val request = Glide.with(this@PersonAlbumsActivity)
                 .load(photoUri)
                 .override(CoverDecodePx, CoverDecodePx)
                 .format(DecodeFormat.PREFER_ARGB_8888)
             if (bbox != null && dims != null && dims.size >= 2) {
-                request.transform(FaceCropTransform(bbox, dims[0], dims[1]))
+                request.transform(FaceCropTransform(bbox, dims[0], dims[1], rotationDegrees = rotationDegrees))
                     .into(holder.b.personCover)
             } else {
                 request.centerCrop().into(holder.b.personCover)

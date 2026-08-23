@@ -1391,7 +1391,8 @@ class ImageAdapter(
                                         bbox,
                                         person.detectionWidth,
                                         person.detectionHeight,
-                                        CoverSourceEdge
+                                        CoverSourceEdge,
+                                        rotationDegrees = person.rotationDegrees
                                     )
                                 }.getOrNull()
                             }
@@ -1400,12 +1401,12 @@ class ImageAdapter(
                                 coverCache.put(key, circular)
                                 if (coverKey == key) image.setImageBitmap(circular)
                             } else if (coverKey == key) {
-                                loadGlideCover(image, photoUri, bbox, person.detectionWidth, person.detectionHeight, placeholder)
+                                loadGlideCover(image, photoUri, bbox, person.detectionWidth, person.detectionHeight, placeholder, person.rotationDegrees)
                             }
                         }
                     }
                 } else {
-                    loadGlideCover(image, photoUri, bbox, person.detectionWidth, person.detectionHeight, placeholder)
+                    loadGlideCover(image, photoUri, bbox, person.detectionWidth, person.detectionHeight, placeholder, person.rotationDegrees)
                 }
                 binding.root.setOnClickListener { onClick(person) }
             }
@@ -1417,7 +1418,8 @@ class ImageAdapter(
                 bbox: FloatArray?,
                 detectionWidth: Int,
                 detectionHeight: Int,
-                placeholder: ColorDrawable
+                placeholder: ColorDrawable,
+                rotationDegrees: Int = 0
             ) {
                 val request = Glide.with(image.context)
                     .load(photoUri)
@@ -1426,7 +1428,10 @@ class ImageAdapter(
                     .placeholder(placeholder)
                 if (bbox != null && detectionWidth > 0 && detectionHeight > 0) {
                     request
-                        .transform(FaceCropTransform(bbox, detectionWidth, detectionHeight), CircleCrop())
+                        .transform(
+                            FaceCropTransform(bbox, detectionWidth, detectionHeight, rotationDegrees = rotationDegrees),
+                            CircleCrop()
+                        )
                         .into(image)
                 } else {
                     request.circleCrop().into(image)

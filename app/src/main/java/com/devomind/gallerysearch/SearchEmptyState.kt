@@ -32,7 +32,9 @@ data class SearchPersonPreview(
     val faceId: Long,
     val bboxJson: String?,
     val detectionWidth: Int,
-    val detectionHeight: Int
+    val detectionHeight: Int,
+    /** Quarter-turn the cover face was accepted in (FaceEntity.rotationDegrees); cover rotates by it. */
+    val rotationDegrees: Int = 0
 )
 
 /** A quick date filter chip; a blank [query] means "open the year picker" instead of searching. */

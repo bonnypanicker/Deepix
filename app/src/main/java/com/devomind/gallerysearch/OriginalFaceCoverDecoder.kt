@@ -16,6 +16,10 @@ import kotlin.math.floor
  * upright, downsampled bitmap, so its box is first expressed as a normalised upright rectangle
  * and then mapped back through EXIF orientation to the encoded image.  This keeps a small face
  * sharp without decoding a whole camera photo for every People-grid cell.
+ *
+ * [rotationDegrees] is the clockwise quarter-turn the face was accepted in under the
+ * rotation-retry policy (FaceEntity.rotationDegrees): the crop is rotated by it after EXIF
+ * orientation so a sideways face comes out upright, matching its embedding frame.
  */
 object OriginalFaceCoverDecoder {
 
@@ -25,7 +29,8 @@ object OriginalFaceCoverDecoder {
         detectionBox: FloatArray,
         detectionWidth: Int,
         detectionHeight: Int,
-        targetEdge: Int
+        targetEdge: Int,
+        rotationDegrees: Int = 0
     ): Bitmap? {
         if (detectionBox.size < 4 || detectionWidth <= 0 || detectionHeight <= 0) return null
         return runCatching {
@@ -49,7 +54,7 @@ object OriginalFaceCoverDecoder {
                             inPreferredConfig = Bitmap.Config.ARGB_8888
                         }
                     ) ?: return@use null
-                    applyOrientation(bitmap, orientation)
+                    applyDetectionRotation(applyOrientation(bitmap, orientation), rotationDegrees)
                 } finally {
                     decoder.recycle()
                 }
@@ -134,6 +139,16 @@ object OriginalFaceCoverDecoder {
             ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.postScale(-1f, 1f) }
             else -> return bitmap
         }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true).also { rotated ->
+            if (rotated !== bitmap) bitmap.recycle()
+        }
+    }
+
+    /** Detection-time quarter-turn: undoes the sideways presentation of rotation-rescued faces. */
+    private fun applyDetectionRotation(bitmap: Bitmap, rotationDegrees: Int): Bitmap {
+        val normalized = ((rotationDegrees % 360) + 360) % 360
+        if (normalized == 0) return bitmap
+        val matrix = Matrix().apply { postRotate(normalized.toFloat()) }
         return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true).also { rotated ->
             if (rotated !== bitmap) bitmap.recycle()
         }
