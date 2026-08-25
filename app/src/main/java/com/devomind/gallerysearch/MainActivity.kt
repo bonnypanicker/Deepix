@@ -123,6 +123,13 @@ class MainActivity : AppCompatActivity() {
     private var bottomSystemInsetPx = 0
     private var imeBottomInsetPx = 0
 
+    // Auto-hide chrome: the floating bars translate away while scrolling deeper into the grid and
+    // return on the first upward scroll. With imageGrid's clipToPadding=false, photos flow into
+    // the vacated status-bar space, giving a fullscreen browsing surface.
+    private var barsHidden = false
+    private var barScrollAccum = 0
+    private var selectionActive = false
+
     // Infinite scroll state for search results
     // Supports lazy loading with 20 results per page, capped at 80 total
     private var fullSearchResults: List<PhotoSearchResult> = emptyList()
@@ -437,6 +444,36 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        // Chrome auto-hide: accumulate same-direction scroll; a flick deep into the grid hides the
+        // floating bars, any deliberate pull back reveals them, and the very top of the list always
+        // shows them so they stay recoverable.
+        binding.imageGrid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                if (dy == 0) return
+                barScrollAccum = if (barScrollAccum > 0 == dy > 0) barScrollAccum + dy else dy
+                val threshold = dp(24)
+                when {
+                    barScrollAccum >= threshold && !barsHidden && canAutoHideBars() -> {
+                        barScrollAccum = 0
+                        setBarsHidden(true)
+                    }
+                    barScrollAccum <= -threshold && barsHidden -> {
+                        barScrollAccum = 0
+                        setBarsHidden(false)
+                    }
+                    barsHidden -> {
+                        val layoutManager = rv.layoutManager as GridLayoutManager
+                        val first = layoutManager.findViewByPosition(0)
+                        if (layoutManager.findFirstVisibleItemPosition() == 0 && first != null &&
+                            layoutManager.getDecoratedTop(first) >= rv.paddingTop - dp(8)
+                        ) {
+                            setBarsHidden(false)
+                        }
+                    }
+                }
+            }
+        })
+
         bindChrome()
         applyBottomBarConfig()
         bindBackNavigation()
@@ -581,7 +618,11 @@ class MainActivity : AppCompatActivity() {
             )
         }
         binding.topOverlay.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
-            if (bottom - top != oldBottom - oldTop) syncGridPadding()
+            if (bottom - top != oldBottom - oldTop) {
+                syncGridPadding()
+                // A relayout while hidden (e.g. summary panel grew) must not leave a sliver visible.
+                if (barsHidden) binding.topOverlay.translationY = -(bottom - top).toFloat()
+            }
         }
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
             val systemInsets = insets.getInsets(
@@ -598,8 +639,40 @@ class MainActivity : AppCompatActivity() {
             binding.topOverlay.post(syncGridPadding)
             binding.bottomPanel.updatePadding(bottom = systemInsets.bottom)
             binding.selectionBar.updatePadding(bottom = systemInsets.bottom)
+            if (imeBottomInsetPx > 0 && barsHidden) {
+                // An opening keyboard implies the user wants the search UI — never trap it away.
+                setBarsHidden(false)
+            } else if (barsHidden) {
+                binding.bottomPanel.post {
+                    if (barsHidden) binding.bottomPanel.translationY = binding.bottomPanel.height.toFloat()
+                }
+            }
             insets
         }
+    }
+
+    private fun canAutoHideBars(): Boolean = !selectionActive && imeBottomInsetPx == 0
+
+    private fun setBarsHidden(hidden: Boolean, animate: Boolean = true) {
+        if (barsHidden == hidden) return
+        barsHidden = hidden
+        val topTarget = if (hidden) -binding.topOverlay.height.toFloat() else 0f
+        val bottomTarget = if (hidden) binding.bottomPanel.height.toFloat() else 0f
+        binding.topOverlay.animate().cancel()
+        binding.bottomPanel.animate().cancel()
+        if (!animate) {
+            binding.topOverlay.translationY = topTarget
+            binding.bottomPanel.translationY = bottomTarget
+            return
+        }
+        binding.topOverlay.animate()
+            .translationY(topTarget)
+            .setDuration(DesignTokens.MENU_FADE_DURATION_MS)
+            .start()
+        binding.bottomPanel.animate()
+            .translationY(bottomTarget)
+            .setDuration(DesignTokens.MENU_FADE_DURATION_MS)
+            .start()
     }
 
     private fun configureCutoutMode() {
@@ -1512,6 +1585,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openSearch() {
         renderJob?.cancel()
+        setBarsHidden(false)
         // Start warming the encoders as soon as the user enters search, so the models are usually
         // ready by the time a query is submitted (they may have been deferred at startup).
         ensureEncodersLoaded()
@@ -3656,6 +3730,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderSelectionState(count: Int) {
         val selecting = count > 0
+        selectionActive = selecting
+        // Selection swaps in the command bar and re-titles the header — both bars must be visible.
+        setBarsHidden(false)
         // Metro pattern: the selection command bar takes over the bottom nav's slot.
         binding.selectionBar.visibility = if (selecting) View.VISIBLE else View.GONE
         binding.bottomPanel.visibility = if (selecting) View.GONE else View.VISIBLE

@@ -69,12 +69,13 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
     /**
      * Apply the acceptance policy to [bitmap]: faces at or above [YuNetDetector.AcceptConfidence]
      * are taken as-is; faces in [YuNetDetector.RotationRetryFloor, [YuNetDetector.AcceptConfidence])
-     * are retried once per quarter-turn (+90°, −90°, 180°) and kept only if the rotated pass
-     * re-detects them at or above the accept confidence; everything else is dropped.
+     * are re-detected in every quarter-turn (+90°, −90°, 180°) and kept only when some rotation
+     * clears the accept confidence — when several do, the sighting with the highest confidence
+     * wins and its frame feeds alignment and the embedding; everything else is dropped.
      *
-     * Efficiency: rotated passes run at most three times per photo, only while unrescued faces
-     * remain, and a single pass settles every pending face at once. Photos whose detections are
-     * all strong (the common case) cost exactly the one upright pass they cost today.
+     * Efficiency: rotated passes run at most three times per photo, a single pass settles every
+     * pending face at once, and photos whose detections are all strong (the common case) cost
+     * exactly the one upright pass they cost today.
      */
     private fun resolveDetections(bitmap: Bitmap): List<ResolvedFace> {
         val primary = detector.detectFaces(bitmap, YuNetDetector.RotationRetryFloor)
@@ -93,15 +94,16 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
                 retry += det
             }
         }
+        if (retry.isEmpty()) return resolved
+
+        val rotatedBitmaps = HashMap<Int, Bitmap>(RetryRotations.size)
+        val bestSightings = arrayOfNulls<RotatedSighting>(retry.size)
         for (rotation in RetryRotations) {
-            if (retry.isEmpty()) break
             val rotated = rotate(bitmap, rotation)
+            rotatedBitmaps[rotation] = rotated
             val rotatedDetections = detector.detectFaces(rotated, YuNetDetector.AcceptConfidence)
-            var matched = false
             val claimed = HashSet<YuNetDetector.FaceDetection>()
-            val iterator = retry.iterator()
-            while (iterator.hasNext()) {
-                val candidate = iterator.next()
+            retry.forEachIndexed { index, candidate ->
                 val expected = mapDetection(candidate, bitmap.width, bitmap.height, rotation, inverse = false)
                 var best: YuNetDetector.FaceDetection? = null
                 var bestIou = YuNetDetector.RotationMatchIoU
@@ -115,21 +117,36 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
                 }
                 if (best != null) {
                     claimed += best
-                    matched = true
-                    iterator.remove()
-                    resolved += ResolvedFace(
-                        original = mapDetection(best, bitmap.width, bitmap.height, rotation, inverse = true),
-                        source = rotated,
-                        oriented = best,
-                        ownedSource = rotated,
-                        rotationDegCw = rotation
-                    )
+                    val previous = bestSightings[index]
+                    if (previous == null || best.confidence > previous.detection.confidence) {
+                        bestSightings[index] = RotatedSighting(best, rotation)
+                    }
                 }
             }
-            if (!matched) rotated.recycle()
         }
+
+        // A winning rotated frame may back several faces; exactly one face owns (and recycles) it.
+        val kept = HashSet<Bitmap>(rotatedBitmaps.size)
+        retry.forEachIndexed { index, _ ->
+            val sighting = bestSightings[index] ?: return@forEachIndexed
+            val source = rotatedBitmaps.getValue(sighting.rotationDegCw)
+            resolved += ResolvedFace(
+                original = mapDetection(sighting.detection, bitmap.width, bitmap.height, sighting.rotationDegCw, inverse = true),
+                source = source,
+                oriented = sighting.detection,
+                ownedSource = if (kept.add(source)) source else null,
+                rotationDegCw = sighting.rotationDegCw
+            )
+        }
+        rotatedBitmaps.values.forEach { if (it !in kept) it.recycle() }
         return resolved
     }
+
+    /** A pending face's sighting in one quarter-turn frame, qualified at or above accept confidence. */
+    private data class RotatedSighting(
+        val detection: YuNetDetector.FaceDetection,
+        val rotationDegCw: Int
+    )
 
     /** [degreesCw]-clockwise quarter-turn copy of [source]; the caller owns the result. */
     private fun rotate(source: Bitmap, degreesCw: Int): Bitmap {

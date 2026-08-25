@@ -269,13 +269,13 @@ class YuNetDetector(
          * upright pass. Faces below it only survive if a rotated re-detection (see
          * [RotationRetryFloor]) clears this value.
          */
-        const val AcceptConfidence = 0.85f
+        const val AcceptConfidence = 0.92f
 
         /**
          * Lower bound for the rotation-retry escape hatch: faces in
          * [RotationRetryFloor, [AcceptConfidence]) get one re-detection pass per quarter-turn
-         * (+90°, then −90°, then 180°) and are kept only if the rotated pass reaches
-         * [AcceptConfidence]. Anything below this is discarded outright.
+         * (+90°, −90°, and 180°; the highest-confidence sighting wins) and are kept only if the
+         * winning pass reaches [AcceptConfidence]. Anything below this is discarded outright.
          */
         const val RotationRetryFloor = 0.65f
 
@@ -296,7 +296,7 @@ class YuNetDetector(
          */
         fun forScanWorker(context: Context): YuNetDetector = YuNetDetector(
             context = context,
-            confidenceThreshold = 0.85f,
+            confidenceThreshold = 0.90f,
             minFaceSize = 18f
         )
     }
