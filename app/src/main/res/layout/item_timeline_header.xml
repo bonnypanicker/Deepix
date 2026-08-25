@@ -23,6 +23,7 @@
             android:ellipsize="end"
             android:includeFontPadding="false"
             android:maxLines="1"
+            android:textAllCaps="true"
             android:textAppearance="@style/TextAppearance.Metro.TimelineHeader" />
 
         <!-- Flat Metro sort affordance: label + glyph, both accent-tinted. No chip, no stroke.
@@ -56,7 +57,7 @@
                 android:layout_height="15dp"
                 android:layout_marginStart="6dp"
                 android:importantForAccessibility="no"
-                android:src="@drawable/ic_fluent_sort_24_regular"
+                android:src="@drawable/ic_fluent_arrow_sort_24_regular"
                 android:tint="?attr/accentColor" />
         </LinearLayout>
     </LinearLayout>

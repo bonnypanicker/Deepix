@@ -40,7 +40,7 @@
             android:layout_height="15dp"
             android:layout_marginStart="6dp"
             android:importantForAccessibility="no"
-            android:src="@drawable/ic_fluent_sort_24_regular"
+            android:src="@drawable/ic_fluent_arrow_sort_24_regular"
             android:tint="?attr/accentColor" />
     </LinearLayout>
 </LinearLayout>

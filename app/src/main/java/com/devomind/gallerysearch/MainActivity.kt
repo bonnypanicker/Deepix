@@ -214,7 +214,7 @@ class MainActivity : AppCompatActivity() {
 
     private val monthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
         .withZone(ZoneId.systemDefault())
-    private val dayFormatter = DateTimeFormatter.ofPattern("EEE, d", Locale.getDefault())
+    private val dayFormatter = DateTimeFormatter.ofPattern("EEEE d", Locale.getDefault())
         .withZone(ZoneId.systemDefault())
 
     private val permissionLauncher = registerForActivityResult(

@@ -58,7 +58,7 @@ class ViewerActivity : AppCompatActivity() {
     private var controlsVisible = true
     private var infoVisible = false
     private var contentChanged = false
-    private val topDateFormat = SimpleDateFormat("MMMM d, yyyy", Locale.getDefault())
+    private val topDateFormat = SimpleDateFormat("d MMMM yyyy", Locale.getDefault())
     private val topTimeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
     private val infoDateFormat = SimpleDateFormat("MMMM d, yyyy  h:mm a", Locale.getDefault())
     private val autoHideHandler = Handler(Looper.getMainLooper())
@@ -79,6 +79,7 @@ class ViewerActivity : AppCompatActivity() {
     private var findSimilarUri: String? = null
     private var findSimilarCrop: FloatArray? = null
     private var cropMode = false
+    private var searchActionsVisible = false
 
     private enum class GestureDirection {
         UNDETERMINED, HORIZONTAL_PAGE, VERTICAL_DISMISS, VERTICAL_INFO
@@ -130,6 +131,7 @@ class ViewerActivity : AppCompatActivity() {
             }
             previousPosition = position
             currentPosition = position
+            hideSearchActions(animate = false)
             bindPage(position)
             adapter.setPrimaryPosition(position)
         }
@@ -331,8 +333,6 @@ class ViewerActivity : AppCompatActivity() {
         renderFavoriteState(favoritesStore.isFavorite(uri))
 
         setEditAction(isVideo = isVideo, playing = false)
-        // Image-to-image search only applies to photos.
-        binding.similarBtn.visibility = if (isVideo) View.GONE else View.VISIBLE
 
         // Cancel any in-flight metadata load from a previous page before starting a new one.
         metadataJob?.cancel()
@@ -397,9 +397,10 @@ class ViewerActivity : AppCompatActivity() {
             val item = items.getOrNull(currentPosition) ?: return@setOnClickListener
             requestDelete(item.uri)
         }
-        binding.similarBtn.setOnClickListener { findSimilar() }
         binding.cropCancel.setOnClickListener { exitCropMode() }
         binding.cropSearch.setOnClickListener { confirmCropSearch() }
+        binding.searchWholeBtn.setOnClickListener { searchWholeImage() }
+        binding.searchPartBtn.setOnClickListener { enterCropMode() }
         binding.infoCloseBtn.setOnClickListener { if (infoVisible) toggleInfoPanel() }
         binding.infoScrim.setOnClickListener { if (infoVisible) toggleInfoPanel() }
         binding.moreBtn.setOnClickListener { showOverflowMenu(it) }
@@ -407,6 +408,7 @@ class ViewerActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this) {
             when {
                 cropMode -> exitCropMode()
+                searchActionsVisible -> hideSearchActions()
                 infoVisible -> toggleInfoPanel()
                 else -> {
                     isEnabled = false
@@ -416,30 +418,38 @@ class ViewerActivity : AppCompatActivity() {
         }
     }
 
-    /** Image-to-image search: offer whole-image or region-scoped search for the current photo. */
-    private fun findSimilar() {
-        val item = items.getOrNull(currentPosition) ?: return
-        if (item.mediaType == GalleryRepository.MediaType.Video) {
-            MetroBanner.show(this, "Similar search isn't available for videos")
+    /** App-bar style reveal of the image-search scopes, docked to the bottom bar's sides. */
+    private fun showSearchActions() {
+        if (searchActionsVisible || cropMode) return
+        searchActionsVisible = true
+        binding.searchActionsBar.alpha = 0f
+        binding.searchActionsBar.visibility = View.VISIBLE
+        binding.searchActionsBar.animate().alpha(1f).setDuration(220).start()
+    }
+
+    private fun hideSearchActions(animate: Boolean = true) {
+        if (!searchActionsVisible) return
+        searchActionsVisible = false
+        if (!animate) {
+            binding.searchActionsBar.animate().cancel()
+            binding.searchActionsBar.visibility = View.GONE
             return
         }
-        MetroDropdownMenu.show(
-            binding.similarBtn,
-            listOf(
-                MetroDropdownMenu.Item("Search whole image") {
-                    findSimilarUri = item.uri.toString()
-                    supportFinishAfterTransition()
-                },
-                MetroDropdownMenu.Item("Search part of image") {
-                    enterCropMode()
-                }
-            )
-        )
+        binding.searchActionsBar.animate().alpha(0f).setDuration(220)
+            .withEndAction { binding.searchActionsBar.visibility = View.GONE }
+            .start()
+    }
+
+    private fun searchWholeImage() {
+        val item = items.getOrNull(currentPosition) ?: return
+        findSimilarUri = item.uri.toString()
+        supportFinishAfterTransition()
     }
 
     /** Enters region-select mode: resets transforms, hides chrome, and shows the crop overlay. */
     private fun enterCropMode() {
         if (cropMode) return
+        hideSearchActions(animate = false)
         val holder = getCurrentPageViewHolder() ?: return
         val photoView = holder.binding.photoView
         if (photoView.visibility != View.VISIBLE) return
@@ -499,6 +509,8 @@ class ViewerActivity : AppCompatActivity() {
         val options = mutableListOf<MetroDropdownMenu.Item>()
         options += MetroDropdownMenu.Item("Add tags") { openTagPicker(item) }
         if (item.mediaType != GalleryRepository.MediaType.Video) {
+            // Image-to-image search: one item; the two scopes dock into the bottom selection bar.
+            options += MetroDropdownMenu.Item("Search image") { showSearchActions() }
             options += MetroDropdownMenu.Item("Open in Google Lens") { openInGoogleLens(item) }
             if (!albumId.isNullOrBlank()) {
                 options += MetroDropdownMenu.Item("Set as album cover") { setAsAlbumCover(item) }
@@ -784,6 +796,7 @@ class ViewerActivity : AppCompatActivity() {
             scheduleAutoHide()
         } else {
             autoHideHandler.removeCallbacks(autoHideRunnable)
+            hideSearchActions()
         }
     }
 
