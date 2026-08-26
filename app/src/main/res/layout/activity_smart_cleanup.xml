@@ -23,7 +23,7 @@
                 android:layout_height="48dp"
                 android:layout_gravity="start|center_vertical"
                 android:layout_marginStart="6dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/metro_row_pressed"
                 android:contentDescription="@string/back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
@@ -35,7 +35,7 @@
                 android:layout_height="48dp"
                 android:layout_gravity="end|center_vertical"
                 android:layout_marginEnd="6dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/metro_row_pressed"
                 android:contentDescription="@string/refresh"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_replay_24_regular"
@@ -99,28 +99,28 @@
                                 android:id="@+id/pauseResumeBtn"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:background="?android:attr/selectableItemBackground"
+                                android:background="@drawable/metro_row_pressed"
                                 android:clickable="true"
                                 android:focusable="true"
                                 android:padding="8dp"
                                 android:text="@string/pause"
                                 android:textColor="?attr/accentColor"
                                 android:textSize="13sp"
-                                android:textStyle="bold" />
+                                android:fontFamily="sans-serif-medium" />
 
                             <TextView
                                 android:id="@+id/stopBtn"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:layout_marginStart="8dp"
-                                android:background="?android:attr/selectableItemBackground"
+                                android:background="@drawable/metro_row_pressed"
                                 android:clickable="true"
                                 android:focusable="true"
                                 android:padding="8dp"
                                 android:text="@string/stop"
                                 android:textColor="@color/metroTextSecondary"
                                 android:textSize="13sp"
-                                android:textStyle="bold" />
+                                android:fontFamily="sans-serif-medium" />
                         </LinearLayout>
 
                         <ProgressBar
@@ -155,7 +155,7 @@
                             android:text="@string/cleanup_indexing_unfinished"
                             android:textColor="@color/metroWarning"
                             android:textSize="14sp"
-                            android:textStyle="bold" />
+                            android:fontFamily="sans-serif-medium" />
 
                         <TextView
                             android:id="@+id/indexingBannerText"
@@ -259,7 +259,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="end|center_vertical"
-                        android:background="?android:attr/selectableItemBackground"
+                        android:background="@drawable/metro_row_pressed"
                         android:clickable="true"
                         android:focusable="true"
                         android:padding="8dp"
@@ -294,13 +294,14 @@
                     android:background="@color/metroDanger"
                     android:clickable="true"
                     android:focusable="true"
+                    android:foreground="@drawable/metro_row_pressed"
                     android:gravity="center"
                     android:paddingTop="18dp"
                     android:paddingBottom="18dp"
                     android:text="@string/delete"
                     android:textColor="@color/metroTextPrimary"
                     android:textSize="15sp"
-                    android:textStyle="bold" />
+                    android:fontFamily="sans-serif-medium" />
             </LinearLayout>
         </FrameLayout>
     </LinearLayout>

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Deepix bottom-nav albums: stacked cards — a sheet peeking behind a line-ruled front card. -->
+<!-- Deepix bottom-nav albums: stacked cards — a sheet peeking behind a line-ruled front card.
+     Corners kept near-square (r=1 in the 24 viewport) to match the reference set. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -7,14 +8,14 @@
     android:viewportHeight="24">
     <path
         android:fillColor="@android:color/transparent"
-        android:pathData="M8.25,6.25c0,-0.69 0.56,-1.25 1.25,-1.25h5c0.69,0 1.25,0.56 1.25,1.25"
+        android:pathData="M8.25,5.75c0,-0.41 0.34,-0.75 0.75,-0.75h6c0.41,0 0.75,0.34 0.75,0.75"
         android:strokeColor="#FFFFFFFF"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
         android:strokeWidth="1.55" />
     <path
         android:fillColor="@android:color/transparent"
-        android:pathData="M6.5,8.25h11c1.1,0 2,0.9 2,2v6.25c0,1.1 -0.9,2 -2,2h-11c-1.1,0 -2,-0.9 -2,-2v-6.25c0,-1.1 0.9,-2 2,-2z"
+        android:pathData="M5.5,8.25h13c0.55,0 1,0.45 1,1v8.25c0,0.55 -0.45,1 -1,1h-13c-0.55,0 -1,-0.45 -1,-1v-8.25c0,-0.55 0.45,-1 1,-1z"
         android:strokeColor="#FFFFFFFF"
         android:strokeLineJoin="round"
         android:strokeWidth="1.55" />

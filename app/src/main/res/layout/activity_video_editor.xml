@@ -28,7 +28,7 @@
                 android:id="@+id/closeBtn"
                 android:layout_width="44dp"
                 android:layout_height="44dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/metro_row_pressed"
                 android:contentDescription="@string/close"
                 android:padding="10dp"
                 android:src="@drawable/ic_fluent_dismiss_24_regular"
@@ -58,7 +58,7 @@
                 android:text="@string/save"
                 android:textColor="@color/metroTextPrimary"
                 android:textSize="14sp"
-                android:textStyle="bold" />
+                android:fontFamily="sans-serif-medium" />
         </LinearLayout>
 
         <!-- Preview + crop overlay -->
@@ -172,7 +172,7 @@
                 android:id="@+id/rotateBtn"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/metro_row_pressed"
                 android:contentDescription="@string/rotate"
                 android:padding="9dp"
                 android:src="@drawable/ic_fluent_rotate_left_24_regular"
@@ -215,28 +215,28 @@
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
-                    android:background="?android:attr/selectableItemBackground"
+                    android:background="@drawable/metro_row_pressed"
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center"
                     android:text="@string/cancel_caps"
                     android:textColor="@color/metroTextSecondary"
                     android:textSize="14sp"
-                    android:textStyle="bold" />
+                    android:fontFamily="sans-serif-medium" />
 
                 <TextView
                     android:id="@+id/toolApply"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
-                    android:background="?android:attr/selectableItemBackground"
+                    android:background="@drawable/metro_row_pressed"
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center"
                     android:text="@string/apply_caps"
                     android:textColor="?attr/accentColor"
                     android:textSize="14sp"
-                    android:textStyle="bold" />
+                    android:fontFamily="sans-serif-medium" />
             </LinearLayout>
         </FrameLayout>
     </LinearLayout>
@@ -280,7 +280,7 @@
             android:layout_width="wrap_content"
             android:layout_height="48dp"
             android:layout_marginTop="14dp"
-            android:background="?android:attr/selectableItemBackground"
+            android:background="@drawable/metro_row_pressed"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
@@ -290,6 +290,6 @@
             android:text="@string/cancel_caps"
             android:textColor="@color/metroTextSecondary"
             android:textSize="13sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
     </LinearLayout>
 </FrameLayout>

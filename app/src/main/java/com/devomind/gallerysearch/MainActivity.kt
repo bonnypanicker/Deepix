@@ -1,6 +1,7 @@
 package com.devomind.gallerysearch
 
 import android.Manifest
+import android.animation.ValueAnimator
 import android.app.RecoverableSecurityException
 import android.content.Intent
 import android.content.IntentSender
@@ -60,6 +61,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
@@ -123,11 +125,11 @@ class MainActivity : AppCompatActivity() {
     private var bottomSystemInsetPx = 0
     private var imeBottomInsetPx = 0
 
-    // Auto-hide chrome: the floating bars translate away while scrolling deeper into the grid and
-    // return on the first upward scroll. With imageGrid's clipToPadding=false, photos flow into
-    // the vacated status-bar space, giving a fullscreen browsing surface.
-    private var barsHidden = false
-    private var barScrollAccum = 0
+    // Auto-hide chrome: the floating bars track scroll distance 1:1 (0 = fully visible,
+    // 1 = fully translated out) and settle to the nearest state when the scroll stops. With
+    // imageGrid's clipToPadding=false, photos flow into the vacated status-bar space.
+    private var barProgress = 0f
+    private var barAnimator: ValueAnimator? = null
     private var selectionActive = false
 
     // Infinite scroll state for search results
@@ -418,7 +420,6 @@ class MainActivity : AppCompatActivity() {
         // (the default pool keeps only 5 per view type).
         binding.imageGrid.recycledViewPool.setMaxRecycledViews(ImageAdapter.ViewTypePhoto, 24)
         binding.imageGrid.recycledViewPool.setMaxRecycledViews(ImageAdapter.ViewTypeCollage, 16)
-        binding.imageGrid.addItemDecoration(StickyHeaderDecoration(adapter))
         binding.fastScrollIndicator.attach(binding.imageGrid, adapter)
 
         binding.imageGrid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -444,32 +445,38 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        // Chrome auto-hide: accumulate same-direction scroll; a flick deep into the grid hides the
-        // floating bars, any deliberate pull back reveals them, and the very top of the list always
-        // shows them so they stay recoverable.
+        // Chrome auto-hide: the bars follow the scroll 1:1 — scrolling down slides them out at
+        // the same rate as the content, scrolling up slides them back in — and they settle to the
+        // nearer end-state when the scroll halts. The very top of the list always reveals them.
         binding.imageGrid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
-                if (dy == 0) return
-                barScrollAccum = if (barScrollAccum > 0 == dy > 0) barScrollAccum + dy else dy
-                val threshold = dp(24)
+                if (dy != 0 && canAutoHideBars()) {
+                    val travelPx = maxOf(
+                        binding.topOverlay.height.toFloat(),
+                        binding.bottomPanel.height.toFloat()
+                    )
+                    if (travelPx > 0f) {
+                        barAnimator?.cancel()
+                        barProgress = (barProgress + dy / travelPx).coerceIn(0f, 1f)
+                        applyBarTranslations()
+                    }
+                }
+                if (barProgress > 0f) {
+                    val layoutManager = rv.layoutManager as GridLayoutManager
+                    val first = layoutManager.findViewByPosition(0)
+                    if (layoutManager.findFirstVisibleItemPosition() == 0 && first != null &&
+                        layoutManager.getDecoratedTop(first) >= rv.paddingTop - dp(8)
+                    ) {
+                        showBars()
+                    }
+                }
+            }
+
+            override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                if (newState != RecyclerView.SCROLL_STATE_IDLE) return
                 when {
-                    barScrollAccum >= threshold && !barsHidden && canAutoHideBars() -> {
-                        barScrollAccum = 0
-                        setBarsHidden(true)
-                    }
-                    barScrollAccum <= -threshold && barsHidden -> {
-                        barScrollAccum = 0
-                        setBarsHidden(false)
-                    }
-                    barsHidden -> {
-                        val layoutManager = rv.layoutManager as GridLayoutManager
-                        val first = layoutManager.findViewByPosition(0)
-                        if (layoutManager.findFirstVisibleItemPosition() == 0 && first != null &&
-                            layoutManager.getDecoratedTop(first) >= rv.paddingTop - dp(8)
-                        ) {
-                            setBarsHidden(false)
-                        }
-                    }
+                    barProgress > 0f && barProgress <= 0.5f -> showBars()
+                    barProgress > 0.5f && barProgress < 1f -> hideBars()
                 }
             }
         })
@@ -620,8 +627,8 @@ class MainActivity : AppCompatActivity() {
         binding.topOverlay.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
             if (bottom - top != oldBottom - oldTop) {
                 syncGridPadding()
-                // A relayout while hidden (e.g. summary panel grew) must not leave a sliver visible.
-                if (barsHidden) binding.topOverlay.translationY = -(bottom - top).toFloat()
+                // Translations scale with overlay height — re-apply on every relayout.
+                applyBarTranslations()
             }
         }
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
@@ -639,13 +646,11 @@ class MainActivity : AppCompatActivity() {
             binding.topOverlay.post(syncGridPadding)
             binding.bottomPanel.updatePadding(bottom = systemInsets.bottom)
             binding.selectionBar.updatePadding(bottom = systemInsets.bottom)
-            if (imeBottomInsetPx > 0 && barsHidden) {
+            if (imeBottomInsetPx > 0 && barProgress > 0f) {
                 // An opening keyboard implies the user wants the search UI — never trap it away.
-                setBarsHidden(false)
-            } else if (barsHidden) {
-                binding.bottomPanel.post {
-                    if (barsHidden) binding.bottomPanel.translationY = binding.bottomPanel.height.toFloat()
-                }
+                showBars()
+            } else if (barProgress > 0f) {
+                binding.bottomPanel.post { applyBarTranslations() }
             }
             insets
         }
@@ -653,26 +658,31 @@ class MainActivity : AppCompatActivity() {
 
     private fun canAutoHideBars(): Boolean = !selectionActive && imeBottomInsetPx == 0
 
-    private fun setBarsHidden(hidden: Boolean, animate: Boolean = true) {
-        if (barsHidden == hidden) return
-        barsHidden = hidden
-        val topTarget = if (hidden) -binding.topOverlay.height.toFloat() else 0f
-        val bottomTarget = if (hidden) binding.bottomPanel.height.toFloat() else 0f
-        binding.topOverlay.animate().cancel()
-        binding.bottomPanel.animate().cancel()
-        if (!animate) {
-            binding.topOverlay.translationY = topTarget
-            binding.bottomPanel.translationY = bottomTarget
+    private fun applyBarTranslations() {
+        binding.topOverlay.translationY = -binding.topOverlay.height.toFloat() * barProgress
+        binding.bottomPanel.translationY = binding.bottomPanel.height.toFloat() * barProgress
+    }
+
+    private fun showBars(animate: Boolean = true) = setBarProgress(0f, animate)
+
+    private fun hideBars() = setBarProgress(1f, true)
+
+    private fun setBarProgress(target: Float, animate: Boolean) {
+        barAnimator?.cancel()
+        if (!animate || barProgress == target) {
+            barProgress = target
+            applyBarTranslations()
             return
         }
-        binding.topOverlay.animate()
-            .translationY(topTarget)
-            .setDuration(DesignTokens.MENU_FADE_DURATION_MS)
-            .start()
-        binding.bottomPanel.animate()
-            .translationY(bottomTarget)
-            .setDuration(DesignTokens.MENU_FADE_DURATION_MS)
-            .start()
+        val distance = abs(target - barProgress)
+        barAnimator = ValueAnimator.ofFloat(barProgress, target).apply {
+            duration = (DesignTokens.MENU_FADE_DURATION_MS * distance).toLong().coerceAtLeast(60L)
+            addUpdateListener { animator ->
+                barProgress = animator.animatedValue as Float
+                applyBarTranslations()
+            }
+            start()
+        }
     }
 
     private fun configureCutoutMode() {
@@ -1128,7 +1138,8 @@ class MainActivity : AppCompatActivity() {
                 items = collectionItems,
                 emptyCell = GalleryCell.Empty(
                     text = "No photos yet",
-                    hint = "Photos and videos on this device show up here automatically."
+                    hint = "Photos and videos on this device show up here automatically.",
+                    iconRes = R.drawable.ic_deepix_collections_24_regular
                 )
             )
             Section.Videos -> renderMediaSection(
@@ -1585,7 +1596,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openSearch() {
         renderJob?.cancel()
-        setBarsHidden(false)
+        showBars(animate = false)
         // Start warming the encoders as soon as the user enters search, so the models are usually
         // ready by the time a query is submitted (they may have been deferred at startup).
         ensureEncodersLoaded()
@@ -1907,7 +1918,28 @@ class MainActivity : AppCompatActivity() {
             } catch (cancelled: CancellationException) {
                 Log.d(TAG, "Search job cancelled.", cancelled)
             } catch (error: Throwable) {
-                showFatalError(error)
+                Log.e(TAG, "Search failed for \"$query\".", error)
+                // Explicit failed state (icon + one-line diagnosis + retry) instead of a raw
+                // stack-trace dialog; PhotoSearchResult cells stay untouched.
+                if (isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) {
+                    clearSearchSections()
+                    adapter.replaceCells(
+                        listOf(
+                            GalleryCell.Empty(
+                                text = "Search failed",
+                                hint = "Something went wrong while running this search " +
+                                    "(${error.javaClass.simpleName}: ${error.message?.take(80)}). " +
+                                    "If it keeps failing, rebuild the index from Settings.",
+                                iconRes = R.drawable.ic_fluent_error_circle_24_regular,
+                                actionLabel = "Retry search",
+                                onAction = { submitSearch() }
+                            )
+                        )
+                    )
+                    resetGridToTop()
+                    binding.resultCount.text = ""
+                    binding.statusText.text = "Search failed"
+                }
             } finally {
                 binding.progressBar.visibility = View.GONE
             }
@@ -3732,7 +3764,7 @@ class MainActivity : AppCompatActivity() {
         val selecting = count > 0
         selectionActive = selecting
         // Selection swaps in the command bar and re-titles the header — both bars must be visible.
-        setBarsHidden(false)
+        showBars()
         // Metro pattern: the selection command bar takes over the bottom nav's slot.
         binding.selectionBar.visibility = if (selecting) View.VISIBLE else View.GONE
         binding.bottomPanel.visibility = if (selecting) View.GONE else View.VISIBLE
@@ -4418,10 +4450,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun showFatalError(error: Throwable) {
         dismissLoadingOverlay()
+        Log.e(TAG, "Fatal error.", error)
+        // Production copy: one-line diagnosis, no raw stack trace (full trace stays in Logcat).
         MetroDialog.message(
             this,
             title = "Something went wrong",
-            message = error.stackTraceToString(),
+            message = "${error.javaClass.simpleName}: ${error.message ?: "Unknown error"}\n\n" +
+                "Try restarting the app. If this keeps happening, report it to the developer.",
             positive = "Close",
             scrollableMessage = true
         )

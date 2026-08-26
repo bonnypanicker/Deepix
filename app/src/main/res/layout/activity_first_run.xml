@@ -55,7 +55,7 @@
             android:textAlignment="center"
             android:textColor="@color/metroTextPrimary"
             android:textSize="15sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
 
         <TextView
             android:id="@+id/btnSkip"

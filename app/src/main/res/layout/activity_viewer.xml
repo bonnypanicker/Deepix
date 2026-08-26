@@ -30,7 +30,7 @@
                 android:id="@+id/backBtn"
                 android:layout_width="44dp"
                 android:layout_height="44dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/metro_row_pressed"
                 android:contentDescription="@string/back"
                 android:padding="9dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
@@ -45,7 +45,7 @@
                 android:id="@+id/favoriteBtn"
                 android:layout_width="44dp"
                 android:layout_height="44dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/metro_row_pressed"
                 android:contentDescription="@string/favorite"
                 android:padding="9dp"
                 android:src="@drawable/ic_fluent_heart_24_regular"
@@ -55,7 +55,7 @@
                 android:id="@+id/moreBtn"
                 android:layout_width="44dp"
                 android:layout_height="44dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/metro_row_pressed"
                 android:contentDescription="@string/more_options"
                 android:padding="9dp"
                 android:src="@drawable/ic_fluent_more_24_regular"
@@ -117,7 +117,7 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/metro_row_pressed"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
@@ -144,7 +144,7 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/metro_row_pressed"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
@@ -173,7 +173,7 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/metro_row_pressed"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
@@ -336,7 +336,7 @@
             android:id="@+id/infoCloseBtn"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="?android:attr/selectableItemBackground"
+            android:background="@drawable/metro_row_pressed"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
@@ -345,7 +345,7 @@
             android:text="@string/close_caps"
             android:textColor="?attr/accentColor"
             android:textSize="14sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
     </LinearLayout>
 
     <!-- Region-search crop overlay (drag corner-to-corner). Hidden until crop mode. -->
@@ -374,7 +374,7 @@
             android:id="@+id/cropCancel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/metro_row_pressed"
             android:clickable="true"
             android:focusable="true"
             android:paddingStart="14dp"
@@ -408,7 +408,7 @@
             android:text="@string/search"
             android:textColor="@color/metroTextPrimary"
             android:textSize="14sp"
-            android:textStyle="bold" />
+            android:fontFamily="sans-serif-medium" />
     </LinearLayout>
 
     <!-- Image-search selection bar: revealed by the overflow "Search image" item, docking the two
@@ -431,7 +431,7 @@
             android:id="@+id/searchWholeBtn"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/metro_row_pressed"
             android:clickable="true"
             android:focusable="true"
             android:paddingStart="14dp"
@@ -451,7 +451,7 @@
             android:id="@+id/searchPartBtn"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/metro_row_pressed"
             android:clickable="true"
             android:focusable="true"
             android:paddingStart="14dp"

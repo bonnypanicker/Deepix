@@ -23,7 +23,7 @@
                 android:layout_height="48dp"
                 android:layout_gravity="start|center_vertical"
                 android:layout_marginStart="6dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/metro_row_pressed"
                 android:contentDescription="@string/back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"

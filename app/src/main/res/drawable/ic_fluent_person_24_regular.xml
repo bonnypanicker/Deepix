@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Person glyph: head circle + shoulders arc, Fluent-regular stroke style. -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5"
+        android:pathData="M12,4.5 A3,3 0 1,0 12,10.5 A3,3 0 1,0 12,4.5" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M6,19.5 C6,15.9 8.4,13.75 12,13.75 C15.6,13.75 18,15.9 18,19.5" />
+</vector>

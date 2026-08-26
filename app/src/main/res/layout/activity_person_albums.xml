@@ -18,7 +18,7 @@
             android:layout_height="48dp"
             android:layout_gravity="start|center_vertical"
             android:layout_marginStart="6dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/metro_row_pressed"
             android:contentDescription="@string/back"
             android:padding="12dp"
             android:src="@drawable/ic_fluent_back_24_regular"
@@ -40,28 +40,65 @@
 
         <LinearLayout
             android:id="@+id/emptyState"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:orientation="vertical"
             android:gravity="center"
+            android:paddingStart="40dp"
+            android:paddingEnd="40dp"
             android:visibility="gone">
 
+            <ImageView
+                android:id="@+id/emptyIcon"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_fluent_person_24_regular"
+                android:tint="@color/metroTextDisabled" />
+
             <TextView
+                android:id="@+id/emptyTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:fontFamily="sans-serif-light"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:paddingTop="18dp"
                 android:text="@string/people_empty"
                 android:textColor="@color/metroTextSecondary"
-                android:textSize="16sp" />
+                android:textSize="18sp" />
 
             <TextView
+                android:id="@+id/emptyHint"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:lineSpacingExtra="2dp"
+                android:paddingTop="8dp"
                 android:text="@string/people_empty_hint"
                 android:textColor="@color/metroTextTertiary"
-                android:textSize="12sp" />
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/emptyAction"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:layout_marginTop="22dp"
+                android:background="@drawable/onboarding_button_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:letterSpacing="0.04"
+                android:minWidth="120dp"
+                android:paddingStart="20dp"
+                android:paddingEnd="20dp"
+                android:textAllCaps="true"
+                android:textColor="@color/metroTextStrong"
+                android:textSize="13sp"
+                android:visibility="gone" />
         </LinearLayout>
     </FrameLayout>
 </LinearLayout>

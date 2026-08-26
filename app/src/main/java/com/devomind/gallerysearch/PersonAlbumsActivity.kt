@@ -13,6 +13,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DecodeFormat
 import com.devomind.gallerysearch.databinding.ActivityPersonAlbumsBinding
@@ -36,6 +38,9 @@ class PersonAlbumsActivity : AppCompatActivity() {
     private lateinit var binding: ActivityPersonAlbumsBinding
     private lateinit var adapter: PersonAlbumsAdapter
     private var peopleLoadGeneration = 0
+    private var lastFaceCount = 0
+    private var faceWorkInfos: List<WorkInfo> = emptyList()
+    private var lastPersonsSeen = -1
     private val coverCache = object : LruCache<String, android.graphics.Bitmap>(CoverCacheKb) {
         override fun sizeOf(key: String, bitmap: android.graphics.Bitmap): Int =
             bitmap.allocationByteCount / 1024
@@ -52,6 +57,9 @@ class PersonAlbumsActivity : AppCompatActivity() {
         applyInsets()
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
+        binding.emptyAction.setOnClickListener {
+            FaceIndexWorker.enqueue(this, replaceExisting = false)
+        }
 
         adapter = PersonAlbumsAdapter(
             onClick = { person -> openPerson(person) },
@@ -73,32 +81,21 @@ class PersonAlbumsActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        /*
-        super.onStart()
-        // Live face-index ticker: refresh stamps when the worker advances.
-        // WorkManager.getInstance(this).getWorkInfosForUniqueWorkLiveData(FaceIndexWorker.WorkName)
-        androidx.work.WorkManager.getInstance(this)
+        // Live face-index ticker: keeps the empty state truthful while the worker advances,
+        // and pulls fresh people into the grid as new persons materialize.
+        WorkManager.getInstance(this)
             .getWorkInfosForUniqueWorkLiveData(FaceIndexWorker.WorkName)
             .observe(this) { work ->
-                val info = work.firstOrNull() ?: return@observe
-                val progress = info.progress
-                val visited = progress.getInt(FaceIndexWorker.ProgressVisitedKey, -1)
-                val total = progress.getInt(FaceIndexWorker.ProgressTotalKey, -1)
-                val faces = progress.getInt(FaceIndexWorker.StatsFacesKey, 0)
-                val persons = progress.getInt(FaceIndexWorker.StatsPersonsKey, 0)
-                val running = info.state == androidx.work.WorkInfo.State.RUNNING
-                binding.liveStatus.apply {
-                    visibility = if (running) View.VISIBLE else View.GONE
-                    text = if (running && visited >= 0 && total > 0) {
-                        "Indexing… $visited / $total photos · $faces faces · $persons persons"
-                    } else ""
+                faceWorkInfos = work
+                val info = work.firstOrNull()
+                val persons = info?.progress?.getInt(FaceIndexWorker.StatsPersonsKey, lastPersonsSeen)
+                    ?: lastPersonsSeen
+                if (info?.state == WorkInfo.State.RUNNING && persons != lastPersonsSeen) {
+                    lastPersonsSeen = persons
+                    loadPeople()
                 }
-                // Pull fresh contents from DB when the worker finishes a chunk so the grid reflects them.
-                if (running) loadPeople()
+                updateEmptyState()
             }
-    }
-
-        */
     }
 
     private fun applyInsets() {
@@ -145,11 +142,59 @@ class PersonAlbumsActivity : AppCompatActivity() {
             // to the actual face (bbox is in source-image pixels).
             val exemplarUris = people.mapNotNull { it.exemplarFace?.photoUri }.toHashSet()
             val dimensions = withContext(Dispatchers.IO) { resolvePhotoDimensions(exemplarUris) }
+            val faceTotal = withContext(Dispatchers.IO) { db.faceDao().countAll() }
             if (requestGeneration != peopleLoadGeneration) return@launch
+            lastFaceCount = faceTotal
             adapter.photoDimensions = dimensions
             adapter.submitList(people)
             binding.emptyState.visibility = if (people.isEmpty()) View.VISIBLE else View.GONE
             binding.peopleGrid.visibility = if (people.isEmpty()) View.GONE else View.VISIBLE
+            updateEmptyState()
+        }
+    }
+
+    /**
+     * No-people state, made explicit: indexing in flight (with live progress), faces indexed but
+     * not yet grouped, or never indexed — each with its own copy, the last with a start action.
+     */
+    private fun updateEmptyState() {
+        if (adapter.itemCount > 0) {
+            binding.emptyState.visibility = View.GONE
+            return
+        }
+        binding.emptyState.visibility = View.VISIBLE
+        val info = faceWorkInfos.firstOrNull()
+        val working = info?.state == WorkInfo.State.RUNNING || info?.state == WorkInfo.State.ENQUEUED
+        when {
+            working -> {
+                val visited = info?.progress?.getInt(FaceIndexWorker.ProgressVisitedKey, -1) ?: -1
+                val total = info?.progress?.getInt(FaceIndexWorker.ProgressTotalKey, -1) ?: -1
+                val faces = info?.progress?.getInt(FaceIndexWorker.StatsFacesKey, 0) ?: 0
+                binding.emptyTitle.text = "Finding faces…"
+                binding.emptyHint.text = when {
+                    visited >= 0 && total > 0 && faces > 0 ->
+                        "Scanning your library — $visited / $total photos · $faces faces found so far. " +
+                            "People appear here as faces are grouped."
+                    visited >= 0 && total > 0 ->
+                        "Scanning your library — $visited / $total photos. " +
+                            "People appear here as faces are grouped."
+                    else ->
+                        "Scanning your library for faces. People appear here as faces are grouped."
+                }
+                binding.emptyAction.visibility = View.GONE
+            }
+            lastFaceCount > 0 -> {
+                binding.emptyTitle.text = "Grouping faces…"
+                binding.emptyHint.text =
+                    "Faces are indexed. They're clustered into people as indexing finishes — " +
+                        "check back in a moment."
+                binding.emptyAction.visibility = View.GONE
+            }
+            else -> {
+                binding.emptyTitle.setText(R.string.people_empty)
+                binding.emptyHint.setText(R.string.people_empty_hint)
+                binding.emptyAction.visibility = View.VISIBLE
+            }
         }
     }
 

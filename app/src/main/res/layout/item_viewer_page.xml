@@ -54,7 +54,7 @@
             android:id="@+id/muteButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/metro_row_pressed"
             android:contentDescription="@string/mute"
             android:padding="8dp"
             android:src="@drawable/ic_fluent_speaker_2_24_regular"

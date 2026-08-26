@@ -196,7 +196,7 @@
         <item name="android:paddingBottom">6dp</item>
         <item name="android:textColor">?attr/accentColor</item>
         <item name="android:textSize">12sp</item>
-        <item name="android:textStyle">bold</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
         <item name="android:letterSpacing">0.08</item>
         <item name="android:includeFontPadding">false</item>
     </style>
@@ -206,7 +206,7 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:orientation">horizontal</item>
         <item name="android:gravity">center_vertical</item>
-        <item name="android:background">?android:attr/selectableItemBackground</item>
+        <item name="android:background">@drawable/metro_row_pressed</item>
         <item name="android:clickable">true</item>
         <item name="android:focusable">true</item>
         <item name="android:paddingTop">16dp</item>
@@ -262,7 +262,7 @@
         <item name="android:layout_weight">1</item>
         <item name="android:orientation">vertical</item>
         <item name="android:gravity">center</item>
-        <item name="android:background">?android:attr/selectableItemBackground</item>
+        <item name="android:background">@drawable/metro_row_pressed</item>
         <item name="android:clickable">true</item>
         <item name="android:focusable">true</item>
     </style>

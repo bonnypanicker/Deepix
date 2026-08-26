@@ -89,7 +89,7 @@
     <string name="tab_favorites">Favorites</string>
     <string name="tab_folders">Folders</string>
     <string name="loading_gallery">Loading your gallery</string>
-    <string name="search_loading">Searching…</string>
+    <string name="search_loading">Searching your library…</string>
     <string name="drawer_collection">collection</string>
     <string name="drawer_albums">albums</string>
     <string name="drawer_search">search</string>
@@ -150,6 +150,7 @@
     <string name="move_up">Move %1$s up</string>
     <string name="move_down">Move %1$s down</string>
     <string name="bottom_bar_folders">Show Folders in bottom bar</string>
+    <string name="bottom_bar_albums">Show Albums in bottom bar</string>
     <string name="bottom_bar_safe">Show Safe in bottom bar</string>
     <string name="default_page">Default page</string>
     <string name="section_indexing">INDEXING</string>

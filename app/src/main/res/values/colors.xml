@@ -25,6 +25,10 @@
     <color name="metroNavBar">#FF000000</color>
     <color name="metroDivider">#FF1A1A1A</color>
 
+    <!-- Interaction overlays (single tactile language; see drawable/metro_row_pressed) -->
+    <color name="metroPressOverlay">#1FFFFFFF</color>
+    <color name="metroFocusOverlay">#0FFFFFFF</color>
+
     <!-- Semantic -->
     <color name="metroDimScrim">#66000000</color>
     <color name="metroDanger">#FFE5484D</color>

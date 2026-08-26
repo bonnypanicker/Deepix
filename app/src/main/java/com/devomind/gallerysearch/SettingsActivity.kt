@@ -148,6 +148,11 @@ class SettingsActivity : AppCompatActivity() {
             BottomBarConfig.setFoldersEnabled(this, enabled)
             updateBottomBarSettings()
         }
+        binding.rowBottomBarAlbums.setOnClickListener {
+            val enabled = !binding.switchBottomBarAlbums.isChecked
+            BottomBarConfig.setAlbumsEnabled(this, enabled)
+            updateBottomBarSettings()
+        }
         binding.rowBottomBarSafe.setOnClickListener {
             val enabled = !binding.switchBottomBarSafe.isChecked
             BottomBarConfig.setSafeEnabled(this, enabled)
@@ -159,6 +164,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun updateBottomBarSettings() {
         val enabled = BottomBarConfig.enabledOrder(this)
         binding.switchBottomBarFolders.isChecked = BottomBarConfig.isFoldersEnabled(this)
+        binding.switchBottomBarAlbums.isChecked = BottomBarConfig.isAlbumsEnabled(this)
         binding.switchBottomBarSafe.isChecked = BottomBarConfig.isSafeEnabled(this)
         binding.bottomBarOrderSubtitle.text = enabled.joinToString(" · ") { getString(it.labelRes) }
         binding.defaultPageSubtitle.text = getString(BottomBarConfig.defaultPage(this).labelRes)
@@ -193,6 +199,7 @@ class SettingsActivity : AppCompatActivity() {
                 row.findViewById<ImageView>(R.id.orderIcon).setImageResource(destination.iconRes)
                 row.findViewById<TextView>(R.id.orderTitle).text = getString(destination.labelRes)
                 val optionalHidden = when (destination) {
+                    BottomBarDestination.Albums -> !BottomBarConfig.isAlbumsEnabled(this)
                     BottomBarDestination.Folders -> !BottomBarConfig.isFoldersEnabled(this)
                     BottomBarDestination.Safe -> !BottomBarConfig.isSafeEnabled(this)
                     else -> false

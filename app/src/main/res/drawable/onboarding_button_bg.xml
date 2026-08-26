@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Primary accent CTA (empty-state actions, first-run). Same tactile language as
+     metro_row_pressed: white-alpha press feedback over the accent fill. -->
 <ripple xmlns:android="http://schemas.android.com/apk/res/android"
-    android:color="#33FFFFFF">
+    android:color="@color/metroPressOverlay">
     <item>
         <shape android:shape="rectangle">
             <solid android:color="?attr/accentColor" />

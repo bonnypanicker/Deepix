@@ -23,7 +23,7 @@
                 android:layout_height="48dp"
                 android:layout_gravity="start|center_vertical"
                 android:layout_marginStart="6dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:background="@drawable/metro_row_pressed"
                 android:contentDescription="@string/back"
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
@@ -109,7 +109,7 @@
                             android:text="@string/size_medium"
                             android:textColor="?attr/accentColor"
                             android:textSize="13sp"
-                            android:textStyle="bold" />
+                            android:fontFamily="sans-serif-medium" />
                     </LinearLayout>
 
                     <SeekBar
@@ -213,6 +213,20 @@
                     </LinearLayout>
                     <androidx.appcompat.widget.SwitchCompat
                         android:id="@+id/switchBottomBarFolders"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clickable="false"
+                        android:focusable="false" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout android:id="@+id/rowBottomBarAlbums" style="@style/SettingsRow">
+                    <LinearLayout style="@style/SettingsRowText">
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/bottom_bar_albums" />
+                    </LinearLayout>
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/switchBottomBarAlbums"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:clickable="false"

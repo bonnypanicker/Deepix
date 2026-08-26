@@ -24,6 +24,7 @@ enum class BottomBarDestination(
 object BottomBarConfig {
     private const val PrefName = "bottom_bar_config"
     private const val KeyOrder = "order"
+    private const val KeyAlbumsEnabled = "albums_enabled"
     private const val KeyFoldersEnabled = "folders_enabled"
     private const val KeySafeEnabled = "safe_enabled"
     private const val KeyDefaultPage = "default_page"
@@ -31,8 +32,8 @@ object BottomBarConfig {
 
     private val defaultOrder = listOf(
         BottomBarDestination.Collection,
-        BottomBarDestination.Videos,
         BottomBarDestination.Albums,
+        BottomBarDestination.Videos,
         BottomBarDestination.Favorites,
         BottomBarDestination.Folders,
         BottomBarDestination.Safe
@@ -50,6 +51,14 @@ object BottomBarConfig {
     fun setOrder(context: Context, destinations: List<BottomBarDestination>) {
         val complete = destinations.distinct() + defaultOrder.filterNot { it in destinations }
         prefs(context).edit().putString(KeyOrder, complete.joinToString(Separator) { it.key }).apply()
+    }
+
+    fun isAlbumsEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KeyAlbumsEnabled, true)
+
+    fun setAlbumsEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KeyAlbumsEnabled, enabled).apply()
+        repairDefault(context)
     }
 
     fun isFoldersEnabled(context: Context): Boolean =
@@ -70,6 +79,7 @@ object BottomBarConfig {
 
     fun enabledOrder(context: Context): List<BottomBarDestination> = order(context).filter {
         when (it) {
+            BottomBarDestination.Albums -> isAlbumsEnabled(context)
             BottomBarDestination.Folders -> isFoldersEnabled(context)
             BottomBarDestination.Safe -> isSafeEnabled(context)
             else -> true
