@@ -175,6 +175,25 @@ class GalleryRepository(
         )
     }
 
+    /**
+     * Album objects for just the requested buckets — enough for the pinned strip to paint with
+     * the preview frame without paying the whole-library enumeration. The cursors filter to
+     * these buckets, so counts and cover-override validation are exact for them; a stale pin
+     * whose bucket no longer exists simply yields no album.
+     */
+    suspend fun loadAlbumsForBucketIds(bucketIds: Set<String>): List<Album> {
+        if (bucketIds.isEmpty()) return emptyList()
+        return coroutineScope {
+            val images = async { queryImageItems(bucketIds) }
+            val videos = async { queryVideoItems(bucketIds) }
+            // Newest-first, matching loadSnapshot: buildAlbumsFrom uses the first-seen item as
+            // the album cover, so both startup passes must order identically or pinned chips
+            // visibly swap covers when the full snapshot reconciles under the preview.
+            val items = (images.await() + videos.await()).sortedWith(newestFirstOrder)
+            buildAlbumsFrom(items)
+        }
+    }
+
     /** Cover-override housekeeping for albums that no longer exist. A prefs JSON pass with a
      *  possible disk write — kept off the startup critical path, run after first render. */
     fun cleanupAlbumCovers(validAlbumIds: Set<String>) {

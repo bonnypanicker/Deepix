@@ -110,6 +110,12 @@ class MainActivity : AppCompatActivity() {
     private var preAlbumDetailSection = Section.Collection
     private var activeSection = Section.Collection
     private var openSafeAfterInitialRender = false
+
+    /** Sections whose landing page is a date-sorted timeline the LIMIT preview can paint. */
+    private val previewableSections = setOf(Section.Collection, Section.Videos, Section.Favorites)
+
+    /** True while the visible grid came from the startup LIMIT preview, until the full library lands. */
+    private var firstFrameWasPreview = false
     private var searchMode = SearchMode.Hybrid
     private var searchJob: Job? = null
     private var searchDebounceJob: Job? = null
@@ -819,12 +825,16 @@ class MainActivity : AppCompatActivity() {
                 dbRepository = withContext(Dispatchers.IO) { DbRepository(applicationContext) }
                 smartAlbums = withContext(Dispatchers.IO) { smartAlbumStore.getAll() }
 
-                // The library scan, the People collection, and the search-only tag reads are
-                // independent — overlap them instead of sequencing. People must land before the
-                // first frame: the Collections page leads with the pinned-albums/People strip,
-                // and that strip needs the complete album list, so there is no partial preview.
+                // Two-stage startup: the landing timeline paints from a LIMIT-sized newest slice,
+                // with the pinned-albums row resolved by a small bucket-filtered query so the
+                // strip is complete on the very first frame. The full enumeration, People, and
+                // the search-only tag reads overlap underneath and roll in right after
+                // (see reconcileAfterFullSnapshot). Non-timeline landings need the complete
+                // snapshot for their counts and trees, so they go full-first.
+                val timelineLanding = currentMode == Mode.Browse && !openSafeAfterInitialRender &&
+                    activeSection in previewableSections
+
                 val full = async(Dispatchers.IO) { loadLibrarySnapshot(repo) }
-                val deferredPeople = async(Dispatchers.IO) { loadPeopleCollection() }
                 val deferredTags = async(Dispatchers.IO) {
                     // Search-only N+1 read; nothing on the first-frame path consumes it.
                     val tags = dbRepository?.getAllTags().orEmpty()
@@ -832,7 +842,32 @@ class MainActivity : AppCompatActivity() {
                         tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
                     }
                 }
+                val deferredPeople = async(Dispatchers.IO) { loadPeopleCollection() }
 
+                if (timelineLanding) {
+                    val pinnedIds = withContext(Dispatchers.IO) {
+                        if (activeSection == Section.Collection) albumPinStore.getPinnedAlbumIds().toSet()
+                        else emptySet()
+                    }
+                    val preview = async(Dispatchers.IO) {
+                        repo.loadRecentSnapshot(emptySet(), PREVIEW_IMAGE_LIMIT, PREVIEW_VIDEO_LIMIT)
+                    }
+                    val pinnedAlbums = async(Dispatchers.IO) { repo.loadAlbumsForBucketIds(pinnedIds) }
+
+                    val p = preview.await()
+                    applyLibrarySnapshot(
+                        LibrarySnapshot(pinnedAlbums.await(), p.imageItems, p.collectionItems, p.videoItems)
+                    )
+                    currentAlbum = null
+                    lastProgressRefresh = -1
+                    binding.progressBar.visibility = View.GONE
+                    binding.statusText.text =
+                        indexedSummary(repo.indexedCount)
+                    renderCurrentState()
+                    firstFrameWasPreview = true
+                }
+
+                // Stage 2: the full library, People, and tags roll in underneath what's on screen.
                 val snapshot = full.await()
                 // Cover-override housekeeping is a prefs pass with a possible disk write — kept
                 // off the critical path, run here with the real album list to validate against.
@@ -840,18 +875,21 @@ class MainActivity : AppCompatActivity() {
                     repo.cleanupAlbumCovers(snapshot.albums.map { it.id }.toSet())
                 }
                 applyLibrarySnapshot(snapshot)
-                peopleCollectionRefreshGeneration++
                 peopleCollection = deferredPeople.await()
 
-                currentAlbum = null
-                lastProgressRefresh = -1
-                binding.progressBar.visibility = View.GONE
-                binding.statusText.text =
-                    indexedSummary(repo.indexedCount)
-                renderCurrentState()
-                if (openSafeAfterInitialRender) {
-                    openSafeAfterInitialRender = false
-                    binding.root.post { openSafe() }
+                if (!firstFrameWasPreview) {
+                    currentAlbum = null
+                    lastProgressRefresh = -1
+                    binding.progressBar.visibility = View.GONE
+                    binding.statusText.text =
+                        indexedSummary(repo.indexedCount)
+                    renderCurrentState()
+                    if (openSafeAfterInitialRender) {
+                        openSafeAfterInitialRender = false
+                        binding.root.post { openSafe() }
+                    }
+                } else {
+                    reconcileAfterFullSnapshot()
                 }
 
                 // Tags land whenever they land — only search reads them.
@@ -1064,6 +1102,48 @@ class MainActivity : AppCompatActivity() {
         indexScopeUris = if (scope.isEmpty()) allUris
         else snapshot.imageItems.filter { it.bucketId in scope }.map { it.uri }
         librarySnapshotReady = true
+    }
+
+    /**
+     * Swaps the freshly loaded full library in under the LIMIT preview. On the landing timeline,
+     * a displayed-prefix match lets pagination continue seamlessly into the rest of the library;
+     * whatever is visible gets a re-render only while the user is still at the top of the grid,
+     * so a scroll in progress is never yanked. Screens opened mid-window keep their content —
+     * backing state is already updated and their next natural render picks it up.
+     */
+    private fun reconcileAfterFullSnapshot() {
+        firstFrameWasPreview = false
+        currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
+        if (currentMode != Mode.Browse) return
+
+        val layoutManager = binding.imageGrid.layoutManager as? GridLayoutManager
+        val atTop = layoutManager?.findFirstVisibleItemPosition().let { it == null || it <= 0 }
+        if (!atTop || isFinishing) {
+            // Scrolled away from the top: keep the viewport exactly where it is and roll the
+            // People chip / refreshed pins into the strip in place instead of re-rendering.
+            refreshPinnedStripInPlace()
+            return
+        }
+
+        if (activeSection in previewableSections &&
+            pagedContext != null &&
+            SortManager.optionFor(this, "section:$activeSection") == SortOption.NewestFirst
+        ) {
+            val fullList = when (activeSection) {
+                Section.Videos -> videoItems
+                Section.Favorites -> favoriteItems
+                else -> collectionItems
+            }
+            if (pagedItems.size <= fullList.size &&
+                pagedItems.asSequence().zip(fullList.asSequence()).all { (a, b) -> a.uri == b.uri }
+            ) {
+                // The displayed slice is a true prefix of the full list: swap the backing list
+                // without touching the visible cells.
+                pagedItems = fullList
+            }
+        }
+        // Brings in what the preview couldn't show: People chip, full album grid, folder tree.
+        renderCurrentSection()
     }
 
     private val favoriteItems: List<GalleryRepository.MediaItem>
@@ -1444,26 +1524,56 @@ class MainActivity : AppCompatActivity() {
         // Pinned-albums strip is prepended to the Collections page (cheap; from in-memory state).
         val prefix = mutableListOf<GalleryCell>()
         if (expectedSection == Section.Collection && librarySnapshotReady) {
-            // Never prune pins against an empty/partial album list — that erases saved pins.
-            if (albums.isNotEmpty()) {
-                val validIds = albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet()
-                albumPinStore.cleanup(validIds)
-            }
-            ensureDefaultPins()
-            val pinnedIds = albumPinStore.getPinnedAlbumIds()
-            val smartById = smartAlbums.associate { it.id to it.toAlbum() }
-            val albumById = (albums + smartById.values).associateBy { it.id }
-            val pinnedAlbums = listOfNotNull(peopleCollection) +
-                pinnedIds.filterNot { it == PeopleAlbumId }.mapNotNull { albumById[it] }
-            if ((peopleCollection != null || IndexPreferences.isShowPinnedInCollections(this)) &&
-                pinnedAlbums.isNotEmpty()
-            ) {
-                prefix += GalleryCell.PinnedAlbumsHeader(pinnedAlbums)
-            }
+            buildPinnedAlbumStrip()?.let { prefix += it }
         }
 
         // Section lists are snapshot lists — already in the NewestFirst total order.
         renderPagedTimeline(items, emptyCell, "section:$expectedSection", prefix, dateSorted = true)
+    }
+
+    /**
+     * Builds the pinned-albums/People strip for the Collections page from in-memory state, or
+     * null when there is nothing to show. Shared by the section render and the in-place strip
+     * refresh so both produce byte-identical cells.
+     */
+    private fun buildPinnedAlbumStrip(): GalleryCell.PinnedAlbumsHeader? {
+        // Never prune pins against an empty/partial album list — that erases saved pins.
+        if (albums.isNotEmpty()) {
+            val validIds = albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet()
+            albumPinStore.cleanup(validIds)
+        }
+        ensureDefaultPins()
+        val pinnedIds = albumPinStore.getPinnedAlbumIds()
+        val smartById = smartAlbums.associate { it.id to it.toAlbum() }
+        val albumById = (albums + smartById.values).associateBy { it.id }
+        val pinnedAlbums = listOfNotNull(peopleCollection) +
+            pinnedIds.filterNot { it == PeopleAlbumId }.mapNotNull { albumById[it] }
+        if ((peopleCollection != null || IndexPreferences.isShowPinnedInCollections(this)) &&
+            pinnedAlbums.isNotEmpty()
+        ) {
+            return GalleryCell.PinnedAlbumsHeader(pinnedAlbums)
+        }
+        return null
+    }
+
+    /**
+     * Swaps just the pinned-albums strip cell for a freshly built one — used when the full
+     * library lands while the user has scrolled away from the top, where a full section render
+     * would yank the grid back to position 0. DiffUtil reduces this to a single-item change;
+     * no visible cell besides the strip rebinds.
+     */
+    private fun refreshPinnedStripInPlace() {
+        if (currentMode != Mode.Browse || activeSection != Section.Collection || !librarySnapshotReady) return
+        if (pagedContext == null) return  // the strip only exists on the paged timeline
+        val index = adapter.cells.indexOfFirst { it is GalleryCell.PinnedAlbumsHeader }
+        val strip = buildPinnedAlbumStrip()
+        when {
+            strip == null && index < 0 -> Unit
+            strip == null -> adapter.updateCells(adapter.cells.toMutableList().apply { removeAt(index) })
+            index < 0 -> adapter.updateCells(listOf(strip) + adapter.cells)
+            adapter.cells[index] == strip -> Unit  // nothing changed
+            else -> adapter.updateCells(adapter.cells.toMutableList().apply { set(index, strip) })
+        }
     }
 
     private fun renderAlbums() {
@@ -4536,6 +4646,11 @@ class MainActivity : AppCompatActivity() {
         private const val BROWSE_PAGE_SIZE = 120
         private const val BROWSE_PAGE_MAX = 320
         private const val PAGE_PREFETCH_CELLS = 12
+        // Two-stage startup: the first frame paints from a LIMIT-sized newest slice plus a
+        // bucket-filtered pinned-albums query (so the strip is complete on paint), while the
+        // full enumeration runs underneath (see initializeCore / reconcileAfterFullSnapshot).
+        private const val PREVIEW_IMAGE_LIMIT = 300
+        private const val PREVIEW_VIDEO_LIMIT = 150
         // "Alive" search-bar hint rotation.
         private const val SEARCH_HINT_INTERVAL_MS = 4200L
         private const val SEARCH_HINT_FADE_MS = 220L
