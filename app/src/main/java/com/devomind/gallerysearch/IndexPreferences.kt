@@ -354,13 +354,29 @@ object IndexPreferences {
             .apply()
     }
 
+    /** Process-wide cache of the accent selection. MainActivity reads this before super.onCreate()
+     *  — StrictMode measured a ~400 ms main-thread block on cold start when it hit disk instead,
+     *  so GallerySearchApp warms it on a background thread the moment the process starts. */
+    @Volatile
+    private var cachedAccentKey: String? = null
+
+    /** Loads the accent selection into [cachedAccentKey]; called by the startup pre-warm thread. */
+    fun warmAccentCache(context: Context) {
+        if (cachedAccentKey == null) {
+            cachedAccentKey = context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+                .getString(KeyAccentColor, null) ?: "azure"
+        }
+    }
+
     /** The selected accent color key (see [AccentPalette.Choice]); null/missing = Azure default. */
     fun getAccentColor(context: Context): String {
+        cachedAccentKey?.let { return it }
         return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .getString(KeyAccentColor, null) ?: "azure"
+            .getString(KeyAccentColor, null)?.also { cachedAccentKey = it } ?: "azure"
     }
 
     fun setAccentColor(context: Context, key: String) {
+        cachedAccentKey = key
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putString(KeyAccentColor, key)

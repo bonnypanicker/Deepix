@@ -817,18 +817,32 @@ class MainActivity : AppCompatActivity() {
                 val repo = withContext(Dispatchers.IO) { GalleryRepository(applicationContext) }
                 repository = repo
                 dbRepository = withContext(Dispatchers.IO) { DbRepository(applicationContext) }
-                allTags = withContext(Dispatchers.IO) { dbRepository?.getAllTags().orEmpty() }
-                tagUriMap = withContext(Dispatchers.IO) {
-                    allTags.associate { tag ->
+                smartAlbums = withContext(Dispatchers.IO) { smartAlbumStore.getAll() }
+
+                // The library scan, the People collection, and the search-only tag reads are
+                // independent — overlap them instead of sequencing. People must land before the
+                // first frame: the Collections page leads with the pinned-albums/People strip,
+                // and that strip needs the complete album list, so there is no partial preview.
+                val full = async(Dispatchers.IO) { loadLibrarySnapshot(repo) }
+                val deferredPeople = async(Dispatchers.IO) { loadPeopleCollection() }
+                val deferredTags = async(Dispatchers.IO) {
+                    // Search-only N+1 read; nothing on the first-frame path consumes it.
+                    val tags = dbRepository?.getAllTags().orEmpty()
+                    tags to tags.associate { tag ->
                         tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
                     }
                 }
-                val snapshot = withContext(Dispatchers.IO) {
-                    loadLibrarySnapshot(repo)
+
+                val snapshot = full.await()
+                // Cover-override housekeeping is a prefs pass with a possible disk write — kept
+                // off the critical path, run here with the real album list to validate against.
+                withContext(Dispatchers.IO) {
+                    repo.cleanupAlbumCovers(snapshot.albums.map { it.id }.toSet())
                 }
                 applyLibrarySnapshot(snapshot)
-                peopleCollection = withContext(Dispatchers.IO) { loadPeopleCollection() }
-                smartAlbums = withContext(Dispatchers.IO) { smartAlbumStore.getAll() }
+                peopleCollectionRefreshGeneration++
+                peopleCollection = deferredPeople.await()
+
                 currentAlbum = null
                 lastProgressRefresh = -1
                 binding.progressBar.visibility = View.GONE
@@ -839,6 +853,11 @@ class MainActivity : AppCompatActivity() {
                     openSafeAfterInitialRender = false
                     binding.root.post { openSafe() }
                 }
+
+                // Tags land whenever they land — only search reads them.
+                val (tags, tagUris) = deferredTags.await()
+                allTags = tags
+                tagUriMap = tagUris
                 primeMetadataIndexAsync()
             } catch (error: Throwable) {
                 binding.progressBar.visibility = View.GONE
@@ -1029,15 +1048,10 @@ class MainActivity : AppCompatActivity() {
 
     /** The gallery view always shows every photo — folder selection only affects AI indexing. */
     private suspend fun loadLibrarySnapshot(repo: GalleryRepository): LibrarySnapshot {
-        val fullSnapshot = repo.loadSnapshot(emptySet())
-        val collectionItems = (fullSnapshot.imageItems + fullSnapshot.videoItems)
-            .sortedByDescending { it.dateMillis }
-        return LibrarySnapshot(
-            albums = fullSnapshot.albums,
-            imageItems = fullSnapshot.imageItems,
-            collectionItems = collectionItems,
-            videoItems = fullSnapshot.videoItems
-        )
+        // The repository hands every list back pre-sorted in the NewestFirst total order —
+        // re-sorting here was a redundant O(n log n) pass on every startup and refresh.
+        val full = repo.loadSnapshot(emptySet())
+        return LibrarySnapshot(full.albums, full.imageItems, full.collectionItems, full.videoItems)
     }
 
     private fun applyLibrarySnapshot(snapshot: LibrarySnapshot) {
@@ -1430,8 +1444,11 @@ class MainActivity : AppCompatActivity() {
         // Pinned-albums strip is prepended to the Collections page (cheap; from in-memory state).
         val prefix = mutableListOf<GalleryCell>()
         if (expectedSection == Section.Collection && librarySnapshotReady) {
-            val validIds = albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet()
-            albumPinStore.cleanup(validIds)
+            // Never prune pins against an empty/partial album list — that erases saved pins.
+            if (albums.isNotEmpty()) {
+                val validIds = albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet()
+                albumPinStore.cleanup(validIds)
+            }
             ensureDefaultPins()
             val pinnedIds = albumPinStore.getPinnedAlbumIds()
             val smartById = smartAlbums.associate { it.id to it.toAlbum() }
@@ -1445,7 +1462,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        renderPagedTimeline(items, emptyCell, "section:$expectedSection", prefix)
+        // Section lists are snapshot lists — already in the NewestFirst total order.
+        renderPagedTimeline(items, emptyCell, "section:$expectedSection", prefix, dateSorted = true)
     }
 
     private fun renderAlbums() {
@@ -1454,8 +1472,11 @@ class MainActivity : AppCompatActivity() {
         binding.searchPanel.visibility = View.GONE
         binding.resultCount.text = ""
 
-        val validIds = albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet()
-        albumPinStore.cleanup(validIds)
+        // Never prune pins against an empty/partial album list — that erases saved pins.
+        if (albums.isNotEmpty()) {
+            val validIds = albums.map { it.id }.toSet() + smartAlbums.map { it.id }.toSet()
+            albumPinStore.cleanup(validIds)
+        }
         ensureDefaultPins()
         val pinnedIds = albumPinStore.getPinnedAlbumIds()
 
@@ -2132,7 +2153,8 @@ class MainActivity : AppCompatActivity() {
         items: List<GalleryRepository.MediaItem>,
         emptyCell: GalleryCell.Empty,
         scopeKey: String,
-        prefixCells: List<GalleryCell> = emptyList()
+        prefixCells: List<GalleryCell> = emptyList(),
+        dateSorted: Boolean = false
     ) {
         renderJob?.cancel()
         val sortOption = SortManager.optionFor(this, scopeKey)
@@ -2157,7 +2179,13 @@ class MainActivity : AppCompatActivity() {
         val useCollage = adapter.useCollageLayout
         renderJob = lifecycleScope.launch {
             val page = withContext(Dispatchers.Default) {
-                val sorted = MediaSorter.sort(items, sortOption)
+                // Snapshot lists arrive pre-sorted in the NewestFirst total order; sorting again
+                // is a redundant O(n log n) pass on every section render.
+                val sorted = if (dateSorted && sortOption == SortOption.NewestFirst) {
+                    items
+                } else {
+                    MediaSorter.sort(items, sortOption)
+                }
                 val to = pageEndWithin(sorted, 0, sortOption.dateOrdered)
                 val (cells, lastDay) = buildTimelinePage(sorted, 0, to, null, useCollage, sortOption.dateOrdered)
                 FirstPage(sorted, cells, lastDay, to)

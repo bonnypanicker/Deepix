@@ -33,12 +33,16 @@ class GallerySearchApp : Application() {
         }
         // Warm every SharedPreferences file on a background thread while the first Activity
         // inflates. The first touch of each file costs ~40–330 ms of disk I/O, and MainActivity's
-        // onCreate reads five of them on the main thread; pre-touching here moves that cost off the
-        // critical path (each getSharedPreferences loads its XML on a loader thread).
-        thread(isDaemon = true) {
+        // onCreate reads several of them on the main thread. Reading `.all` matters: a bare
+        // getSharedPreferences() only STARTS the async XML load and returns, so the activity can
+        // still block in awaitLoadedLocked() mid-load (StrictMode measured ~500 ms across two
+        // files exactly that way). `.all` blocks THIS thread until each load completes; accent
+        // goes first since AccentPalette.apply() runs before super.onCreate().
+        thread(isDaemon = true, priority = Thread.MAX_PRIORITY) {
             val app = applicationContext
+            runCatching { IndexPreferences.warmAccentCache(app) }
             for (name in StartupSharedPreferences) {
-                runCatching { app.getSharedPreferences(name, Context.MODE_PRIVATE) }
+                runCatching { app.getSharedPreferences(name, Context.MODE_PRIVATE).all }
             }
         }
         // Enforce the Recycle Bin's 30-day retention off the main thread on each cold start.

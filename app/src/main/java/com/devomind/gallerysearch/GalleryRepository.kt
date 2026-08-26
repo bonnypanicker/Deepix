@@ -1,15 +1,18 @@
 package com.devomind.gallerysearch
 
 import android.app.ActivityManager
+import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Bundle
 import android.os.Parcelable
 import android.provider.MediaStore
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -127,16 +130,55 @@ class GalleryRepository(
             .sortedByDescending { it.dateMillis }
     }
 
-    fun loadSnapshot(albumIds: Set<String>): Snapshot {
-        val images = queryImageItems(albumIds)
-        val videos = queryVideoItems(albumIds)
-        val allItems = (images + videos).sortedByDescending { it.dateMillis }
-        return Snapshot(
+    /** Total date order matching [MediaSorter] NewestFirst (dateMillis desc, URI tiebreak).
+     *  Snapshot lists are pre-sorted with it so the render path can skip its own sort pass. */
+    private val newestFirstOrder = compareByDescending<MediaItem> { it.dateMillis }
+        .thenBy { it.uri.toString() }
+
+    /** Images and videos are independent MediaStore cursors — overlap them instead of
+     *  paying the two full-library queries back to back on the startup path. */
+    suspend fun loadSnapshot(albumIds: Set<String>): Snapshot = coroutineScope {
+        val images = async { queryImageItems(albumIds) }
+        val videos = async { queryVideoItems(albumIds) }
+        val imageItems = images.await().sortedWith(newestFirstOrder)
+        val videoItems = videos.await().sortedWith(newestFirstOrder)
+        val allItems = (imageItems + videoItems).sortedWith(newestFirstOrder)
+        Snapshot(
             albums = buildAlbumsFrom(allItems),
-            imageItems = images,
+            imageItems = imageItems,
             collectionItems = allItems,
-            videoItems = videos
+            videoItems = videoItems
         )
+    }
+
+    /**
+     * Newest slice of the library, same shape as [loadSnapshot] but the MediaStore cursors
+     * carry a LIMIT — a large library previews in tens of milliseconds instead of the full
+     * enumeration. Albums are deliberately empty: counts and covers need the full pass, so
+     * the caller renders the timeline from this and reconciles with [loadSnapshot] after.
+     */
+    suspend fun loadRecentSnapshot(
+        albumIds: Set<String>,
+        imageLimit: Int,
+        videoLimit: Int
+    ): Snapshot = coroutineScope {
+        val images = async { queryImageItems(albumIds, limit = imageLimit) }
+        val videos = async { queryVideoItems(albumIds, limit = videoLimit) }
+        val imageItems = images.await().sortedWith(newestFirstOrder)
+        val videoItems = videos.await().sortedWith(newestFirstOrder)
+        val allItems = (imageItems + videoItems).sortedWith(newestFirstOrder)
+        Snapshot(
+            albums = emptyList(),
+            imageItems = imageItems,
+            collectionItems = allItems,
+            videoItems = videoItems
+        )
+    }
+
+    /** Cover-override housekeeping for albums that no longer exist. A prefs JSON pass with a
+     *  possible disk write — kept off the startup critical path, run after first render. */
+    fun cleanupAlbumCovers(validAlbumIds: Set<String>) {
+        albumCoverStore.cleanup(validAlbumIds)
     }
 
     fun getImageItemsForAlbumIds(albumIds: Set<String>): List<MediaItem> {
@@ -167,7 +209,8 @@ class GalleryRepository(
 
     private fun queryImageItems(
         albumIds: Set<String>,
-        imageIds: List<Long>? = null
+        imageIds: List<Long>? = null,
+        limit: Int? = null
     ): List<MediaItem> {
         val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
@@ -199,7 +242,18 @@ class GalleryRepository(
             postfix = ")"
         ) { "?" }
         val selectionArgs = imageIds?.map(Long::toString)?.toTypedArray()
-        context.contentResolver.query(collection, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
+        val mediaCursor = if (limit != null) {
+            // LIMIT via the query bundle so a preview pass reads only the newest slice instead
+            // of enumerating the whole library before the first frame can paint.
+            val bundle = Bundle().apply {
+                putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, sortOrder)
+                putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
+            }
+            context.contentResolver.query(collection, projection, bundle, null)
+        } else {
+            context.contentResolver.query(collection, projection, selection, selectionArgs, sortOrder)
+        }
+        mediaCursor?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
             val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
@@ -247,7 +301,7 @@ class GalleryRepository(
         return items
     }
 
-    private fun queryVideoItems(albumIds: Set<String>): List<MediaItem> {
+    private fun queryVideoItems(albumIds: Set<String>, limit: Int? = null): List<MediaItem> {
         val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
         } else {
@@ -273,7 +327,16 @@ class GalleryRepository(
         val sortOrder = "${MediaStore.Video.Media.DATE_ADDED} DESC"
         val items = ArrayList<MediaItem>()
 
-        context.contentResolver.query(collection, projection, null, null, sortOrder)?.use { cursor ->
+        val mediaCursor = if (limit != null) {
+            val bundle = Bundle().apply {
+                putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, sortOrder)
+                putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
+            }
+            context.contentResolver.query(collection, projection, bundle, null)
+        } else {
+            context.contentResolver.query(collection, projection, null, null, sortOrder)
+        }
+        mediaCursor?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
             val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_ID)
             val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
@@ -825,7 +888,8 @@ class GalleryRepository(
                 )
             }
         }
-        albumCoverStore.cleanup(buckets.keys)
+        // Cover-override housekeeping is NOT done here — it's a prefs pass with a possible disk
+        // write, deferred to [cleanupAlbumCovers] off the startup critical path.
         val itemByUri = items.associateBy { it.uri.toString() }
         val albumsWithOverrides = buckets.values.map { album ->
             val overrideUri = albumCoverStore.getCoverUri(album.id)
