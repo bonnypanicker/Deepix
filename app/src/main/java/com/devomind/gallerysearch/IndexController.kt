@@ -5,11 +5,12 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkManager
 
 /**
- * Single source of truth for the three indexing lifecycle actions, shared by the notification
+ * Single source of truth for the indexing lifecycle actions, shared by the notification
  * actions ([IndexControlReceiver]), the Settings screen, and the side drawer:
  *
- * - [pause]  — halt now, keep a persistent "paused" notification so the user can resume from the panel.
- * - [resume] — continue where indexing left off (already-embedded photos are skipped).
+ * - [pause]  — halt now and clear every indexing notification from the panel (paused is quiet).
+ * - [resume] — continue where indexing left off; the running pill reappears once work restarts
+ *   (already-embedded photos are skipped).
  * - [stop]   — halt now and remove every indexing notification from the panel.
  * - [start]  — begin/refresh indexing (grants consent).
  *
@@ -22,7 +23,6 @@ object IndexController {
         IndexPreferences.setIndexPaused(context, true)
         WorkManager.getInstance(context).cancelUniqueWork(IndexWorker.WorkName)
         IndexWorker.cancelStatusNotification(context)
-        IndexWorker.showPausedNotification(context)
     }
 
     fun resume(context: Context) {

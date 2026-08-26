@@ -94,57 +94,33 @@
                         android:fontFamily="sans-serif-medium"
                         android:visibility="gone" />
 
-                    <ProgressBar
-                        android:id="@+id/indexProgress"
-                        style="?android:attr/progressBarStyleHorizontal"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
-                        android:max="100"
-                        android:progressBackgroundTint="#333333"
-                        android:progressTint="?attr/accentColor" />
-
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
+                        android:layout_marginTop="14dp"
+                        android:gravity="center_vertical"
                         android:orientation="horizontal">
 
-                        <TextView
-                            android:id="@+id/btnIndexPrimary"
-                            android:layout_width="wrap_content"
+                        <ProgressBar
+                            android:id="@+id/indexProgress"
+                            style="?android:attr/progressBarStyleHorizontal"
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:background="@drawable/crop_search_pill"
-                            android:clickable="true"
-                            android:focusable="true"
-                            android:minWidth="112dp"
-                            android:paddingStart="24dp"
-                            android:paddingTop="11dp"
-                            android:paddingEnd="24dp"
-                            android:paddingBottom="11dp"
-                            android:text="@string/pause"
-                            android:textAlignment="center"
-                            android:textColor="@color/metroTextPrimary"
-                            android:textSize="14sp"
-                            android:fontFamily="sans-serif-medium" />
+                            android:layout_weight="1"
+                            android:max="100"
+                            android:progressBackgroundTint="#333333"
+                            android:progressTint="?attr/accentColor" />
 
-                        <TextView
-                            android:id="@+id/btnIndexStop"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
+                        <ImageButton
+                            android:id="@+id/btnIndexToggle"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
                             android:layout_marginStart="12dp"
-                            android:background="@drawable/pill_bg"
-                            android:clickable="true"
-                            android:focusable="true"
-                            android:minWidth="96dp"
-                            android:paddingStart="24dp"
-                            android:paddingTop="11dp"
-                            android:paddingEnd="24dp"
-                            android:paddingBottom="11dp"
-                            android:text="@string/stop"
-                            android:textAlignment="center"
-                            android:textColor="@color/metroTextPrimary"
-                            android:textSize="14sp" />
+                            android:background="@drawable/metro_row_pressed"
+                            android:contentDescription="@string/pause"
+                            android:padding="12dp"
+                            android:src="@drawable/ic_fluent_pause_24_regular"
+                            android:tint="@color/metroTextPrimary" />
                     </LinearLayout>
                 </LinearLayout>
 

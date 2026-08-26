@@ -20,8 +20,8 @@ import kotlinx.coroutines.withContext
 /**
  * Dedicated, self-contained home for everything indexing-related:
  *
- *  - **Status** — live WorkManager progress (percent + "N of M photos"), with Pause/Resume/Start/
- *    Re-index + Stop controls.
+ *  - **Status** — live WorkManager progress (percent + "N of M photos"), with a single
+ *    pause/play toggle beside the progress bar (play also means start / resume / re-index).
  *  - **Power** — "index only while charging" and its sub-option "night charging only" (10 PM–7 AM).
  *  - **Folders** — which device folders the AI index covers (checkboxes + a select-all master toggle).
  *    Independent of the gallery view; every photo still shows. Empty selection means "all folders".
@@ -76,18 +76,16 @@ class IndexingActivity : AppCompatActivity() {
     // ------------------------------------------------------------------
 
     private fun bindStatus() {
-        binding.btnIndexPrimary.setOnClickListener {
+        // Single pause/play control next to the progress bar. Running (or queued) pauses;
+        // every other state — paused, stopped, never started, or fully indexed — plays,
+        // which covers resume, start, and re-index in one affordance.
+        binding.btnIndexToggle.setOnClickListener {
             when {
                 isRunningState(latestIndexState) -> IndexController.pause(this)
-                IndexPreferences.isIndexPaused(this) -> IndexController.resume(this)
                 else -> IndexController.start(this)
             }
             // Optimistic refresh; the observer will correct it as WorkManager transitions.
             renderIndexing(latestIndexState, livePercent = null, current = -1, total = -1)
-        }
-        binding.btnIndexStop.setOnClickListener {
-            IndexController.stop(this)
-            renderIndexing(WorkInfo.State.CANCELLED, livePercent = null, current = -1, total = -1)
         }
 
         WorkManager.getInstance(this)
@@ -154,8 +152,7 @@ class IndexingActivity : AppCompatActivity() {
                 binding.indexProgress.progress = percent
                 binding.indexStatus.text = "Indexing your photos… $percent%"
                 binding.indexSubStatus.text = "On-device AI · nothing leaves your phone"
-                setPrimary("Pause")
-                setStopVisible(true)
+                setToggle(R.drawable.ic_fluent_pause_24_regular, getString(R.string.pause))
             }
             state == WorkInfo.State.ENQUEUED || state == WorkInfo.State.BLOCKED -> {
                 binding.indexProgress.isIndeterminate = true
@@ -165,47 +162,39 @@ class IndexingActivity : AppCompatActivity() {
                     else -> "Queued…"
                 }
                 binding.indexSubStatus.text = "On-device AI · nothing leaves your phone"
-                setPrimary("Pause")
-                setStopVisible(true)
+                setToggle(R.drawable.ic_fluent_pause_24_regular, getString(R.string.pause))
             }
             paused -> {
                 binding.indexProgress.isIndeterminate = false
                 binding.indexStatus.text = "Indexing paused · $percent%"
                 binding.indexSubStatus.text = "Resume to finish building your AI search index"
-                setPrimary("Resume")
-                setStopVisible(true)
+                setToggle(R.drawable.ic_fluent_play_24_regular, "Resume")
             }
             stopped && percent < 100 -> {
                 binding.indexProgress.isIndeterminate = false
                 binding.indexStatus.text = "Indexing stopped · $percent%"
                 binding.indexSubStatus.text = "Start again to finish building your AI search index"
-                setPrimary("Start")
-                setStopVisible(false)
+                setToggle(R.drawable.ic_fluent_play_24_regular, "Start")
             }
             percent >= 100 || state == WorkInfo.State.SUCCEEDED -> {
                 binding.indexProgress.isIndeterminate = false
                 binding.indexProgress.progress = 100
                 binding.indexStatus.text = "Your photos are indexed"
                 binding.indexSubStatus.text = "New photos are indexed automatically"
-                setPrimary("Re-index")
-                setStopVisible(false)
+                setToggle(R.drawable.ic_fluent_replay_24_regular, "Re-index")
             }
             else -> {
                 binding.indexProgress.isIndeterminate = false
                 binding.indexStatus.text = "Indexing not started"
                 binding.indexSubStatus.text = "Build a private, on-device index to search by description"
-                setPrimary("Start")
-                setStopVisible(false)
+                setToggle(R.drawable.ic_fluent_play_24_regular, "Start")
             }
         }
     }
 
-    private fun setPrimary(label: String) {
-        binding.btnIndexPrimary.text = label
-    }
-
-    private fun setStopVisible(visible: Boolean) {
-        binding.btnIndexStop.visibility = if (visible) View.VISIBLE else View.GONE
+    private fun setToggle(iconRes: Int, description: String) {
+        binding.btnIndexToggle.setImageResource(iconRes)
+        binding.btnIndexToggle.contentDescription = description
     }
 
     // ------------------------------------------------------------------

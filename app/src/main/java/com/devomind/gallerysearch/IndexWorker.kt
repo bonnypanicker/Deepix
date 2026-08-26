@@ -45,8 +45,8 @@ class IndexWorker(
     }
 
     override suspend fun doWork(): Result {
+        // Paused means quiet: no worker run and nothing in the notification panel.
         if (IndexPreferences.isIndexPaused(applicationContext)) {
-            showPausedNotification(applicationContext)
             return Result.success()
         }
 
@@ -169,13 +169,10 @@ class IndexWorker(
             showWaitingForChargeNotification(applicationContext)
             Result.retry()
         } catch (paused: IndexPausedException) {
-            Log.i(Tag, "Index worker paused by notification action.")
-            showPausedNotification(applicationContext)
+            // Pause clears the panel; resume republishes the running pill when work restarts.
+            Log.i(Tag, "Index worker paused.")
             Result.success()
         } catch (cancelled: CancellationException) {
-            if (IndexPreferences.isIndexPaused(applicationContext)) {
-                showPausedNotification(applicationContext)
-            }
             throw cancelled
         } catch (oom: OutOfMemoryError) {
             Log.w(Tag, "Index worker OOM on attempt $runAttemptCount; reducing batch size.", oom)
@@ -272,10 +269,11 @@ class IndexWorker(
         }
 
         /**
-         * Minimal locked pill shown while indexing is in flight (running, paused, or waiting for
-         * the charger). No progress details or action buttons — the in-app banner and the Indexing
-         * page carry those instead. The notification is ongoing (can't be swiped away) and tapping
-         * it opens the Indexing page.
+         * Minimal locked pill shown while indexing is in flight (running or waiting for the
+         * charger). Paused posts nothing — pause clears the panel, resume brings the pill back
+         * when work restarts. No progress details or action buttons — the in-app banner and the
+         * Indexing page carry those instead. The notification is ongoing (can't be swiped away)
+         * and tapping it opens the Indexing page.
          */
         private fun buildStatusNotification(context: Context): Notification {
             val openIntent = Intent(context, IndexingActivity::class.java)
@@ -295,18 +293,13 @@ class IndexWorker(
                 .build()
         }
 
-        fun showPausedNotification(context: Context) {
-            ensureChannel(context)
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.notify(PausedNotificationId, buildStatusNotification(context))
-        }
-
         fun showWaitingForChargeNotification(context: Context) {
             ensureChannel(context)
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.notify(NotificationId, buildStatusNotification(context))
         }
 
+        /** Clears every indexing pill, including the paused id posted by older app versions. */
         fun cancelStatusNotification(context: Context) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.cancel(NotificationId)

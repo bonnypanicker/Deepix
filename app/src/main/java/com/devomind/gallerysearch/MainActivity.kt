@@ -1030,8 +1030,8 @@ class MainActivity : AppCompatActivity() {
                 "find them just by describing them — try \"beach\", \"my dog\" or \"receipts\".\n\n" +
                 "This full scan runs once. After that, only newly added photos are indexed automatically.\n\n" +
                 "It works entirely offline — nothing ever leaves your phone. Indexing runs in the background " +
-                "and uses extra battery while it works; you can pause or stop it anytime from the side menu, " +
-                "Settings, or the notification."
+                "and uses extra battery while it works; you can pause or resume it anytime from the side menu " +
+                "or Settings."
         MetroDialog.message(
             this,
             title = "Local AI photo search",
@@ -1050,8 +1050,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun pauseIndexing() {
-        IndexPreferences.setIndexPaused(this, true)
-        WorkManager.getInstance(this).cancelUniqueWork(INDEX_WORK_NAME)
+        // Shared lifecycle action: flips prefs, cancels work, and clears the notification panel.
+        IndexController.pause(this)
         indexRunning = false
         indexQueued = false
         binding.searchSparkle.setIndexing(false)
