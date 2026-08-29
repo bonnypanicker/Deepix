@@ -86,6 +86,11 @@ class FaceIndexWorker(
                 return Result.success()
             }
 
+            // Do not depend on application-start housekeeping for model compatibility. A worker
+            // may start before an Activity is visible (or after process recreation), so establish
+            // the embedding-space contract at the point that actually consumes embeddings.
+            FaceEmbeddingModelMigration.ensureCurrent(applicationContext)
+
             val repository = GalleryRepository(applicationContext)
             val scope = IndexScopeStore.getFolderIds(applicationContext)
             val images = repository.getImageItemsForAlbumIds(scope)

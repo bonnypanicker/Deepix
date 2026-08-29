@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.os.StrictMode
 import android.util.Log
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 class GallerySearchApp : Application() {
@@ -15,6 +16,8 @@ class GallerySearchApp : Application() {
     val faceVectorIndex: FaceVectorIndex by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         FaceVectorIndex(applicationContext)
     }
+
+    private val faceMaintenanceScheduled = AtomicBoolean(false)
 
     override fun onCreate() {
         super.onCreate()
@@ -47,9 +50,17 @@ class GallerySearchApp : Application() {
         }
         // Enforce the Recycle Bin's 30-day retention off the main thread on each cold start.
         thread(isDaemon = true) { runCatching { BinManager.purgeExpired(applicationContext) } }
-        // Phase 2: repair any Face↔vector-index divergence (e.g. a crash between Room commit and
-        // the last vector-index flush) before PersonMatcher reads the index. Cheap at phone scale.
-        thread(isDaemon = true) {
+    }
+
+    /**
+     * Starts low-priority people-index housekeeping after the gallery is visible. This used to
+     * run beside the initial MediaStore queries, competing for database, model-asset and CPU I/O
+     * on every cold start. [FaceIndexWorker] independently verifies the model before it indexes,
+     * so delaying this opportunistic pass cannot allow stale embeddings into a worker run.
+     */
+    fun scheduleFaceMaintenanceAfterStartup() {
+        if (!faceMaintenanceScheduled.compareAndSet(false, true)) return
+        thread(isDaemon = true, priority = Thread.MIN_PRIORITY) {
             val readyForMaintenance = runCatching {
                 kotlinx.coroutines.runBlocking {
                     FaceEmbeddingModelMigration.ensureCurrent(applicationContext)
@@ -58,9 +69,6 @@ class GallerySearchApp : Application() {
             }.onFailure { Log.w("GallerySearchApp", "Face index consistency check failed", it) }.isSuccess
             if (readyForMaintenance) FaceMaintenanceWorker.schedule(applicationContext)
         }
-        // Phase 3: register the nightly face maintenance (split/merge detection + vector-index
-        // corruption recovery). Battery-gated, no-network; runs behind WorkManager, NOT during
-        // per-photo indexing so the two don't contend.
     }
 
     /**

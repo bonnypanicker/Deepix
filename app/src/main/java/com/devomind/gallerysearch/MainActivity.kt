@@ -48,6 +48,7 @@ import com.devomind.gallerysearch.db.PersonEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 
 import kotlinx.coroutines.delay
@@ -828,23 +829,39 @@ class MainActivity : AppCompatActivity() {
                 // Two-stage startup: the landing timeline paints from a LIMIT-sized newest slice,
                 // with the pinned-albums row resolved by a small bucket-filtered query so the
                 // strip is complete on the very first frame. The full enumeration, People, and
-                // the search-only tag reads overlap underneath and roll in right after
-                // (see reconcileAfterFullSnapshot). Non-timeline landings need the complete
-                // snapshot for their counts and trees, so they go full-first.
+                // search-only tag reads are intentionally held until that frame has had time to
+                // draw. Starting every MediaStore/Room task at once made cold starts contend with
+                // their own preview query on larger libraries. Non-timeline landings need the
+                // complete snapshot for their counts and trees, so they still start full-first.
                 val timelineLanding = currentMode == Mode.Browse && !openSafeAfterInitialRender &&
                     activeSection in previewableSections
 
-                val full = async(Dispatchers.IO) { loadLibrarySnapshot(repo) }
-                val deferredTags = async(Dispatchers.IO) {
+                val full = async(Dispatchers.IO, start = CoroutineStart.LAZY) {
+                    loadLibrarySnapshot(repo)
+                }
+                val deferredTags = async(Dispatchers.IO, start = CoroutineStart.LAZY) {
                     // Search-only N+1 read; nothing on the first-frame path consumes it.
                     val tags = dbRepository?.getAllTags().orEmpty()
                     tags to tags.associate { tag ->
                         tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
                     }
                 }
-                val deferredPeople = async(Dispatchers.IO) { loadPeopleCollection() }
+                val deferredPeople = async(Dispatchers.IO, start = CoroutineStart.LAZY) {
+                    loadPeopleCollection()
+                }
+                val migrateFavorites = launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+                    runCatching { favoritesStore.migrateLegacyIfNeeded() }
+                        .onFailure { Log.w("MainActivity", "Favorite migration failed", it) }
+                }
 
                 if (timelineLanding) {
+                    // Legacy favourites live in SharedPreferences on upgrades. A user who opens
+                    // directly into Favorites should never see an empty transient page while the
+                    // one-time Room migration is still queued; other landings stay fully async.
+                    if (activeSection == Section.Favorites) {
+                        migrateFavorites.start()
+                        migrateFavorites.join()
+                    }
                     val pinnedIds = withContext(Dispatchers.IO) {
                         if (activeSection == Section.Collection) albumPinStore.getPinnedAlbumIds().toSet()
                         else emptySet()
@@ -865,7 +882,16 @@ class MainActivity : AppCompatActivity() {
                         indexedSummary(repo.indexedCount)
                     renderCurrentState()
                     firstFrameWasPreview = true
+
+                    // Yield the main dispatcher so RecyclerView can commit and draw the preview
+                    // before the heavy MediaStore and Room work takes over background resources.
+                    delay(FIRST_FRAME_HEAD_START_DELAY_MS)
                 }
+
+                full.start()
+                deferredTags.start()
+                deferredPeople.start()
+                migrateFavorites.start()
 
                 // Stage 2: the full library, People, and tags roll in underneath what's on screen.
                 val snapshot = full.await()
@@ -911,6 +937,12 @@ class MainActivity : AppCompatActivity() {
                 maybePromptIndexingConsent()
                 maybeShowGridGestureHint()
             }
+            // Model compatibility and vector-index repair are maintenance, not prerequisites for
+            // showing the gallery. Let the initial UI settle before using their disk and CPU.
+            binding.root.postDelayed(
+                { (application as GallerySearchApp).scheduleFaceMaintenanceAfterStartup() },
+                FACE_MAINTENANCE_START_DELAY_MS
+            )
         }
     }
 
@@ -4635,6 +4667,9 @@ class MainActivity : AppCompatActivity() {
         private const val MinPeopleFaces = 5
         // Safety cap: never hold the launch splash longer than this even if content stalls.
         private const val SPLASH_MAX_HOLD_MS = 2500L
+        // Gives RecyclerView one uncontentious frame before the complete MediaStore scan begins.
+        private const val FIRST_FRAME_HEAD_START_DELAY_MS = 180L
+        private const val FACE_MAINTENANCE_START_DELAY_MS = 2_500L
         private const val ENCODER_WARMUP_DELAY_MS = 1200L
         // Show the fast-scroll bar once content exceeds ~1.5 viewports.
         private const val FAST_SCROLL_MIN_RATIO = 1.5f

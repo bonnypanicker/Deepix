@@ -9,12 +9,6 @@ class FavoritesStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PrefsName, Context.MODE_PRIVATE)
     private val dbRepository = DbRepository(context.applicationContext)
 
-    init {
-        runBlocking(Dispatchers.IO) {
-            migrateLegacyIfNeeded()
-        }
-    }
-
     fun all(): Set<String> {
         return runBlocking(Dispatchers.IO) {
             dbRepository.getFavorites()
@@ -33,7 +27,12 @@ class FavoritesStore(context: Context) {
         }
     }
 
-    private suspend fun migrateLegacyIfNeeded() {
+    /**
+     * Imports the legacy SharedPreferences set once. This is deliberately suspendable rather than
+     * running from the constructor: creating a store is part of Activity startup, while legacy
+     * migration can safely happen after the first gallery frame has been drawn.
+     */
+    suspend fun migrateLegacyIfNeeded() {
         val legacy = prefs.getStringSet(FavoritesKey, emptySet()).orEmpty()
         if (legacy.isEmpty()) return
 
