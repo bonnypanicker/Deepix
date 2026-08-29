@@ -71,10 +71,12 @@ object DesignTokens {
     /** Resolves a collage scale level (1..5) to its images-per-row baseline. */
     fun collageRowsPerWidth(scaleLevel: Int): Float =
         COLLAGE_SCALE_ROWS[scaleLevel.coerceIn(COLLAGE_SCALE_MIN, COLLAGE_SCALE_MAX) - 1]
-    // Aves-style aspect clamping: prevent extreme tall/wide panoramas from dominating a row while
-    // still preserving each photo's true shape (no square-crop distortion).
-    const val COLLAGE_MIN_ASPECT = 9f / 32f
-    const val COLLAGE_MAX_ASPECT = 32f / 9f
+    // Aspect bounds for mosaic tiles. Wide enough to cover real panoramas/tall shots without
+    // letterboxing: FIT_CENTER shows the whole image, so any tile aspect tighter than the photo's
+    // true aspect creates empty bands top/bottom (wide) or left/right (tall). The row-break logic
+    // already isolates extreme aspects so they can't squeeze their row-mates into slivers.
+    const val COLLAGE_MIN_ASPECT = 1f / 16f
+    const val COLLAGE_MAX_ASPECT = 16f
     // A sparse final row whose natural height would exceed this multiple of the target is capped
     // instead of ballooning (Aves heightMaxFactor).
     const val COLLAGE_MAX_INCOMPLETE_ROW_HEIGHT_RATIO = 2.4f
