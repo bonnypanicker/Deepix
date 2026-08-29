@@ -50,9 +50,10 @@ object DesignTokens {
     const val GRID_THUMBNAIL_SPACING_DP = 2
 
     // Collage (justified rows) layout
-    // Grid resolution for row widths. Higher = finer per-photo widths, so a row's photos fill the
-    // width more precisely with less quantization gap / aspect distortion.
-    const val COLLAGE_SPAN_COUNT = 60
+    // Grid resolution for row widths. Set to ~1px granularity on typical phones so each tile's
+    // rendered width matches its aspect ratio within a pixel — this is what lets the mosaic show
+    // every photo uncropped with no letterbox "container".
+    const val COLLAGE_SPAN_COUNT = 1080
     // Baseline images-per-row; smaller => taller rows / bigger thumbnails. This is the default
     // (COLLAGE_SCALE_DEFAULT) baseline — the actual value is resolved per user scale via
     // [collageRowsPerWidth]. Anchored at level 3; default scale is 4 (~3 thumbnails per row).
@@ -70,15 +71,16 @@ object DesignTokens {
     /** Resolves a collage scale level (1..5) to its images-per-row baseline. */
     fun collageRowsPerWidth(scaleLevel: Int): Float =
         COLLAGE_SCALE_ROWS[scaleLevel.coerceIn(COLLAGE_SCALE_MIN, COLLAGE_SCALE_MAX) - 1]
-    const val COLLAGE_MIN_ASPECT = 0.55f
-    const val COLLAGE_MAX_ASPECT = 2.4f
-    // A trailing partial row is stretched to fill (instead of left-aligned at target height) once
-    // it is at least this fraction full — reduces empty space without over-enlarging sparse rows.
-    const val COLLAGE_LAST_ROW_FILL_THRESHOLD = 0.7f
-    // Clamp a stretched row's height to this multiple of the target so a single wide panorama (or a
-    // barely-full last row) never collapses too short or balloons too tall.
-    const val COLLAGE_MIN_ROW_HEIGHT_RATIO = 0.6f
-    const val COLLAGE_MAX_ROW_HEIGHT_RATIO = 1.7f
+    // Aves-style aspect clamping: prevent extreme tall/wide panoramas from dominating a row while
+    // still preserving each photo's true shape (no square-crop distortion).
+    const val COLLAGE_MIN_ASPECT = 9f / 32f
+    const val COLLAGE_MAX_ASPECT = 32f / 9f
+    // A sparse final row whose natural height would exceed this multiple of the target is capped
+    // instead of ballooning (Aves heightMaxFactor).
+    const val COLLAGE_MAX_INCOMPLETE_ROW_HEIGHT_RATIO = 2.4f
+    // Uniform gap around each mosaic tile (dp). The row math subtracts this from the available
+    // width and folds it back into each span, so tiles stay aspect-exact with visible spacing.
+    const val COLLAGE_TILE_PADDING_DP = 2
 
     const val MENU_FADE_DURATION_MS: Long = 160L
     const val MENU_NEAR_FADE_DURATION_MS: Long = 120L

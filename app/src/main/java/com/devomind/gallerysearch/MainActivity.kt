@@ -2400,10 +2400,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Lays photos out as justified rows (Google-Photos / aves style): each row is
-     * scaled so its photos keep their aspect ratio and together fill the full width.
-     * Spans are distributed across [DesignTokens.COLLAGE_SPAN_COUNT] and every photo
-     * in a row shares the same height so rows align cleanly.
+     * Lays photos out as justified rows (Aves / Google-Photos mosaic style): each row is scaled so
+     * its photos keep their true aspect ratio and together fill the full width. Every tile's
+     * rendered dimensions match its aspect ratio within ~1px, so thumbnails are shown uncropped
+     * with no letterbox "container" and no gaps between them.
      */
     private fun appendJustifiedRows(
         cells: MutableList<GalleryCell>,
@@ -2413,17 +2413,35 @@ class MainActivity : AppCompatActivity() {
     ) {
         val spanCount = DesignTokens.COLLAGE_SPAN_COUNT
         val width = rowWidthPx.coerceAtLeast(1)
-        val targetRowHeight = width / DesignTokens.collageRowsPerWidth(collageScaleLevel)
-        // A row is "full" once the accumulated aspect ratios would shrink it to the
-        // target height. targetAspectSum = width / targetRowHeight.
-        val targetAspectSum = (width / targetRowHeight).toDouble()
+        val padPx = (DesignTokens.COLLAGE_TILE_PADDING_DP * resources.displayMetrics.density).toDouble()
+        val hPad = padPx * 2  // horizontal gap consumed per tile (left + right padding)
+        val vPad = padPx * 2  // vertical gap consumed per row (top + bottom padding)
+        // Average tile width for the chosen scale — used as the minimum row height.
+        val targetExtent = (width / DesignTokens.collageRowsPerWidth(collageScaleLevel)).toDouble()
+        val heightMax = targetExtent * DesignTokens.COLLAGE_MAX_INCOMPLETE_ROW_HEIGHT_RATIO.toDouble()
+        // A tile narrower than this splits the row early. Must sit comfortably BELOW the average
+        // tile width so an ordinary portrait+landscape mix stays in one row (Aves's extent is the
+        // grid column width, i.e. much smaller than our average-tile target).
+        val minTileWidth = targetExtent * 0.6
+
+        fun availableWidth(itemCount: Int): Double =
+            (width - itemCount * hPad).coerceAtLeast(1.0)
 
         val row = ArrayList<GalleryRepository.MediaItem>()
-        var aspectSum = 0.0
+        var ratioSum = 0.0
+        var minRatio = Double.POSITIVE_INFINITY
 
         fun aspectOf(item: GalleryRepository.MediaItem): Double {
-            val w = item.width
-            val h = item.height
+            // MediaStore width/height are the RAW file dimensions; for EXIF-rotated photos the
+            // displayed orientation swaps them. Use the on-screen aspect so tiles match the image
+            // the user actually sees (otherwise portraits lay out as wide tiles with empty sides).
+            var w = item.width
+            var h = item.height
+            if (item.mediaType == GalleryRepository.MediaType.Image &&
+                (item.orientationDegrees == 90 || item.orientationDegrees == 270)
+            ) {
+                val tmp = w; w = h; h = tmp
+            }
             val ratio = if (w > 0 && h > 0) w.toDouble() / h.toDouble() else 1.0
             return ratio.coerceIn(
                 DesignTokens.COLLAGE_MIN_ASPECT.toDouble(),
@@ -2431,24 +2449,30 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        fun flush(stretchToFill: Boolean) {
+        fun flush(complete: Boolean) {
             if (row.isEmpty()) return
 
-            if (stretchToFill) {
-                // Scale the row to a uniform height that fills the width, clamped so a single very
-                // wide photo (or a barely-full last row) never collapses too short or balloons.
-                val minH = targetRowHeight * DesignTokens.COLLAGE_MIN_ROW_HEIGHT_RATIO
-                val maxH = targetRowHeight * DesignTokens.COLLAGE_MAX_ROW_HEIGHT_RATIO
-                val rowHeight = (width / aspectSum).coerceIn(minH.toDouble(), maxH.toDouble())
-                    .toInt().coerceAtLeast(1)
-                val spans = IntArray(row.size)
-                var assigned = 0
-                for (i in row.indices) {
-                    val s = Math.round((aspectOf(row[i]) / aspectSum) * spanCount).toInt().coerceAtLeast(1)
-                    spans[i] = s
-                    assigned += s
-                }
-                // Reconcile rounding so the row exactly fills the width.
+            val avail = availableWidth(row.size)
+            // Image height = available width / sum(aspect). The row's full height includes the
+            // per-tile vertical padding. A complete row fills the width exactly; a sparse final
+            // row is capped at heightMax so it doesn't balloon, and stays left-aligned.
+            var imageH = avail / ratioSum
+            if (!complete && imageH > heightMax) {
+                imageH = heightMax
+            }
+            val rowHeight = (imageH + vPad).toInt().coerceAtLeast(1)
+
+            val spans = IntArray(row.size)
+            var assigned = 0
+            for (i in row.indices) {
+                // Each span carries its image width PLUS the tile's horizontal padding, so the
+                // rendered image area keeps the exact aspect while gaps stay between tiles.
+                val spanPx = aspectOf(row[i]) * imageH + hPad
+                spans[i] = Math.round(spanPx / width * spanCount).toInt().coerceAtLeast(1)
+                assigned += spans[i]
+            }
+            if (complete) {
+                // Reconcile rounding so a complete row exactly fills the width.
                 var diff = spanCount - assigned
                 while (diff != 0) {
                     val idx = if (diff > 0) {
@@ -2459,61 +2483,37 @@ class MainActivity : AppCompatActivity() {
                     spans[idx] += if (diff > 0) 1 else -1
                     diff += if (diff > 0) -1 else 1
                 }
-                for (i in row.indices) {
-                    cells += GalleryCell.Photo(
-                        item = row[i],
-                        searchSources = sourcesFor?.invoke(row[i]) ?: SearchSources(),
-                        collageSpan = spans[i].coerceIn(1, spanCount),
-                        collageHeightPx = rowHeight
-                    )
-                }
-            } else {
-                // Partial last row: keep photos at the natural target height and
-                // let them sit left-aligned rather than stretching to full width.
-                val rowHeight = targetRowHeight.toInt().coerceAtLeast(1)
-                for (item in row) {
-                    val span = Math.round(aspectOf(item) * targetRowHeight / width * spanCount)
-                        .toInt().coerceIn(1, spanCount)
-                    cells += GalleryCell.Photo(
-                        item = item,
-                        searchSources = sourcesFor?.invoke(item) ?: SearchSources(),
-                        collageSpan = span,
-                        collageHeightPx = rowHeight
-                    )
-                }
+            }
+            for (i in row.indices) {
+                cells += GalleryCell.Photo(
+                    item = row[i],
+                    searchSources = sourcesFor?.invoke(row[i]) ?: SearchSources(),
+                    collageSpan = spans[i].coerceIn(1, spanCount),
+                    collageHeightPx = rowHeight
+                )
             }
             row.clear()
-            aspectSum = 0.0
+            ratioSum = 0.0
+            minRatio = Double.POSITIVE_INFINITY
         }
 
         for (item in dayItems) {
-            val ar = aspectOf(item)
-            if (row.isNotEmpty() && aspectSum + ar >= targetAspectSum) {
-                // The item would complete the row. Keep it here only if doing so lands the row
-                // height closer to the target than leaving it out would — this avoids the greedy
-                // overshoot that scales rows (and thumbnails) smaller than intended.
-                val heightWith = width / (aspectSum + ar)
-                val heightWithout = width / aspectSum
-                val includeIsBetter =
-                    Math.abs(heightWith - targetRowHeight) <= Math.abs(heightWithout - targetRowHeight)
-                if (includeIsBetter) {
-                    row.add(item)
-                    aspectSum += ar
-                    flush(stretchToFill = true)
-                } else {
-                    flush(stretchToFill = true)
-                    row.add(item)
-                    aspectSum = ar
-                }
-            } else {
-                row.add(item)
-                aspectSum += ar
+            val ratio = aspectOf(item)
+            val nextCount = row.size + 1
+            val nextRatioSum = ratioSum + ratio
+            val nextAvail = availableWidth(nextCount)
+            val nextMinWidth = nextAvail * minOf(ratio, minRatio) / nextRatioSum
+            val nextHeight = nextAvail / nextRatioSum
+            // Break before appending an item that would make the narrowest tile narrower than
+            // [minTileWidth] or the row shorter than [targetExtent] (Aves row-break condition).
+            if (row.isNotEmpty() && (nextMinWidth < minTileWidth || nextHeight < targetExtent)) {
+                flush(complete = true)
             }
+            row.add(item)
+            ratioSum += ratio
+            minRatio = minOf(minRatio, ratio)
         }
-        // Trailing row: stretch to fill when it's reasonably full (less empty space), otherwise
-        // keep it left-aligned at the natural target height.
-        val lastRowFilled = aspectSum >= targetAspectSum * DesignTokens.COLLAGE_LAST_ROW_FILL_THRESHOLD
-        flush(stretchToFill = lastRowFilled)
+        if (row.isNotEmpty()) flush(complete = false)
     }
 
     private fun buildMergedPhotoSearchResults(

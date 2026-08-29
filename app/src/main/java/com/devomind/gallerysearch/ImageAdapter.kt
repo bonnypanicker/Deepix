@@ -711,7 +711,8 @@ class ImageAdapter(
             imageView: ImageView,
             width: Int,
             height: Int,
-            blurred: Boolean
+            blurred: Boolean,
+            fitCenter: Boolean = false
         ) {
             // Blur = decode at a tiny size and let the ImageView upscale it (a cheap, all-API blur).
             val targetW = if (blurred) BLUR_DOWNSCALE_PX else width
@@ -721,7 +722,7 @@ class ImageAdapter(
                     .asBitmap()
                     .load(item.uri)
                     .apply(com.bumptech.glide.request.RequestOptions().frame(1_000_000L))
-                    .centerCrop()
+                    .apply { if (fitCenter) fitCenter() else centerCrop() }
                     .override(targetW, targetH)
                     .dontAnimate()
                     .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
@@ -729,7 +730,7 @@ class ImageAdapter(
                 Glide.with(context)
                     .load(item.uri)
                     .format(DecodeFormat.PREFER_RGB_565)
-                    .centerCrop()
+                    .apply { if (fitCenter) fitCenter() else centerCrop() }
                     .override(targetW, targetH)
                     .dontAnimate()
                     .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
@@ -748,6 +749,11 @@ class ImageAdapter(
                 val gridGutterSpacing = (DesignTokens.GRID_THUMBNAIL_SPACING_DP * metrics.density).toInt()
                 val cellSize = ((metrics.widthPixels - gridGutterSpacing * (gridColumnCount - 1)) / gridColumnCount).coerceAtLeast(1)
 
+                val pad = (2 * metrics.density).toInt()
+                binding.root.setPadding(pad, pad, pad, pad)
+                binding.root.setBackgroundColor(ContextCompat.getColor(binding.root.context, R.color.metroBgPrimary))
+                binding.thumbnail.setBackgroundColor(ContextCompat.getColor(binding.root.context, R.color.metroBgCard))
+                binding.thumbnail.scaleType = ImageView.ScaleType.CENTER_CROP
                 binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
                     this.height = cellSize
                 }
@@ -755,17 +761,27 @@ class ImageAdapter(
             } else {
                 // Justified-rows collage: height is precomputed per row so every
                 // tile in a row lines up; width is filled by the grid span.
+                // A thin uniform gap surrounds each tile (matches the row math, so the image
+                // area keeps its exact aspect); the page background shows through the gap.
+                val pad = (DesignTokens.COLLAGE_TILE_PADDING_DP * metrics.density).toInt()
                 val rowHeight = if (cell.collageHeightPx > 0) {
                     cell.collageHeightPx
                 } else {
                     ((metrics.widthPixels - gutter * 6) / 3).coerceAtLeast(96)
                 }
+                val imageHeight = (rowHeight - pad * 2).coerceAtLeast(1)
                 val span = cell.collageSpan.coerceIn(1, DesignTokens.COLLAGE_SPAN_COUNT)
-                val approxWidth = (metrics.widthPixels * span / DesignTokens.COLLAGE_SPAN_COUNT).coerceAtLeast(1)
+                val approxWidth = (metrics.widthPixels * span / DesignTokens.COLLAGE_SPAN_COUNT - pad * 2).coerceAtLeast(1)
+                binding.root.setPadding(pad, pad, pad, pad)
+                binding.root.setBackgroundColor(Color.TRANSPARENT)
+                binding.thumbnail.setBackgroundColor(Color.TRANSPARENT)
+                binding.thumbnail.scaleType = ImageView.ScaleType.FIT_CENTER
                 binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
-                    this.height = rowHeight
+                    this.height = imageHeight
                 }
-                loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, approxWidth, rowHeight, blurred)
+                // fitCenter guarantees the whole photo is always shown (never cropped); the image
+                // area matches the aspect ratio within ~1px, so there is no visible letterbox.
+                loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, approxWidth, imageHeight, blurred, fitCenter = true)
             }
 
             bindSelection(cell, selectionMode, isSelected, animate = false)
