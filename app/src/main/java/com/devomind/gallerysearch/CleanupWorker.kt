@@ -43,6 +43,7 @@ class CleanupWorker(
             val textEncoder = runCatching {
                 (app as GallerySearchApp).sharedEncoders.getTextEncoder()
             }.getOrNull()
+            val nsfwClassifier = textEncoder?.let { encoder -> runCatching { NsfwClassifier(encoder) }.getOrNull() }
             val repo = GalleryRepository(app, null, textEncoder)
 
             val images = repo.getImageItemsForAlbumIds(emptySet())
@@ -74,6 +75,7 @@ class CleanupWorker(
                 embeddings = embeddings,
                 sizeByUri = sizes,
                 encodeText = { runCatching { repo.encodeText(it) }.getOrNull() },
+                nsfwMargin = { embedding -> nsfwClassifier?.marginScore(embedding) },
                 imageStats = { computeImageStats(it) },
                 onProgress = { done, total ->
                     lastDone = done

@@ -43,20 +43,29 @@ class NsfwClassifier(private val textEncoder: TextEncoder) {
     fun isReady(): Boolean = sensitiveEmbeddings.isNotEmpty() && safeEmbeddings.isNotEmpty()
 
     /** True when [imageEmbedding] (L2-normalized) looks sensitive under the zero-shot comparison. */
-    fun isSensitive(imageEmbedding: FloatArray): Boolean {
-        if (!isReady()) return false
+    fun isSensitive(imageEmbedding: FloatArray): Boolean =
+        (marginScore(imageEmbedding) ?: Float.NEGATIVE_INFINITY) >= SENSITIVE_MARGIN
+
+    /**
+     * Raw sensitivity margin (closest sensitive prompt − closest safe prompt). Null when the
+     * classifier isn't ready. Callers pick their own threshold: the blur feature uses
+     * [SENSITIVE_MARGIN] (precision-first), Smart Cleanup's Sensitive category accepts a lower
+     * margin so more suspects surface for human review rather than automatic blurring.
+     */
+    fun marginScore(imageEmbedding: FloatArray): Float? {
+        if (!isReady()) return null
         val sensitiveScore = sensitiveEmbeddings.maxOf { EmbeddingUtils.cosineSimilarity(imageEmbedding, it) }
         val safeScore = safeEmbeddings.maxOf { EmbeddingUtils.cosineSimilarity(imageEmbedding, it) }
-        return sensitiveScore - safeScore >= SENSITIVE_MARGIN
+        return sensitiveScore - safeScore
     }
 
     private fun encodeAll(prompts: List<String>): List<FloatArray> =
         prompts.mapNotNull { runCatching { textEncoder.encode(it) }.getOrNull() }
 
     companion object {
-        // Master switch for the Beta sensitive-content blur. Temporarily OFF: the Settings toggle is
-        // hidden and no classification runs. Flip to true to re-enable the whole feature.
-        const val FEATURE_ENABLED = false
+        // Master switch for sensitive-content features (the Beta blur + Smart Cleanup's Sensitive
+        // category). Was temporarily OFF; re-enabled when the cleanup integration shipped.
+        const val FEATURE_ENABLED = true
 
         // Calibrated on MobileCLIP-S2 over 200 safe photos (tools/nsfw_calibration): safe photos have
         // median margin -0.012; ~0.5% exceed +0.05, ~0% exceed +0.07. 0.05 favors precision (few

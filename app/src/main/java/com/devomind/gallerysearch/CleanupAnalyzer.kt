@@ -5,10 +5,11 @@ import kotlinx.coroutines.yield
 
 /**
  * Finds clutter the user probably wants to remove, using ONLY on-device signals:
- *  - existing MobileCLIP image embeddings (near-duplicate + similar grouping, zero-shot category guess)
+ *  - existing MobileCLIP image embeddings (near-duplicate + burst + similar grouping, zero-shot
+ *    category guess, sensitive-content screen)
  *  - cheap filename / folder heuristics (screenshots, stickers)
  *  - one downscaled-bitmap pass for blur / brightness (supplied by the caller as [ImageStats])
- *  - plain metadata (low resolution)
+ *  - plain metadata (low resolution, capture time for burst clustering)
  *
  * No bitmaps are decoded here and no ONNX is touched directly; the host passes small callbacks so
  * this stays pure/testable. Everything produced is a *suggestion* — the UI reviews and confirms.
@@ -16,8 +17,8 @@ import kotlinx.coroutines.yield
 object CleanupAnalyzer {
 
     enum class Category {
-        DUPLICATES, SIMILAR,
-        LIKELY_CLUTTER, SCREENSHOTS, DOCUMENTS, RECEIPTS, QR_CODES,
+        DUPLICATES, SIMILAR, BURSTS,
+        LIKELY_CLUTTER, SCREENSHOTS, DOCUMENTS, RECEIPTS, QR_CODES, NSFW,
         BLURRY, DARK, BRIGHT, LOW_RESOLUTION
     }
 
@@ -65,6 +66,17 @@ object CleanupAnalyzer {
     private const val BRIGHT_FRACTION_THRESHOLD = 0.55f  // share of near-white pixels
     private const val LOW_RES_LONG_EDGE = 640            // longest edge in px
     private const val MAX_DEDUP_ITEMS = 2000
+    // Sensitive-content screen: looser than the blur feature's NsfwClassifier.SENSITIVE_MARGIN
+    // (0.05) on purpose — cleanup items are surfaced for human review, not auto-hidden, so recall
+    // ("let more suspecting photos in") matters more than the occasional false positive.
+    private const val NSFW_MARGIN = 0.03f
+    // Bursts: looser than SIMILAR (0.93) and even than the image-search floor (0.55) because the
+    // 60-second capture-time gate does the real filtering — within one minute, shots are almost
+    // always the same moment, so cosine only needs to confirm scene-level resemblance.
+    private const val BURST_SIMILARITY = 0.82f
+    private const val BURST_TIME_GAP_MS = 60_000L        // consecutive shots ≤1 min apart = one moment
+    private const val BURST_MIN_PHOTOS = 2               // any same-moment pair is worth a review
+    private const val MAX_BURST_CLUSTER = 600            // skip timelapse-style runs (pairwise cost)
 
     private val PHOTO_PROMPTS = listOf(
         "a photo", "a photograph", "a picture of a person", "a landscape photograph",
@@ -104,7 +116,8 @@ object CleanupAnalyzer {
         onProgress: (done: Int, total: Int) -> Unit,
         onPartial: (Report) -> Unit = {},
         resumeQuality: Map<Category, Set<String>> = emptyMap(),
-        scannedUris: MutableSet<String> = mutableSetOf()
+        scannedUris: MutableSet<String> = mutableSetOf(),
+        nsfwMargin: (FloatArray) -> Float? = { null }
     ): Report {
         val categoryItems = linkedMapOf<Category, MutableList<GalleryRepository.MediaItem>>()
         val suggested = linkedMapOf<Category, MutableSet<Uri>>()
@@ -113,8 +126,33 @@ object CleanupAnalyzer {
             suggested[c] = linkedSetOf()
         }
 
-        // 1) Duplicates (>=0.97) and Similar (>=0.93) from existing embeddings, in one pairwise pass.
-        val dedupItems = items.filter { embeddings.containsKey(it.uri.toString()) }.take(MAX_DEDUP_ITEMS)
+        // 1) Bursts first: time-clustered sequences (capture time) with moderately similar content.
+        //    Runs over EVERY embedded photo — image search finds these with plain cosine lookups, so
+        //    burst detection must not inherit the dedup pass's item cap — and claims its members
+        //    before the near-identical passes. (When this ran after dup/sim, bursts with >=0.93
+        //    similarity were swallowed by SIMILAR and the Bursts tile stayed empty.)
+        val embeddedItems = items.filter { embeddings.containsKey(it.uri.toString()) }
+        val burstGroups = groupBursts(embeddedItems, embeddings)
+        val burstUris = HashSet<String>()
+        for (group in burstGroups) {
+            for (item in group) burstUris.add(item.uri.toString())
+            // The kept shot leads its group in the flat category list; SmartCleanupActivity splits
+            // the list back into per-burst sections at these kept items when rendering headers.
+            val keep = group.maxByOrNull { sizeByUri[it.uri.toString()] ?: 0L } ?: continue
+            categoryItems[Category.BURSTS]!!.add(keep)
+            for (item in group) {
+                if (item.uri == keep.uri) continue
+                categoryItems[Category.BURSTS]!!.add(item)
+                suggested[Category.BURSTS]!!.add(item.uri)
+            }
+        }
+
+        // 2) Duplicates (>=0.97) and Similar (>=0.93) over the non-burst remainder, in one pairwise
+        //    pass. Cross-time near-identical copies (edited copies, re-downloads, reposts) land
+        //    here; same-moment sequences are Bursts' job now.
+        val dedupItems = embeddedItems
+            .filter { it.uri.toString() !in burstUris }
+            .take(MAX_DEDUP_ITEMS)
         val (dupGroups, simGroups) = groupBySimilarity(dedupItems, embeddings)
         val duplicateUris = HashSet<String>()
         for (group in dupGroups) {
@@ -136,7 +174,7 @@ object CleanupAnalyzer {
             }
         }
 
-        // 2) Zero-shot class vectors.
+        // 3) Zero-shot class vectors.
         val photoVec = averagedPromptVector(PHOTO_PROMPTS, encodeText)
         val classVecs = ClipClass.entries.filter { it != ClipClass.PHOTO }
             .associateWith { averagedPromptVector(it.prompts, encodeText) }
@@ -145,6 +183,15 @@ object CleanupAnalyzer {
         val photoCandidates = mutableListOf<GalleryRepository.MediaItem>()
         for (item in items) {
             val embedding = embeddings[item.uri.toString()]
+            // Sensitive-content screen runs first: a suspect photo surfaces under NSFW even if it
+            // would otherwise classify as a plain photo, and skips the pixel-quality pass below.
+            if (embedding != null) {
+                val margin = nsfwMargin(embedding)
+                if (margin != null && margin >= NSFW_MARGIN) {
+                    categoryItems[Category.NSFW]!!.add(item)
+                    continue
+                }
+            }
             val forcedClass = when {
                 looksLikeScreenshot(item) -> ClipClass.SCREENSHOT
                 looksLikeSticker(item) -> ClipClass.STICKER
@@ -164,7 +211,7 @@ object CleanupAnalyzer {
             }
         }
 
-        // 3) Single decode pass over real photos → blur / dark / bright; low-res from metadata.
+        // 4) Single decode pass over real photos → blur / dark / bright; low-res from metadata.
         fun snapshot() = Report(
             categoryItems = categoryItems.mapValues { it.value.toList() },
             suggestedDeleteUris = suggested.mapValues { it.value.toSet() },
@@ -274,6 +321,60 @@ object CleanupAnalyzer {
         }
 
         return bucketize(items, dupParent, ::find) to bucketize(items, simParent, ::find)
+    }
+
+    /**
+     * Bursts = time-cluster then similarity-group. Photos are sorted by capture time and split
+     * into clusters where consecutive shots are ≤[BURST_TIME_GAP_MS] apart — equal timestamps
+     * chain too, since rapid bursts frequently share the same second — and a longer gap starts a
+     * new moment. Within each cluster, shots whose CLIP cosine is ≥[BURST_SIMILARITY] union into
+     * groups of ≥[BURST_MIN_PHOTOS]. Clusters beyond [MAX_BURST_CLUSTER] photos are timelapse-
+     * style deliberate runs, not accidental bursts, and are skipped.
+     */
+    private fun groupBursts(
+        items: List<GalleryRepository.MediaItem>,
+        embeddings: Map<String, FloatArray>
+    ): List<List<GalleryRepository.MediaItem>> {
+        if (items.size < BURST_MIN_PHOTOS) return emptyList()
+
+        val clusters = mutableListOf<List<GalleryRepository.MediaItem>>()
+        var current = mutableListOf<GalleryRepository.MediaItem>()
+        for (item in items.sortedBy { it.dateMillis }) {
+            val last = current.lastOrNull()
+            if (last != null && item.dateMillis - last.dateMillis in 0..BURST_TIME_GAP_MS) {
+                current.add(item)
+            } else {
+                if (current.size >= BURST_MIN_PHOTOS) clusters.add(current)
+                current = mutableListOf(item)
+            }
+        }
+        if (current.size >= BURST_MIN_PHOTOS) clusters.add(current)
+
+        val groups = mutableListOf<List<GalleryRepository.MediaItem>>()
+        for (cluster in clusters) {
+            if (cluster.size > MAX_BURST_CLUSTER) continue
+            val n = cluster.size
+            val parent = IntArray(n) { it }
+            fun find(x: Int): Int {
+                var r = x
+                while (parent[r] != r) r = parent[r]
+                var c = x
+                while (parent[c] != c) { val next = parent[c]; parent[c] = r; c = next }
+                return r
+            }
+            val vecs = cluster.map { embeddings[it.uri.toString()]!! }
+            for (i in 0 until n) {
+                for (j in i + 1 until n) {
+                    if (EmbeddingUtils.cosineSimilarity(vecs[i], vecs[j]) >= BURST_SIMILARITY) {
+                        parent[find(i)] = find(j)
+                    }
+                }
+            }
+            val buckets = LinkedHashMap<Int, MutableList<GalleryRepository.MediaItem>>()
+            for (i in 0 until n) buckets.getOrPut(find(i)) { mutableListOf() }.add(cluster[i])
+            for (bucket in buckets.values) if (bucket.size >= BURST_MIN_PHOTOS) groups.add(bucket)
+        }
+        return groups
     }
 
     private fun bucketize(

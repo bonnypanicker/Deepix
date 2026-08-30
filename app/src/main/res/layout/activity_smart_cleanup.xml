@@ -287,6 +287,25 @@
                     android:clipToPadding="false"
                     android:scrollbars="none" />
 
+                <!-- Lock-away action for critical categories (sensitive, documents, receipts, QR) —
+                     sits above the delete bar and only shows when those categories are open. -->
+                <TextView
+                    android:id="@+id/safeBar"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="?attr/accentColor"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="@drawable/metro_row_pressed"
+                    android:gravity="center"
+                    android:paddingTop="18dp"
+                    android:paddingBottom="18dp"
+                    android:text="@string/move_to_safe"
+                    android:textColor="@color/metroTextPrimary"
+                    android:textSize="15sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:visibility="gone" />
+
                 <TextView
                     android:id="@+id/deleteBar"
                     android:layout_width="match_parent"

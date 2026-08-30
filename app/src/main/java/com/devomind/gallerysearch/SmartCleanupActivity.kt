@@ -48,6 +48,37 @@ class SmartCleanupActivity : AppCompatActivity() {
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
     private var pendingAllFilesDeleteUris: List<Uri> = emptyList()
+    private var pendingSafeMove = false
+
+    /** Categories whose items are worth locking away rather than deleting. */
+    private val safeCapableCategories = setOf(
+        CleanupAnalyzer.Category.NSFW,
+        CleanupAnalyzer.Category.DOCUMENTS,
+        CleanupAnalyzer.Category.RECEIPTS,
+        CleanupAnalyzer.Category.QR_CODES
+    )
+
+    private val safeResultLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        // Photos successfully encrypted into the Safe: remove the originals, mirroring the
+        // main-gallery selection flow (direct delete when possible, consent dialog otherwise).
+        @Suppress("DEPRECATION")
+        val imported = result.data?.getParcelableArrayListExtra<Uri>(SafeActivity.ExtraImportedUris)
+        if (result.resultCode == RESULT_OK && !imported.isNullOrEmpty()) {
+            lifecycleScope.launch {
+                pendingSafeMove = true
+                if (DeleteCoordinator.canDeleteDirectly(this@SmartCleanupActivity)) {
+                    withContext(Dispatchers.IO) {
+                        imported.forEach { MediaFileOps.deleteFileDirect(this@SmartCleanupActivity, it) }
+                    }
+                    onDeleted(imported)
+                } else {
+                    deleteUris(imported)
+                }
+            }
+        }
+    }
 
     private var scanRunning = false
     private var paused = false
@@ -130,6 +161,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         binding.refreshBtn.setOnClickListener { startScan(replace = true) }
         binding.selectAllBtn.setOnClickListener { toggleSelectAll() }
         binding.deleteBar.setOnClickListener { confirmDeleteSelected() }
+        binding.safeBar.setOnClickListener { confirmMoveSelectedToSafe() }
         binding.pauseResumeBtn.setOnClickListener { if (scanRunning) pauseScan() else resumeScan() }
         binding.stopBtn.setOnClickListener { stopScan() }
 
@@ -437,13 +469,15 @@ class SmartCleanupActivity : AppCompatActivity() {
             CleanupAnalyzer.Category.DOCUMENTS -> "Documents — review before deleting"
             CleanupAnalyzer.Category.RECEIPTS -> "Receipts — review before deleting"
             CleanupAnalyzer.Category.QR_CODES -> "QR codes & barcodes — tap to select"
+            CleanupAnalyzer.Category.NSFW -> "Possibly sensitive photos — review, delete, or move to Safe"
+            CleanupAnalyzer.Category.BURSTS -> "Sequences shot seconds apart — best shot kept, extras pre-selected"
             CleanupAnalyzer.Category.DARK -> "Very dark photos — tap to select"
             CleanupAnalyzer.Category.BRIGHT -> "Overexposed photos — tap to select"
             CleanupAnalyzer.Category.LOW_RESOLUTION -> "Low-resolution images — tap to select"
         }
 
         val list = categoryItems[category]!!
-        adapter.replaceCells(list.map { GalleryCell.Photo(it) })
+        adapter.replaceCells(detailCells(category))
         binding.cleanupGrid.scrollToPosition(0)
         adapter.setSelection(suggested[category]!!.toList())
     }
@@ -474,6 +508,22 @@ class SmartCleanupActivity : AppCompatActivity() {
                 append("Delete $count")
                 if (bytes > 0L) append("  ·  ${formatBytes(bytes)}")
             }
+        }
+
+        // Lock-away action only exists for the categories where keeping (not deleting) makes sense.
+        if (currentCategory in safeCapableCategories) {
+            binding.safeBar.visibility = View.VISIBLE
+            if (count == 0) {
+                binding.safeBar.alpha = 0.4f
+                binding.safeBar.isClickable = false
+                binding.safeBar.text = "Select items to move to Safe"
+            } else {
+                binding.safeBar.alpha = 1f
+                binding.safeBar.isClickable = true
+                binding.safeBar.text = "Move $count to Safe"
+            }
+        } else {
+            binding.safeBar.visibility = View.GONE
         }
     }
 
@@ -509,6 +559,35 @@ class SmartCleanupActivity : AppCompatActivity() {
             danger = !toBin,
             iconRes = R.drawable.ic_fluent_delete_24_regular
         ) { performManagedDelete(selected) }
+    }
+
+    /** Encrypts the selection into the Safe, then removes the originals from the gallery. */
+    private fun confirmMoveSelectedToSafe() {
+        val selected = adapter.selectedUris()
+        if (selected.isEmpty()) return
+        // Only still images can be locked; the Safe stores encrypted image zips.
+        val images = selected.filter { uri ->
+            val type = contentResolver.getType(uri)
+            type == null || type.startsWith("image/")
+        }
+        if (images.isEmpty()) {
+            MetroBanner.show(this, "Only photos can be moved to the Safe")
+            return
+        }
+        val noun = if (images.size == 1) "1 photo" else "${images.size} photos"
+        MetroDialog.confirm(
+            context = this,
+            title = "Move to Safe?",
+            message = "$noun will be encrypted into your Safe and removed from the gallery.",
+            positive = "Move to Safe",
+            iconRes = R.drawable.ic_deepix_safe_24_regular
+        ) {
+            adapter.clearSelection()
+            safeResultLauncher.launch(
+                Intent(this, SafeActivity::class.java)
+                    .putParcelableArrayListExtra(SafeActivity.ExtraImportUris, ArrayList(images))
+            )
+        }
     }
 
     private fun performManagedDelete(uris: List<Uri>) {
@@ -563,18 +642,60 @@ class SmartCleanupActivity : AppCompatActivity() {
             categoryItems[category]!!.removeAll { it.uri in removed }
             suggested[category]!!.removeAll(removed)
         }
-        val verb = if (DeleteCoordinator.usesBin(this)) "moved to Bin" else "deleted"
+        val verb = when {
+            pendingSafeMove -> { pendingSafeMove = false; "moved to Safe" }
+            DeleteCoordinator.usesBin(this) -> "moved to Bin"
+            else -> "deleted"
+        }
         MetroBanner.show(this, "${uris.size} ${if (uris.size == 1) "photo" else "photos"} $verb")
         saveCurrentToStore()
 
         val category = currentCategory
         if (category != null && categoryItems[category]!!.isNotEmpty()) {
-            adapter.replaceCells(categoryItems[category]!!.map { GalleryCell.Photo(it) })
+            adapter.replaceCells(detailCells(category))
             adapter.clearSelection()
             onSelectionChanged(0)
         } else {
             showOverview()
         }
+    }
+
+    /**
+     * Detail cells for a category. Bursts persist as a flat list built group-by-group with each
+     * group's kept shot leading it, so splitting at every kept (unselected) item rebuilds the
+     * per-burst sections, rendered here as full-span headers.
+     */
+    private fun detailCells(category: CleanupAnalyzer.Category): List<GalleryCell> {
+        val list = categoryItems[category]!!
+        if (category != CleanupAnalyzer.Category.BURSTS) return list.map { GalleryCell.Photo(it) }
+        val extras = suggested[category]!!
+        val cells = mutableListOf<GalleryCell>()
+        var index = 0
+        while (index < list.size) {
+            if (list[index].uri in extras) {
+                // Boundary lost (a kept shot was deleted earlier) — render as a standalone photo.
+                cells.add(GalleryCell.Photo(list[index]))
+                index++
+                continue
+            }
+            val group = mutableListOf(list[index])
+            index++
+            while (index < list.size && list[index].uri in extras) {
+                group.add(list[index])
+                index++
+            }
+            val times = group.map { it.dateMillis }.filter { it > 0L }
+            val subtitle = if (times.size >= 2) android.text.format.DateUtils.formatDateTime(
+                this,
+                times.min(),
+                android.text.format.DateUtils.FORMAT_ABBREV_MONTH or
+                    android.text.format.DateUtils.FORMAT_SHOW_DATE or
+                    android.text.format.DateUtils.FORMAT_SHOW_TIME
+            ) else ""
+            cells.add(GalleryCell.Header("Burst · ${group.size} photos", subtitle))
+            cells.addAll(group.map { GalleryCell.Photo(it) })
+        }
+        return cells
     }
 
     private fun finishWithResult() {
@@ -596,6 +717,8 @@ class SmartCleanupActivity : AppCompatActivity() {
         CleanupAnalyzer.Category.DOCUMENTS -> Color.parseColor("#5C6BC0")
         CleanupAnalyzer.Category.RECEIPTS -> Color.parseColor("#7E57C2")
         CleanupAnalyzer.Category.QR_CODES -> Color.parseColor("#00897B")
+        CleanupAnalyzer.Category.NSFW -> Color.parseColor("#C2483D")
+        CleanupAnalyzer.Category.BURSTS -> Color.parseColor("#4A7A96")
         CleanupAnalyzer.Category.BLURRY -> Color.parseColor("#8E7CD8")
         CleanupAnalyzer.Category.DARK -> Color.parseColor("#455A64")
         CleanupAnalyzer.Category.BRIGHT -> Color.parseColor("#B08968")
@@ -610,6 +733,8 @@ class SmartCleanupActivity : AppCompatActivity() {
         CleanupAnalyzer.Category.DOCUMENTS -> "Documents"
         CleanupAnalyzer.Category.RECEIPTS -> "Receipts"
         CleanupAnalyzer.Category.QR_CODES -> "QR codes"
+        CleanupAnalyzer.Category.NSFW -> "Sensitive"
+        CleanupAnalyzer.Category.BURSTS -> "Bursts"
         CleanupAnalyzer.Category.BLURRY -> "Blurry"
         CleanupAnalyzer.Category.DARK -> "Too dark"
         CleanupAnalyzer.Category.BRIGHT -> "Overexposed"
