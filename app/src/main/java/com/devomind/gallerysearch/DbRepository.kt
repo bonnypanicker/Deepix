@@ -5,6 +5,7 @@ import com.devomind.gallerysearch.db.ExifMetadataEntity
 import com.devomind.gallerysearch.db.FaceEntity
 import com.devomind.gallerysearch.db.FavoriteEntity
 import com.devomind.gallerysearch.db.GalleryDatabase
+import com.devomind.gallerysearch.db.GpsPoint
 import com.devomind.gallerysearch.db.MediaMetadataEntity
 import com.devomind.gallerysearch.db.MediaTagCrossRef
 import com.devomind.gallerysearch.db.PersonEntity
@@ -129,6 +130,18 @@ class DbRepository(context: Context) {
                 .flatMapTo(LinkedHashSet()) { exifDao.photoUrisWithLocation(it) }
         }
     }
+
+    /** URIs that already have an exif_metadata row (GPS or not) — bounds progressive EXIF reads. */
+    suspend fun existingExifUris(uris: List<String>): Set<String> {
+        if (uris.isEmpty()) return emptySet()
+        return withContext(Dispatchers.IO) {
+            uris.distinct().chunked(RoomQueryChunkSize)
+                .flatMapTo(HashSet()) { exifDao.existingUris(it) }
+        }
+    }
+
+    /** Every stored GPS fix (photos that were EXIF-read and have coordinates). */
+    suspend fun gpsPoints(): List<GpsPoint> = withContext(Dispatchers.IO) { exifDao.gpsPoints() }
 
     suspend fun addTag(name: String, color: Int): Long {
         return withContext(Dispatchers.IO) {

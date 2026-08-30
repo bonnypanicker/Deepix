@@ -3363,20 +3363,18 @@ class MainActivity : AppCompatActivity() {
         forceSmartSection: Boolean = false
     ): List<SearchSectionResult> {
         val resultByUri = results.associateBy { it.item.uri.toString() }
-        fun fromUris(section: SearchSection, count: Int, uris: Set<String>): SearchSectionResult? {
-            val matches = uris.mapNotNull(resultByUri::get)
-            return matches.takeIf { it.isNotEmpty() && count > 0 }?.let { SearchSectionResult(section, count, it) }
-        }
         val text = StructuredSearch.parse(query).textQuery.trim().lowercase(Locale.getDefault())
         val smart = results.filter { it.sources.ai }
         val metadata = results.filter { it.sources.metadata }
         val matchedAlbums = if (text.isBlank()) emptyList() else albums.filter { it.name.lowercase(Locale.getDefault()).contains(text) }
         val matchedTags = if (text.isBlank()) emptyList() else allTags.filter { it.name.lowercase(Locale.getDefault()).contains(text) }
         val tagUris = matchedTags.flatMapTo(LinkedHashSet()) { tag -> tagUriMap[tag.id].orEmpty() }
-        val resultUris = results.map { it.item.uri.toString() }
         val db = dbRepository
         val explicitPeople = peopleResultUris?.mapNotNull(resultByUri::get).orEmpty()
-        val locations = db?.photoUrisWithLocation(resultUris).orEmpty()
+        // Name-based sections (Albums/Tags/Locations) resolve through the current photo pool and
+        // stand on their own — they are never intersected with the CLIP/metadata result sets.
+        val pool = currentSearchPhotoItems()
+        val itemsByUri = pool.associateBy { it.uri }
         return buildList {
             val smartSectionResults = if (forceSmartSection) results else smart
             smartSectionResults.takeIf { it.isNotEmpty() }?.let {
@@ -3388,7 +3386,6 @@ class MainActivity : AppCompatActivity() {
                 metadata.takeIf { it.isNotEmpty() }?.let { add(SearchSectionResult(SearchSection.Metadata, it.size, it)) }
             }
             matchedAlbums.takeIf { it.isNotEmpty() }?.let {
-                val itemsByUri = currentSearchPhotoItems().associateBy { item -> item.uri }
                 val covers = it.mapIndexedNotNull { index, album ->
                     itemsByUri[album.coverUri]?.let { item ->
                         PhotoSearchResult(item, SearchSources(), 1f - index * 0.01f)
@@ -3396,11 +3393,33 @@ class MainActivity : AppCompatActivity() {
                 }
                 add(SearchSectionResult(SearchSection.Albums, it.size, covers, it))
             }
-            fromUris(SearchSection.Tags, matchedTags.size, tagUris)?.let(::add)
+            // Tags: photos carrying a tag whose name matches the query — same independence rule.
+            if (tagUris.isNotEmpty()) {
+                val tagResults = tagUris.mapNotNull { uri ->
+                    itemsByUri[Uri.parse(uri)]?.let { PhotoSearchResult(it, SearchSources(), 1f) }
+                }
+                if (tagResults.isNotEmpty()) {
+                    add(SearchSectionResult(SearchSection.Tags, tagResults.size, tagResults))
+                }
+            }
             if (!personScoped && explicitPeople.isNotEmpty()) {
                 add(SearchSectionResult(SearchSection.People, explicitPeople.size, explicitPeople))
             }
-            fromUris(SearchSection.Locations, locations.size, locations)?.let(::add)
+            // Locations match the query's place name against photo GPS (EXIF -> geocode radius) —
+            // independent of the CLIP/metadata result sets, like Albums. Fails soft (empty match).
+            if (!text.isBlank() && db != null) {
+                val locationUris = LocationSearch.matchingUris(
+                    this@MainActivity, text, db, pool.map { it.uri }
+                )
+                if (locationUris.isNotEmpty()) {
+                    val locationResults = locationUris.mapNotNull { uri ->
+                        itemsByUri[Uri.parse(uri)]?.let { PhotoSearchResult(it, SearchSources(), 1f) }
+                    }
+                    if (locationResults.isNotEmpty()) {
+                        add(SearchSectionResult(SearchSection.Locations, locationResults.size, locationResults))
+                    }
+                }
+            }
         }
     }
 
