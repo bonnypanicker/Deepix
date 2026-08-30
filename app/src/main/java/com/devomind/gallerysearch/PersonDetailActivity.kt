@@ -285,30 +285,30 @@ class PersonDetailActivity : AppCompatActivity() {
                 android.widget.Toast.makeText(this@PersonDetailActivity, "No other people to merge into", android.widget.Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            val labels = others.map { it.first }.toTypedArray()
-            android.app.AlertDialog.Builder(this@PersonDetailActivity)
-                .setTitle("Merge ${PersonIdentity.displayName(person) ?: "Person #" + person.personId} into…")
-                .setSingleChoiceItems(labels, -1) { dialog, which ->
-                    val (_, targetId) = others[which]
-                    lifecycleScope.launch {
-                        withContext(Dispatchers.IO) {
-                            db.faceDao().reassignPerson(person.personId, targetId)
-                            db.personDao().hide(person.personId)
-                            db.personMergeLogDao().insert(
-                                com.devomind.gallerysearch.db.PersonMergeLogEntity(
-                                    eventKind = com.devomind.gallerysearch.db.PersonMergeLogEntity.Event.MERGE,
-                                    personId = targetId,
-                                    otherPersonId = person.personId,
-                                    origin = com.devomind.gallerysearch.db.PersonMergeLogEntity.Origin.USER
-                                )
+            val labels = others.map { it.first }
+            MetroDialog.singleChoice(
+                this@PersonDetailActivity,
+                title = "Merge ${PersonIdentity.displayName(person) ?: "Person #" + person.personId} into…",
+                options = labels,
+                checkedIndex = -1
+            ) { which ->
+                val (_, targetId) = others[which]
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        db.faceDao().reassignPerson(person.personId, targetId)
+                        db.personDao().hide(person.personId)
+                        db.personMergeLogDao().insert(
+                            com.devomind.gallerysearch.db.PersonMergeLogEntity(
+                                eventKind = com.devomind.gallerysearch.db.PersonMergeLogEntity.Event.MERGE,
+                                personId = targetId,
+                                otherPersonId = person.personId,
+                                origin = com.devomind.gallerysearch.db.PersonMergeLogEntity.Origin.USER
                             )
-                        }
-                        dialog.dismiss()
-                        finish()
+                        )
                     }
+                    finish()
                 }
-                .setNegativeButton(android.R.string.cancel, null)
-                .show()
+            }
         }
     }
 
@@ -320,45 +320,46 @@ class PersonDetailActivity : AppCompatActivity() {
                 android.widget.Toast.makeText(this@PersonDetailActivity, "Need at least two faces to split", android.widget.Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            android.app.AlertDialog.Builder(this@PersonDetailActivity)
-                .setTitle("Split?")
-                .setMessage("Move the most divergent face to a new Person?")
-                .setPositiveButton("Split") { _, _ ->
-                    lifecycleScope.launch {
-                        withContext(Dispatchers.IO) {
-                            val centroid = faces.mapNotNull { it.embeddingJson }.firstOrNull()?.let { decodeEmbedding(it) }
-                            if (centroid != null) {
-                                val faceToRemove = faces.maxByOrNull { face ->
-                                    face.embeddingJson?.let { j ->
-                                        val e = decodeEmbedding(j)
-                                        e?.let { 1f - cosine(centroid, it) } ?: 0f
-                                    } ?: 0f
-                                }
-                                if (faceToRemove != null) {
-                                    val newPerson = com.devomind.gallerysearch.db.PersonEntity(
-                                        nameLabel = null,
-                                        exemplarFaceId = faceToRemove.faceId
+            MetroDialog.confirm(
+                this@PersonDetailActivity,
+                title = "Split?",
+                message = "Move the most divergent face to a new Person?",
+                positive = "Split",
+                iconRes = R.drawable.ic_fluent_person_24_regular
+            ) {
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        val centroid = faces.mapNotNull { it.embeddingJson }.firstOrNull()?.let { decodeEmbedding(it) }
+                        if (centroid != null) {
+                            val faceToRemove = faces.maxByOrNull { face ->
+                                face.embeddingJson?.let { j ->
+                                    val e = decodeEmbedding(j)
+                                    e?.let { 1f - cosine(centroid, it) } ?: 0f
+                                } ?: 0f
+                            }
+                            if (faceToRemove != null) {
+                                val newPerson = com.devomind.gallerysearch.db.PersonEntity(
+                                    nameLabel = null,
+                                    exemplarFaceId = faceToRemove.faceId
+                                )
+                                val newPersonId = db.personDao().insert(newPerson)
+                                db.faceDao().reassignFaces(listOf(faceToRemove.faceId), newPersonId)
+                                db.faceDao().setExemplar(faceToRemove.faceId, true)
+                                db.personDao().setExemplarFace(newPersonId, faceToRemove.faceId)
+                                db.personMergeLogDao().insert(
+                                    com.devomind.gallerysearch.db.PersonMergeLogEntity(
+                                        eventKind = com.devomind.gallerysearch.db.PersonMergeLogEntity.Event.SPLIT,
+                                        personId = person.personId,
+                                        otherPersonId = newPersonId,
+                                        origin = com.devomind.gallerysearch.db.PersonMergeLogEntity.Origin.USER
                                     )
-                                    val newPersonId = db.personDao().insert(newPerson)
-                                    db.faceDao().reassignFaces(listOf(faceToRemove.faceId), newPersonId)
-                                    db.faceDao().setExemplar(faceToRemove.faceId, true)
-                                    db.personDao().setExemplarFace(newPersonId, faceToRemove.faceId)
-                                    db.personMergeLogDao().insert(
-                                        com.devomind.gallerysearch.db.PersonMergeLogEntity(
-                                            eventKind = com.devomind.gallerysearch.db.PersonMergeLogEntity.Event.SPLIT,
-                                            personId = person.personId,
-                                            otherPersonId = newPersonId,
-                                            origin = com.devomind.gallerysearch.db.PersonMergeLogEntity.Origin.USER
-                                        )
-                                    )
-                                }
+                                )
                             }
                         }
-                        loadPerson(person.personId)
                     }
+                    loadPerson(person.personId)
                 }
-                .setNegativeButton(android.R.string.cancel, null)
-                .show()
+            }
         }
     }
 

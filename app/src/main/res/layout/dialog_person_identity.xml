@@ -1,35 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Person identity editor: optional name + single-select relationship chips. Shown from the
-     People page (long-press a person) and the person detail title. -->
+     People page (long-press a person) and the person detail title. Uses the shared Metro dialog
+     shell (same container, title row, field labels, and footer buttons as the tag picker). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:layout_margin="16dp"
+    android:background="@drawable/dialog_metro_bg"
     android:orientation="vertical"
     android:paddingStart="24dp"
-    android:paddingTop="18dp"
+    android:paddingTop="24dp"
     android:paddingEnd="24dp"
-    android:paddingBottom="6dp">
+    android:paddingBottom="16dp">
 
-    <EditText
-        android:id="@+id/identityName"
-        android:layout_width="match_parent"
+    <LinearLayout
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:backgroundTint="@color/metroTextSecondary"
-        android:hint="Name (optional)"
-        android:imeOptions="actionDone"
-        android:importantForAutofill="no"
-        android:inputType="textPersonName|textCapWords"
-        android:maxLines="1"
-        android:textColor="@color/metroTextPrimary"
-        android:textColorHint="@color/metroTextSecondary" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_fluent_person_24_regular"
+            android:tint="?attr/accentColor" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:includeFontPadding="false"
+            android:text="Who is this?"
+            android:textAppearance="@style/TextAppearance.Metro.DialogTitle" />
+    </LinearLayout>
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="Relationship"
-        android:textColor="@color/metroTextSecondary"
-        android:textSize="13sp" />
+        android:layout_marginTop="22dp"
+        android:includeFontPadding="false"
+        android:text="NAME"
+        android:textAppearance="@style/TextAppearance.Metro.FieldLabel" />
+
+    <EditText
+        android:id="@+id/identityName"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/search_bg"
+        android:hint="Name (optional)"
+        android:imeOptions="actionDone"
+        android:importantForAutofill="no"
+        android:inputType="textPersonName|textCapWords"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:maxLines="1"
+        android:textColor="@color/metroTextPrimary"
+        android:textColorHint="@color/metroTextDisabled"
+        android:textSize="16sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="22dp"
+        android:includeFontPadding="false"
+        android:text="RELATIONSHIP"
+        android:textAppearance="@style/TextAppearance.Metro.FieldLabel" />
 
     <HorizontalScrollView
         android:layout_width="match_parent"
@@ -44,4 +81,43 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal" />
     </HorizontalScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:gravity="end"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/identityCancelBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:background="@drawable/metro_row_pressed"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:minWidth="88dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:text="@string/cancel"
+            android:textAppearance="@style/TextAppearance.Metro.ButtonLabel"
+            android:textColor="@color/metroTextSecondary" />
+
+        <TextView
+            android:id="@+id/identitySaveBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/onboarding_button_bg"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:minWidth="104dp"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:text="@string/save"
+            android:textAppearance="@style/TextAppearance.Metro.ButtonLabel"
+            android:textColor="@color/metroTextPrimary" />
+    </LinearLayout>
 </LinearLayout>

@@ -2854,13 +2854,9 @@ class MainActivity : AppCompatActivity() {
         val years = (currentYear downTo oldestYear.coerceIn(1970, currentYear))
             .map { it.toString() }
             .toTypedArray()
-        AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
-            .setTitle("Pick a year")
-            .setItems(years) { dialog, which ->
-                dialog.dismiss()
-                runSearchQuery("date:${years[which]}")
-            }
-            .show()
+        MetroDialog.items(this, options = years.toList(), title = "Pick a year") { which ->
+            runSearchQuery("date:${years[which]}")
+        }
     }
 
     /**

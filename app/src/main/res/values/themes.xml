@@ -7,6 +7,11 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
         <item name="colorAccent">@color/metroAccent</item>
+        <!-- Popup windows (overflow menus, list popups) share the Metro dialog panel look. -->
+        <item name="popupMenuStyle">@style/MetroPopupMenu</item>
+        <item name="listPopupWindowStyle">@style/MetroListPopupWindow</item>
+        <item name="textAppearanceLargePopupMenu">@style/TextAppearance.Metro.PopupItem</item>
+        <item name="textAppearanceSmallPopupMenu">@style/TextAppearance.Metro.PopupItem</item>
         <!-- Default accent values (Azure). Overridden at runtime by AccentPalette overlays. -->
         <item name="accentColor">@color/metroAccent</item>
         <item name="accentColorLight">@color/metroAccentLight</item>
@@ -253,6 +258,22 @@
         <!-- Inherit the active accent overlay from the host activity instead of forcing Azure. -->
         <item name="android:textColorPrimary">@color/metroTextPrimary</item>
         <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <!-- ===================== Popup windows =====================
+     Overflow menus and list popups use the same panel as dialogs (dialog_metro_bg) instead of
+     the stock AppCompat popup chrome, so every floating surface shares one language. -->
+    <style name="MetroPopupMenu" parent="Widget.AppCompat.PopupMenu">
+        <item name="android:popupBackground">@drawable/dialog_metro_bg</item>
+    </style>
+
+    <style name="MetroListPopupWindow" parent="Widget.AppCompat.ListPopupWindow">
+        <item name="android:popupBackground">@drawable/dialog_metro_bg</item>
+    </style>
+
+    <style name="TextAppearance.Metro.PopupItem" parent="TextAppearance.AppCompat.Widget.PopupMenu.Large">
+        <item name="android:textColor">@color/metroTextPrimary</item>
+        <item name="android:textSize">15sp</item>
     </style>
 
     <!-- ===================== Photo editor ===================== -->

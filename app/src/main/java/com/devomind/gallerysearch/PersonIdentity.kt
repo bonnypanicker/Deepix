@@ -1,8 +1,8 @@
 package com.devomind.gallerysearch
 
-import android.app.AlertDialog
 import android.util.TypedValue
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -74,21 +74,25 @@ object PersonIdentityEditor {
         refreshChips(chips, selected, accent, normalText)
 
         AlertDialog.Builder(activity, R.style.Theme_GallerySearch_Dialog)
-            .setTitle("Who is this?")
             .setView(binding.root)
-            .setPositiveButton("Save") { _, _ ->
-                val name = binding.identityName.text.toString().trim().ifBlank { null }
-                val relationship = selected
-                activity.lifecycleScope.launch {
-                    withContext(Dispatchers.IO) {
-                        GalleryDatabase.getInstance(activity.applicationContext)
-                            .personDao().updateIdentity(person.personId, name, relationship)
+            .setCancelable(false)
+            .create()
+            .apply {
+                binding.identityCancelBtn.setOnClickListener { dismiss() }
+                binding.identitySaveBtn.setOnClickListener {
+                    val name = binding.identityName.text.toString().trim().ifBlank { null }
+                    val relationship = selected
+                    activity.lifecycleScope.launch {
+                        withContext(Dispatchers.IO) {
+                            GalleryDatabase.getInstance(activity.applicationContext)
+                                .personDao().updateIdentity(person.personId, name, relationship)
+                        }
+                        dismiss()
+                        onSaved()
                     }
-                    onSaved()
                 }
+                show()
             }
-            .setNegativeButton("Cancel", null)
-            .show()
     }
 
     private fun refreshChips(
