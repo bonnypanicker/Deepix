@@ -66,10 +66,12 @@ object CleanupAnalyzer {
     private const val BRIGHT_FRACTION_THRESHOLD = 0.55f  // share of near-white pixels
     private const val LOW_RES_LONG_EDGE = 640            // longest edge in px
     private const val MAX_DEDUP_ITEMS = 2000
-    // Sensitive-content screen: looser than the blur feature's NsfwClassifier.SENSITIVE_MARGIN
-    // (0.05) on purpose — cleanup items are surfaced for human review, not auto-hidden, so recall
-    // ("let more suspecting photos in") matters more than the occasional false positive.
-    private const val NSFW_MARGIN = 0.03f
+    // Sensitive-content screen: far looser than the blur feature's NsfwClassifier.SENSITIVE_MARGIN
+    // (0.05) on purpose — cleanup items are surfaced for human review, never auto-hidden or
+    // pre-selected, so recall ("let more suspecting photos in") matters more than false positives.
+    // Calibration puts safe photos at median margin -0.012, so 0.01 flags anything leaning even
+    // slightly sensitive while still requiring the image to sit closer to sensitive than to safe.
+    private const val NSFW_MARGIN = 0.01f
     // Bursts: looser than SIMILAR (0.93) and even than the image-search floor (0.55) because the
     // 60-second capture-time gate does the real filtering — within one minute, shots are almost
     // always the same moment, so cosine only needs to confirm scene-level resemblance.
