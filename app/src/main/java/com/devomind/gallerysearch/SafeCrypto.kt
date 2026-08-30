@@ -31,7 +31,14 @@ import kotlin.math.max
 object SafeCrypto {
     private const val GcmIvBytes = 12
     private const val GcmTagBits = 128
-    const val ThumbMaxPx = 320
+
+    /**
+     * Longest edge of generated grid thumbnails. Sized so a 3-column cell (~400px on phones)
+     * never upscales: at 320px thumbs were visibly soft. Cache cost is ~2× per photo, and the
+     * value is baked into the cache filename ([SafeManager.thumbFile]) so bumps invalidate
+     * stale blobs automatically.
+     */
+    const val ThumbMaxPx = 512
     const val VaultExtension = ".zip"
 
     private val secureRandom = SecureRandom()
@@ -126,7 +133,9 @@ object SafeCrypto {
             decoded
         }
         return ByteArrayOutputStream().use { out ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+            // 88 keeps fine detail crisp after the grid's own downscale-to-cell; the size delta
+            // vs 80 is small at thumbnail dimensions.
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 88, out)
             bitmap.recycle()
             out.toByteArray()
         }

@@ -93,6 +93,9 @@ class SafeActivity : AppCompatActivity() {
         setContentView(binding.root)
         applyInsets()
 
+        // Drop thumbnails cached under the old 320px naming so the grid regenerates them sharp.
+        SafeManager.cleanupLegacyThumbs(this)
+
         @Suppress("UNCHECKED_CAST")
         pendingImportUris = (intent.getParcelableArrayListExtra<Uri>(ExtraImportUris) ?: arrayListOf())
 

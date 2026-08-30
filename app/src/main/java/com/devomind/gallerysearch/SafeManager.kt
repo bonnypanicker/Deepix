@@ -356,8 +356,21 @@ object SafeManager {
     private fun thumbDir(context: Context): File =
         File(context.filesDir, "safe_thumbs").apply { mkdirs() }
 
+    /** Name embeds the thumb size so quality bumps invalidate stale blobs by never matching. */
     private fun thumbFile(context: Context, entryName: String): File =
-        File(thumbDir(context), safeHash(entryName) + ".t")
+        File(thumbDir(context), safeHash(entryName) + ".t" + SafeCrypto.ThumbMaxPx)
+
+    /**
+     * Deletes thumbnail blobs left by older naming schemes or quality levels — they can never be
+     * served under the current naming and would only orphan disk. Cheap; called on Safe open.
+     */
+    fun cleanupLegacyThumbs(context: Context) {
+        runCatching {
+            File(context.filesDir, "safe_thumbs").listFiles()?.forEach { f ->
+                if (!f.name.endsWith(".t" + SafeCrypto.ThumbMaxPx)) f.delete()
+            }
+        }
+    }
 
     private fun writeThumb(context: Context, entryName: String, jpeg: ByteArray) {
         val key = thumbKey ?: return
