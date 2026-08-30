@@ -374,8 +374,8 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     private fun setEditAction(isVideo: Boolean, playing: Boolean) {
-        // Edit icon is always "Edit", regardless of media type or playback state.
-        binding.editIcon.setImageResource(R.drawable.ic_fluent_edit_24_regular)
+        // Edit action uses the sliders icon regardless of media type or playback state.
+        binding.editIcon.setImageResource(R.drawable.ic_fluent_options_24_regular)
         binding.editLabel.text = "Edit"
         binding.editIcon.contentDescription = "Edit"
     }
