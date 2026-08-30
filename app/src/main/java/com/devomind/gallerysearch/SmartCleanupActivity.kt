@@ -66,16 +66,38 @@ class SmartCleanupActivity : AppCompatActivity() {
         @Suppress("DEPRECATION")
         val imported = result.data?.getParcelableArrayListExtra<Uri>(SafeActivity.ExtraImportedUris)
         if (result.resultCode == RESULT_OK && !imported.isNullOrEmpty()) {
-            lifecycleScope.launch {
-                pendingSafeMove = true
-                if (DeleteCoordinator.canDeleteDirectly(this@SmartCleanupActivity)) {
-                    withContext(Dispatchers.IO) {
-                        imported.forEach { MediaFileOps.deleteFileDirect(this@SmartCleanupActivity, it) }
+            deleteSafeOriginals(imported)
+        }
+    }
+
+    /**
+     * Removes the gallery copies of photos now encrypted in the Safe. The direct pass deletes
+     * permanently (the vault copy replaces them); per-URI results are tracked so anything it
+     * couldn't remove (unresolvable file path, locked file) is retried through the system consent
+     * flow instead of being silently left behind. Only verifiably-deleted items leave the cleanup
+     * lists — a photo is never dropped from review while it still exists on disk.
+     */
+    private fun deleteSafeOriginals(imported: List<Uri>) {
+        lifecycleScope.launch {
+            val deleted = mutableListOf<Uri>()
+            val needsConsent = mutableListOf<Uri>()
+            if (DeleteCoordinator.canDeleteDirectly(this@SmartCleanupActivity)) {
+                withContext(Dispatchers.IO) {
+                    imported.forEach { uri ->
+                        (if (MediaFileOps.deleteFileDirect(this@SmartCleanupActivity, uri)) deleted else needsConsent)
+                            .add(uri)
                     }
-                    onDeleted(imported)
-                } else {
-                    deleteUris(imported)
                 }
+            } else {
+                needsConsent.addAll(imported)
+            }
+            if (deleted.isNotEmpty()) {
+                pendingSafeMove = true
+                onDeleted(deleted)
+            }
+            if (needsConsent.isNotEmpty()) {
+                pendingSafeMove = true
+                deleteUris(needsConsent)
             }
         }
     }

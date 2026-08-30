@@ -285,16 +285,25 @@ class MainActivity : AppCompatActivity() {
     ) { result ->
         // Photos successfully moved into the Safe: remove the originals. They're already encrypted in
         // the vault, so delete permanently (not to the bin) — silently when we have direct access.
+        // Direct-delete failures fall back to the system consent flow so originals never linger.
         @Suppress("DEPRECATION")
         val imported = result.data?.getParcelableArrayListExtra<Uri>(SafeActivity.ExtraImportedUris)
         if (result.resultCode == RESULT_OK && !imported.isNullOrEmpty()) {
-            if (DeleteCoordinator.canDeleteDirectly(this)) {
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) { imported.forEach { MediaFileOps.deleteFileDirect(this@MainActivity, it) } }
-                    refreshVisibleItems()
+            lifecycleScope.launch {
+                val deleted = mutableListOf<Uri>()
+                val needsConsent = mutableListOf<Uri>()
+                if (DeleteCoordinator.canDeleteDirectly(this@MainActivity)) {
+                    withContext(Dispatchers.IO) {
+                        imported.forEach { uri ->
+                            (if (MediaFileOps.deleteFileDirect(this@MainActivity, uri)) deleted else needsConsent)
+                                .add(uri)
+                        }
+                    }
+                } else {
+                    needsConsent.addAll(imported)
                 }
-            } else {
-                deleteUris(imported)
+                if (deleted.isNotEmpty()) refreshVisibleItems()
+                if (needsConsent.isNotEmpty()) deleteUris(needsConsent)
             }
         }
     }
