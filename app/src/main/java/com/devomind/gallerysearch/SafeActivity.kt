@@ -41,12 +41,14 @@ import kotlinx.coroutines.withContext
  * The encrypted photo locker ("Safe").
  *
  * Lifecycle:
- *  - Not configured → password setup dialog → SAF folder pick → [SafeManager.configure].
+ *  - Not configured → storage-access request → existing-vault choice (adopt the found archive with
+ *    its password, or delete it and start over) → password → [SafeManager.setUpVault].
  *  - Configured     → lock screen (biometric first, password fallback) → grid of decrypted thumbs.
  * The activity is [WindowManager.LayoutParams.FLAG_SECURE] (no screenshots / recents preview) and
- * relocks whenever it goes to the background. Moving photos in from the gallery is done by launching
- * this activity with [ExtraImportUris]; the successfully imported originals are returned via
- * [ExtraImportedUris] so [MainActivity] can delete them through its normal delete-consent flow.
+ * relocks whenever it goes to the background. Moving photos in from the gallery works even before
+ * setup: launching with [ExtraImportUris] routes through the same setup chain, and the pending
+ * import runs as soon as the vault is unlocked; the successfully imported originals are returned
+ * via [ExtraImportedUris] so [MainActivity] can delete them through its normal delete-consent flow.
  */
 class SafeActivity : AppCompatActivity() {
 
@@ -59,7 +61,6 @@ class SafeActivity : AppCompatActivity() {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
     }
 
-    private var pendingSetupPassword: String? = null
     private var pendingImportUris: List<Uri> = emptyList()
     private val importedForDeletion = ArrayList<Uri>()
     /** Set before launching external system UI so onStop doesn't relock mid-flow. */
@@ -71,7 +72,11 @@ class SafeActivity : AppCompatActivity() {
 
     private val storageAccessLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { finishPendingSetupIfPossible() }
+    ) {
+        // The settings screen returns no useful result code — re-check the actual access state.
+        // Re-prompt on denial instead of relaunching settings in a loop.
+        if (StoragePermissions.hasAllFilesAccess(this)) beginSetupFlow() else promptStorageAccess()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AccentPalette.apply(this)
@@ -113,6 +118,9 @@ class SafeActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+        // Nothing to relock before the vault is configured, and re-showing the lock UI mid-setup
+        // would strand the flow (e.g. while the all-files settings screen is up).
+        if (!SafeManager.isConfigured(this)) return
         if (!suppressRelock && !isChangingConfigurations) {
             SafeManager.lock(this)
             showLock()
@@ -145,7 +153,89 @@ class SafeActivity : AppCompatActivity() {
         binding.lockPasswordInput.visibility = View.GONE
         binding.unlockBtn.visibility = View.GONE
         binding.forgotPasswordBtn.visibility = View.GONE
+        beginSetupFlow()
+    }
 
+    /**
+     * Setup chain: storage access first (the archive check reads the vault's public folder, so
+     * nothing can be detected before it's granted), then an adopt-or-delete choice when an
+     * encrypted Safe file already exists on disk, then the password step.
+     */
+    private fun beginSetupFlow() {
+        if (!StoragePermissions.hasAllFilesAccess(this)) {
+            promptStorageAccess()
+            return
+        }
+        showBusy()
+        lifecycleScope.launch {
+            val hasExisting = withContext(Dispatchers.IO) { SafeManager.archiveExists(this@SafeActivity) }
+            hideBusy()
+            if (hasExisting) offerExistingVaultChoice() else showPasswordSetupDialog(adoptMode = false)
+        }
+    }
+
+    private fun promptStorageAccess() {
+        MetroDialog.confirm(
+            this,
+            title = "Storage access needed",
+            message = "Safe keeps your photos in one encrypted file in its own folder on disk " +
+                "(${SafeManager.vaultLocationLabel(this)}). All-files access lets the app create " +
+                "and protect that folder.",
+            positive = "Grant access",
+            negative = "Cancel",
+            iconRes = R.drawable.ic_fluent_lock_closed_24_regular,
+            cancelable = false,
+            onNegative = { finish() },
+            onCancel = { finish() }
+        ) {
+            suppressRelock = true
+            storageAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this))
+        }
+    }
+
+    /** Existing archive on disk: adopt it with its password, or erase it and start a new Safe. */
+    private fun offerExistingVaultChoice() {
+        MetroDialog.confirm(
+            this,
+            title = "Safe already exists",
+            message = "An encrypted Safe file was found at ${SafeManager.vaultLocationLabel(this)}. " +
+                "Use it with its existing password, or delete it and start a new Safe — deleting " +
+                "permanently erases all photos inside it.",
+            positive = "Use existing Safe",
+            negative = "Delete & start over",
+            iconRes = R.drawable.ic_fluent_lock_closed_24_regular,
+            cancelable = false,
+            onNegative = { confirmDeleteExistingVault() },
+            onCancel = { finish() }
+        ) {
+            showPasswordSetupDialog(adoptMode = true)
+        }
+    }
+
+    private fun confirmDeleteExistingVault() {
+        MetroDialog.confirm(
+            this,
+            title = "Delete the existing Safe?",
+            message = "Every photo inside it will be permanently erased. This cannot be undone.",
+            positive = "Delete & start over",
+            danger = true,
+            iconRes = R.drawable.ic_fluent_lock_closed_24_regular,
+            cancelable = false,
+            onNegative = { offerExistingVaultChoice() },
+            onCancel = { finish() }
+        ) {
+            showBusy("Deleting old Safe…")
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) { SafeManager.purgeVault(this@SafeActivity) }
+                hideBusy()
+                MetroBanner.show(this@SafeActivity, "Old Safe deleted")
+                showPasswordSetupDialog(adoptMode = false)
+            }
+        }
+    }
+
+    /** Password step: create-and-confirm for a fresh Safe, single enter field to adopt one. */
+    private fun showPasswordSetupDialog(adoptMode: Boolean) {
         val view = layoutInflater.inflate(R.layout.dialog_safe_setup, null)
         val pw = view.findViewById<EditText>(R.id.safePassword)
         val confirm = view.findViewById<EditText>(R.id.safePasswordConfirm)
@@ -154,56 +244,68 @@ class SafeActivity : AppCompatActivity() {
             .setCancelable(false)
             .create()
 
-        view.findViewById<TextView>(R.id.safeSetupLocation).text =
-            "Stored at: ${SafeManager.vaultLocationLabel(this)}"
+        if (adoptMode) {
+            view.findViewById<TextView>(R.id.safeSetupTitle).text = "Use existing Safe"
+            view.findViewById<TextView>(R.id.safeSetupNote).text =
+                "Enter the password this Safe was created with."
+            view.findViewById<TextView>(R.id.safeSetupLocation).text =
+                "Found at: ${SafeManager.vaultLocationLabel(this)}"
+            confirm.visibility = View.GONE
+            view.findViewById<TextView>(R.id.safeSetupWarning).visibility = View.GONE
+            pw.hint = getString(R.string.enter_password_hint)
+        } else {
+            view.findViewById<TextView>(R.id.safeSetupLocation).text =
+                "Stored at: ${SafeManager.vaultLocationLabel(this)}"
+        }
 
         view.findViewById<TextView>(R.id.safeSetupCancel).setOnClickListener {
             dialog.dismiss()
-            finish()
+            if (adoptMode) offerExistingVaultChoice() else finish()
         }
         view.findViewById<TextView>(R.id.safeSetupContinue).setOnClickListener {
             val password = pw.text.toString()
-            val confirmText = confirm.text.toString()
             when {
-                password.length < 4 ->
+                password.isEmpty() ->
+                    MetroBanner.show(this, "Enter a password")
+                !adoptMode && password.length < 4 ->
                     MetroBanner.show(this, "Use at least 4 characters")
-                password != confirmText ->
+                !adoptMode && password != confirm.text.toString() ->
                     MetroBanner.show(this, "Passwords don't match")
                 else -> {
-                    pendingSetupPassword = password
                     dialog.dismiss()
-                    finishPendingSetupIfPossible()
+                    createOrAdoptVault(password, adoptMode)
                 }
             }
         }
         dialog.show()
     }
 
-    private fun finishPendingSetupIfPossible() {
-        val setupPassword = pendingSetupPassword
-        if (setupPassword == null || SafeManager.isConfigured(this)) return
+    private fun createOrAdoptVault(password: String, adoptMode: Boolean) {
         if (!StoragePermissions.hasAllFilesAccess(this)) {
-            suppressRelock = true
-            MetroBanner.show(this, "Allow all-files access to create ${SafeManager.vaultLocationLabel(this)}", durationMs = 6000)
-            storageAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this))
+            MetroBanner.show(this, "All-files access is required for Safe")
+            beginSetupFlow()
             return
         }
-        pendingSetupPassword = null
         showBusy()
         lifecycleScope.launch {
             val outcome = withContext(Dispatchers.IO) {
-                SafeManager.setUpVault(this@SafeActivity, setupPassword)
+                SafeManager.setUpVault(this@SafeActivity, password)
             }
             hideBusy()
             when (outcome) {
                 SafeManager.SetupOutcome.NO_ACCESS -> {
-                    pendingSetupPassword = setupPassword
                     MetroBanner.show(this@SafeActivity, "All-files access is required for Safe")
-                    finishPendingSetupIfPossible()
+                    beginSetupFlow()
                 }
-                SafeManager.SetupOutcome.WRONG_PASSWORD -> {
-                    offerResetOrphanedVault()
-                }
+                SafeManager.SetupOutcome.WRONG_PASSWORD ->
+                    if (adoptMode) {
+                        // They chose to adopt — let them retry; cancel returns to the choice.
+                        MetroBanner.show(this@SafeActivity, "Incorrect password")
+                        showPasswordSetupDialog(adoptMode = true)
+                    } else {
+                        // An archive appeared since the choice was made — ask again.
+                        offerExistingVaultChoice()
+                    }
                 SafeManager.SetupOutcome.ADOPTED -> {
                     MetroBanner.show(this@SafeActivity, "Safe unlocked")
                     showContent()
