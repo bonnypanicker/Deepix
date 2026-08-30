@@ -1,6 +1,8 @@
 package com.devomind.gallerysearch
 
+import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -9,6 +11,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.view.ViewCompat
@@ -22,6 +25,7 @@ import com.devomind.gallerysearch.databinding.ActivitySettingsBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * Metro-styled preferences screen. All toggles write to [IndexPreferences] immediately; MainActivity
@@ -312,22 +316,44 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun showSafeLocationDialog() {
-        val current = IndexPreferences.getSafeStorageRoot(this)
-        val options = arrayOf("Pictures", "Documents")
-        val checked = if (current == IndexPreferences.SAFE_ROOT_DOCUMENTS) 1 else 0
-        MetroDialog.singleChoice(
+        MetroDialog.items(
             this,
             title = "Safe storage location",
-            options = options.toList(),
-            checkedIndex = checked
+            options = listOf("Choose folder…", "Reset to Pictures (default)")
         ) { which ->
-            val newRoot =
-                if (which == 1) IndexPreferences.SAFE_ROOT_DOCUMENTS else IndexPreferences.SAFE_ROOT_PICTURES
-            changeSafeRoot(current, newRoot)
+            when (which) {
+                0 -> {
+                    runCatching {
+                        safeFolderPicker.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
+                    }.onFailure {
+                        MetroBanner.show(this, "Couldn't open the folder picker")
+                    }
+                }
+                1 -> changeSafeVaultDir(null)
+            }
         }
     }
 
-    private fun changeSafeRoot(oldRoot: String, newRoot: String) {
+    private val safeFolderPicker = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val treeUri: Uri? = result.data?.data
+        if (result.resultCode != RESULT_OK || treeUri == null) return@registerForActivityResult
+        val dir = SafeManager.customDirFromTreeUri(treeUri)
+        if (dir == null) {
+            MetroBanner.show(this, "Please choose a folder on internal storage")
+            return@registerForActivityResult
+        }
+        changeSafeVaultDir(dir)
+    }
+
+    /**
+     * Moves the vault to a custom folder (or back to the Pictures default when [newDir] is null)
+     * and persists the choice. The vault only moves when the target has no Safe file, so nothing
+     * can be overwritten or lost.
+     */
+    private fun changeSafeVaultDir(newDir: File?) {
+        val target = newDir ?: SafeManager.defaultVaultDir(this)
         if (SafeStore.isConfigured(this)) {
             if (!StoragePermissions.hasAllFilesAccess(this)) {
                 MetroBanner.show(this, "All-files access is needed to move the Safe")
@@ -335,26 +361,40 @@ class SettingsActivity : AppCompatActivity() {
             }
             lifecycleScope.launch {
                 val moved = withContext(Dispatchers.IO) {
-                    SafeManager.moveVault(this@SettingsActivity, oldRoot, newRoot)
+                    SafeManager.moveVaultToDir(this@SettingsActivity, target)
                 }
                 if (!moved) {
-                    MetroBanner.show(this@SettingsActivity, "Couldn't move the Safe file to the new location")
+                    MetroBanner.show(this@SettingsActivity, "The chosen folder already has a Safe file")
                     return@launch
                 }
-                IndexPreferences.setSafeStorageRoot(this@SettingsActivity, newRoot)
+                IndexPreferences.setSafeVaultDir(this@SettingsActivity, newDir?.absolutePath)
+                // Reset to default also clears the legacy Pictures/Documents choice, so a stale
+                // root can't point the vault at the folder we just moved the zip out of.
+                if (newDir == null) IndexPreferences.setSafeStorageRoot(
+                    this@SettingsActivity,
+                    IndexPreferences.SAFE_ROOT_PICTURES
+                )
                 updateSafeSubtitles()
-                MetroBanner.show(this@SettingsActivity, "Safe moved to ${rootLabel(newRoot)}")
+                MetroBanner.show(this@SettingsActivity, "Safe moved to ${target.name}")
             }
         } else {
-            IndexPreferences.setSafeStorageRoot(this, newRoot)
+            IndexPreferences.setSafeVaultDir(this, newDir?.absolutePath)
+            // No vault yet: keep the default root clean too, so the next Safe is created in Pictures
+            // even if a legacy Documents choice predates the folder picker.
+            if (newDir == null) IndexPreferences.setSafeStorageRoot(
+                this,
+                IndexPreferences.SAFE_ROOT_PICTURES
+            )
             updateSafeSubtitles()
-            MetroBanner.show(this, "New Safe will be created in ${rootLabel(newRoot)}")
+            MetroBanner.show(this, "New Safe will be created in ${target.name}")
         }
     }
 
     private fun updateSafeSubtitles() {
-        val root = IndexPreferences.getSafeStorageRoot(this)
-        binding.safeLocationSubtitle.text = rootLabel(root)
+        val custom = IndexPreferences.getSafeVaultDir(this)
+        binding.safeLocationSubtitle.text =
+            if (!custom.isNullOrBlank()) java.io.File(custom).name
+            else rootLabel(IndexPreferences.getSafeStorageRoot(this))
     }
 
     private fun rootLabel(root: String): String =

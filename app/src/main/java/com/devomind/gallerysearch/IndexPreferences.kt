@@ -354,6 +354,24 @@ object IndexPreferences {
             .apply()
     }
 
+    private const val KeySafeVaultDir = "safe_vault_dir"
+
+    /**
+     * Custom vault directory (absolute path) chosen via the Settings folder picker. Null/blank
+     * means "no custom folder" — [getSafeStorageRoot] (Pictures/Documents) applies instead.
+     */
+    fun getSafeVaultDir(context: Context): String? {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getString(KeySafeVaultDir, null)?.takeIf { it.isNotBlank() }
+    }
+
+    fun setSafeVaultDir(context: Context, path: String?) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KeySafeVaultDir, path ?: "")
+            .apply()
+    }
+
     /** Process-wide cache of the accent selection. MainActivity reads this before super.onCreate()
      *  — StrictMode measured a ~400 ms main-thread block on cold start when it hit disk instead,
      *  so GallerySearchApp warms it on a background thread the moment the process starts. */

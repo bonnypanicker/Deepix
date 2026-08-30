@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import org.json.JSONObject
 import java.io.File
 import javax.crypto.SecretKey
 
@@ -48,6 +49,7 @@ object SafeManager {
 
     @Volatile private var sessionPassword: String? = null
     @Volatile private var thumbKey: SecretKey? = null
+    @Volatile private var originalPathsCache: MutableMap<String, String>? = null
 
     val isUnlocked: Boolean get() = sessionPassword != null
     fun currentPassword(): String? = sessionPassword
@@ -64,6 +66,59 @@ object SafeManager {
         }
     }
 
+    // ---- Original gallery locations (vault entry name -> absolute source dir) ----
+
+    private const val OriginalPathsFile = "safe_original_paths.json"
+
+    /**
+     * Remembers where each imported photo lived before the Safe swallowed it, so "Save back to
+     * gallery" restores it to its original folder instead of a fixed Deepix folder. Keyed by vault
+     * entry name (the URI dies with the original). Survives lock/unlock and process death.
+     */
+    private fun originalPaths(context: Context): MutableMap<String, String> {
+        originalPathsCache?.let { return it }
+        synchronized(this) {
+            originalPathsCache?.let { return it }
+            val map = runCatching {
+                val obj = JSONObject(File(context.filesDir, OriginalPathsFile).readText())
+                val m = linkedMapOf<String, String>()
+                for (key in obj.keys()) m[key] = obj.optString(key)
+                m
+            }.getOrDefault(linkedMapOf())
+            originalPathsCache = map
+            return map
+        }
+    }
+
+    private fun saveOriginalPaths(context: Context) {
+        val map = originalPathsCache ?: return
+        runCatching {
+            val obj = JSONObject()
+            for ((key, value) in map) obj.put(key, value)
+            File(context.filesDir, OriginalPathsFile).writeText(obj.toString())
+        }
+    }
+
+    /**
+     * Absolute directory the photo lived in before import. Prefers the volume-aware absolute DATA
+     * path so SD-card photos remember their real volume; RELATIVE_PATH (primary-storage-relative)
+     * is only a fallback and assumes primary storage.
+     */
+    private fun sourceOriginalDir(context: Context, source: Uri): String? {
+        MediaFileOps.resolvePath(context, source)?.let { return File(it).parent }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return runCatching {
+                context.contentResolver
+                    .query(source, arrayOf(MediaStore.Images.Media.RELATIVE_PATH), null, null, null)
+                    ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+                    ?.let { rel ->
+                        File(Environment.getExternalStorageDirectory(), rel.trimEnd('/')).absolutePath
+                    }
+            }.getOrNull()
+        }
+        return null
+    }
+
     // ---- Storage location (public folder, direct file I/O) ----
 
     /** Roots the vault can live under; the folder survives uninstall and opens in any zip tool. */
@@ -78,28 +133,39 @@ object SafeManager {
             VaultFolderName
         )
 
-    private fun vaultDir(context: Context): File =
-        baseDir(IndexPreferences.getSafeStorageRoot(context))
+    private fun vaultDir(context: Context): File {
+        val custom = IndexPreferences.getSafeVaultDir(context)
+        if (!custom.isNullOrBlank()) return File(custom)
+        return baseDir(IndexPreferences.getSafeStorageRoot(context))
+    }
 
     private fun masterZip(context: Context): File = File(vaultDir(context), MasterName)
 
-    /** Human-readable location shown to the user (for the "keep it safe" messaging). */
-    fun vaultLocationLabel(context: Context): String {
-        val root = IndexPreferences.getSafeStorageRoot(context)
-        val parent = if (root == IndexPreferences.SAFE_ROOT_DOCUMENTS) "Documents" else "Pictures"
-        return "$parent/$VaultFolderName/$MasterName"
-    }
+    /** Public root the vault falls back to when no custom folder is set (the default). */
+    fun defaultVaultDir(context: Context): File = baseDir(IndexPreferences.SAFE_ROOT_PICTURES)
 
     /**
-     * Moves the vault zip from [oldRoot] to [newRoot]. Returns `true` when there is nothing to move
-     * or the move succeeds; `false` if an existing vault couldn't be moved or the target already
-     * holds one (so the caller can abort without losing data).
+     * Converts a SAF tree Uri into a real directory on primary storage — the app already requires
+     * All-files access for the Safe, so once the user picks a folder we can keep using direct file
+     * I/O (zip4j needs a real path). Trees on other volumes are rejected.
      */
-    fun moveVault(context: Context, oldRoot: String, newRoot: String): Boolean {
-        if (oldRoot == newRoot) return true
-        val oldZip = File(baseDir(oldRoot), MasterName)
-        if (!oldZip.exists()) return true
-        val newDir = baseDir(newRoot).apply { mkdirs() }
+    fun customDirFromTreeUri(uri: Uri): File? {
+        val docId = try {
+            android.provider.DocumentsContract.getTreeDocumentId(uri)
+        } catch (e: Exception) {
+            return null
+        }
+        val parts = docId.split(":", limit = 2)
+        if (parts.size != 2 || parts[0] != "primary") return null
+        return File(Environment.getExternalStorageDirectory(), parts[1].trim('/'))
+    }
+
+    /** Moves the vault zip to [newDir] (created as needed). Returns false only when an existing
+     *  vault couldn't be moved or the target already holds one. */
+    fun moveVaultToDir(context: Context, newDir: File): Boolean {
+        val oldZip = masterZip(context)
+        if (!oldZip.exists() || oldZip.parentFile == newDir) return true
+        newDir.mkdirs()
         val newZip = File(newDir, MasterName)
         if (newZip.exists()) return false // don't clobber a vault already at the target
         return if (oldZip.renameTo(newZip)) {
@@ -114,14 +180,24 @@ object SafeManager {
     }
 
     /**
-     * Hard reset: deletes the encrypted vault across every known root, plus app config and the
-     * thumbnail cache. Use only when the password is lost — everything inside the vault is erased.
+     * Hard reset: deletes the encrypted vault everywhere it could live — every known root plus the
+     * custom folder — along with app config and the thumbnail cache. Use only when the password is
+     * lost — everything inside the vault is erased.
      */
     fun purgeVault(context: Context) {
         for (root in knownRoots) {
             runCatching { File(baseDir(root), MasterName).delete() }
             runCatching { baseDir(root).delete() } // removes the now-empty folder
         }
+        IndexPreferences.getSafeVaultDir(context)?.let { custom ->
+            runCatching { File(custom, MasterName).delete() }
+            // Remove the custom folder only if our vault was its sole content; never wipes a
+            // shared folder (File.delete() on a non-empty dir would fail anyway).
+            runCatching { File(custom).takeIf { it.list()?.isEmpty() == true }?.delete() }
+        }
+        IndexPreferences.setSafeVaultDir(context, null)
+        runCatching { File(context.filesDir, OriginalPathsFile).delete() }
+        originalPathsCache = null
         SafeStore.reset(context)
         lock(context)
         runCatching { File(context.filesDir, "safe_thumbs").deleteRecursively() }
@@ -237,9 +313,11 @@ object SafeManager {
         vaultDir(context).mkdirs()
         val zip = masterZip(context)
         val existing = SafeCrypto.listEntryNames(zip).toMutableSet()
+        val originalDirs = originalPaths(context)
         val work = File(context.cacheDir, "safe_work").apply { mkdirs() }
         var imported = 0
         var failed = 0
+        var originalDirsDirty = false
         val importedSources = mutableListOf<Uri>()
         for (source in sources) {
             onProgress?.invoke(imported + failed, sources.size)
@@ -253,6 +331,10 @@ object SafeManager {
 
                 SafeCrypto.addFileToZip(zip, plain, entryName, password.toCharArray())
                 existing.add(entryName)
+                sourceOriginalDir(context, source)?.let {
+                    originalDirs[entryName] = it
+                    originalDirsDirty = true
+                }
 
                 SafeCrypto.makeThumbnailJpeg(context, source)?.let { writeThumb(context, entryName, it) }
                 imported++
@@ -263,6 +345,7 @@ object SafeManager {
                 plain.delete()
             }
         }
+        if (originalDirsDirty) saveOriginalPaths(context)
         return ImportResult(imported, failed, importedSources)
     }
 
@@ -310,45 +393,94 @@ object SafeManager {
         return SafeCrypto.extractEntry(masterZip(context), item.entryName, password.toCharArray(), work)
     }
 
-    /** Decrypts back into the public gallery (Pictures/Deepix). Returns the new media uri or null. */
+    /** Decrypts back into the gallery — into the folder the photo originally came from when we
+     *  know it, else the Deepix folder. Returns the new media uri or null. */
     fun restoreToGallery(context: Context, item: VaultItem): Uri? {
         val temp = runCatching { decryptToTemp(context, item) }.getOrNull() ?: return null
+        val originalDir = originalPaths(context)[item.entryName]
+        val qPlus = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+        val target = if (qPlus) restoreTarget(context, originalDir) else null
         return try {
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, temp.name)
                 put(MediaStore.Images.Media.MIME_TYPE, mimeFor(temp.name))
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Deepix")
+                if (qPlus) {
+                    put(MediaStore.Images.Media.RELATIVE_PATH, target!!.second)
                     put(MediaStore.Images.Media.IS_PENDING, 1)
+                } else if (originalDir != null) {
+                    put(MediaStore.MediaColumns.DATA, File(originalDir, temp.name).absolutePath)
                 }
             }
-            val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val collection = if (qPlus) {
+                MediaStore.Images.Media.getContentUri(target!!.first)
             } else {
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI
             }
             val out = context.contentResolver.insert(collection, values) ?: return null
-            context.contentResolver.openOutputStream(out)?.use { os ->
-                temp.inputStream().use { it.copyTo(os) }
+            try {
+                context.contentResolver.openOutputStream(out)?.use { os ->
+                    temp.inputStream().use { it.copyTo(os) }
+                } ?: throw java.io.IOException("No output stream for $out")
+                if (qPlus) {
+                    values.clear()
+                    values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                    context.contentResolver.update(out, values, null, null)
+                }
+                out
+            } catch (e: Exception) {
+                // Never leave a broken 0-byte row behind looking like a restored photo.
+                runCatching { context.contentResolver.delete(out, null, null) }
+                null
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                values.clear()
-                values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                context.contentResolver.update(out, values, null, null)
-            }
-            out
         } finally {
             temp.parentFile?.deleteRecursively()
         }
     }
 
+    /**
+     * Where [restoreToGallery] should write on Q+: the MediaStore volume plus its RELATIVE_PATH
+     * (relative to that volume's own root, not primary's). A photo imported from an SD card
+     * restores back onto that card; unknown, volume-root and unresolvable paths fall back to the
+     * primary Pictures/Deepix folder.
+     */
+    private fun restoreTarget(context: Context, originalDir: String?): Pair<String, String> {
+        val primaryRoot = Environment.getExternalStorageDirectory().absolutePath.trimEnd('/')
+        if (originalDir != null) {
+            val dir = originalDir.trimEnd('/')
+            if (dir.startsWith(primaryRoot)) {
+                val rel = dir.removePrefix(primaryRoot).trim('/')
+                if (rel.isNotBlank()) return MediaStore.VOLUME_EXTERNAL_PRIMARY to "$rel/"
+            } else {
+                // Secondary volume (SD card). getDirectory() needs API 30; on API 29 the
+                // NoSuchMethodError is swallowed and we fall back rather than crash.
+                runCatching {
+                    val sm = context.getSystemService(Context.STORAGE_SERVICE)
+                        as android.os.storage.StorageManager
+                    for (v in sm.storageVolumes) {
+                        val volRoot = v.directory?.absolutePath?.trimEnd('/') ?: continue
+                        if (!dir.startsWith(volRoot)) continue
+                        val rel = dir.removePrefix(volRoot).trim('/')
+                        val name = if (v.isPrimary) MediaStore.VOLUME_EXTERNAL_PRIMARY else v.uuid
+                        if (rel.isNotBlank() && name != null) return name to "$rel/"
+                    }
+                }
+            }
+        }
+        return MediaStore.VOLUME_EXTERNAL_PRIMARY to "Pictures/Deepix/"
+    }
+
     fun removeItem(context: Context, item: VaultItem): Boolean {
         val password = sessionPassword ?: return false
-        return runCatching {
+        val removed = runCatching {
             SafeCrypto.removeEntry(masterZip(context), item.entryName, password.toCharArray())
             thumbFile(context, item.entryName).delete()
             true
         }.getOrDefault(false)
+        if (removed) {
+            originalPaths(context).remove(item.entryName)
+            saveOriginalPaths(context)
+        }
+        return removed
     }
 
     // ---- Helpers ----

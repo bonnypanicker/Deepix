@@ -181,9 +181,8 @@ class SafeActivity : AppCompatActivity() {
         MetroDialog.confirm(
             this,
             title = "Storage access needed",
-            message = "Safe keeps your photos in one encrypted file in its own folder on disk " +
-                "(${SafeManager.vaultLocationLabel(this)}). All-files access lets the app create " +
-                "and protect that folder.",
+            message = "Safe keeps your photos in one encrypted file in its own folder on disk. " +
+                "All-files access lets the app create and protect that folder.",
             positive = "Grant access",
             negative = "Cancel",
             iconRes = R.drawable.ic_fluent_lock_closed_24_regular,
@@ -201,7 +200,7 @@ class SafeActivity : AppCompatActivity() {
         MetroDialog.confirm(
             this,
             title = "Safe already exists",
-            message = "An encrypted Safe file was found at ${SafeManager.vaultLocationLabel(this)}. " +
+            message = "An encrypted Safe file already exists on this device. " +
                 "Use it with its existing password, or delete it and start a new Safe — deleting " +
                 "permanently erases all photos inside it.",
             positive = "Use existing Safe",
@@ -251,14 +250,10 @@ class SafeActivity : AppCompatActivity() {
             view.findViewById<TextView>(R.id.safeSetupTitle).text = "Use existing Safe"
             view.findViewById<TextView>(R.id.safeSetupNote).text =
                 "Enter the password this Safe was created with."
-            view.findViewById<TextView>(R.id.safeSetupLocation).text =
-                "Found at: ${SafeManager.vaultLocationLabel(this)}"
             confirm.visibility = View.GONE
             view.findViewById<TextView>(R.id.safeSetupWarning).visibility = View.GONE
             pw.hint = getString(R.string.enter_password_hint)
-        } else {
-            view.findViewById<TextView>(R.id.safeSetupLocation).text =
-                "Stored at: ${SafeManager.vaultLocationLabel(this)}"
+            pw.setAutofillHints(android.view.View.AUTOFILL_HINT_PASSWORD)
         }
 
         view.findViewById<TextView>(R.id.safeSetupCancel).setOnClickListener {
@@ -334,8 +329,8 @@ class SafeActivity : AppCompatActivity() {
         MetroDialog.confirm(
             this,
             title = "Safe already exists",
-            message = "An encrypted Safe file exists at ${SafeManager.vaultLocationLabel(this)} but the " +
-                "password doesn't match. If you've forgotten the password, you can delete it " +
+            message = "An encrypted Safe file already exists but the password doesn't match. " +
+                "If you've forgotten the password, you can delete it " +
                 "and create a new Safe. This permanently erases all photos inside it.",
             positive = "Delete & start over",
             negative = "Try another password",

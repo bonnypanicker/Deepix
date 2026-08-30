@@ -44,16 +44,6 @@
         android:textAppearance="@style/TextAppearance.Metro.BodySecondary" />
 
     <TextView
-        android:id="@+id/safeSetupLocation"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:fontFamily="sans-serif-medium"
-        android:includeFontPadding="false"
-        android:textColor="?attr/accentColor"
-        android:textSize="12sp" />
-
-    <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="22dp"
@@ -66,9 +56,10 @@
         android:layout_width="match_parent"
         android:layout_height="50dp"
         android:layout_marginTop="8dp"
-        android:importantForAutofill="no"
+        android:autofillHints="newPassword"
         android:background="@drawable/search_bg"
         android:hint="@string/create_password_hint"
+        android:imeOptions="actionNext"
         android:inputType="textPassword"
         android:paddingStart="14dp"
         android:paddingEnd="14dp"
@@ -82,7 +73,7 @@
         android:layout_width="match_parent"
         android:layout_height="50dp"
         android:layout_marginTop="10dp"
-        android:importantForAutofill="no"
+        android:autofillHints="newPassword"
         android:background="@drawable/search_bg"
         android:hint="@string/confirm_password_hint"
         android:imeOptions="actionDone"
