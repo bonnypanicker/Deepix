@@ -4026,21 +4026,23 @@ class MainActivity : AppCompatActivity() {
                 }
             return
         }
-        // Bin deletes are undoable (banner UNDO); direct permanent deletes are not — those get
-        // the one Metro confirm. The system consent dialog path confirms itself.
-        if (!DeleteCoordinator.usesBin(this)) {
-            val noun = if (uris.size == 1) "this photo" else "${uris.size} photos"
-            MetroDialog.confirm(
-                context = this,
-                title = "Delete permanently?",
-                message = "Recycle Bin is off, so $noun will be deleted permanently. There's no undo.",
-                positive = "Delete",
-                danger = true,
-                iconRes = R.drawable.ic_fluent_delete_24_regular
-            ) { performManagedDelete(uris) }
-            return
-        }
-        performManagedDelete(uris)
+        // Every delete confirms first. Bin moves are undoable for 30 days; direct deletes are
+        // permanent — the copy makes the difference explicit. The system consent dialog path
+        // (no all-files access) confirms itself.
+        val toBin = DeleteCoordinator.usesBin(this)
+        val noun = if (uris.size == 1) "this photo" else "${uris.size} photos"
+        MetroDialog.confirm(
+            context = this,
+            title = if (toBin) "Move to Bin?" else "Delete permanently?",
+            message = if (toBin) {
+                "$noun will move to the Recycle Bin. You can restore them for 30 days."
+            } else {
+                "Recycle Bin is off, so $noun will be deleted permanently. There's no undo."
+            },
+            positive = if (toBin) "Move to Bin" else "Delete",
+            danger = !toBin,
+            iconRes = R.drawable.ic_fluent_delete_24_regular
+        ) { performManagedDelete(uris) }
     }
 
     private fun performManagedDelete(uris: List<Uri>) {
