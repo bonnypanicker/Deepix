@@ -13,6 +13,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
+import androidx.work.WorkInfo
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -211,6 +212,20 @@ class IndexWorker(
         private const val ChannelId = "gallery_index_channel"
         private const val NotificationId = 1001
         private const val PausedNotificationId = 1002
+
+        /**
+         * REPLACE transitions (scope rescan, refresh) leave the cancelled spec in the unique-work
+         * list, so `firstOrNull()` can shadow the live pass's state and skip its SUCCEEDED hooks.
+         * The current pass's live state always wins over leftovers.
+         */
+        fun pickRelevantWorkInfo(infos: List<WorkInfo>): WorkInfo? =
+            infos.firstOrNull { it.state == WorkInfo.State.RUNNING }
+                ?: infos.firstOrNull {
+                    it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED
+                }
+                ?: infos.firstOrNull { it.state == WorkInfo.State.SUCCEEDED }
+                ?: infos.firstOrNull { it.state == WorkInfo.State.FAILED }
+                ?: infos.firstOrNull()
 
         /**
          * Single source of truth for the index work request so every enqueue path

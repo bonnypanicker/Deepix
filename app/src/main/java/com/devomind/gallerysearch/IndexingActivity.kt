@@ -91,7 +91,7 @@ class IndexingActivity : AppCompatActivity() {
         WorkManager.getInstance(this)
             .getWorkInfosForUniqueWorkLiveData(IndexWorker.WorkName)
             .observe(this) { infos ->
-                val work = infos.firstOrNull()
+                val work = IndexWorker.pickRelevantWorkInfo(infos)
                 latestIndexState = work?.state
                 val livePercent = if (work?.state == WorkInfo.State.RUNNING) {
                     work.progress.getInt(IndexWorker.ProgressPercentKey, -1).takeIf { it >= 0 }

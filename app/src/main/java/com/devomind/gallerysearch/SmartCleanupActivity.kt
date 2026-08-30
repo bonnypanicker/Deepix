@@ -336,7 +336,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         WorkManager.getInstance(this)
             .getWorkInfosForUniqueWorkLiveData(CleanupWorker.WorkName)
             .observe(this) { infos ->
-                val work = infos.firstOrNull()
+                val work = IndexWorker.pickRelevantWorkInfo(infos)
                 scanRunning = work?.state == WorkInfo.State.RUNNING || work?.state == WorkInfo.State.ENQUEUED
 
                 if (work?.state == WorkInfo.State.RUNNING) {

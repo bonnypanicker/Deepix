@@ -4093,6 +4093,7 @@ class MainActivity : AppCompatActivity() {
             // it had before the pass ran. Re-read the on-disk index or the count and search results
             // stay stuck at whatever was cached at load time.
             repo.loadCachedIndexForUris(snapshot.imageItems.map { it.uri })
+            repo.loadCachedMetadataIndexForUris(snapshot.imageItems.map { it.uri })
             val refreshedTags = withContext(Dispatchers.IO) { dbRepository?.getAllTags().orEmpty() }
             val refreshedTagUriMap = withContext(Dispatchers.IO) {
                 refreshedTags.associate { tag ->
@@ -4194,7 +4195,7 @@ class MainActivity : AppCompatActivity() {
         WorkManager.getInstance(this)
             .getWorkInfosForUniqueWorkLiveData(INDEX_WORK_NAME)
             .observe(this) { infos ->
-                val work = infos.firstOrNull() ?: return@observe
+                val work = IndexWorker.pickRelevantWorkInfo(infos) ?: return@observe
                 indexRunning = work.state == WorkInfo.State.RUNNING || work.state == WorkInfo.State.ENQUEUED
                 indexQueued = work.state == WorkInfo.State.ENQUEUED || work.state == WorkInfo.State.BLOCKED
                 binding.searchSparkle.setIndexing(work.state == WorkInfo.State.RUNNING)

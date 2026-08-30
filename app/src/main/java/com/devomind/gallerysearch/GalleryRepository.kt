@@ -115,6 +115,18 @@ class GalleryRepository(
     private var metadataDocuments = LinkedHashMap<String, MetadataSearch.Document>()
     @Volatile private var metadataSearchIndex: MetadataSearch.Index? = null
 
+    /**
+     * `indexFile.lastModified()` as of the last load/write of [embeddings] in THIS instance. The
+     * indexing worker runs in its own repository instance and saves to the same on-disk file, so
+     * an instance that loaded early would otherwise score searches against a stale map forever
+     * (e.g. newly-added index-scope folders never appearing in results until process restart).
+     * Every read path re-checks the stamp and reloads when the file moved on.
+     */
+    @Volatile private var indexStamp: Long = -1L
+
+    private fun currentIndexStamp(): Long =
+        runCatching { indexFile.lastModified() }.getOrDefault(0L)
+
     val indexedCount: Int
         get() = synchronized(indexLock) { embeddings.size }
 
@@ -467,6 +479,7 @@ class GalleryRepository(
         val loaded = onDisk.filterKeys { it in uriSet }
         synchronized(indexLock) {
             embeddings = LinkedHashMap(loaded)
+            indexStamp = currentIndexStamp()
         }
 
         val total = items.size
@@ -608,13 +621,7 @@ class GalleryRepository(
 
     fun search(query: String): List<SemanticSearchHit> {
         val textEncoder = textEncoder ?: return emptyList()
-        var snapshot = snapshotIndex()
-        if (snapshot.isEmpty()) {
-            synchronized(indexLock) {
-                if (embeddings.isEmpty()) embeddings = loadIndex()
-                snapshot = LinkedHashMap(embeddings)
-            }
-        }
+        val snapshot = snapshotIndex()
         if (snapshot.isEmpty()) return emptyList()
 
         val variants = buildQueryVariants(query)
@@ -674,7 +681,7 @@ class GalleryRepository(
 
     /** Which of [uris] have no stored embedding yet. Reads the in-memory index only. */
     fun unindexedUris(uris: List<Uri>): List<Uri> {
-        val indexed = synchronized(indexLock) { HashSet(embeddings.keys) }
+        val indexed = HashSet(snapshotIndex().keys)
         return uris.filter { it.toString() !in indexed }
     }
 
@@ -683,6 +690,7 @@ class GalleryRepository(
         val loaded = loadIndex().filterKeys { it in allowed }
         synchronized(indexLock) {
             embeddings = LinkedHashMap(loaded)
+            indexStamp = currentIndexStamp()
         }
     }
 
@@ -703,19 +711,19 @@ class GalleryRepository(
     }
 
     private fun snapshotIndex(): LinkedHashMap<String, FloatArray> =
-        synchronized(indexLock) { LinkedHashMap(embeddings) }
+        synchronized(indexLock) {
+            val stamp = currentIndexStamp()
+            if (stamp != indexStamp) {
+                embeddings = loadIndex()
+                indexStamp = stamp
+            }
+            LinkedHashMap(embeddings)
+        }
 
     /** All indexed image embeddings (uri string -> vector), loading the on-disk index if needed. */
-    fun allEmbeddings(): Map<String, FloatArray> {
-        var snapshot = snapshotIndex()
-        if (snapshot.isEmpty()) {
-            synchronized(indexLock) {
-                if (embeddings.isEmpty()) embeddings = loadIndex()
-                snapshot = LinkedHashMap(embeddings)
-            }
-        }
-        return snapshot
-    }
+    /** All indexed image embeddings (uri string -> vector); re-reads the on-disk index when a
+     *  background indexing run has written a newer file than this instance last loaded. */
+    fun allEmbeddings(): Map<String, FloatArray> = snapshotIndex()
 
     /** Encode arbitrary text to a normalized CLIP embedding, or null if the text encoder isn't ready. */
     fun encodeText(text: String): FloatArray? = textEncoder?.encode(text)
@@ -1019,7 +1027,10 @@ class GalleryRepository(
             if (indexFile.exists()) {
                 indexFile.delete()
             }
-            tmpFile.renameTo(indexFile)
+            if (tmpFile.renameTo(indexFile)) {
+                // Record what we just wrote so freshness checks don't re-read our own write.
+                indexStamp = currentIndexStamp()
+            }
         }.onFailure { error ->
             Log.w(Tag, "Failed to save embedding index.", error)
             tmpFile.delete()
