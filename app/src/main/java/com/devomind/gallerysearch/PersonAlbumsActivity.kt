@@ -70,6 +70,7 @@ class PersonAlbumsActivity : AppCompatActivity() {
         )
         binding.peopleGrid.layoutManager = GridLayoutManager(this, SPAN_COUNT)
         binding.peopleGrid.adapter = adapter
+        PullToRefresh.bind(binding.peopleGrid, onRefresh = { loadPeople() })
 
         loadPeople()
     }

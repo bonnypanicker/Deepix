@@ -115,6 +115,8 @@ class PersonDetailActivity : AppCompatActivity() {
             }
         })
 
+        PullToRefresh.bind(binding.facesGrid, onRefresh = { loadPerson(personId) })
+
         loadPerson(personId)
     }
 

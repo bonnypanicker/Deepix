@@ -438,6 +438,20 @@ class MainActivity : AppCompatActivity() {
         binding.imageGrid.recycledViewPool.setMaxRecycledViews(ImageAdapter.ViewTypeCollage, 16)
         binding.fastScrollIndicator.attach(binding.imageGrid, adapter)
 
+        // Global pull-to-refresh: the accent line hangs off the top-bar border, so its anchor
+        // follows the floating overlay's height, its auto-hide translation, and the grid's
+        // own rubber-band translation while the pull stretches it.
+        PullToRefresh.bind(
+            binding.imageGrid,
+            onRefresh = { refreshVisibleItems() },
+            allowPull = { !selectionActive },
+            onPullStart = { if (barProgress > 0f) showBars(animate = false) },
+            borderY = {
+                binding.topOverlay.height + binding.topOverlay.translationY -
+                    binding.imageGrid.translationY
+            }
+        )
+
         binding.imageGrid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 if (dy <= 0) return

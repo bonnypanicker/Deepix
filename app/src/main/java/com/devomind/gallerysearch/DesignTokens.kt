@@ -93,4 +93,11 @@ object DesignTokens {
     const val SEARCH_INPUT_DEBOUNCE_MS: Long = 180L
     const val INDEX_BACKOFF_SECONDS: Long = 10L
     const val INDEX_LIVE_REFRESH_STEP: Int = 20
+
+    // Global pull-to-refresh: the damped pull distance at which the accent line spans the
+    // full width (and arms the reload), how strongly the finger distance is damped, and the
+    // cap on how far the grid itself rubber-bands down.
+    const val PULL_TRIGGER_DP = 88f
+    const val PULL_DRAG_RATE = 0.5f
+    const val PULL_MAX_TRAVEL_DP = 120f
 }
