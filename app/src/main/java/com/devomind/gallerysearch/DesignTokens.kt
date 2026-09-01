@@ -96,8 +96,9 @@ object DesignTokens {
 
     // Global pull-to-refresh: the damped pull distance at which the accent line spans the
     // full width (and arms the reload), how strongly the finger distance is damped, and the
-    // cap on how far the grid itself rubber-bands down.
-    const val PULL_TRIGGER_DP = 88f
+    // cap on how far the grid itself rubber-bands down. With the 0.5 drag rate the 64dp
+    // trigger is a ~128dp finger pull — comfortably reachable in one gesture.
+    const val PULL_TRIGGER_DP = 64f
     const val PULL_DRAG_RATE = 0.5f
     const val PULL_MAX_TRAVEL_DP = 120f
 }

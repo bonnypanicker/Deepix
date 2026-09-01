@@ -2,16 +2,12 @@ package com.devomind.gallerysearch
 
 import android.animation.ValueAnimator
 import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
-import android.graphics.Shader
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.animation.DecelerateInterpolator
 import androidx.core.animation.doOnEnd
-import androidx.core.graphics.ColorUtils
 import androidx.recyclerview.widget.RecyclerView
 import kotlin.math.abs
 
@@ -26,7 +22,7 @@ import kotlin.math.abs
  *  - an [RecyclerView.OnItemTouchListener] that claims only true downward drags at the very
  *    top (taps, horizontal scrolls, pinches and fast-scroll drags are left untouched),
  *  - a damped rubber-band translation of the grid while the finger travels,
- *  - a [RecyclerView.ItemDecoration] that paints the line + glow over everything, anchored
+ *  - a [RecyclerView.ItemDecoration] that paints the flat accent line over everything, anchored
  *    to the top-bar border (via [borderY]) so it stays pinned there while the grid stretches.
  */
 object PullToRefresh {
@@ -67,8 +63,6 @@ private class PullRefreshLineDecoration(
     var fade = 1f
     var armed = false
 
-    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
 
@@ -88,30 +82,7 @@ private class PullRefreshLineDecoration(
         canvas.save()
         canvas.translate(parent.width / 2f, y)
 
-        // Soft glow radiating from the line, biased downward so the band stays readable
-        // below the border (the half above it sits under the opaque top bar / is clipped).
-        val glowTop = -GLOW_RISE_DP * d
-        val glowBottom = GLOW_FALL_DP * d
-        glowPaint.shader = LinearGradient(
-            0f, glowTop, 0f, glowBottom,
-            intArrayOf(
-                Color.TRANSPARENT,
-                ColorUtils.setAlphaComponent(color, (GLOW_MAX_ALPHA * fade).toInt().coerceIn(0, 255)),
-                Color.TRANSPARENT
-            ),
-            floatArrayOf(0f, GLOW_PEAK_POSITION, 1f),
-            Shader.TileMode.CLAMP
-        )
-        rect.set(-half, glowTop, half, glowBottom)
-        canvas.drawRect(rect, glowPaint)
-
-        // Halo: a wider translucent sheath that softens the line's edges.
-        val haloHalf = HALO_DP * d
-        haloPaint.color = ColorUtils.setAlphaComponent(color, (HALO_ALPHA * fade).toInt().coerceIn(0, 255))
-        rect.set(-half, -haloHalf, half, haloHalf)
-        canvas.drawRoundRect(rect, haloHalf, haloHalf, haloPaint)
-
-        // Core line.
+        // Flat Metro accent line — solid, crisp, no glow or halo.
         val lineHalf = LINE_DP * d / 2f
         linePaint.color = color
         linePaint.alpha = (255f * fade).toInt().coerceIn(0, 255)
@@ -123,12 +94,6 @@ private class PullRefreshLineDecoration(
 
     private companion object {
         const val LINE_DP = 2.5f
-        const val HALO_DP = 4.5f
-        const val HALO_ALPHA = 80
-        const val GLOW_RISE_DP = 7f
-        const val GLOW_FALL_DP = 19f
-        const val GLOW_MAX_ALPHA = 85
-        const val GLOW_PEAK_POSITION = 0.27f
     }
 }
 
@@ -200,8 +165,15 @@ private class PullGesture(
     private fun applyPull(y: Float) {
         val damped = (y - downY) * DesignTokens.PULL_DRAG_RATE
         val progress = (damped / triggerPx).coerceIn(0f, 1f)
-        armed = progress >= 1f
-        decoration.progress = progress
+        // Sticky arm with hysteresis. The last MOVE before a lift almost always creeps a few
+        // pixels back up; without a latch that lands progress just under 1f and silently
+        // disarms a pull that already spanned the full width — so the release retracts and
+        // the refresh never fires. Once armed, stay armed until the finger pulls meaningfully
+        // back below the threshold band.
+        armed = if (armed) progress >= ARM_DISARM_PROGRESS else progress >= 1f
+        // While armed the line keeps painting full-width even if the finger creeps back a
+        // hair — the visual state must match what the release is about to act on.
+        decoration.progress = if (armed) 1f else progress
         decoration.armed = armed
         rv.translationY = damped.coerceIn(0f, maxTravelPx)
         rv.invalidate()
@@ -211,6 +183,7 @@ private class PullGesture(
     private fun settle(triggered: Boolean) {
         if (!pulling) return
         pulling = false
+        armed = false
         rv.parent?.requestDisallowInterceptTouchEvent(false)
         rv.animate().translationY(0f)
             .setDuration(SNAP_MS)
@@ -236,6 +209,9 @@ private class PullGesture(
             onRefresh()
         } else {
             decoration.armed = false
+            // Hold new pulls while the line retracts so a fresh gesture can't fight the
+            // running animation frame-by-frame.
+            settling = true
             ValueAnimator.ofFloat(decoration.progress, 0f).apply {
                 duration = RETRACT_MS
                 addUpdateListener {
@@ -244,6 +220,7 @@ private class PullGesture(
                 }
                 doOnEnd {
                     decoration.reset()
+                    settling = false
                     rv.invalidate()
                 }
             }.start()
@@ -256,5 +233,7 @@ private class PullGesture(
         /** The full-width line is held for a beat so the "spanned" state reads before it fades. */
         const val ARMED_HOLD_MS = 200L
         const val FADE_MS = 480L
+        /** Once armed, the finger must pull back below this progress to disarm (hysteresis). */
+        const val ARM_DISARM_PROGRESS = 0.85f
     }
 }
