@@ -244,10 +244,10 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:includeFontPadding="false"
-                        android:letterSpacing="0.04"
+                        android:maxLines="1"
+                        android:ellipsize="end"
                         android:text="@string/select_all_lower"
-                        android:textColor="@color/metroTextSecondary"
-                        android:textSize="10sp" />
+                        android:textAppearance="@style/TextAppearance.Metro.SelectionAction" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -273,10 +273,10 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:includeFontPadding="false"
-                        android:letterSpacing="0.04"
+                        android:maxLines="1"
+                        android:ellipsize="end"
                         android:text="@string/share_lower"
-                        android:textColor="@color/metroTextSecondary"
-                        android:textSize="10sp" />
+                        android:textAppearance="@style/TextAppearance.Metro.SelectionAction" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -302,10 +302,10 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:includeFontPadding="false"
-                        android:letterSpacing="0.04"
+                        android:maxLines="1"
+                        android:ellipsize="end"
                         android:text="@string/safe_lower"
-                        android:textColor="@color/metroTextSecondary"
-                        android:textSize="10sp" />
+                        android:textAppearance="@style/TextAppearance.Metro.SelectionAction" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -331,10 +331,10 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
                         android:includeFontPadding="false"
-                        android:letterSpacing="0.04"
+                        android:maxLines="1"
+                        android:ellipsize="end"
                         android:text="@string/delete_lower"
-                        android:textColor="@color/metroTextSecondary"
-                        android:textSize="10sp" />
+                        android:textAppearance="@style/TextAppearance.Metro.SelectionAction" />
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>

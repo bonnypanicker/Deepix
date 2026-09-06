@@ -166,6 +166,14 @@
         <item name="android:textColor">@color/metroTextPrimary</item>
     </style>
 
+    <!-- Slightly smaller label used by the 4-across multi-select command bar. -->
+    <style name="TextAppearance.Metro.SelectionAction">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:letterSpacing">0.03</item>
+        <item name="android:textColor">@color/metroTextSecondary</item>
+    </style>
+
     <!-- Compact interactive labels such as the inline gallery sort control. -->
     <style name="TextAppearance.Metro.CompactAction">
         <item name="android:fontFamily">sans-serif-medium</item>

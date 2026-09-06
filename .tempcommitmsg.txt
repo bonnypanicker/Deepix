@@ -1,7 +1,0 @@
-Fix ViewTreeObserver "not alive" crash in MediaPagerAdapter
-
-Cached observer reference becomes stale when ViewPager reattaches views.
-Use imageView.viewTreeObserver directly inside onPreDraw() for fresh ref.
-Also cap Glide image loads to screen resolution to reduce heap pressure.
-
-Co-authored-by: CommandCodeBot <noreply@commandcode.ai>

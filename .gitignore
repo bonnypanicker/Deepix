@@ -25,9 +25,13 @@ dist/
 # Editors
 .vscode/
 .idea/
+.zcode/
 *.swp
 *.swo
 *.tmp
+
+# Local Android SDK configuration
+local.properties
 
 # System files
 .DS_Store
