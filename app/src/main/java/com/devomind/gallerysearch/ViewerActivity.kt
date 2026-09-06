@@ -1159,8 +1159,12 @@ class ViewerActivity : AppCompatActivity() {
                 deleteRequestLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
                 return
             }
-            contentResolver.delete(uri, null, null)
-            onDeleteCompleted(uri)
+            val removed = contentResolver.delete(uri, null, null)
+            if (removed > 0) {
+                onDeleteCompleted(uri)
+            } else {
+                MetroBanner.show(this, "Couldn't delete this item")
+            }
         }.onFailure { error ->
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && error is RecoverableSecurityException && !afterApproval) {
                 pendingDeleteUri = uri
@@ -1177,19 +1181,23 @@ class ViewerActivity : AppCompatActivity() {
     private fun onDeleteCompleted(uri: Uri) {
         contentChanged = true
         val index = items.indexOfFirst { it.uri == uri }
-        if (index >= 0) {
-            items.removeAt(index)
-            adapter.notifyItemRemoved(index)
-            if (items.isEmpty()) {
-                finish()
-                return
-            }
-            if (index >= items.size) {
-                currentPosition = items.size - 1
-            }
-            binding.viewPager.setCurrentItem(currentPosition, false)
-            bindPage(currentPosition)
+        if (index < 0) return
+        items.removeAt(index)
+        adapter.notifyItemRemoved(index)
+        if (items.isEmpty()) {
+            finish()
+            return
         }
+        // The next page slides into the removed slot (or the new last page when deleting the
+        // tail); an item removed before the current one shifts the current index back by one.
+        currentPosition = when {
+            index < currentPosition -> currentPosition - 1
+            index >= items.size -> items.size - 1
+            else -> currentPosition
+        }.coerceIn(0, items.size - 1)
+        adapter.setPrimaryPosition(currentPosition)
+        binding.viewPager.setCurrentItem(currentPosition, false)
+        bindPage(currentPosition)
     }
 
     private fun edit(uri: Uri) {

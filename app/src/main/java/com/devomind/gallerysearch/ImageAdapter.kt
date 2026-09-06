@@ -467,6 +467,21 @@ class ImageAdapter(
         onSelectionChanged(selected.size)
     }
 
+    fun removeMediaUris(uris: Set<Uri>) {
+        if (uris.isEmpty()) return
+        val filtered = cells.mapNotNull { cell ->
+            when (cell) {
+                is GalleryCell.Photo -> cell.takeUnless { it.item.uri in uris }
+                is GalleryCell.Collage -> {
+                    val remaining = cell.items.filterNot { it.uri in uris }
+                    if (remaining.isEmpty()) null else cell.copy(items = remaining)
+                }
+                else -> cell
+            }
+        }
+        updateCells(filtered)
+    }
+
     fun replaceCells(newCells: List<GalleryCell>) {
         val newUris = newCells.asSequence()
             .flatMap { cell ->

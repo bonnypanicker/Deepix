@@ -128,6 +128,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
     private var pendingAllFilesDeleteUris: List<Uri> = emptyList()
+    private val hiddenDeletedUris = linkedSetOf<Uri>()
     private var topInsetPx = 0
     private var bottomSystemInsetPx = 0
     private var imeBottomInsetPx = 0
@@ -302,7 +303,10 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     needsConsent.addAll(imported)
                 }
-                if (deleted.isNotEmpty()) refreshVisibleItems()
+                if (deleted.isNotEmpty()) {
+                    hideDeletingUris(deleted)
+                    refreshVisibleItems(reRender = false)
+                }
                 if (needsConsent.isNotEmpty()) deleteUris(needsConsent)
             }
         }
@@ -320,7 +324,7 @@ class MainActivity : AppCompatActivity() {
         if (needsRetry) {
             deleteUris(uris, afterApproval = true)
         } else {
-            onDeleteCompleted(uris.size)
+            onDeleteCompleted(uris)
         }
     }
 
@@ -1134,14 +1138,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyLibrarySnapshot(snapshot: LibrarySnapshot) {
+        val hidden = hiddenDeletedUris
+        val visibleImages = snapshot.imageItems.filterNot { it.uri in hidden }
+        val visibleCollection = snapshot.collectionItems.filterNot { it.uri in hidden }
+        val visibleVideos = snapshot.videoItems.filterNot { it.uri in hidden }
         albums = snapshot.albums
-        imageItems = snapshot.imageItems
-        collectionItems = snapshot.collectionItems
-        videoItems = snapshot.videoItems
-        allUris = snapshot.imageItems.map { it.uri }
+        imageItems = visibleImages
+        collectionItems = visibleCollection
+        videoItems = visibleVideos
+        allUris = visibleImages.map { it.uri }
         val scope = IndexScopeStore.getFolderIds(applicationContext)
         indexScopeUris = if (scope.isEmpty()) allUris
-        else snapshot.imageItems.filter { it.bucketId in scope }.map { it.uri }
+        else visibleImages.filter { it.bucketId in scope }.map { it.uri }
         librarySnapshotReady = true
     }
 
@@ -2376,7 +2384,7 @@ class MainActivity : AppCompatActivity() {
             val (cells, lastDay) = withContext(Dispatchers.Default) {
                 buildTimelinePage(items, from, to, continuing, useCollage, dateOrdered)
             }
-            if (pagedContext == ctx && pagedDisplayedCount == from) {
+            if (pagedContext == ctx && pagedDisplayedCount == from && items === pagedItems) {
                 pagedDisplayedCount = to
                 pagedLastDay = lastDay
                 adapter.updateCells(adapter.cells + cells)
@@ -2601,12 +2609,13 @@ class MainActivity : AppCompatActivity() {
         /** A people-containing sentence belongs in Smart even if its stripped scene text is blank. */
         forceSmartSection: Boolean = false
     ) {
-        searchResultsMaster = results
+        val visibleResults = results.filterNot { it.item.uri in hiddenDeletedUris }
+        searchResultsMaster = visibleResults
         lastSearchStatusText = statusText
         currentDisplayedSearchResultCount = 0
         searchSectionResults = buildSearchSections(
             query = query,
-            results = results,
+            results = visibleResults,
             personScoped = personScoped,
             peopleResultUris = peopleResultUris,
             forceSmartSection = forceSmartSection
@@ -4064,14 +4073,69 @@ class MainActivity : AppCompatActivity() {
         ) { performManagedDelete(uris) }
     }
 
+    private fun hideDeletingUris(uris: Collection<Uri>) {
+        val hidden = uris.toSet()
+        if (hidden.isEmpty()) return
+
+        hiddenDeletedUris.addAll(hidden)
+        // A first-page build that captured the old lists must not land after this hide.
+        renderJob?.cancel()
+
+        imageItems = imageItems.filterNot { it.uri in hidden }
+        collectionItems = collectionItems.filterNot { it.uri in hidden }
+        videoItems = videoItems.filterNot { it.uri in hidden }
+        allUris = allUris.filterNot { it in hidden }
+        indexScopeUris = indexScopeUris.filterNot { it in hidden }
+
+        // The display boundary moves back by the deleted photos that were already on screen;
+        // a plain clamp would make the next paginateBrowse() skip items.
+        val removedDisplayed = pagedItems.asSequence().take(pagedDisplayedCount).count { it.uri in hidden }
+        pagedItems = pagedItems.filterNot { it.uri in hidden }
+        pagedDisplayedCount = (pagedDisplayedCount - removedDisplayed).coerceAtLeast(0)
+
+        fullSearchResults = fullSearchResults.filterNot { it.item.uri in hidden }
+        searchResultsMaster = searchResultsMaster.filterNot { it.item.uri in hidden }
+        searchSectionResults = searchSectionResults.mapNotNull { section ->
+            val visible = section.results.filterNot { it.item.uri in hidden }
+            when {
+                section.albums.isNotEmpty() -> section
+                visible.isEmpty() -> null
+                else -> section.copy(count = visible.size, results = visible)
+            }
+        }
+
+        // Folder nodes snapshot their own item lists — filter them too so detail re-renders and
+        // back-navigation can't resurrect a deleted tile before the background reconciliation.
+        folderTreeRoots = folderTreeRoots.map { it.withoutUris(hidden) }
+        currentFolder = currentFolder?.withoutUris(hidden)
+
+        adapter.removeMediaUris(hidden)
+        updateSearchResultCountIfVisible()
+        updateFastScrollVisibility()
+    }
+
+    private fun updateSearchResultCountIfVisible() {
+        if (currentMode == Mode.Search && !searchLandingVisible) updateSearchResultCount()
+    }
+
     private fun performManagedDelete(uris: List<Uri>) {
+        hideDeletingUris(uris)
         lifecycleScope.launch {
             val outcome = withContext(Dispatchers.IO) { DeleteCoordinator.delete(this@MainActivity, uris) }
             when (outcome) {
-                is DeleteCoordinator.Outcome.NeedsSystemDelete -> deleteUris(uris)
-                is DeleteCoordinator.Outcome.Done -> {
-                    adapter.clearSelection()
+                is DeleteCoordinator.Outcome.NeedsSystemDelete -> {
+                    hiddenDeletedUris.removeAll(uris.toSet())
                     refreshVisibleItems()
+                    deleteUris(uris)
+                }
+                is DeleteCoordinator.Outcome.Done -> {
+                    val succeeded = outcome.succeededUris.toSet()
+                    val failed = uris.filterNot { it in succeeded }.toSet()
+                    hiddenDeletedUris.removeAll(failed)
+                    // Failures need a full re-render so those tiles return; a clean sweep is
+                    // already reflected in the grid, so only backing state is reconciled.
+                    refreshVisibleItems(reRender = failed.isNotEmpty())
+                    adapter.clearSelection()
                     val msg = buildString {
                         append(
                             resources.getQuantityString(
@@ -4089,6 +4153,7 @@ class MainActivity : AppCompatActivity() {
                                 val restored = withContext(Dispatchers.IO) {
                                     BinManager.restoreByIds(this@MainActivity, undoIds)
                                 }
+                                if (restored > 0) hiddenDeletedUris.removeAll(succeeded)
                                 refreshVisibleItems()
                                 MetroBanner.show(
                                     this@MainActivity,
@@ -4104,7 +4169,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun refreshVisibleItems(afterCompletedIndexPass: Boolean = false) {
+    private fun refreshVisibleItems(
+        afterCompletedIndexPass: Boolean = false,
+        reRender: Boolean = true
+    ) {
         val repo = repository ?: return
         lifecycleScope.launch(Dispatchers.IO) {
             val snapshot = loadLibrarySnapshot(repo)
@@ -4134,7 +4202,24 @@ class MainActivity : AppCompatActivity() {
                 currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
                 binding.statusText.text = indexedSummary(repo.indexedCount)
                 val pinnedAlbum = currentAlbum
-                when {
+                if (!reRender) {
+                    // The grid was already updated optimistically (delete flows). Re-rendering here
+                    // would rebuild the timeline and yank the viewport back to the top, so only the
+                    // backing state is swapped. Rebuild the listing when the hide left it in a
+                    // shape the in-place path can't cover: emptied, or a page build that was
+                    // cancelled mid-flight (paging state reset but old cells still on screen).
+                    val mediaCellsVisible = adapter.cells.any {
+                        it is GalleryCell.Photo || it is GalleryCell.Collage
+                    }
+                    if (currentMode != Mode.Search && pagedContext != null &&
+                        (pagedItems.isEmpty() || !mediaCellsVisible)
+                    ) {
+                        renderCurrentState()
+                    } else {
+                        refreshPinnedStripInPlace()
+                        if (currentMode == Mode.Search) updateSearchMetaText()
+                    }
+                } else when {
                     currentMode == Mode.Search -> {
                         updateSearchMetaText()
                         submitSearch()
@@ -4166,8 +4251,12 @@ class MainActivity : AppCompatActivity() {
                 return
             }
 
-            uris.forEach { contentResolver.delete(it, null, null) }
-            onDeleteCompleted(uris.size)
+            val deleted = uris.filter { contentResolver.delete(it, null, null) > 0 }
+            if (deleted.isNotEmpty()) {
+                onDeleteCompleted(deleted, failedCount = uris.size - deleted.size)
+            } else {
+                MetroBanner.show(this, "${uris.size} photos couldn't be deleted")
+            }
         } catch (error: Throwable) {
             val isRecoverable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
                 error is RecoverableSecurityException && !afterApproval
@@ -4185,11 +4274,13 @@ class MainActivity : AppCompatActivity() {
         deleteRequestLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
     }
 
-    private fun onDeleteCompleted(requestedCount: Int) {
+    private fun onDeleteCompleted(uris: List<Uri>, failedCount: Int = 0) {
+        hideDeletingUris(uris)
         adapter.clearSelection()
-        refreshVisibleItems()
-        val label = if (requestedCount == 1) "1 photo deleted" else "$requestedCount photos deleted"
-        MetroBanner.show(this, label)
+        refreshVisibleItems(reRender = false)
+        val count = uris.size
+        val label = if (count == 1) "1 photo deleted" else "$count photos deleted"
+        MetroBanner.show(this, if (failedCount > 0) "$label · $failedCount failed" else label)
     }
 
     private fun enqueueBackgroundIndexing(

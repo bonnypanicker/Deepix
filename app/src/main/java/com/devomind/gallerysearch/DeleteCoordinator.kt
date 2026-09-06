@@ -25,7 +25,8 @@ object DeleteCoordinator {
             val succeeded: Int,
             val failed: Int,
             val toBin: Boolean,
-            val binnedIds: List<String> = emptyList()
+            val binnedIds: List<String> = emptyList(),
+            val succeededUris: List<Uri> = emptyList()
         ) : Outcome()
 
         /** No All-files access — caller should launch the system delete request. */
@@ -47,14 +48,25 @@ object DeleteCoordinator {
 
         return if (IndexPreferences.isRecycleBinEnabled(context)) {
             val result = BinManager.moveToBin(context, uris)
-            Outcome.Done(result.binned, result.failed, toBin = true, binnedIds = result.binnedIds)
+            Outcome.Done(
+                result.binned,
+                result.failed,
+                toBin = true,
+                binnedIds = result.binnedIds,
+                succeededUris = result.binnedUris
+            )
         } else {
-            var ok = 0
+            val succeededUris = mutableListOf<Uri>()
             var failed = 0
             for (uri in uris) {
-                if (MediaFileOps.deleteFileDirect(context, uri)) ok++ else failed++
+                if (MediaFileOps.deleteFileDirect(context, uri)) succeededUris += uri else failed++
             }
-            Outcome.Done(ok, failed, toBin = false)
+            Outcome.Done(
+                succeededUris.size,
+                failed,
+                toBin = false,
+                succeededUris = succeededUris
+            )
         }
     }
 }
