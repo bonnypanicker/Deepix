@@ -265,7 +265,7 @@
                         android:layout_width="24dp"
                         android:layout_height="24dp"
                         android:contentDescription="@string/share_selected"
-                        android:src="@drawable/ic_fluent_share_24_regular"
+                        android:src="@drawable/ic_fluent_share_android_24_regular"
                         android:tint="@color/metroTextPrimary" />
 
                     <TextView
@@ -294,7 +294,7 @@
                         android:layout_width="24dp"
                         android:layout_height="24dp"
                         android:contentDescription="@string/move_to_safe"
-                        android:src="@drawable/ic_deepix_safe_24_regular"
+                        android:src="@drawable/ic_fluent_lock_closed_24_regular"
                         android:tint="@color/metroTextPrimary" />
 
                     <TextView

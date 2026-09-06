@@ -3979,8 +3979,10 @@ class MainActivity : AppCompatActivity() {
             binding.menuBtn.alpha = 1f
             binding.menuBtn.setOnClickListener { adapter.clearSelection() }
             binding.searchBox.visibility = View.GONE
+            binding.searchTrailingBtn.visibility = View.GONE
         } else {
             binding.searchBox.visibility = View.VISIBLE
+            binding.searchTrailingBtn.visibility = View.VISIBLE
             updateTopBarForMode(currentTopTitle())
         }
     }
@@ -4495,7 +4497,9 @@ class MainActivity : AppCompatActivity() {
 
         binding.screenTitle.visibility = if (title == null || currentMode == Mode.Search) View.GONE else View.VISIBLE
         binding.screenTitle.text = title.orEmpty()
-        binding.searchBox.visibility = if (adapter.selectionCount > 0) View.GONE else View.VISIBLE
+        val showSearchChrome = adapter.selectionCount == 0
+        binding.searchBox.visibility = if (showSearchChrome) View.VISIBLE else View.GONE
+        binding.searchTrailingBtn.visibility = if (showSearchChrome) View.VISIBLE else View.GONE
         val isAlbumsSection = activeSection == Section.Albums &&
             currentMode == Mode.Browse &&
             adapter.selectionCount == 0
