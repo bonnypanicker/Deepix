@@ -108,17 +108,6 @@ class SafeActivity : AppCompatActivity() {
         binding.safeGrid.adapter = adapter
         binding.safeGrid.setHasFixedSize(true)
 
-        // Anchor the accent line at the top bar's bottom border (above the vault title),
-        // pinned on screen while the pull stretches the grid.
-        PullToRefresh.bind(
-            binding.safeGrid,
-            onRefresh = { loadItems() },
-            borderY = {
-                val header = binding.safeGrid.parent as View
-                binding.topBar.bottom - header.top - binding.safeGrid.translationY
-            }
-        )
-
         binding.backBtn.setOnClickListener { finish() }
         binding.overflowBtn.setOnClickListener { showOverflow() }
         binding.addPhotosBtn.visibility = View.GONE

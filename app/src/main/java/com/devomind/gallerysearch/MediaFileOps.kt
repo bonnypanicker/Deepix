@@ -43,24 +43,14 @@ object MediaFileOps {
     fun deleteFileDirect(context: Context, uri: Uri): Boolean {
         val path = resolvePath(context, uri) ?: return false
         val file = File(path)
-        // Delete the MediaStore row FIRST, while the file still exists. Removing the file with
-        // File.delete() first leaves a row the resolver then refuses to drop, and a ghost row
-        // keeps the deleted photo in the timeline until MediaProvider's idle maintenance prunes
-        // it minutes later — pull-to-refresh kept re-querying it back into the grid. A successful
-        // row delete removes the underlying file too, so the File.delete below is only cleanup
-        // for when the row delete was refused.
-        val rowDeleted = runCatching { context.contentResolver.delete(uri, null, null) }.isSuccess
-        val fileExisted = file.exists()
-        val fileRemoved = runCatching { !fileExisted || file.delete() }.getOrDefault(false)
-        if (!rowDeleted && fileRemoved) {
-            // Row delete refused and we removed the file ourselves: MediaStore now holds a ghost
-            // row. Scanning the file's own path does nothing (it no longer exists); scanning the
-            // parent directory reconciles rows against what is actually on disk.
-            file.parent?.let { rescan(context, it) }
-        } else if (rowDeleted && fileExisted && !fileRemoved) {
-            Log.w(TAG, "MediaStore row deleted but the file survived at $path")
+        val removed = runCatching { !file.exists() || file.delete() }.getOrDefault(false)
+        if (removed) {
+            // Drop the stale MediaStore row (delete() by uri is owner-restricted but usually works
+            // for our own scans; ignore failures — the scan below reconciles).
+            runCatching { context.contentResolver.delete(uri, null, null) }
+            rescan(context, path)
         }
-        return fileRemoved || rowDeleted
+        return removed
     }
 
     /** Asks MediaStore to (re)index a path so galleries reflect an add/restore/delete. */

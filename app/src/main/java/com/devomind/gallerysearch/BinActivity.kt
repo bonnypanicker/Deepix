@@ -46,17 +46,6 @@ class BinActivity : AppCompatActivity() {
         binding.binGrid.adapter = adapter
         binding.binGrid.setHasFixedSize(true)
 
-        // The grid's top edge sits below the title/note, so anchor the accent line at the
-        // top bar's own bottom border instead of the grid top (screen-Y constant during pull).
-        PullToRefresh.bind(
-            binding.binGrid,
-            onRefresh = { refresh() },
-            borderY = {
-                val header = binding.binGrid.parent as View
-                binding.topBar.bottom - header.top - binding.binGrid.translationY
-            }
-        )
-
         binding.backBtn.setOnClickListener { finish() }
         binding.emptyBinBtn.setOnClickListener { confirmEmpty() }
 

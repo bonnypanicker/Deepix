@@ -438,20 +438,6 @@ class MainActivity : AppCompatActivity() {
         binding.imageGrid.recycledViewPool.setMaxRecycledViews(ImageAdapter.ViewTypeCollage, 16)
         binding.fastScrollIndicator.attach(binding.imageGrid, adapter)
 
-        // Global pull-to-refresh: the accent line hangs off the top-bar border, so its anchor
-        // follows the floating overlay's height, its auto-hide translation, and the grid's
-        // own rubber-band translation while the pull stretches it.
-        PullToRefresh.bind(
-            binding.imageGrid,
-            onRefresh = { refreshVisibleItems() },
-            allowPull = { !selectionActive },
-            onPullStart = { if (barProgress > 0f) showBars(animate = false) },
-            borderY = {
-                binding.topOverlay.height + binding.topOverlay.translationY -
-                    binding.imageGrid.translationY
-            }
-        )
-
         binding.imageGrid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 if (dy <= 0) return
@@ -4120,60 +4106,46 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshVisibleItems(afterCompletedIndexPass: Boolean = false) {
         val repo = repository ?: return
-        lifecycleScope.launch {
-            // ── Phase 1: reload the MediaStore snapshot and update the UI immediately ──
-            val snapshot = withContext(Dispatchers.IO) { loadLibrarySnapshot(repo) }
-            applyLibrarySnapshot(snapshot)
-            currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
-            binding.statusText.text = indexedSummary(repo.indexedCount)
-            val pinnedAlbum = currentAlbum
-            when {
-                currentMode == Mode.Search -> {
-                    updateSearchMetaText()
-                    submitSearch()
+        lifecycleScope.launch(Dispatchers.IO) {
+            val snapshot = loadLibrarySnapshot(repo)
+            // The worker owns its own repository instance, so this one still holds the embeddings
+            // it had before the pass ran. Re-read the on-disk index or the count and search results
+            // stay stuck at whatever was cached at load time.
+            repo.loadCachedIndexForUris(snapshot.imageItems.map { it.uri })
+            repo.loadCachedMetadataIndexForUris(snapshot.imageItems.map { it.uri })
+            val refreshedTags = withContext(Dispatchers.IO) { dbRepository?.getAllTags().orEmpty() }
+            val refreshedTagUriMap = withContext(Dispatchers.IO) {
+                refreshedTags.associate { tag ->
+                    tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
                 }
-                currentMode == Mode.AlbumDetail && pinnedAlbum != null ->
-                    renderAlbumDetail(pinnedAlbum)
-                else -> renderCurrentSection()
             }
-
-            // ── Phase 2: heavy index / tags / people — runs after the grid is already fresh ──
-            val (refreshedTags, refreshedTagUriMap, refreshedPeopleCollection) =
-                withContext(Dispatchers.IO) {
-                    // The worker owns its own repository instance, so this one still holds the
-                    // embeddings it had before the pass ran. Re-read the on-disk index or the
-                    // count and search results stay stuck at whatever was cached at load time.
-                    repo.loadCachedIndexForUris(snapshot.imageItems.map { it.uri })
-                    repo.loadCachedMetadataIndexForUris(snapshot.imageItems.map { it.uri })
-                    val tags = dbRepository?.getAllTags().orEmpty()
-                    val tagMap = tags.associate { tag ->
-                        tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
+            val refreshedPeopleCollection = loadPeopleCollection()
+            withContext(Dispatchers.Main) {
+                allTags = refreshedTags
+                tagUriMap = refreshedTagUriMap
+                applyLibrarySnapshot(snapshot)
+                peopleCollectionRefreshGeneration++
+                peopleCollection = refreshedPeopleCollection
+                // A finished pass had its chance at every in-scope photo; whatever is still missing
+                // can't be encoded, so stop counting it as outstanding work.
+                if (afterCompletedIndexPass) {
+                    permanentlyUnindexedUris = repo.unindexedUris(indexScopeUris).toSet()
+                }
+                currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
+                binding.statusText.text = indexedSummary(repo.indexedCount)
+                val pinnedAlbum = currentAlbum
+                when {
+                    currentMode == Mode.Search -> {
+                        updateSearchMetaText()
+                        submitSearch()
                     }
-                    val people = loadPeopleCollection()
-                    Triple(tags, tagMap, people)
+                    currentMode == Mode.AlbumDetail && pinnedAlbum != null ->
+                        renderAlbumDetail(pinnedAlbum)
+                    else -> renderCurrentSection()
                 }
-            allTags = refreshedTags
-            tagUriMap = refreshedTagUriMap
-            peopleCollectionRefreshGeneration++
-            peopleCollection = refreshedPeopleCollection
-            if (afterCompletedIndexPass) {
-                permanentlyUnindexedUris = withContext(Dispatchers.IO) {
-                    repo.unindexedUris(indexScopeUris).toSet()
-                }
+                maybeStartBackgroundIndexing()
+                primeMetadataIndexAsync()
             }
-            // Re-render to pick up the refreshed index counts, people strip, and tags.
-            binding.statusText.text = indexedSummary(repo.indexedCount)
-            when {
-                currentMode == Mode.Search -> {
-                    updateSearchMetaText()
-                    submitSearch()
-                }
-                currentMode == Mode.AlbumDetail && pinnedAlbum != null ->
-                    renderAlbumDetail(pinnedAlbum)
-                else -> renderCurrentSection()
-            }
-            maybeStartBackgroundIndexing()
-            primeMetadataIndexAsync()
         }
     }
 
