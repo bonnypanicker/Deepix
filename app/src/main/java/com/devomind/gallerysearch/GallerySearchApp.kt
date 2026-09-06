@@ -50,6 +50,10 @@ class GallerySearchApp : Application() {
         }
         // Enforce the Recycle Bin's 30-day retention off the main thread on each cold start.
         thread(isDaemon = true) { runCatching { BinManager.purgeExpired(applicationContext) } }
+        // Settle any compression interrupted by a crash/process death: originals that still exist
+        // are kept, verified replacements are finalized, broken ones restored from backup. No-op
+        // (one small file check) when no compression was in flight.
+        thread(isDaemon = true) { runCatching { CompressionEngine.recover(applicationContext) } }
     }
 
     /**

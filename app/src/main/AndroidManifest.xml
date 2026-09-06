@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- heifwriter declares minSdk 28, but CompressionEngine only touches it behind an
+         API-28+ runtime check (older devices get the WebP fallback), so the class is never
+         loaded where it can't run. -->
+    <uses-sdk tools:overrideLibrary="androidx.heifwriter" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -37,6 +43,10 @@
 
         <activity
             android:name=".SmartCleanupActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".CompressionActivity"
             android:exported="false" />
 
         <activity

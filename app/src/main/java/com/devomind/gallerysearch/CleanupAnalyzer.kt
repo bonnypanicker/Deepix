@@ -19,7 +19,8 @@ object CleanupAnalyzer {
     enum class Category {
         DUPLICATES, SIMILAR, BURSTS,
         LIKELY_CLUTTER, SCREENSHOTS, DOCUMENTS, RECEIPTS, QR_CODES, NSFW,
-        BLURRY, DARK, BRIGHT, LOW_RESOLUTION
+        BLURRY, DARK, BRIGHT, LOW_RESOLUTION,
+        COMPRESSIBLE
     }
 
     /** Per-image pixel statistics from a single downscaled decode. */
@@ -127,6 +128,20 @@ object CleanupAnalyzer {
             categoryItems[c] = mutableListOf()
             suggested[c] = linkedSetOf()
         }
+
+        // 0) Compression candidates: large JPEG/PNG/WebP/BMP stills that HEIC shrinks a lot.
+        //    Metadata-only (instant). Overlaps the other categories on purpose — a duplicate can
+        //    also be worth compressing. All candidates are pre-selected as the recommendation.
+        items.asSequence()
+            .filter { it.mediaType == GalleryRepository.MediaType.Image }
+            .filter { CompressionEngine.isCompressibleMime(it.mimeType) }
+            .map { item -> item to (sizeByUri[item.uri.toString()] ?: item.sizeBytes) }
+            .filter { (_, size) -> size >= CompressionEngine.MIN_COMPRESSIBLE_BYTES }
+            .sortedByDescending { (item, size) -> CompressionEngine.estimatedSavings(item.mimeType, size) }
+            .forEach { (item, _) ->
+                categoryItems[Category.COMPRESSIBLE]!!.add(item)
+                suggested[Category.COMPRESSIBLE]!!.add(item.uri)
+            }
 
         // 1) Bursts first: time-clustered sequences (capture time) with moderately similar content.
         //    Runs over EVERY embedded photo — image search finds these with plain cosine lookups, so

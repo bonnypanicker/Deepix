@@ -49,6 +49,8 @@ class SmartCleanupActivity : AppCompatActivity() {
     private var pendingDeleteNeedsRetry = false
     private var pendingAllFilesDeleteUris: List<Uri> = emptyList()
     private var pendingSafeMove = false
+    /** COMPRESSIBLE detail only: grid shows every compressible photo instead of the recommendations. */
+    private var showingAllPhotos = false
 
     /** Categories whose items are worth locking away rather than deleting. */
     private val safeCapableCategories = setOf(
@@ -57,6 +59,17 @@ class SmartCleanupActivity : AppCompatActivity() {
         CleanupAnalyzer.Category.RECEIPTS,
         CleanupAnalyzer.Category.QR_CODES
     )
+
+    private val compressionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != RESULT_OK) return@registerForActivityResult
+        val replaced = result.data?.getStringArrayListExtra(CompressionActivity.ExtraReplacedUris)
+            .orEmpty().map { Uri.parse(it) }
+        val compressed = result.data?.getStringArrayListExtra(CompressionActivity.ExtraCompressedUris)
+            .orEmpty().map { Uri.parse(it) }
+        if (replaced.isNotEmpty() || compressed.isNotEmpty()) onCompressed(replaced, compressed)
+    }
 
     private val safeResultLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -182,8 +195,20 @@ class SmartCleanupActivity : AppCompatActivity() {
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         binding.refreshBtn.setOnClickListener { startScan(replace = true) }
         binding.selectAllBtn.setOnClickListener { toggleSelectAll() }
-        binding.deleteBar.setOnClickListener { confirmDeleteSelected() }
-        binding.safeBar.setOnClickListener { confirmMoveSelectedToSafe() }
+        binding.deleteBar.setOnClickListener {
+            if (currentCategory == CleanupAnalyzer.Category.COMPRESSIBLE) {
+                launchCompressionReview()
+            } else {
+                confirmDeleteSelected()
+            }
+        }
+        binding.safeBar.setOnClickListener {
+            if (currentCategory == CleanupAnalyzer.Category.COMPRESSIBLE) {
+                toggleCompressibleSource()
+            } else {
+                confirmMoveSelectedToSafe()
+            }
+        }
         binding.pauseResumeBtn.setOnClickListener { if (scanRunning) pauseScan() else resumeScan() }
         binding.stopBtn.setOnClickListener { stopScan() }
 
@@ -433,7 +458,9 @@ class SmartCleanupActivity : AppCompatActivity() {
             tile.findViewById<TextView>(R.id.tileTitle).text = categoryTitle(category)
             val bytes = categoryReclaimable(category)
             tile.findViewById<TextView>(R.id.tileSize).text =
-                if (bytes > 0L) formatBytes(bytes) else ""
+                if (bytes > 0L) {
+                    if (category == CleanupAnalyzer.Category.COMPRESSIBLE) "≈ ${formatBytes(bytes)}" else formatBytes(bytes)
+                } else ""
             tile.setOnClickListener { openCategory(category) }
             binding.tilesContainer.addView(tile)
         }
@@ -444,7 +471,11 @@ class SmartCleanupActivity : AppCompatActivity() {
 
     private fun updateSummary() {
         val clutter = LinkedHashSet<Uri>()
-        for (category in CleanupAnalyzer.Category.entries) clutter.addAll(categoryDeletable(category))
+        for (category in CleanupAnalyzer.Category.entries) {
+            // COMPRESSIBLE is an optimization suggestion, not deletion clutter — it gets its own tile.
+            if (category == CleanupAnalyzer.Category.COMPRESSIBLE) continue
+            clutter.addAll(categoryDeletable(category))
+        }
         if (clutter.isEmpty()) {
             binding.summaryCard.visibility = View.GONE
             return
@@ -462,8 +493,19 @@ class SmartCleanupActivity : AppCompatActivity() {
         return categoryItems[category]!!.mapTo(LinkedHashSet()) { it.uri }
     }
 
-    private fun categoryReclaimable(category: CleanupAnalyzer.Category): Long =
-        categoryDeletable(category).sumOf { sizeByUri[it.toString()] ?: 0L }
+    private fun categoryReclaimable(category: CleanupAnalyzer.Category): Long {
+        // Compression frees only the size delta, not the whole file.
+        if (category == CleanupAnalyzer.Category.COMPRESSIBLE) {
+            return categoryDeletable(category).sumOf { estimatedSavingsFor(it) }
+        }
+        return categoryDeletable(category).sumOf { sizeByUri[it.toString()] ?: 0L }
+    }
+
+    private fun estimatedSavingsFor(uri: Uri): Long {
+        val item = itemsByUri[uri.toString()]
+        val size = sizeByUri[uri.toString()] ?: item?.sizeBytes ?: 0L
+        return CompressionEngine.estimatedSavings(item?.mimeType, size)
+    }
 
     private fun showOverview() {
         currentCategory = null
@@ -479,6 +521,7 @@ class SmartCleanupActivity : AppCompatActivity() {
 
     private fun openCategory(category: CleanupAnalyzer.Category) {
         currentCategory = category
+        showingAllPhotos = false
         binding.overviewView.visibility = View.GONE
         binding.detailView.visibility = View.VISIBLE
         binding.detailTitle.text = categoryTitle(category)
@@ -496,17 +539,94 @@ class SmartCleanupActivity : AppCompatActivity() {
             CleanupAnalyzer.Category.DARK -> "Very dark photos — tap to select"
             CleanupAnalyzer.Category.BRIGHT -> "Overexposed photos — tap to select"
             CleanupAnalyzer.Category.LOW_RESOLUTION -> "Low-resolution images — tap to select"
+            CleanupAnalyzer.Category.COMPRESSIBLE ->
+                "Large photos that HEIC shrinks a lot — recommended ones pre-selected"
         }
 
-        val list = categoryItems[category]!!
+        // The action bar compresses (accent) instead of deleting (red) for this category.
+        binding.deleteBar.setBackgroundColor(
+            if (category == CleanupAnalyzer.Category.COMPRESSIBLE) DesignTokens.accent(this)
+            else getColor(R.color.metroDanger)
+        )
+
         adapter.replaceCells(detailCells(category))
         binding.cleanupGrid.scrollToPosition(0)
         adapter.setSelection(suggested[category]!!.toList())
     }
 
+    /** Photos shown in the COMPRESSIBLE detail: recommendations, or every compressible photo. */
+    private fun compressibleDetailItems(): List<GalleryRepository.MediaItem> =
+        if (showingAllPhotos) {
+            items.asSequence()
+                .filter { it.mediaType == GalleryRepository.MediaType.Image }
+                .filter { CompressionEngine.isCompressibleMime(it.mimeType) }
+                .sortedByDescending { sizeByUri[it.uri.toString()] ?: it.sizeBytes }
+                .toList()
+        } else {
+            categoryItems[CleanupAnalyzer.Category.COMPRESSIBLE]!!
+        }
+
+    private fun toggleCompressibleSource() {
+        val category = currentCategory ?: return
+        showingAllPhotos = !showingAllPhotos
+        binding.detailHint.text = if (showingAllPhotos) {
+            "All photos that can be compressed — tap to select"
+        } else {
+            "Large photos that HEIC shrinks a lot — recommended ones pre-selected"
+        }
+        adapter.replaceCells(detailCells(category))
+        adapter.clearSelection()
+        binding.cleanupGrid.scrollToPosition(0)
+        if (!showingAllPhotos) adapter.setSelection(suggested[category]!!.toList())
+        onSelectionChanged(adapter.selectionCount)
+    }
+
+    private fun launchCompressionReview() {
+        val selected = adapter.selectedUris()
+        if (selected.isEmpty()) return
+        CompressionHandoff.items = items
+        CompressionHandoff.selectedUris = selected
+        compressionLauncher.launch(Intent(this, CompressionActivity::class.java))
+    }
+
+    /**
+     * Compression finished: replaced originals no longer exist, so they leave every category and
+     * the in-memory library; compressed items (including keep-both originals) leave the
+     * COMPRESSIBLE list only, since they no longer need compressing.
+     */
+    private fun onCompressed(replaced: List<Uri>, compressed: List<Uri>) {
+        contentChanged = true
+        val replacedSet = replaced.toSet()
+        val compressedSet = compressed.toSet()
+        if (replacedSet.isNotEmpty()) {
+            items = items.filterNot { it.uri in replacedSet }
+            itemsByUri = items.associateBy { it.uri.toString() }
+            for (category in CleanupAnalyzer.Category.entries) {
+                categoryItems[category]!!.removeAll { it.uri in replacedSet }
+                suggested[category]!!.removeAll(replacedSet)
+            }
+        }
+        categoryItems[CleanupAnalyzer.Category.COMPRESSIBLE]!!.removeAll { it.uri in compressedSet }
+        suggested[CleanupAnalyzer.Category.COMPRESSIBLE]!!.removeAll(compressedSet)
+        saveCurrentToStore()
+
+        val category = currentCategory
+        if (binding.detailView.visibility == View.VISIBLE && category != null) {
+            if (!showingAllPhotos && categoryItems[category]!!.isEmpty()) {
+                showOverview()
+            } else {
+                adapter.replaceCells(detailCells(category))
+                adapter.clearSelection()
+                onSelectionChanged(0)
+            }
+        } else {
+            renderTiles()
+        }
+    }
+
     private fun toggleSelectAll() {
         val category = currentCategory ?: return
-        val all = categoryItems[category]!!.map { it.uri }
+        val all = detailItems(category).map { it.uri }
         if (adapter.selectionCount >= all.size && all.isNotEmpty()) {
             adapter.clearSelection()
         } else {
@@ -514,9 +634,37 @@ class SmartCleanupActivity : AppCompatActivity() {
         }
     }
 
+    /** Items backing the current detail grid for [category] (mode-aware for COMPRESSIBLE). */
+    private fun detailItems(category: CleanupAnalyzer.Category): List<GalleryRepository.MediaItem> =
+        if (category == CleanupAnalyzer.Category.COMPRESSIBLE) compressibleDetailItems()
+        else categoryItems[category]!!
+
     private fun onSelectionChanged(count: Int) {
-        val all = currentCategory?.let { categoryItems[it]!!.size } ?: 0
+        val category = currentCategory
+        val all = category?.let { detailItems(it).size } ?: 0
         binding.selectAllBtn.text = if (count > 0 && count >= all) "Deselect all" else "Select all"
+
+        if (category == CleanupAnalyzer.Category.COMPRESSIBLE) {
+            if (count == 0) {
+                binding.deleteBar.alpha = 0.4f
+                binding.deleteBar.isClickable = false
+                binding.deleteBar.text = "Select photos to compress"
+            } else {
+                binding.deleteBar.alpha = 1f
+                binding.deleteBar.isClickable = true
+                val savings = adapter.selectedUris().sumOf { estimatedSavingsFor(it) }
+                binding.deleteBar.text = buildString {
+                    append("Preview & compress $count")
+                    if (savings > 0L) append("  ·  save ≈ ${formatBytes(savings)}")
+                }
+            }
+            // Second bar switches the grid between recommendations and the whole library.
+            binding.safeBar.visibility = View.VISIBLE
+            binding.safeBar.alpha = 1f
+            binding.safeBar.isClickable = true
+            binding.safeBar.text = if (showingAllPhotos) "Show recommended" else "Choose other photos"
+            return
+        }
 
         if (count == 0) {
             binding.deleteBar.alpha = 0.4f
@@ -533,7 +681,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         }
 
         // Lock-away action only exists for the categories where keeping (not deleting) makes sense.
-        if (currentCategory in safeCapableCategories) {
+        if (category in safeCapableCategories) {
             binding.safeBar.visibility = View.VISIBLE
             if (count == 0) {
                 binding.safeBar.alpha = 0.4f
@@ -688,7 +836,7 @@ class SmartCleanupActivity : AppCompatActivity() {
      * per-burst sections, rendered here as full-span headers.
      */
     private fun detailCells(category: CleanupAnalyzer.Category): List<GalleryCell> {
-        val list = categoryItems[category]!!
+        val list = detailItems(category)
         if (category != CleanupAnalyzer.Category.BURSTS) return list.map { GalleryCell.Photo(it) }
         val extras = suggested[category]!!
         val cells = mutableListOf<GalleryCell>()
@@ -745,6 +893,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         CleanupAnalyzer.Category.DARK -> Color.parseColor("#455A64")
         CleanupAnalyzer.Category.BRIGHT -> Color.parseColor("#B08968")
         CleanupAnalyzer.Category.LOW_RESOLUTION -> Color.parseColor("#6D7B8D")
+        CleanupAnalyzer.Category.COMPRESSIBLE -> Color.parseColor("#96A03C")
     }
 
     private fun categoryTitle(category: CleanupAnalyzer.Category): String = when (category) {
@@ -761,6 +910,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         CleanupAnalyzer.Category.DARK -> "Too dark"
         CleanupAnalyzer.Category.BRIGHT -> "Overexposed"
         CleanupAnalyzer.Category.LOW_RESOLUTION -> "Low quality"
+        CleanupAnalyzer.Category.COMPRESSIBLE -> "Compression"
     }
 
     private fun loadImageSizes(): Map<String, Long> {
