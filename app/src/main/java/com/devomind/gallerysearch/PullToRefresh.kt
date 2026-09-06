@@ -66,6 +66,7 @@ private class PullRefreshLineDecoration(
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
 
+    /** Returns the decoration to its idle state: nothing painted, the next pull starts from zero. */
     fun reset() {
         progress = 0f
         fade = 1f
@@ -188,6 +189,10 @@ private class PullGesture(
         rv.animate().translationY(0f)
             .setDuration(SNAP_MS)
             .setInterpolator(DecelerateInterpolator())
+            // translationY animates on the render node without re-running onDrawOver, so the
+            // borderY anchor must be re-pinned per frame or the line drifts with the grid and
+            // snaps back on the next unrelated invalidate.
+            .setUpdateListener { rv.invalidate() }
             .start()
 
         if (triggered) {

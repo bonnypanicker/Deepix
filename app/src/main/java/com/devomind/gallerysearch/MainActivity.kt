@@ -4120,46 +4120,60 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshVisibleItems(afterCompletedIndexPass: Boolean = false) {
         val repo = repository ?: return
-        lifecycleScope.launch(Dispatchers.IO) {
-            val snapshot = loadLibrarySnapshot(repo)
-            // The worker owns its own repository instance, so this one still holds the embeddings
-            // it had before the pass ran. Re-read the on-disk index or the count and search results
-            // stay stuck at whatever was cached at load time.
-            repo.loadCachedIndexForUris(snapshot.imageItems.map { it.uri })
-            repo.loadCachedMetadataIndexForUris(snapshot.imageItems.map { it.uri })
-            val refreshedTags = withContext(Dispatchers.IO) { dbRepository?.getAllTags().orEmpty() }
-            val refreshedTagUriMap = withContext(Dispatchers.IO) {
-                refreshedTags.associate { tag ->
-                    tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
+        lifecycleScope.launch {
+            // ── Phase 1: reload the MediaStore snapshot and update the UI immediately ──
+            val snapshot = withContext(Dispatchers.IO) { loadLibrarySnapshot(repo) }
+            applyLibrarySnapshot(snapshot)
+            currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
+            binding.statusText.text = indexedSummary(repo.indexedCount)
+            val pinnedAlbum = currentAlbum
+            when {
+                currentMode == Mode.Search -> {
+                    updateSearchMetaText()
+                    submitSearch()
                 }
+                currentMode == Mode.AlbumDetail && pinnedAlbum != null ->
+                    renderAlbumDetail(pinnedAlbum)
+                else -> renderCurrentSection()
             }
-            val refreshedPeopleCollection = loadPeopleCollection()
-            withContext(Dispatchers.Main) {
-                allTags = refreshedTags
-                tagUriMap = refreshedTagUriMap
-                applyLibrarySnapshot(snapshot)
-                peopleCollectionRefreshGeneration++
-                peopleCollection = refreshedPeopleCollection
-                // A finished pass had its chance at every in-scope photo; whatever is still missing
-                // can't be encoded, so stop counting it as outstanding work.
-                if (afterCompletedIndexPass) {
-                    permanentlyUnindexedUris = repo.unindexedUris(indexScopeUris).toSet()
-                }
-                currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
-                binding.statusText.text = indexedSummary(repo.indexedCount)
-                val pinnedAlbum = currentAlbum
-                when {
-                    currentMode == Mode.Search -> {
-                        updateSearchMetaText()
-                        submitSearch()
+
+            // ── Phase 2: heavy index / tags / people — runs after the grid is already fresh ──
+            val (refreshedTags, refreshedTagUriMap, refreshedPeopleCollection) =
+                withContext(Dispatchers.IO) {
+                    // The worker owns its own repository instance, so this one still holds the
+                    // embeddings it had before the pass ran. Re-read the on-disk index or the
+                    // count and search results stay stuck at whatever was cached at load time.
+                    repo.loadCachedIndexForUris(snapshot.imageItems.map { it.uri })
+                    repo.loadCachedMetadataIndexForUris(snapshot.imageItems.map { it.uri })
+                    val tags = dbRepository?.getAllTags().orEmpty()
+                    val tagMap = tags.associate { tag ->
+                        tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
                     }
-                    currentMode == Mode.AlbumDetail && pinnedAlbum != null ->
-                        renderAlbumDetail(pinnedAlbum)
-                    else -> renderCurrentSection()
+                    val people = loadPeopleCollection()
+                    Triple(tags, tagMap, people)
                 }
-                maybeStartBackgroundIndexing()
-                primeMetadataIndexAsync()
+            allTags = refreshedTags
+            tagUriMap = refreshedTagUriMap
+            peopleCollectionRefreshGeneration++
+            peopleCollection = refreshedPeopleCollection
+            if (afterCompletedIndexPass) {
+                permanentlyUnindexedUris = withContext(Dispatchers.IO) {
+                    repo.unindexedUris(indexScopeUris).toSet()
+                }
             }
+            // Re-render to pick up the refreshed index counts, people strip, and tags.
+            binding.statusText.text = indexedSummary(repo.indexedCount)
+            when {
+                currentMode == Mode.Search -> {
+                    updateSearchMetaText()
+                    submitSearch()
+                }
+                currentMode == Mode.AlbumDetail && pinnedAlbum != null ->
+                    renderAlbumDetail(pinnedAlbum)
+                else -> renderCurrentSection()
+            }
+            maybeStartBackgroundIndexing()
+            primeMetadataIndexAsync()
         }
     }
 
