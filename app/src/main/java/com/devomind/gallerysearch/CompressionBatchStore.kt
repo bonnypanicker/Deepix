@@ -164,5 +164,16 @@ class CompressionBatchStore(context: Context) {
         private const val FILE_NAME = "compression_batch.json"
 
         fun newBatchId(): String = "batch_${System.currentTimeMillis()}_${System.nanoTime()}"
+
+        /**
+         * True while a compression batch is mid-flight (preparing, awaiting the user's keep
+         * decision, or committing). CLIP indexing and Smart Cleanup both yield to compression:
+         * they retry cheaply and resume from persisted progress once the batch settles.
+         */
+        fun isCompressionActive(context: Context): Boolean =
+            runCatching { CompressionBatchStore(context).load()?.isActive == true }.getOrDefault(false)
     }
 }
+
+/** Thrown by background jobs that yield mid-run while a compression batch owns the device. */
+class CompressionRunningException : RuntimeException()

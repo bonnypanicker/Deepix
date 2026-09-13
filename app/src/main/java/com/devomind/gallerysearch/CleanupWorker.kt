@@ -19,10 +19,12 @@ import androidx.work.WorkerParameters
 import kotlinx.coroutines.CancellationException
 
 /**
- * Runs the full Smart Cleanup analysis in the background (parallel to [IndexWorker]) and persists
- * results to [CleanupResultStore] incrementally so the screen can show and grow them live.
+ * Runs the full Smart Cleanup analysis in the background and persists results to
+ * [CleanupResultStore] incrementally so the screen can show and grow them live.
  *
  * Reuses the existing CLIP embeddings + text encoder; never touches the image encoder or indexing.
+ * Yields to compression: while a compression batch is active (prepare / review / commit) this
+ * worker defers and retries, then resumes from its persisted scanned-uris checkpoint.
  */
 class CleanupWorker(
     appContext: Context,
@@ -36,6 +38,12 @@ class CleanupWorker(
     override suspend fun doWork(): Result {
         if (IndexPreferences.isCleanupPaused(applicationContext)) {
             return Result.success()
+        }
+        // Compression owns the device while a batch is mid-flight; retry (resume from the
+        // persisted checkpoint) once it settles rather than competing for CPU with the encoder.
+        if (CompressionBatchStore.isCompressionActive(applicationContext)) {
+            Log.i(Tag, "Compression in progress — deferring cleanup scan.")
+            return Result.retry()
         }
         runCatching { setForeground(foregroundInfo(0, 0)) }
             .onFailure { Log.w(Tag, "Foreground start not allowed; cleanup runs in background.", it) }
@@ -102,6 +110,11 @@ class CleanupWorker(
                             .putInt(ProgressTotalKey, total)
                             .build()
                     )
+                    // Compression starting mid-scan (launched from this screen's compress tile)
+                    // wins: yield and resume from the scanned-uris checkpoint on the retry.
+                    if (CompressionBatchStore.isCompressionActive(applicationContext)) {
+                        throw CompressionRunningException()
+                    }
                     // Every setForeground re-binds the foreground service and wakes WorkManager's
                     // LiveData observers on the main thread — posting per progress tick ANRs the UI.
                     // The notification's own progress bar only needs a few updates per second.
@@ -122,6 +135,11 @@ class CleanupWorker(
             Result.success()
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (held: CompressionRunningException) {
+            // Constraint wait, not a failure: unbounded retry until the batch settles, then the
+            // scan resumes from its persisted checkpoint.
+            Log.i(Tag, "Cleanup scan yielding to compression.")
+            Result.retry()
         } catch (oom: OutOfMemoryError) {
             Log.w(Tag, "Cleanup worker ran out of memory.", oom)
             Result.failure()
@@ -280,5 +298,19 @@ class CleanupWorker(
         private const val NotificationId = 1003
         private const val WRITE_THROTTLE_MS = 1500L
         private const val FOREGROUND_THROTTLE_MS = 1000L
+
+        /**
+         * Single source of truth for the scan request. Linear (not default exponential) backoff
+         * keeps the yield-to-compression re-check at a steady ~10s cadence instead of backing off
+         * to many minutes while a batch is mid-flight.
+         */
+        fun buildWorkRequest(): androidx.work.OneTimeWorkRequest =
+            androidx.work.OneTimeWorkRequestBuilder<CleanupWorker>()
+                .setBackoffCriteria(
+                    androidx.work.BackoffPolicy.LINEAR,
+                    DesignTokens.INDEX_BACKOFF_SECONDS,
+                    java.util.concurrent.TimeUnit.SECONDS
+                )
+                .build()
     }
 }

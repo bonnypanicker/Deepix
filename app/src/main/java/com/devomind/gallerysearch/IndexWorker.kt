@@ -51,6 +51,14 @@ class IndexWorker(
             return Result.success()
         }
 
+        // Compression takes priority over CLIP encoding: while a batch is mid-flight (prepare,
+        // review, commit) this worker waits and retries. Same constraint-wait semantics as the
+        // charger gate below — never counts toward MaxRetryCount failure.
+        if (CompressionBatchStore.isCompressionActive(applicationContext)) {
+            Log.i(Tag, "Compression in progress — deferring index run.")
+            return Result.retry()
+        }
+
         // Night-charging-only runtime guard: if the worker fires outside the night window (e.g. a
         // delayed retry), reschedule it for the next window rather than running the heavy scan now.
         if (IndexPreferences.isChargingOnlyIndexing(applicationContext) &&
@@ -129,6 +137,11 @@ class IndexWorker(
                 if (IndexPreferences.isChargingOnlyIndexing(applicationContext) && !isCurrentlyCharging()) {
                     throw IndexWaitingForChargeException()
                 }
+                // Compression can start mid-pass (user kicked a batch off from Smart Cleanup):
+                // yield now and let the retry reconcile + resume without re-encoding.
+                if (CompressionBatchStore.isCompressionActive(applicationContext)) {
+                    throw CompressionRunningException()
+                }
                 val bounded = current.coerceAtMost(total)
                 val progressPercent = (bounded * 100) / total
                 IndexPreferences.setIndexProgressPercent(applicationContext, progressPercent)
@@ -168,6 +181,12 @@ class IndexWorker(
         } catch (waiting: IndexWaitingForChargeException) {
             Log.i(Tag, "Index worker waiting for charger.")
             showWaitingForChargeNotification(applicationContext)
+            Result.retry()
+        } catch (held: CompressionRunningException) {
+            // Constraint wait, not a failure: retry unbounded until the batch settles, then the
+            // pass reconciles and continues. No "waiting" notification — the compression
+            // notification already explains why the device is busy.
+            Log.i(Tag, "Index worker yielding to compression.")
             Result.retry()
         } catch (paused: IndexPausedException) {
             // Pause clears the panel; resume republishes the running pill when work restarts.
