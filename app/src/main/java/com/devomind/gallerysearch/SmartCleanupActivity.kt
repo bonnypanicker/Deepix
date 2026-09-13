@@ -829,10 +829,14 @@ class SmartCleanupActivity : AppCompatActivity() {
                     if (savings > 0L) append("  ·  save ≈ ${formatBytes(savings)}")
                 }
             }
-            // Second bar switches the grid between recommendations and the whole library.
+            // Second bar switches the grid between recommendations and the whole library. It's a
+            // mode toggle, not a commit action: neutral card surface so it doesn't merge with the
+            // accent "Preview & compress" bar into one big block.
             binding.safeBar.visibility = View.VISIBLE
             binding.safeBar.alpha = 1f
             binding.safeBar.isClickable = true
+            binding.safeBar.setBackgroundColor(getColor(R.color.metroBgCard))
+            binding.safeBar.setTextColor(getColor(R.color.metroTextPrimary))
             binding.safeBar.text = if (showingAllPhotos) "Show recommended" else "Choose other photos"
             return
         }
@@ -854,6 +858,10 @@ class SmartCleanupActivity : AppCompatActivity() {
         // Lock-away action only exists for the categories where keeping (not deleting) makes sense.
         if (category in safeCapableCategories) {
             binding.safeBar.visibility = View.VISIBLE
+            // Action bar: accent, restored explicitly since the compressible toggle above leaves
+            // the neutral card background on the shared view.
+            binding.safeBar.setBackgroundColor(DesignTokens.accent(this))
+            binding.safeBar.setTextColor(getColor(R.color.metroTextPrimary))
             if (count == 0) {
                 binding.safeBar.alpha = 0.4f
                 binding.safeBar.isClickable = false
