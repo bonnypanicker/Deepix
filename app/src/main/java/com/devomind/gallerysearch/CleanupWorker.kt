@@ -70,6 +70,19 @@ class CleanupWorker(
 
             var lastDone = scanned.size
             var lastTotal = 0
+            // Face photos are excluded from compression RECOMMENDATIONS (lossy re-encoding degrades
+            // face detail first) but stay in the category for manual selection. YuNet's cached
+            // face counts decide; photos it hasn't scanned yet fall back to the CLIP person gate.
+            val faceCounts = FaceResultStore(app).load().faceCounts
+            val hasFace: (Uri) -> Boolean = { uri ->
+                val uriStr = uri.toString()
+                faceCounts[uriStr]?.let { it > 0 }
+                    ?: (textEncoder?.let { encoder ->
+                        embeddings[uriStr]?.let { embedding ->
+                            ClipPersonGate.scoreEmbedding(encoder, embedding, uriStr).hasPerson
+                        }
+                    } ?: false)
+            }
             val finalReport = CleanupAnalyzer.analyze(
                 items = images,
                 embeddings = embeddings,
@@ -77,6 +90,7 @@ class CleanupWorker(
                 encodeText = { runCatching { repo.encodeText(it) }.getOrNull() },
                 nsfwMargin = { embedding -> nsfwClassifier?.marginScore(embedding) },
                 imageStats = { computeImageStats(it) },
+                hasFace = hasFace,
                 onProgress = { done, total ->
                     lastDone = done
                     lastTotal = total

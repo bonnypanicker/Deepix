@@ -49,6 +49,12 @@
             android:name=".CompressionActivity"
             android:exported="false" />
 
+        <!-- Full-screen original-vs-compressed comparison; immersive dark chrome. -->
+        <activity
+            android:name=".CompareFullscreenActivity"
+            android:exported="false"
+            android:theme="@style/Theme.GallerySearch.Viewer" />
+
         <activity
             android:name=".SettingsActivity"
             android:exported="false" />

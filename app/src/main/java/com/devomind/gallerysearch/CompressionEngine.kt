@@ -44,6 +44,7 @@ object CompressionEngine {
     private const val STAGING_DIR = "staging"
     private const val BACKUP_DIR = "backup"
     private const val MAX_DIMENSION = 8192          // HEVC encoders commonly cap at 8192x8192
+    private const val SMALL_MAX_DIMENSION = 2048    // "Smaller file" preset: ~3MP, plenty for screens
     private const val STOP_TIMEOUT_MS = 30_000L
     private const val ORPHAN_AGE_MS = 24 * 60 * 60 * 1000L
 
@@ -58,6 +59,20 @@ object CompressionEngine {
     enum class State { PREPARED, BACKED_UP, DEST_WRITTEN, ORIGINAL_REMOVED, COPY_WRITTEN }
 
     enum class Mode { REPLACE, COPY }
+
+    /**
+     * A quality preset. HEIC/WebP `quality` alone barely moves file size on many hardware
+     * encoders, so the presets also differ in [maxDimension]: the encoder caps are generous
+     * (8192 = visually lossless, no downscale) while "smaller file" also downscales the
+     * bitmap's longest edge, which cuts real megabytes for a modest resolution loss.
+     */
+    data class Preset(val quality: Int, val maxDimension: Int)
+
+    object Presets {
+        val HIGH = Preset(quality = 90, maxDimension = MAX_DIMENSION)
+        val BALANCED = Preset(quality = 80, maxDimension = MAX_DIMENSION)
+        val SMALL = Preset(quality = 65, maxDimension = SMALL_MAX_DIMENSION)
+    }
 
     /** One journaled compression operation. All paths are absolute; [originalPath] may be blank
      *  when the file location couldn't be resolved (MediaStore-only copy flow). */
@@ -189,11 +204,13 @@ object CompressionEngine {
 
     /**
      * Encodes [uri] to a verified compressed file in staging and journals it as [State.PREPARED].
-     * Returns the entry on success, null when the photo can't be decoded or encoded.
+     * [preset] carries both the encoder quality and the longest-edge cap (the "smaller file"
+     * preset downscales). Returns the entry on success, null when the photo can't be decoded
+     * or encoded.
      */
-    fun prepare(context: Context, uri: Uri, displayName: String?, quality: Int, mode: Mode): Entry? {
+    fun prepare(context: Context, uri: Uri, displayName: String?, quality: Int, mode: Mode, maxDimension: Int = MAX_DIMENSION): Entry? {
         if (!isCompressibleMime(context.contentResolver.getType(uri))) return null
-        val bitmap = decodeOriented(context, uri) ?: return null
+        val bitmap = decodeOriented(context, uri, maxDimension) ?: return null
         val id = "${System.currentTimeMillis()}_${System.nanoTime()}"
         val originalPath = MediaFileOps.resolvePath(context, uri).orEmpty()
         val sizeBefore = runCatching {
@@ -476,9 +493,9 @@ object CompressionEngine {
         }.getOrDefault(false)
     }
 
-    /** Full-resolution decode capped at [MAX_DIMENSION], with the EXIF orientation baked in so the
-     *  compressed file displays upright even without metadata. */
-    private fun decodeOriented(context: Context, uri: Uri): Bitmap? {
+    /** Full-resolution decode capped at [maxDim] (longest edge), with the EXIF orientation baked
+     *  in so the compressed file displays upright even without metadata. */
+    private fun decodeOriented(context: Context, uri: Uri, maxDim: Int = MAX_DIMENSION): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         runCatching {
             context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
@@ -486,7 +503,7 @@ object CompressionEngine {
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
         var sample = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > MAX_DIMENSION) sample *= 2
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxDim) sample *= 2
 
         var bitmap = decodeSampled(context, uri, sample)
         if (bitmap == null && sample > 1) {
@@ -494,6 +511,22 @@ object CompressionEngine {
             bitmap = decodeSampled(context, uri, sample * 2)
         }
         bitmap ?: return null
+
+        // Sampling only works in powers of two, so the decoded edge can still overshoot the
+        // cap (e.g. 8192-target on a 9000px photo decodes at 4500… or 2048-cap lands at 4096).
+        // Squeeze the longest edge to exactly [maxDim], preserving aspect ratio.
+        val longest = maxOf(bitmap.width, bitmap.height)
+        if (longest > maxDim) {
+            val scale = maxDim.toFloat() / longest
+            val scaled = Bitmap.createScaledBitmap(
+                bitmap,
+                (bitmap.width * scale).toInt().coerceAtLeast(1),
+                (bitmap.height * scale).toInt().coerceAtLeast(1),
+                true
+            )
+            if (scaled != bitmap) bitmap.recycle()
+            bitmap = scaled
+        }
 
         val rotation = runCatching {
             context.contentResolver.openInputStream(uri)?.use { ExifInterface(it).rotationDegrees } ?: 0

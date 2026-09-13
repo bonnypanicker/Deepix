@@ -52,6 +52,9 @@ class SmartCleanupActivity : AppCompatActivity() {
     /** COMPRESSIBLE detail only: grid shows every compressible photo instead of the recommendations. */
     private var showingAllPhotos = false
 
+    /** Album filter inside "Choose other photos" mode; null = "All" (no filter). */
+    private var selectedAlbumId: String? = null
+
     /** Categories whose items are worth locking away rather than deleting. */
     private val safeCapableCategories = setOf(
         CleanupAnalyzer.Category.NSFW,
@@ -522,6 +525,8 @@ class SmartCleanupActivity : AppCompatActivity() {
     private fun openCategory(category: CleanupAnalyzer.Category) {
         currentCategory = category
         showingAllPhotos = false
+        selectedAlbumId = null
+        renderAlbumChips()
         binding.overviewView.visibility = View.GONE
         binding.detailView.visibility = View.VISIBLE
         binding.detailTitle.text = categoryTitle(category)
@@ -540,7 +545,7 @@ class SmartCleanupActivity : AppCompatActivity() {
             CleanupAnalyzer.Category.BRIGHT -> "Overexposed photos — tap to select"
             CleanupAnalyzer.Category.LOW_RESOLUTION -> "Low-resolution images — tap to select"
             CleanupAnalyzer.Category.COMPRESSIBLE ->
-                "Large photos that HEIC shrinks a lot — recommended ones pre-selected"
+                "Large photos that HEIC shrinks — face photos excluded from recommendations"
         }
 
         // The action bar compresses (accent) instead of deleting (red) for this category.
@@ -560,6 +565,7 @@ class SmartCleanupActivity : AppCompatActivity() {
             items.asSequence()
                 .filter { it.mediaType == GalleryRepository.MediaType.Image }
                 .filter { CompressionEngine.isCompressibleMime(it.mimeType) }
+                .filter { selectedAlbumId == null || it.bucketId == selectedAlbumId }
                 .sortedByDescending { sizeByUri[it.uri.toString()] ?: it.sizeBytes }
                 .toList()
         } else {
@@ -572,13 +578,63 @@ class SmartCleanupActivity : AppCompatActivity() {
         binding.detailHint.text = if (showingAllPhotos) {
             "All photos that can be compressed — tap to select"
         } else {
-            "Large photos that HEIC shrinks a lot — recommended ones pre-selected"
+            "Large photos that HEIC shrinks — face photos excluded from recommendations"
         }
+        selectedAlbumId = null
+        renderAlbumChips()
         adapter.replaceCells(detailCells(category))
         adapter.clearSelection()
         binding.cleanupGrid.scrollToPosition(0)
         if (!showingAllPhotos) adapter.setSelection(suggested[category]!!.toList())
         onSelectionChanged(adapter.selectionCount)
+    }
+
+    /**
+     * Album chips for the COMPRESSIBLE "Choose other photos" grid: "All" plus every album that
+     * contains at least one compressible photo, busiest first. Tapping one filters the grid to
+     * that album. Hidden entirely outside custom mode.
+     */
+    private fun renderAlbumChips() {
+        val visible = showingAllPhotos && currentCategory == CleanupAnalyzer.Category.COMPRESSIBLE
+        binding.albumChipScroll.visibility = if (visible) View.VISIBLE else View.GONE
+        if (!visible) return
+
+        binding.albumChipRow.removeAllViews()
+        fun chip(label: String, albumId: String?) {
+            val chip = layoutInflater.inflate(R.layout.item_search_chip, binding.albumChipRow, false) as TextView
+            chip.text = label
+            val active = selectedAlbumId == albumId
+            chip.setBackgroundColor(
+                if (active) DesignTokens.accent(this) else getColor(R.color.metroBgCard)
+            )
+            chip.setTextColor(
+                if (active) getColor(R.color.metroTextPrimary) else getColor(R.color.metroTextStrong)
+            )
+            chip.setOnClickListener {
+                selectedAlbumId = albumId
+                renderAlbumChips()
+                adapter.replaceCells(detailCells(CleanupAnalyzer.Category.COMPRESSIBLE))
+                adapter.clearSelection()
+                binding.cleanupGrid.scrollToPosition(0)
+                onSelectionChanged(0)
+            }
+            binding.albumChipRow.addView(chip)
+        }
+
+        chip("All", null)
+        items.asSequence()
+            .filter { it.mediaType == GalleryRepository.MediaType.Image }
+            .filter { CompressionEngine.isCompressibleMime(it.mimeType) }
+            .groupingBy { it.bucketId }
+            .eachCount()
+            .entries
+            .sortedByDescending { it.value }
+            .take(MAX_ALBUM_CHIPS)
+            .forEach { (bucketId, _) ->
+                val name = items.firstOrNull { it.bucketId == bucketId }?.bucketName
+                    ?.takeIf { it.isNotBlank() } ?: bucketId
+                chip(name, bucketId)
+            }
     }
 
     private fun launchCompressionReview() {
@@ -950,5 +1006,6 @@ class SmartCleanupActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "SmartCleanup"
         const val ExtraContentChanged = "content_changed"
+        private const val MAX_ALBUM_CHIPS = 30
     }
 }

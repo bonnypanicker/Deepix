@@ -279,6 +279,26 @@
                     android:textColor="@color/metroTextSecondary"
                     android:textSize="13sp" />
 
+                <!-- Album filter for the COMPRESSIBLE "Choose other photos" mode only; hidden
+                     everywhere else. Chips are inflated at runtime into albumChipRow. -->
+                <HorizontalScrollView
+                    android:id="@+id/albumChipScroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipToPadding="false"
+                    android:paddingStart="20dp"
+                    android:paddingEnd="20dp"
+                    android:scrollbars="none"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:id="@+id/albumChipRow"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:paddingBottom="10dp" />
+                </HorizontalScrollView>
+
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/cleanupGrid"
                     android:layout_width="match_parent"

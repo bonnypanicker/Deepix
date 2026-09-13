@@ -10,7 +10,6 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -26,7 +25,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.util.Locale
 import kotlin.concurrent.thread
 
@@ -52,9 +50,10 @@ class CompressionActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityCompressionBinding
     private val rows = mutableListOf<Row>()
-    private var quality = 80
+    private var preset: CompressionEngine.Preset = CompressionEngine.Presets.BALANCED
     private var prepareJob: Job? = null
     private var batchRunning = false
+    private var compareRowIndex = -1
 
     private val replacedUris = mutableListOf<String>()
     private val compressedUris = mutableListOf<String>()
@@ -67,6 +66,31 @@ class CompressionActivity : AppCompatActivity() {
             confirmBatch(replace = true)
         } else {
             MetroBanner.show(this, "All-files access is required to replace originals")
+        }
+    }
+
+    /** Full-screen compare result: "Keep original" discards the staged entry for that row. */
+    private val compareResultLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val index = compareRowIndex
+        compareRowIndex = -1
+        if (index !in rows.indices) return@registerForActivityResult
+        val row = rows[index]
+        when (result.resultCode) {
+            CompareFullscreenActivity.ResultKeepOriginal -> {
+                row.entry?.let { entry ->
+                    thread(isDaemon = true) {
+                        runCatching { CompressionEngine.discard(this@CompressionActivity, entry) }
+                    }
+                }
+                row.entry = null
+                row.status = RowStatus.NO_GAIN
+                row.note = "You chose to keep the original"
+                notifyRow(index)
+                updateSummary()
+            }
+            CompareFullscreenActivity.ResultKeepCompressed -> Unit // stays READY, staged as-is
         }
     }
 
@@ -104,9 +128,9 @@ class CompressionActivity : AppCompatActivity() {
         binding.compressionList.adapter = RowAdapter()
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
-        binding.qualityHigh.setOnClickListener { setQuality(90) }
-        binding.qualityBalanced.setOnClickListener { setQuality(80) }
-        binding.qualitySmall.setOnClickListener { setQuality(65) }
+        binding.qualityHigh.setOnClickListener { setPreset(CompressionEngine.Presets.HIGH) }
+        binding.qualityBalanced.setOnClickListener { setPreset(CompressionEngine.Presets.BALANCED) }
+        binding.qualitySmall.setOnClickListener { setPreset(CompressionEngine.Presets.SMALL) }
         binding.replaceBar.setOnClickListener { onReplaceClicked() }
         binding.keepBothBar.setOnClickListener { confirmBatch(replace = false) }
 
@@ -149,7 +173,7 @@ class CompressionActivity : AppCompatActivity() {
                 val entry = withContext(Dispatchers.IO) {
                     CompressionEngine.prepare(
                         this@CompressionActivity, row.item.uri, row.item.displayName,
-                        quality, CompressionEngine.Mode.REPLACE
+                        preset.quality, CompressionEngine.Mode.REPLACE, preset.maxDimension
                     )
                 }
                 when {
@@ -173,12 +197,12 @@ class CompressionActivity : AppCompatActivity() {
         }
     }
 
-    private fun setQuality(value: Int) {
-        if (value == quality || batchRunning) return
-        quality = value
+    private fun setPreset(newPreset: CompressionEngine.Preset) {
+        if (newPreset == preset || batchRunning) return
+        preset = newPreset
         updateQualityChips()
         prepareJob?.cancel()
-        // Prepared files used the old quality: discard them and re-encode.
+        // Prepared files used the old preset: discard them and re-encode.
         val toDiscard = rows.filter { it.entry != null && it.status == RowStatus.READY }
         thread(isDaemon = true) {
             toDiscard.forEach { runCatching { CompressionEngine.discard(this@CompressionActivity, it.entry!!) } }
@@ -198,9 +222,13 @@ class CompressionActivity : AppCompatActivity() {
     private fun updateQualityChips() {
         val accent = DesignTokens.accent(this)
         val card = getColor(R.color.metroBgCard)
-        val selected = mapOf(90 to binding.qualityHigh, 80 to binding.qualityBalanced, 65 to binding.qualitySmall)
+        val selected = mapOf(
+            CompressionEngine.Presets.HIGH to binding.qualityHigh,
+            CompressionEngine.Presets.BALANCED to binding.qualityBalanced,
+            CompressionEngine.Presets.SMALL to binding.qualitySmall
+        )
         for ((value, chip) in selected) {
-            if (value == quality) {
+            if (value == preset) {
                 chip.setBackgroundColor(accent)
                 chip.setTextColor(getColor(R.color.metroTextPrimary))
             } else {
@@ -214,7 +242,7 @@ class CompressionActivity : AppCompatActivity() {
         val ready = rows.filter { it.status == RowStatus.READY }
         val pending = rows.count { it.status == RowStatus.PENDING || it.status == RowStatus.PREPARING }
         if (ready.isEmpty() && pending > 0) {
-            binding.summaryText.text = "Analyzing photos…"
+            binding.summaryText.text = "Still analyzing photos… ($pending left)"
             binding.summaryDetail.text = "Exact sizes appear as each photo is compressed."
         } else if (ready.isEmpty()) {
             binding.summaryText.text = "Nothing to gain"
@@ -235,9 +263,9 @@ class CompressionActivity : AppCompatActivity() {
                 if (skipped > 0) append(" · $skipped already optimal")
             }
         }
-        val actionable = !batchRunning && rows.any {
-            it.status == RowStatus.READY || it.status == RowStatus.PENDING || it.status == RowStatus.PREPARING
-        }
+        // Batch actions stay unavailable until every row is settled: the batch then only commits
+        // already-staged files (fast copies), never re-encodes, so "Replacing X / N" is honest.
+        val actionable = !batchRunning && pending == 0 && rows.any { it.status == RowStatus.READY }
         binding.replaceBar.alpha = if (actionable) 1f else 0.4f
         binding.replaceBar.isClickable = actionable
         binding.keepBothBar.alpha = if (actionable) 1f else 0.4f
@@ -245,30 +273,20 @@ class CompressionActivity : AppCompatActivity() {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Compare dialog
+    // Full-screen compare (CompareFullscreenActivity)
     // ---------------------------------------------------------------------------------------------
 
     private fun showCompare(row: Row) {
         val entry = row.entry ?: return
-        val view = layoutInflater.inflate(R.layout.dialog_compression_compare, null)
-        val dialog = AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
-            .setView(view)
-            .create()
-        view.findViewById<TextView>(R.id.compareTitle).text =
-            row.item.displayName ?: "Photo"
-        view.findViewById<TextView>(R.id.compareOriginalLabel).text =
-            "Original · ${formatBytes(entry.sizeBefore)}"
-        view.findViewById<TextView>(R.id.compareCompressedLabel).text =
-            "Compressed · ${formatBytes(entry.sizeAfter)} · ${entry.format.name}"
-        val saved = entry.sizeBefore - entry.sizeAfter
-        val percent = if (entry.sizeBefore > 0) (saved * 100 / entry.sizeBefore).toInt() else 0
-        view.findViewById<TextView>(R.id.compareSavings).text =
-            "Saves ${formatBytes(saved)} ($percent% smaller)"
-        Glide.with(this).load(row.item.uri).fitCenter()
-            .into(view.findViewById(R.id.compareOriginal))
-        Glide.with(this).load(File(entry.stagingPath)).fitCenter()
-            .into(view.findViewById(R.id.compareCompressed))
-        dialog.show()
+        compareRowIndex = rows.indexOf(row)
+        compareResultLauncher.launch(
+            Intent(this, CompareFullscreenActivity::class.java)
+                .putExtra(CompareFullscreenActivity.ExtraOriginalUri, row.item.uri.toString())
+                .putExtra(CompareFullscreenActivity.ExtraStagingPath, entry.stagingPath)
+                .putExtra(CompareFullscreenActivity.ExtraSizeBefore, entry.sizeBefore)
+                .putExtra(CompareFullscreenActivity.ExtraSizeAfter, entry.sizeAfter)
+                .putExtra(CompareFullscreenActivity.ExtraFormat, entry.format.name)
+        )
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -286,18 +304,21 @@ class CompressionActivity : AppCompatActivity() {
 
     private fun confirmBatch(replace: Boolean) {
         if (batchRunning) return
-        val count = rows.count {
-            it.status == RowStatus.READY || it.status == RowStatus.PENDING || it.status == RowStatus.PREPARING
+        // Preparation must be finished: the batch only commits staged files, it never encodes.
+        if (rows.any { it.status == RowStatus.PENDING || it.status == RowStatus.PREPARING }) {
+            MetroBanner.show(this, "Still analyzing — available in a moment")
+            return
         }
+        val count = rows.count { it.status == RowStatus.READY }
         if (count == 0) return
         val noun = if (count == 1) "1 photo" else "$count photos"
         MetroDialog.confirm(
             context = this,
             title = if (replace) "Replace originals?" else "Save compressed copies?",
             message = if (replace) {
-                "$noun will be re-encoded and the original files deleted. " +
-                    "Compressed photos stay in the same folders with the same names. " +
-                    "If anything goes wrong mid-way, originals are restored automatically."
+                "The compressed versions of $noun replace the original files (already prepared, " +
+                    "so this is quick). Originals are backed up until each replacement verifies; " +
+                    "if anything goes wrong mid-way, they're restored automatically."
             } else {
                 "$noun will be saved as smaller copies next to the originals; nothing is deleted."
             },
@@ -306,6 +327,11 @@ class CompressionActivity : AppCompatActivity() {
         ) { runBatch(replace) }
     }
 
+    /**
+     * Commit-only batch: every target is already staged and verified by [startPrepare], so this
+     * loop runs fast file operations (verified copy + delete) — no re-encoding pass. Rows that
+     * failed or gained nothing during preparation keep their verdict and are skipped.
+     */
     private fun runBatch(replace: Boolean) {
         batchRunning = true
         prepareJob?.cancel()
@@ -313,65 +339,47 @@ class CompressionActivity : AppCompatActivity() {
         binding.batchProgressRow.visibility = View.VISIBLE
 
         lifecycleScope.launch {
-            val targets = rows.filter {
-                it.status == RowStatus.READY || it.status == RowStatus.PENDING || it.status == RowStatus.PREPARING
-            }
-            binding.batchProgressBar.max = targets.size.coerceAtLeast(1)
+            val targets = rows.filter { it.status == RowStatus.READY && it.entry != null }
+            val total = targets.size.coerceAtLeast(1)
+            binding.batchProgressBar.max = total
+            binding.batchProgressText.text = "${if (replace) "Replacing" else "Saving copy"} 0 / $total"
             var processed = 0
             var failed = 0
 
             for (row in targets) {
                 val index = rows.indexOf(row)
-                binding.batchProgressText.text = "Processing ${processed + 1} / ${targets.size}"
-                row.status = RowStatus.PREPARING
-                notifyRow(index)
+                val entry = row.entry!!
+                binding.batchProgressText.text =
+                    "${if (replace) "Replacing" else "Saving copy"} ${processed + 1} / $total"
 
-                val outcome = withContext(Dispatchers.IO) {
+                val ok = withContext(Dispatchers.IO) {
                     try {
-                        val entry = row.entry ?: CompressionEngine.prepare(
-                            this@CompressionActivity, row.item.uri, row.item.displayName,
-                            quality, CompressionEngine.Mode.REPLACE
-                        ) ?: return@withContext Outcome.FAILED
-                        if (entry.sizeBefore > 0L && entry.sizeAfter >= entry.sizeBefore) {
-                            CompressionEngine.discard(this@CompressionActivity, entry)
-                            return@withContext Outcome.NO_GAIN
-                        }
-                        val ok = if (replace) {
+                        if (replace) {
                             CompressionEngine.commitReplace(this@CompressionActivity, entry)
                         } else {
                             CompressionEngine.commitCopy(this@CompressionActivity, entry)
                         }
-                        if (ok) Outcome.success(entry) else Outcome.FAILED
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (error: Throwable) {
-                        Outcome.FAILED
+                        false
                     }
                 }
 
                 processed++
                 binding.batchProgressBar.progress = processed
-                when {
-                    outcome.entry != null -> {
-                        val entry = outcome.entry
-                        row.entry = null
-                        row.status = RowStatus.DONE
-                        row.note = "${formatBytes(entry.sizeBefore)} → ${formatBytes(entry.sizeAfter)}"
-                        compressedUris.add(row.item.uri.toString())
-                        if (replace) replacedUris.add(row.item.uri.toString())
-                        totalSavedBytes += (entry.sizeBefore - entry.sizeAfter)
-                    }
-                    outcome.noGain -> {
-                        row.entry = null
-                        row.status = RowStatus.NO_GAIN
-                        row.note = "Already optimal — skipped"
-                    }
-                    else -> {
-                        row.entry = null
-                        row.status = RowStatus.FAILED
-                        row.note = "Couldn't compress this photo"
-                        failed++
-                    }
+                if (ok) {
+                    row.entry = null
+                    row.status = RowStatus.DONE
+                    row.note = "${formatBytes(entry.sizeBefore)} → ${formatBytes(entry.sizeAfter)}"
+                    compressedUris.add(row.item.uri.toString())
+                    if (replace) replacedUris.add(row.item.uri.toString())
+                    totalSavedBytes += (entry.sizeBefore - entry.sizeAfter)
+                } else {
+                    row.entry = null
+                    row.status = RowStatus.FAILED
+                    row.note = "Couldn't ${if (replace) "replace" else "save"} this photo"
+                    failed++
                 }
                 notifyRow(index)
             }
@@ -387,18 +395,8 @@ class CompressionActivity : AppCompatActivity() {
             MetroBanner.show(this@CompressionActivity, message)
             updateSummary()
 
-            val remaining = rows.any {
-                it.status == RowStatus.READY || it.status == RowStatus.PENDING || it.status == RowStatus.PREPARING
-            }
+            val remaining = rows.any { it.status == RowStatus.READY }
             if (!remaining) finishWithResult()
-        }
-    }
-
-    private class Outcome private constructor(val entry: CompressionEngine.Entry?, val noGain: Boolean) {
-        companion object {
-            val FAILED = Outcome(null, noGain = false)
-            val NO_GAIN = Outcome(null, noGain = true)
-            fun success(entry: CompressionEngine.Entry) = Outcome(entry, noGain = false)
         }
     }
 

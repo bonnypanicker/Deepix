@@ -120,7 +120,10 @@ object CleanupAnalyzer {
         onPartial: (Report) -> Unit = {},
         resumeQuality: Map<Category, Set<String>> = emptyMap(),
         scannedUris: MutableSet<String> = mutableSetOf(),
-        nsfwMargin: (FloatArray) -> Float? = { null }
+        nsfwMargin: (FloatArray) -> Float? = { null },
+        // Face photos stay compressible on request — they just never get pre-selected as a
+        // recommendation, since lossy re-encoding degrades face detail first.
+        hasFace: (Uri) -> Boolean = { false }
     ): Report {
         val categoryItems = linkedMapOf<Category, MutableList<GalleryRepository.MediaItem>>()
         val suggested = linkedMapOf<Category, MutableSet<Uri>>()
@@ -131,7 +134,8 @@ object CleanupAnalyzer {
 
         // 0) Compression candidates: large JPEG/PNG/WebP/BMP stills that HEIC shrinks a lot.
         //    Metadata-only (instant). Overlaps the other categories on purpose — a duplicate can
-        //    also be worth compressing. All candidates are pre-selected as the recommendation.
+        //    also be worth compressing. Every candidate stays in the category list (visible in
+        //    "Choose other photos"), but only face-free ones are pre-selected as the recommendation.
         items.asSequence()
             .filter { it.mediaType == GalleryRepository.MediaType.Image }
             .filter { CompressionEngine.isCompressibleMime(it.mimeType) }
@@ -140,7 +144,7 @@ object CleanupAnalyzer {
             .sortedByDescending { (item, size) -> CompressionEngine.estimatedSavings(item.mimeType, size) }
             .forEach { (item, _) ->
                 categoryItems[Category.COMPRESSIBLE]!!.add(item)
-                suggested[Category.COMPRESSIBLE]!!.add(item.uri)
+                if (!hasFace(item.uri)) suggested[Category.COMPRESSIBLE]!!.add(item.uri)
             }
 
         // 1) Bursts first: time-clustered sequences (capture time) with moderately similar content.
