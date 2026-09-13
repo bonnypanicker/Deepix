@@ -21,19 +21,108 @@
         android:layout_height="match_parent"
         android:background="#000000" />
 
-    <TextView
-        android:id="@+id/compareSavings"
-        android:layout_width="wrap_content"
+    <View
+        android:id="@+id/headerScrim"
+        android:layout_width="match_parent"
+        android:layout_height="140dp"
+        android:background="@drawable/viewer_top_gradient" />
+
+    <!-- Two-pane header: Original | Compressed, each with its size and an active indicator.
+         Tapping a pane jumps straight to that version. Clears the back button (66dp start). -->
+    <LinearLayout
+        android:id="@+id/compareHeader"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="48dp"
-        android:shadowColor="#CC000000"
-        android:shadowDx="0"
-        android:shadowDy="1"
-        android:shadowRadius="6"
-        android:textColor="@color/metroTextPrimary"
-        android:textSize="13sp"
-        android:fontFamily="sans-serif-medium" />
+        android:layout_gravity="top"
+        android:layout_marginStart="66dp"
+        android:layout_marginEnd="14dp"
+        android:layout_marginTop="44dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:id="@+id/headerOriginal"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/metro_row_pressed"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <TextView
+                android:id="@+id/headerOriginalTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Original"
+                android:textColor="@color/metroTextPrimary"
+                android:textSize="14sp"
+                android:fontFamily="sans-serif-medium" />
+
+            <TextView
+                android:id="@+id/headerOriginalSize"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/metroTextSecondary"
+                android:textSize="12sp" />
+
+            <View
+                android:id="@+id/indicatorOriginal"
+                android:layout_width="28dp"
+                android:layout_height="3dp"
+                android:layout_marginTop="6dp"
+                android:background="?attr/accentColor" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="42dp"
+            android:layout_marginStart="10dp"
+            android:layout_marginEnd="10dp"
+            android:background="#26FFFFFF" />
+
+        <LinearLayout
+            android:id="@+id/headerCompressed"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/metro_row_pressed"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <TextView
+                android:id="@+id/headerCompressedTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Compressed"
+                android:textColor="@color/metroTextPrimary"
+                android:textSize="14sp"
+                android:fontFamily="sans-serif-medium" />
+
+            <TextView
+                android:id="@+id/headerCompressedSize"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/metroTextSecondary"
+                android:textSize="12sp" />
+
+            <View
+                android:id="@+id/indicatorCompressed"
+                android:layout_width="28dp"
+                android:layout_height="3dp"
+                android:layout_marginTop="6dp"
+                android:background="?attr/accentColor" />
+        </LinearLayout>
+    </LinearLayout>
 
     <ImageButton
         android:id="@+id/compareBackBtn"

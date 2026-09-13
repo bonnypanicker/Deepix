@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.VelocityTracker
+import android.view.View
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -25,9 +27,11 @@ import kotlin.math.abs
  * attacher IS its touch listener; overriding it uninstalls zoom, which is how this screen
  * originally shipped non-zoomable).
  *
- * A horizontal drag at fit scale slides the top version aside finger-follow style to reveal the
- * other; release past a quarter of the width (or a fling) commits the swap. The top label names
- * the shown version and its size; the keep/discard buttons settle the decision.
+ * A horizontal drag at fit scale slides BOTH panes finger-follow style — the top one toward the
+ * pull, the incoming one in from the opposite edge, like a two-page pager — and release past a
+ * quarter of the width (or a fling) commits the swap; anything less springs back. The two-pane
+ * header (Original | Compressed, each with size + active indicator) reflects and controls the
+ * shown version: tapping a pane slides it in. The keep/discard buttons settle the decision.
  */
 class CompareFullscreenActivity : AppCompatActivity() {
 
@@ -60,7 +64,7 @@ class CompareFullscreenActivity : AppCompatActivity() {
 
         binding.photoOriginal.loadIntoFit(uri)
         binding.photoCompressed.loadIntoFit(stagingPath)
-        renderLabel()
+        renderHeader()
 
         binding.compareBackBtn.setOnClickListener { finish() }
         binding.keepOriginalBtn.setOnClickListener {
@@ -71,11 +75,16 @@ class CompareFullscreenActivity : AppCompatActivity() {
             setResult(ResultKeepCompressed)
             finish()
         }
+        // Header pans double as jump shortcuts: tapping one slides that version in pager-style.
+        binding.headerOriginal.setOnClickListener { jumpTo(showCompressed = false) }
+        binding.headerCompressed.setOnClickListener { jumpTo(showCompressed = true) }
 
         // Single tap anywhere toggles the system bars. Runs inside dispatchTouchEvent — the one
         // hook that still fires even though the zoomable PhotoView consumes every gesture.
+        // Taps on the header/bottom-bar chrome are excluded: those views handle their own clicks.
         tapDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (isTapOnChrome(e)) return true
                 if (windowInsetsVisible()) hideSystemBars() else showSystemBars()
                 return true
             }
@@ -149,56 +158,142 @@ class CompareFullscreenActivity : AppCompatActivity() {
         tapDetector.onTouchEvent(ev)
     }
 
-    /** Live finger-follow: the top view slides toward the side the finger pulls it, slightly fading. */
+    /**
+     * Live finger-follow: both panes travel together like a pager — the top one slides toward the
+     * side the finger pulls while the incoming one rides in from the opposite edge (translation
+     * exactly -width at the start of the drag, 0 when the drag fully crosses the screen). The old
+     * transition only moved the top pane, so the incoming photo sat static and the swap read as a
+     * reveal, not a slide.
+     */
     private fun translateTop(dxRaw: Float) {
         // Clamp to the direction first chosen: dragging back past origin re-covers the other
         // version (dx toward 0) instead of sliding it out the opposite side.
-        val dx = if (swipeDirection >= 0) dxRaw.coerceAtLeast(0f) else dxRaw.coerceAtMost(0f)
+        val dir = swipeDirection
+        val dx = if (dir >= 0) dxRaw.coerceAtLeast(0f) else dxRaw.coerceAtMost(0f)
+        val w = width().toFloat()
         topView().translationX = dx
-        topView().alpha = 1f - (abs(dx) / width()).coerceIn(0f, 0.35f)
+        incomingView().translationX = -dir * w + dx
+        topView().alpha = 1f - (abs(dx) / w).coerceIn(0f, 0.35f)
     }
 
-    /** Release: animate the top view fully off-screen, then bring the other version forward. */
+    /** Drag released past the threshold: finish sliding to the other version. */
     private fun commitSwap(dx: Float) {
-        val escaped = (if (dx >= 0f) 1 else -1) * width().toFloat()
+        // Reveal direction matches the drag: a rightward pull (dir=+1) sends the top view off to
+        // the right while the incoming one arrives from the left edge.
+        swapTo(showCompressed = !showingCompressed, revealDir = if (dx >= 0f) 1 else -1)
+    }
+
+    /** Header tap: park the target off the edge of its header side, then run the pager slide. */
+    private fun jumpTo(showCompressed: Boolean) {
+        if (showingCompressed == showCompressed) return
+        // Compressed sits on the right of the header → slides in from the right; Original from
+        // the left. Same revealDir convention as a drag of the matching direction.
+        val revealDir = if (showCompressed) -1 else 1
+        incomingView().translationX = -revealDir * width().toFloat()
+        swapTo(showCompressed, revealDir)
+    }
+
+    /**
+     * Animate to [showCompressed]: the top view exits toward revealDir * width while the incoming
+     * view — already finger-followed to mid-slide, or parked off-screen by [jumpTo] — rides in to
+     * translation 0. Resets both views and finalizes z-order once the incoming animation lands.
+     */
+    private fun swapTo(showCompressed: Boolean, revealDir: Int) {
+        if (showingCompressed == showCompressed) return
+        val w = width().toFloat()
         val top = topView()
+        val incoming = incomingView()
+        incoming.alpha = 1f
         top.animate()
-            .translationX(escaped)
+            .translationX(revealDir * w)
             .alpha(0f)
+            .setDuration(SWAP_ANIM_MS)
+            .start()
+        incoming.animate()
+            .translationX(0f)
             .setDuration(SWAP_ANIM_MS)
             .withEndAction {
                 top.translationX = 0f
                 top.alpha = 1f
-                showingCompressed = !showingCompressed
-                // Keep the chrome (label, back, bottom bar) above the swapped-in photo.
-                if (showingCompressed) binding.photoCompressed.bringToFront() else binding.photoOriginal.bringToFront()
-                binding.compareSavings.bringToFront()
-                binding.compareBackBtn.bringToFront()
-                binding.bottomBar.bringToFront()
-                renderLabel()
+                showingCompressed = showCompressed
+                applyChromeZOrder()
+                renderHeader()
             }
             .start()
     }
 
-    /** Release (or cancel) without committing: slide the top view back over. */
+    /** Release (or cancel) without committing: both panes return to their pre-drag positions. */
     private fun springBack() {
+        val dir = swipeDirection
+        val w = width().toFloat()
         topView().animate()
             .translationX(0f)
             .alpha(1f)
             .setDuration(SPRING_ANIM_MS)
             .start()
+        incomingView().animate()
+            .translationX(-dir * w)
+            .setDuration(SPRING_ANIM_MS)
+            .start()
     }
 
-    /** Header labels the version currently on top; savings show while the compressed one is up. */
-    private fun renderLabel() {
-        binding.compareSavings.text = if (showingCompressed) {
-            val suffix = if (format.isNotBlank()) " · $format" else ""
-            val saved = (sizeBefore - sizeAfter).coerceAtLeast(0L)
-            val percent = if (sizeBefore > 0) (saved * 100 / sizeBefore).toInt() else 0
-            "Compressed · ${formatBytes(sizeAfter)}$suffix  ·  saves ${formatBytes(saved)} ($percent% smaller)"
-        } else {
-            "Original · ${formatBytes(sizeBefore)}  ·  swipe to compare"
-        }
+    private fun incomingView(): RotatablePhotoView =
+        if (showingCompressed) binding.photoOriginal else binding.photoCompressed
+
+    /** Chrome (scrim, header, back, bottom bar) must stay above whichever photo is on top. */
+    private fun applyChromeZOrder() {
+        if (showingCompressed) binding.photoCompressed.bringToFront() else binding.photoOriginal.bringToFront()
+        binding.headerScrim.bringToFront()
+        binding.compareHeader.bringToFront()
+        binding.compareBackBtn.bringToFront()
+        binding.bottomBar.bringToFront()
+    }
+
+    /** Taps on the header panes or bottom bar belong to those views, not the bars toggle. */
+    private fun isTapOnChrome(e: MotionEvent): Boolean =
+        isPointIn(binding.compareHeader, e) || isPointIn(binding.bottomBar, e)
+
+    private fun isPointIn(view: View, e: MotionEvent): Boolean {
+        val loc = IntArray(2)
+        view.getLocationOnScreen(loc)
+        return e.rawX >= loc[0] && e.rawX <= loc[0] + view.width &&
+            e.rawY >= loc[1] && e.rawY <= loc[1] + view.height
+    }
+
+    /** Header reflects the version on top: the active pane gets a bright title and accent bar. */
+    private fun renderHeader() {
+        styleHeaderPane(
+            title = binding.headerOriginalTitle,
+            size = binding.headerOriginalSize,
+            indicator = binding.indicatorOriginal,
+            active = !showingCompressed,
+            sizeLabel = formatBytes(sizeBefore)
+        )
+        val saved = (sizeBefore - sizeAfter).coerceAtLeast(0L)
+        val percent = if (sizeBefore > 0) (saved * 100 / sizeBefore).toInt() else 0
+        val suffix = if (format.isNotBlank()) " $format" else ""
+        styleHeaderPane(
+            title = binding.headerCompressedTitle,
+            size = binding.headerCompressedSize,
+            indicator = binding.indicatorCompressed,
+            active = showingCompressed,
+            sizeLabel = "${formatBytes(sizeAfter)}$suffix · -$percent%"
+        )
+    }
+
+    private fun styleHeaderPane(
+        title: TextView,
+        size: TextView,
+        indicator: View,
+        active: Boolean,
+        sizeLabel: String
+    ) {
+        val dim = getColor(R.color.metroTextSecondary)
+        title.setTextColor(if (active) getColor(R.color.metroTextPrimary) else dim)
+        size.text = sizeLabel
+        size.setTextColor(if (active) ACTIVE_SIZE_COLOR else dim)
+        indicator.setBackgroundColor(AccentPalette.solid(this))
+        indicator.visibility = if (active) View.VISIBLE else View.INVISIBLE
     }
 
     private fun topView(): RotatablePhotoView =
@@ -278,5 +373,8 @@ class CompareFullscreenActivity : AppCompatActivity() {
         private const val MAX_TRACKED_VELOCITY = 10000f
         private const val SWAP_ANIM_MS = 190L
         private const val SPRING_ANIM_MS = 180L
+
+        /** Size text of the active header pane — white at 80% over the scrim. */
+        private val ACTIVE_SIZE_COLOR = 0xCCFFFFFF.toInt()
     }
 }
