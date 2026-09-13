@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Full-screen original-vs-compressed comparison. The PhotoView fills the screen (zoom/pan);
-     a bottom bar toggles which version shows and carries the keep/discard decision. -->
+<!-- Full-screen original-vs-compressed comparison. Two stacked PhotoViews (each independently
+     zoomable, opaque so the hidden one never peeks through the letterbox); a horizontal swipe at
+     fit scale slides the top one aside to reveal the other. The plain top label names the shown
+     version and its size — no tab buttons, no boxed banner. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/compareRoot"
     android:layout_width="match_parent"
@@ -8,9 +10,16 @@
     android:background="#000000">
 
     <com.devomind.gallerysearch.RotatablePhotoView
-        android:id="@+id/comparePhoto"
+        android:id="@+id/photoCompressed"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:background="#000000" />
+
+    <com.devomind.gallerysearch.RotatablePhotoView
+        android:id="@+id/photoOriginal"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000" />
 
     <TextView
         android:id="@+id/compareSavings"
@@ -18,11 +27,10 @@
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
         android:layout_marginTop="48dp"
-        android:background="#66000000"
-        android:paddingStart="14dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="14dp"
-        android:paddingBottom="8dp"
+        android:shadowColor="#CC000000"
+        android:shadowDx="0"
+        android:shadowDy="1"
+        android:shadowRadius="6"
         android:textColor="@color/metroTextPrimary"
         android:textSize="13sp"
         android:fontFamily="sans-serif-medium" />
@@ -41,89 +49,48 @@
         android:tint="@color/metroTextPrimary" />
 
     <LinearLayout
+        android:id="@+id/bottomBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:orientation="vertical"
+        android:orientation="horizontal"
         android:paddingStart="20dp"
         android:paddingEnd="20dp"
         android:paddingBottom="24dp">
 
-        <LinearLayout
-            android:layout_width="match_parent"
+        <TextView
+            android:id="@+id/keepOriginalBtn"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:layout_weight="1"
+            android:background="@color/metroBgCard"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="@drawable/metro_row_pressed"
+            android:gravity="center"
+            android:paddingTop="16dp"
+            android:paddingBottom="16dp"
+            android:text="Keep original"
+            android:textColor="@color/metroTextPrimary"
+            android:textSize="15sp"
+            android:fontFamily="sans-serif-medium" />
 
-            <TextView
-                android:id="@+id/tabOriginal"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:paddingTop="12dp"
-                android:paddingBottom="12dp"
-                android:textColor="@color/metroTextPrimary"
-                android:textSize="14sp"
-                android:fontFamily="sans-serif-medium" />
-
-            <TextView
-                android:id="@+id/tabCompressed"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:paddingTop="12dp"
-                android:paddingBottom="12dp"
-                android:textColor="@color/metroTextSecondary"
-                android:textSize="14sp"
-                android:fontFamily="sans-serif-medium" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
+        <TextView
+            android:id="@+id/keepCompressedBtn"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/keepOriginalBtn"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:background="@color/metroBgCard"
-                android:clickable="true"
-                android:focusable="true"
-                android:foreground="@drawable/metro_row_pressed"
-                android:gravity="center"
-                android:paddingTop="16dp"
-                android:paddingBottom="16dp"
-                android:text="Keep original"
-                android:textColor="@color/metroTextPrimary"
-                android:textSize="15sp"
-                android:fontFamily="sans-serif-medium" />
-
-            <TextView
-                android:id="@+id/keepCompressedBtn"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:background="?attr/accentColor"
-                android:clickable="true"
-                android:focusable="true"
-                android:foreground="@drawable/metro_row_pressed"
-                android:gravity="center"
-                android:paddingTop="16dp"
-                android:paddingBottom="16dp"
-                android:text="Keep compressed"
-                android:textColor="@color/metroTextPrimary"
-                android:textSize="15sp"
-                android:fontFamily="sans-serif-medium" />
-        </LinearLayout>
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:background="?attr/accentColor"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="@drawable/metro_row_pressed"
+            android:gravity="center"
+            android:paddingTop="16dp"
+            android:paddingBottom="16dp"
+            android:text="Keep compressed"
+            android:textColor="@color/metroTextPrimary"
+            android:textSize="15sp"
+            android:fontFamily="sans-serif-medium" />
     </LinearLayout>
 </FrameLayout>
