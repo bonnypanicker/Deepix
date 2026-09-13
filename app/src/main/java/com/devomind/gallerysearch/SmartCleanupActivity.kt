@@ -622,6 +622,8 @@ class SmartCleanupActivity : AppCompatActivity() {
         }
 
         chip("All", null)
+        // Every album with a compressible photo gets a chip — the row scrolls horizontally, so
+        // capping it would silently make tail albums unfilterable on large libraries.
         items.asSequence()
             .filter { it.mediaType == GalleryRepository.MediaType.Image }
             .filter { CompressionEngine.isCompressibleMime(it.mimeType) }
@@ -629,7 +631,6 @@ class SmartCleanupActivity : AppCompatActivity() {
             .eachCount()
             .entries
             .sortedByDescending { it.value }
-            .take(MAX_ALBUM_CHIPS)
             .forEach { (bucketId, _) ->
                 val name = items.firstOrNull { it.bucketId == bucketId }?.bucketName
                     ?.takeIf { it.isNotBlank() } ?: bucketId
@@ -1006,6 +1007,5 @@ class SmartCleanupActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "SmartCleanup"
         const val ExtraContentChanged = "content_changed"
-        private const val MAX_ALBUM_CHIPS = 30
     }
 }

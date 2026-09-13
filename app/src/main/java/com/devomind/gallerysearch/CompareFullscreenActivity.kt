@@ -78,7 +78,7 @@ class CompareFullscreenActivity : AppCompatActivity() {
         // to PhotoView's pan instead of switching versions.
         tapDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                if (windowInsetsVisible()) showSystemBars() else hideSystemBars()
+                if (windowInsetsVisible()) hideSystemBars() else showSystemBars()
                 return true
             }
 
