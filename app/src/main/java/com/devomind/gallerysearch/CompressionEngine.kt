@@ -335,6 +335,37 @@ object CompressionEngine {
         removeEntry(context, entry.id)
     }
 
+    /**
+     * Resume helper for a commit interrupted by a crash. When the final on-disk result already
+     * exists — a verified destination and, for a replacement, the original already gone — this
+     * finishes the operation (rescan + drop temp artifacts + remove the journal entry) and returns
+     * true, so the caller records success instead of re-running the destructive commit (which would
+     * otherwise fail because the original no longer exists). Returns false when a real commit is
+     * still needed. Never deletes an original or a good destination.
+     */
+    fun completeIfFinished(context: Context, entry: Entry, replace: Boolean): Boolean {
+        if (entry.destPath.isBlank() || !verifies(File(entry.destPath))) return false
+        if (replace && (entry.originalPath.isBlank() || File(entry.originalPath).exists())) return false
+        MediaFileOps.rescan(context, entry.destPath)
+        File(entry.stagingPath).delete()
+        File(entry.backupPath).delete()
+        removeEntry(context, entry.id)
+        return true
+    }
+
+    /**
+     * Narrower resume case: the journal entry was already removed by a completed run, but the batch
+     * store hadn't recorded the outcome before the crash. Confirms the recorded destination is a
+     * verified image (and, for a replacement, that the original is gone), rescans it, and reports
+     * whether the photo is already committed on disk. Read-only — deletes nothing.
+     */
+    fun resultAlreadyOnDisk(context: Context, destPath: String, originalPath: String, replace: Boolean): Boolean {
+        if (destPath.isBlank() || !verifies(File(destPath))) return false
+        if (replace && (originalPath.isBlank() || File(originalPath).exists())) return false
+        MediaFileOps.rescan(context, destPath)
+        return true
+    }
+
     // ----------------------------------------------------------------------------------
     // Crash recovery — runs on every app start (cheap no-op when the journal is empty)
     // ----------------------------------------------------------------------------------
@@ -345,7 +376,16 @@ object CompressionEngine {
             sweepOrphans(context)
             return
         }
+        // Entries owned by an active background batch belong to CompressionWorker, which resumes
+        // them (commit or discard) — settling them here would drop prepared work it still needs.
+        val ownedByActiveBatch = runCatching {
+            CompressionBatchStore(context).load()
+                ?.takeIf { it.isActive }
+                ?.items?.mapNotNullTo(HashSet()) { it.entryId.takeIf(String::isNotBlank) }
+                ?: emptySet()
+        }.getOrDefault(emptySet())
         for (entry in entries) {
+            if (entry.id in ownedByActiveBatch) continue
             runCatching { settle(context, entry) }
                 .onFailure { Log.w(TAG, "Recovery failed for ${entry.id}", it) }
         }

@@ -53,7 +53,28 @@ class GallerySearchApp : Application() {
         // Settle any compression interrupted by a crash/process death: originals that still exist
         // are kept, verified replacements are finalized, broken ones restored from backup. No-op
         // (one small file check) when no compression was in flight.
-        thread(isDaemon = true) { runCatching { CompressionEngine.recover(applicationContext) } }
+        thread(isDaemon = true) {
+            runCatching {
+                CompressionEngine.recover(applicationContext)
+                // A batch the user already confirmed (COMMITTING) must finish even if the process
+                // died mid-way: re-enqueue with KEEP so WorkManager's own restart isn't duplicated.
+                val batch = CompressionBatchStore(applicationContext).load()
+                if (batch != null && batch.phase == CompressionBatchStore.Phase.COMMITTING && batch.commitMode != null) {
+                    val request = androidx.work.OneTimeWorkRequestBuilder<CompressionWorker>()
+                        .setInputData(
+                            androidx.work.Data.Builder()
+                                .putString(CompressionWorker.KeyBatchId, batch.id)
+                                .build()
+                        )
+                        .build()
+                    androidx.work.WorkManager.getInstance(applicationContext).enqueueUniqueWork(
+                        CompressionWorker.CommitWorkName,
+                        androidx.work.ExistingWorkPolicy.KEEP,
+                        request
+                    )
+                }
+            }
+        }
     }
 
     /**

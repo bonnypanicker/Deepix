@@ -242,8 +242,41 @@ class SmartCleanupActivity : AppCompatActivity() {
         loadStoredResults()
         observeIndexing()
         observeCleanup()
+        observeCompression()
         if (!paused) startScan(replace = false)
         updateScanControls()
+    }
+
+    /** Batch ids whose results were already applied, so the observer stays idempotent across
+     *  repeated LiveData emissions and the activity-result path. */
+    private val appliedCompressionBatches = mutableSetOf<String>()
+
+    /**
+     * Safety net for the background commit pass: [CompressionActivity] may have been destroyed (or
+     * the app backgrounded) while [CompressionWorker] was still replacing/saving photos. When the
+     * commit work finishes, apply the persisted results here so the cleanup lists drop the photos
+     * that were replaced or compressed even though no result came back through the launcher.
+     */
+    private fun observeCompression() {
+        WorkManager.getInstance(this)
+            .getWorkInfosForUniqueWorkLiveData(CompressionWorker.CommitWorkName)
+            .observe(this) { infos ->
+                val work = IndexWorker.pickRelevantWorkInfo(infos) ?: return@observe
+                if (work.state != WorkInfo.State.SUCCEEDED) return@observe
+                lifecycleScope.launch {
+                    val batch = withContext(Dispatchers.IO) {
+                        CompressionBatchStore(this@SmartCleanupActivity).load()
+                    } ?: return@launch
+                    if (batch.phase != CompressionBatchStore.Phase.DONE) return@launch
+                    if (!appliedCompressionBatches.add(batch.id)) return@launch
+                    val replaced = batch.replacedUris.map { Uri.parse(it) }
+                    val copied = batch.copiedUris.map { Uri.parse(it) }
+                    withContext(Dispatchers.IO) { CompressionBatchStore(this@SmartCleanupActivity).clear() }
+                    if (replaced.isNotEmpty() || copied.isNotEmpty()) {
+                        onCompressed(replaced, copied)
+                    }
+                }
+            }
     }
 
     /**
