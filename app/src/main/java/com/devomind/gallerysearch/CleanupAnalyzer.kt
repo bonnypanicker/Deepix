@@ -132,6 +132,15 @@ object CleanupAnalyzer {
             suggested[c] = linkedSetOf()
         }
 
+        // Emitted after every phase below — not only once before the pixel pass — so the overview
+        // tiles stream in as each pass lands instead of the first tile waiting for the heaviest
+        // passes (pairwise dedup) to finish.
+        fun snapshot() = Report(
+            categoryItems = categoryItems.mapValues { it.value.toList() },
+            suggestedDeleteUris = suggested.mapValues { it.value.toSet() },
+            sizeByUri = sizeByUri
+        )
+
         // 0) Compression candidates: large JPEG/PNG/WebP/BMP stills that HEIC shrinks a lot.
         //    Metadata-only (instant). Overlaps the other categories on purpose — a duplicate can
         //    also be worth compressing. Every candidate stays in the category list (visible in
@@ -146,6 +155,7 @@ object CleanupAnalyzer {
                 categoryItems[Category.COMPRESSIBLE]!!.add(item)
                 if (!hasFace(item.uri)) suggested[Category.COMPRESSIBLE]!!.add(item.uri)
             }
+        onPartial(snapshot())
 
         // 1) Bursts first: time-clustered sequences (capture time) with moderately similar content.
         //    Runs over EVERY embedded photo — image search finds these with plain cosine lookups, so
@@ -167,6 +177,7 @@ object CleanupAnalyzer {
                 suggested[Category.BURSTS]!!.add(item.uri)
             }
         }
+        onPartial(snapshot())
 
         // 2) Duplicates (>=0.97) and Similar (>=0.93) over the non-burst remainder, in one pairwise
         //    pass. Cross-time near-identical copies (edited copies, re-downloads, reposts) land
@@ -194,6 +205,7 @@ object CleanupAnalyzer {
                 if (item.uri != keep.uri) suggested[Category.SIMILAR]!!.add(item.uri)
             }
         }
+        onPartial(snapshot())
 
         // 3) Zero-shot class vectors.
         val photoVec = averagedPromptVector(PHOTO_PROMPTS, encodeText)
@@ -233,12 +245,6 @@ object CleanupAnalyzer {
         }
 
         // 4) Single decode pass over real photos → blur / dark / bright; low-res from metadata.
-        fun snapshot() = Report(
-            categoryItems = categoryItems.mapValues { it.value.toList() },
-            suggestedDeleteUris = suggested.mapValues { it.value.toSet() },
-            sizeByUri = sizeByUri
-        )
-
         // Show the fast (embedding + metadata) categories immediately so the screen is live.
         onPartial(snapshot())
 
