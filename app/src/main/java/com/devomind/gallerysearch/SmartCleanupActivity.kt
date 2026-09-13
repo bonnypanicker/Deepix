@@ -52,6 +52,10 @@ class SmartCleanupActivity : AppCompatActivity() {
     /** COMPRESSIBLE detail only: grid shows every compressible photo instead of the recommendations. */
     private var showingAllPhotos = false
 
+    /** Sort order for the COMPRESSIBLE detail lists (recommended + choose-other). Scoped to this
+     *  screen: first run defaults to Recent regardless of the global sort default. */
+    private var compressibleSort: SortOption = SortOption.NewestFirst
+
     /** Album filter inside "Choose other photos" mode; null = "All" (no filter). */
     private var selectedAlbumId: String? = null
 
@@ -209,6 +213,8 @@ class SmartCleanupActivity : AppCompatActivity() {
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         binding.refreshBtn.setOnClickListener { startScan(replace = true) }
         binding.selectAllBtn.setOnClickListener { toggleSelectAll() }
+        compressibleSort = SortManager.optionFor(this, COMPRESSIBLE_SORT_SCOPE, SortOption.NewestFirst)
+        binding.detailSortBtn.setOnClickListener { showCompressibleSortMenu(it) }
         binding.deleteBar.setOnClickListener {
             if (currentCategory == CleanupAnalyzer.Category.COMPRESSIBLE) {
                 launchCompressionReview()
@@ -350,7 +356,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         userStopped = false
         IndexPreferences.setCleanupPaused(this, false)
         if (replace) cleanupStore.clear()
-        val request = androidx.work.OneTimeWorkRequestBuilder<CleanupWorker>().build()
+        val request = CleanupWorker.buildWorkRequest()
         WorkManager.getInstance(this).enqueueUniqueWork(
             CleanupWorker.WorkName,
             if (replace) androidx.work.ExistingWorkPolicy.REPLACE else androidx.work.ExistingWorkPolicy.KEEP,
@@ -371,7 +377,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         paused = false
         userStopped = false
         IndexPreferences.setCleanupPaused(this, false)
-        val request = androidx.work.OneTimeWorkRequestBuilder<CleanupWorker>().build()
+        val request = CleanupWorker.buildWorkRequest()
         WorkManager.getInstance(this).enqueueUniqueWork(
             CleanupWorker.WorkName, androidx.work.ExistingWorkPolicy.KEEP, request
         )
@@ -631,6 +637,10 @@ class SmartCleanupActivity : AppCompatActivity() {
             if (category == CleanupAnalyzer.Category.COMPRESSIBLE) DesignTokens.accent(this)
             else getColor(R.color.metroDanger)
         )
+        // Sorting is wired only for the compression lists; other categories have semantic order
+        // (burst grouping, scan order) that a sort would break.
+        binding.detailSortBtn.visibility =
+            if (category == CleanupAnalyzer.Category.COMPRESSIBLE) View.VISIBLE else View.GONE
 
         adapter.replaceCells(detailCells(category))
         binding.cleanupGrid.scrollToPosition(0)
@@ -639,10 +649,11 @@ class SmartCleanupActivity : AppCompatActivity() {
 
     /** Photos shown in the COMPRESSIBLE detail: recommendations, or every compressible photo. */
     private fun compressibleDetailItems(): List<GalleryRepository.MediaItem> {
-        if (!showingAllPhotos) return categoryItems[CleanupAnalyzer.Category.COMPRESSIBLE]!!
-        val all = customCompressibleList()
-        val album = selectedAlbumId ?: return all
-        return all.filter { it.bucketId == album }
+        val list = if (!showingAllPhotos) categoryItems[CleanupAnalyzer.Category.COMPRESSIBLE]!!
+        else customCompressibleList()
+        val sorted = SortManager.sort(list, compressibleSort)
+        val album = selectedAlbumId ?: return sorted
+        return sorted.filter { it.bucketId == album }
     }
 
     /**
@@ -669,6 +680,18 @@ class SmartCleanupActivity : AppCompatActivity() {
             .map { (bucketId, _) -> bucketId to (names[bucketId]?.takeIf { it.isNotBlank() } ?: bucketId) }
         customCompressibleItems = sorted
         return sorted
+    }
+
+    /** Reuses the timeline sort dropdown; scoped to this screen so other listings are untouched.
+     *  replaceCells keeps the selection (URIs unchanged), so only the order + scroll reset. */
+    private fun showCompressibleSortMenu(anchor: View) {
+        SortMenu.show(anchor, compressibleSort, SortOption.MEDIA_OPTIONS) { picked ->
+            compressibleSort = picked
+            SortManager.setOption(this, COMPRESSIBLE_SORT_SCOPE, picked)
+            val category = currentCategory ?: return@show
+            adapter.replaceCells(detailCells(category))
+            binding.cleanupGrid.scrollToPosition(0)
+        }
     }
 
     private fun toggleCompressibleSource() {
@@ -1105,5 +1128,6 @@ class SmartCleanupActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "SmartCleanup"
         const val ExtraContentChanged = "content_changed"
+        private const val COMPRESSIBLE_SORT_SCOPE = "cleanup_compressible"
     }
 }

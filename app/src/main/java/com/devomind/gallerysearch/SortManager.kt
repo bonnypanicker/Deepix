@@ -18,13 +18,15 @@ object SortManager {
     private const val KeyGlobalSort = "sort_global"
     private const val ScopeKeyPrefix = "sort_scope_"
 
-    /** The order [scopeKey] should use, falling back to the global default when unset. */
-    fun optionFor(context: Context, scopeKey: String?): SortOption {
-        val global = globalDefault(context)
-        if (scopeKey == null) return global
+    /** The order [scopeKey] should use, falling back to [fallback] (or the global default when
+     *  null) when unset. A screen that wants its own first-run default passes it as [fallback];
+     *  once the user picks an order the scope stores it and the default no longer applies. */
+    fun optionFor(context: Context, scopeKey: String?, fallback: SortOption? = null): SortOption {
+        val base = fallback ?: globalDefault(context)
+        if (scopeKey == null) return base
         val stored = context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .getString(ScopeKeyPrefix + scopeKey, null)
-            ?: return global
+            ?: return base
         return SortOption.fromKey(stored)
     }
 

@@ -254,18 +254,35 @@
                         android:textColor="@color/metroTextPrimary"
                         android:textSize="30sp" />
 
-                    <TextView
-                        android:id="@+id/selectAllBtn"
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="end|center_vertical"
-                        android:background="@drawable/metro_row_pressed"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:padding="8dp"
-                        android:text="@string/select_all"
-                        android:textColor="?attr/accentColor"
-                        android:textSize="14sp" />
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <ImageButton
+                            android:id="@+id/detailSortBtn"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:background="@drawable/metro_row_pressed"
+                            android:contentDescription="@string/sort_change_order"
+                            android:padding="12dp"
+                            android:src="@drawable/ic_fluent_arrow_sort_24_regular"
+                            android:tint="@color/metroTextPrimary" />
+
+                        <TextView
+                            android:id="@+id/selectAllBtn"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/metro_row_pressed"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:padding="8dp"
+                            android:text="@string/select_all"
+                            android:textColor="?attr/accentColor"
+                            android:textSize="14sp" />
+                    </LinearLayout>
                 </FrameLayout>
 
                 <TextView
