@@ -42,9 +42,10 @@ class CompareFullscreenActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
-        hideSystemBars()
         binding = ActivityCompareFullscreenBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // Must run after binding init — hideSystemBars() touches binding.root for the insets controller.
+        hideSystemBars()
 
         val format = intent.getStringExtra(ExtraFormat).orEmpty()
         binding.tabOriginal.text = "Original · ${formatBytes(sizeBefore)}"

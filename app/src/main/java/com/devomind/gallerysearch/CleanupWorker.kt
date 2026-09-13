@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -30,6 +31,7 @@ class CleanupWorker(
 
     private val store = CleanupResultStore(appContext)
     private var lastWriteAt = 0L
+    private var lastForegroundAt = 0L
 
     override suspend fun doWork(): Result {
         if (IndexPreferences.isCleanupPaused(applicationContext)) {
@@ -100,8 +102,15 @@ class CleanupWorker(
                             .putInt(ProgressTotalKey, total)
                             .build()
                     )
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        runCatching { setForegroundAsync(foregroundInfo(done, total)) }
+                    // Every setForeground re-binds the foreground service and wakes WorkManager's
+                    // LiveData observers on the main thread — posting per progress tick ANRs the UI.
+                    // The notification's own progress bar only needs a few updates per second.
+                    val now = SystemClock.elapsedRealtime()
+                    if (now - lastForegroundAt >= FOREGROUND_THROTTLE_MS) {
+                        lastForegroundAt = now
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            runCatching { setForegroundAsync(foregroundInfo(done, total)) }
+                        }
                     }
                 },
                 onPartial = { report -> persist(report, complete = false, scanned.toList(), lastDone, lastTotal, throttle = true) },
@@ -270,5 +279,6 @@ class CleanupWorker(
         private const val ChannelId = "gallery_cleanup_channel"
         private const val NotificationId = 1003
         private const val WRITE_THROTTLE_MS = 1500L
+        private const val FOREGROUND_THROTTLE_MS = 1000L
     }
 }

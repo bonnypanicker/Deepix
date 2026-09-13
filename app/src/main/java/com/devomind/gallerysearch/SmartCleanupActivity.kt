@@ -55,6 +55,17 @@ class SmartCleanupActivity : AppCompatActivity() {
     /** Album filter inside "Choose other photos" mode; null = "All" (no filter). */
     private var selectedAlbumId: String? = null
 
+    /** Backing cache for "Choose other photos" mode: every compressible photo sorted largest-first
+     * plus album aggregates. Built once per library/sizes change — deriving these per call
+     * re-filtered and re-sorted the entire library on every grid render, chip render and selection
+     * change, which froze the UI for seconds on large libraries. */
+    private var customCompressibleItems: List<GalleryRepository.MediaItem>? = null
+    private var customAlbumLabels: List<Pair<String, String>>? = null
+
+    /** Guards against stacking store reloads while one is already parsing in the background. */
+    private var storeLoadInFlight = false
+    private var storeLoadPending = false
+
     /** Categories whose items are worth locking away rather than deleting. */
     private val safeCapableCategories = setOf(
         CleanupAnalyzer.Category.NSFW,
@@ -359,7 +370,12 @@ class SmartCleanupActivity : AppCompatActivity() {
         }
     }
 
-    /** Streams results from the worker: reloads the persisted store on every progress update. */
+    /**
+     * Streams results from the worker: reloads the persisted store on every progress update.
+     * Each WorkInfo emission previously hit the disk + JSON parser on the main thread (the store
+     * holds every scanned photo), ANR-ing the screen while the scan ran — parse on IO and apply
+     * only the freshest result back on main.
+     */
     private fun observeCleanup() {
         WorkManager.getInstance(this)
             .getWorkInfosForUniqueWorkLiveData(CleanupWorker.WorkName)
@@ -374,23 +390,40 @@ class SmartCleanupActivity : AppCompatActivity() {
                 updateScanControls()
 
                 if (binding.detailView.visibility != View.VISIBLE) {
-                    loadStoredResults()
+                    loadStoredResultsAsync()
                 }
             }
     }
 
+    private fun loadStoredResultsAsync() {
+        if (storeLoadInFlight) {
+            storeLoadPending = true // drain after the in-flight parse — never drop the final update
+            return
+        }
+        storeLoadInFlight = true
+        lifecycleScope.launch {
+            do {
+                storeLoadPending = false
+                val result = withContext(Dispatchers.IO) { runCatching { cleanupStore.load() }.getOrNull() }
+                // Apply only while the overview is showing: the parse may land after the user has
+                // opened a category, and swapping its lists mid-browse would desync the grid.
+                if (result != null && binding.detailView.visibility != View.VISIBLE) {
+                    scanComplete = result.complete
+                    if (!scanRunning && result.total > 0) {
+                        progressDone = result.done
+                        progressTotal = result.total
+                    }
+                    applyStored(result)
+                    renderTiles()
+                    updateScanControls()
+                }
+            } while (storeLoadPending)
+            storeLoadInFlight = false
+        }
+    }
+
     private fun loadStoredResults() {
-        val result = cleanupStore.load() ?: return
-        scanComplete = result.complete
-        if (!scanRunning && result.total > 0) {
-            progressDone = result.done
-            progressTotal = result.total
-        }
-        applyStored(result)
-        if (binding.detailView.visibility != View.VISIBLE) {
-            renderTiles()
-            updateScanControls()
-        }
+        loadStoredResultsAsync()
     }
 
     private fun applyStored(result: CleanupResultStore.Result) {
@@ -425,22 +458,34 @@ class SmartCleanupActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val sizes = withContext(Dispatchers.IO) { loadImageSizes() }
             sizeByUri = sizes
+            invalidateCustomCompressibleList()
             if (binding.detailView.visibility != View.VISIBLE) renderTiles()
         }
     }
 
+    /** The custom-mode list depends on [items] and [sizeByUri] — drop the cache when either changes. */
+    private fun invalidateCustomCompressibleList() {
+        customCompressibleItems = null
+        customAlbumLabels = null
+    }
+
     private fun saveCurrentToStore() {
-        val prior = cleanupStore.load()
-        val result = CleanupResultStore.Result(
-            categoryUris = categoryItems.mapValues { entry -> entry.value.map { it.uri.toString() } },
-            suggestedUris = suggested.mapValues { entry -> entry.value.map { it.toString() } },
-            scannedUris = prior?.scannedUris ?: emptyList(),
-            done = prior?.done ?: 0,
-            total = prior?.total ?: 0,
-            complete = prior?.complete ?: true,
-            updatedAt = System.currentTimeMillis()
-        )
-        cleanupStore.save(result)
+        // Same multi-megabyte store the worker writes — serialize + write it off the main thread.
+        val snapshotCategories = categoryItems.mapValues { entry -> entry.value.map { it.uri.toString() } }
+        val snapshotSuggested = suggested.mapValues { entry -> entry.value.map { it.toString() } }
+        lifecycleScope.launch {
+            val prior = withContext(Dispatchers.IO) { runCatching { cleanupStore.load() }.getOrNull() }
+            val result = CleanupResultStore.Result(
+                categoryUris = snapshotCategories,
+                suggestedUris = snapshotSuggested,
+                scannedUris = prior?.scannedUris ?: emptyList(),
+                done = prior?.done ?: 0,
+                total = prior?.total ?: 0,
+                complete = prior?.complete ?: true,
+                updatedAt = System.currentTimeMillis()
+            )
+            withContext(Dispatchers.IO) { cleanupStore.save(result) }
+        }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -560,17 +605,38 @@ class SmartCleanupActivity : AppCompatActivity() {
     }
 
     /** Photos shown in the COMPRESSIBLE detail: recommendations, or every compressible photo. */
-    private fun compressibleDetailItems(): List<GalleryRepository.MediaItem> =
-        if (showingAllPhotos) {
-            items.asSequence()
-                .filter { it.mediaType == GalleryRepository.MediaType.Image }
-                .filter { CompressionEngine.isCompressibleMime(it.mimeType) }
-                .filter { selectedAlbumId == null || it.bucketId == selectedAlbumId }
-                .sortedByDescending { sizeByUri[it.uri.toString()] ?: it.sizeBytes }
-                .toList()
-        } else {
-            categoryItems[CleanupAnalyzer.Category.COMPRESSIBLE]!!
+    private fun compressibleDetailItems(): List<GalleryRepository.MediaItem> {
+        if (!showingAllPhotos) return categoryItems[CleanupAnalyzer.Category.COMPRESSIBLE]!!
+        val all = customCompressibleList()
+        val album = selectedAlbumId ?: return all
+        return all.filter { it.bucketId == album }
+    }
+
+    /**
+     * Builds (once) the "Choose other photos" backing list: every compressible photo sorted
+     * largest-first, and the album aggregates used for the chip row. Subsequent renders, chip
+     * taps and selection changes reuse it — only a library or size-map change rebuilds it.
+     */
+    private fun customCompressibleList(): List<GalleryRepository.MediaItem> {
+        customCompressibleItems?.let { return it }
+        val sorted = items.asSequence()
+            .filter { it.mediaType == GalleryRepository.MediaType.Image }
+            .filter { CompressionEngine.isCompressibleMime(it.mimeType) }
+            .sortedByDescending { sizeByUri[it.uri.toString()] ?: it.sizeBytes }
+            .toList()
+        // Single pass: album counts + first album name seen per bucketId (chips need a label).
+        val counts = LinkedHashMap<String, Int>()
+        val names = LinkedHashMap<String, String>()
+        for (item in sorted) {
+            counts.merge(item.bucketId, 1, Int::plus)
+            names.putIfAbsent(item.bucketId, item.bucketName)
         }
+        customAlbumLabels = counts.entries
+            .sortedByDescending { it.value }
+            .map { (bucketId, _) -> bucketId to (names[bucketId]?.takeIf { it.isNotBlank() } ?: bucketId) }
+        customCompressibleItems = sorted
+        return sorted
+    }
 
     private fun toggleCompressibleSource() {
         val category = currentCategory ?: return
@@ -623,19 +689,10 @@ class SmartCleanupActivity : AppCompatActivity() {
 
         chip("All", null)
         // Every album with a compressible photo gets a chip — the row scrolls horizontally, so
-        // capping it would silently make tail albums unfilterable on large libraries.
-        items.asSequence()
-            .filter { it.mediaType == GalleryRepository.MediaType.Image }
-            .filter { CompressionEngine.isCompressibleMime(it.mimeType) }
-            .groupingBy { it.bucketId }
-            .eachCount()
-            .entries
-            .sortedByDescending { it.value }
-            .forEach { (bucketId, _) ->
-                val name = items.firstOrNull { it.bucketId == bucketId }?.bucketName
-                    ?.takeIf { it.isNotBlank() } ?: bucketId
-                chip(name, bucketId)
-            }
+        // capping it would silently make tail albums unfilterable on large libraries. The call
+        // builds the aggregates on first use; later renders reuse the cache.
+        customCompressibleList()
+        customAlbumLabels?.forEach { (bucketId, name) -> chip(name, bucketId) }
     }
 
     private fun launchCompressionReview() {
@@ -658,6 +715,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         if (replacedSet.isNotEmpty()) {
             items = items.filterNot { it.uri in replacedSet }
             itemsByUri = items.associateBy { it.uri.toString() }
+            invalidateCustomCompressibleList()
             for (category in CleanupAnalyzer.Category.entries) {
                 categoryItems[category]!!.removeAll { it.uri in replacedSet }
                 suggested[category]!!.removeAll(replacedSet)
@@ -868,6 +926,13 @@ class SmartCleanupActivity : AppCompatActivity() {
         for (category in CleanupAnalyzer.Category.entries) {
             categoryItems[category]!!.removeAll { it.uri in removed }
             suggested[category]!!.removeAll(removed)
+        }
+        // Keep the in-memory library in sync too — the custom compression grid filters from it,
+        // so deleted photos must not reappear there.
+        if (items.any { it.uri in removed }) {
+            items = items.filterNot { it.uri in removed }
+            itemsByUri = items.associateBy { it.uri.toString() }
+            invalidateCustomCompressibleList()
         }
         val verb = when {
             pendingSafeMove -> { pendingSafeMove = false; "moved to Safe" }
