@@ -566,6 +566,12 @@ class MainActivity : AppCompatActivity() {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             startSmartCleanup()
         }
+        binding.drawerCompression.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            // The screen adopts the active batch with no hand-off; if it finished in the
+            // meantime it just closes again.
+            startActivity(Intent(this, CompressionActivity::class.java))
+        }
         binding.drawerIndex.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             onIndexDrawerAction()
@@ -3885,6 +3891,19 @@ class MainActivity : AppCompatActivity() {
     // Smart cleanup — opens a dedicated, interactive screen.
     // ---------------------------------------------------------------------------------------------
 
+    /** Drawer entry for an in-flight compression batch: the conversion screen stays reachable
+     *  from the home surface at any time while the background batch is alive. */
+    private fun refreshCompressionDrawerEntry() {
+        lifecycleScope.launch {
+            val active = withContext(Dispatchers.IO) {
+                CompressionBatchStore.isCompressionActive(this@MainActivity)
+            }
+            if (!isDestroyed && !isFinishing) {
+                binding.drawerCompression.visibility = if (active) View.VISIBLE else View.GONE
+            }
+        }
+    }
+
     private fun startSmartCleanup() {
         val repo = repository ?: run {
             MetroBanner.show(this, "Still loading — try again in a moment")
@@ -4760,6 +4779,7 @@ class MainActivity : AppCompatActivity() {
         // Names/relationships saved on the People or person-detail screens feed the search row.
         searchEmptyDataLoaded = false
         refreshSearchEmptyStateIfVisible()
+        refreshCompressionDrawerEntry()
     }
 
     override fun onPause() {

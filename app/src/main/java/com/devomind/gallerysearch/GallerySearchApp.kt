@@ -55,24 +55,45 @@ class GallerySearchApp : Application() {
         // (one small file check) when no compression was in flight.
         thread(isDaemon = true) {
             runCatching {
-                CompressionEngine.recover(applicationContext)
-                // A batch the user already confirmed (COMMITTING) must finish even if the process
-                // died mid-way: re-enqueue with KEEP so WorkManager's own restart isn't duplicated.
-                val batch = CompressionBatchStore(applicationContext).load()
-                if (batch != null && batch.phase == CompressionBatchStore.Phase.COMMITTING && batch.commitMode != null) {
-                    val request = androidx.work.OneTimeWorkRequestBuilder<CompressionWorker>()
-                        .setInputData(
-                            androidx.work.Data.Builder()
-                                .putString(CompressionWorker.KeyBatchId, batch.id)
-                                .build()
-                        )
-                        .build()
-                    androidx.work.WorkManager.getInstance(applicationContext).enqueueUniqueWork(
-                        CompressionWorker.CommitWorkName,
-                        androidx.work.ExistingWorkPolicy.KEEP,
-                        request
-                    )
+                val store = CompressionBatchStore(applicationContext)
+                // A batch parked at AWAITING_DECISION keeps full-size staged copies of every photo
+                // alive; if the user never came back, drop it after a week so staging can't grow
+                // without bound. Clearing first lets recover() settle the now-unowned entries.
+                store.load()?.let { batch ->
+                    if (batch.phase == CompressionBatchStore.Phase.AWAITING_DECISION &&
+                        System.currentTimeMillis() - batch.updatedAt > CompressionBatchStore.StaleAwaitingMs
+                    ) {
+                        store.clear()
+                    }
                 }
+                CompressionEngine.recover(applicationContext)
+                // Re-attach whatever batch survived recovery: a confirmed commit must finish even
+                // if the process died mid-way, and an interrupted encode must resume — both with
+                // KEEP so WorkManager's own restart isn't duplicated.
+                val batch = store.load() ?: return@runCatching
+                val runnable = when (batch.phase) {
+                    CompressionBatchStore.Phase.COMMITTING -> batch.commitMode != null
+                    CompressionBatchStore.Phase.PREPARING -> true
+                    else -> false
+                }
+                if (!runnable) return@runCatching
+                val workName = if (batch.phase == CompressionBatchStore.Phase.COMMITTING) {
+                    CompressionWorker.CommitWorkName
+                } else {
+                    CompressionWorker.PrepareWorkName
+                }
+                val request = androidx.work.OneTimeWorkRequestBuilder<CompressionWorker>()
+                    .setInputData(
+                        androidx.work.Data.Builder()
+                            .putString(CompressionWorker.KeyBatchId, batch.id)
+                            .build()
+                    )
+                    .build()
+                androidx.work.WorkManager.getInstance(applicationContext).enqueueUniqueWork(
+                    workName,
+                    androidx.work.ExistingWorkPolicy.KEEP,
+                    request
+                )
             }
         }
     }

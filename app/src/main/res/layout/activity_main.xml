@@ -545,6 +545,13 @@
             style="@style/MetroDrawerItem"
             android:text="@string/smart_cleanup_title" />
 
+        <!-- Visible only while a compression batch is alive: reopens the conversion screen. -->
+        <TextView
+            android:id="@+id/drawerCompression"
+            style="@style/MetroDrawerItem"
+            android:text="Compression"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/drawerIndex"
             style="@style/MetroDrawerItem"

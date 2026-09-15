@@ -163,6 +163,10 @@ class CompressionBatchStore(context: Context) {
         private const val TAG = "CompressionBatchStore"
         private const val FILE_NAME = "compression_batch.json"
 
+        /** How long a batch parked at AWAITING_DECISION (staged, undecided) survives before
+         *  startup sweeps it: staged copies are full-size photo files, so they can't sit forever. */
+        const val StaleAwaitingMs = 7L * 24 * 60 * 60 * 1000L
+
         fun newBatchId(): String = "batch_${System.currentTimeMillis()}_${System.nanoTime()}"
 
         /**

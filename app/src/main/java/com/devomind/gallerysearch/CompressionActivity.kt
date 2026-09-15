@@ -29,6 +29,7 @@ import com.devomind.gallerysearch.databinding.ActivityCompressionBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.concurrent.thread
 import java.util.Locale
 
 private typealias Status = CompressionBatchStore.ItemStatus
@@ -73,10 +74,22 @@ class CompressionActivity : AppCompatActivity() {
     private var preset: CompressionEngine.Preset = CompressionEngine.Presets.BALANCED
     private var commitRunning = false
     private var commitProgress = 0 to 0
+    private var prepareRunning = false
+    private var prepareProgress = 0 to 0
     private var compareEntryId: String? = null
     private var finished = false
     private var refreshInFlight = false
     private var refreshPending = false
+
+    /** A selection that arrived while a batch was already running; resolved by the prompt in
+     *  [promptReplaceActiveBatchIfNeeded] instead of silently discarding the in-flight batch. */
+    private var pendingSelectionPrompt: PendingSelection? = null
+
+    private data class PendingSelection(
+        val items: List<GalleryRepository.MediaItem>,
+        val selected: List<Uri>,
+        val activeCount: Int
+    )
 
     private val allFilesLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -134,6 +147,9 @@ class CompressionActivity : AppCompatActivity() {
         updateQualityChips()
         observeWork()
         refresh()
+        promptReplaceActiveBatchIfNeeded()
+
+        binding.batchCancelBtn.setOnClickListener { confirmCancelCompression() }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -161,8 +177,12 @@ class CompressionActivity : AppCompatActivity() {
             return adopt(existing)
         }
 
-        // A different selection replaces any prior batch (discarding its staged temp files).
-        if (existing != null && existing.isActive) abandon(existing)
+        // A different selection arrived while a batch is already running: never throw the user's
+        // in-flight batch away silently — adopt it and let them choose what happens to it.
+        if (existing != null && existing.isActive) {
+            pendingSelectionPrompt = PendingSelection(items, selected, existing.items.size)
+            return adopt(existing)
+        }
         return startFresh(items, selected)
     }
 
@@ -247,19 +267,23 @@ class CompressionActivity : AppCompatActivity() {
         workManager.enqueueUniqueWork(CompressionWorker.CommitWorkName, ExistingWorkPolicy.KEEP, request)
     }
 
-    /** Cancels in-flight work and discards the batch's staged temp files (originals untouched). */
+    /** Cancels in-flight work and discards the batch's staged temp files (originals untouched).
+     *  Cleanup runs on a daemon thread: the caller is usually finishing this screen, and a
+     *  lifecycleScope coroutine would be cancelled before the staged files are ever settled. */
     private fun abandon(batch: CompressionBatchStore.Batch) {
         workManager.cancelUniqueWork(CompressionWorker.PrepareWorkName)
         workManager.cancelUniqueWork(CompressionWorker.CommitWorkName)
+        store.clear()
         val entryIds = batch.items.mapNotNull { it.entryId.takeIf(String::isNotBlank) }
-        lifecycleScope.launch {
-            withContext(Dispatchers.IO) {
-                val journal = CompressionEngine.loadJournal(this@CompressionActivity)
+        if (entryIds.isEmpty()) return
+        val appContext = applicationContext
+        thread(isDaemon = true) {
+            runCatching {
+                val journal = CompressionEngine.loadJournal(appContext)
                 journal.filter { it.id in entryIds }.forEach {
-                    runCatching { CompressionEngine.discard(this@CompressionActivity, it) }
+                    runCatching { CompressionEngine.discard(appContext, it) }
                 }
             }
-            store.clear()
         }
     }
 
@@ -269,7 +293,15 @@ class CompressionActivity : AppCompatActivity() {
 
     private fun observeWork() {
         workManager.getWorkInfosForUniqueWorkLiveData(CompressionWorker.PrepareWorkName)
-            .observe(this) { refresh() }
+            .observe(this) { infos ->
+                val work = IndexWorker.pickRelevantWorkInfo(infos)
+                prepareRunning = work?.state == WorkInfo.State.RUNNING || work?.state == WorkInfo.State.ENQUEUED
+                if (work?.state == WorkInfo.State.RUNNING) {
+                    prepareProgress = work.progress.getInt(CompressionWorker.ProgressCurrentKey, prepareProgress.first) to
+                        work.progress.getInt(CompressionWorker.ProgressTotalKey, prepareProgress.second)
+                }
+                refresh()
+            }
         workManager.getWorkInfosForUniqueWorkLiveData(CompressionWorker.CommitWorkName)
             .observe(this) { infos ->
                 val work = IndexWorker.pickRelevantWorkInfo(infos)
@@ -463,21 +495,31 @@ class CompressionActivity : AppCompatActivity() {
 
     private fun updateProgressRow(batch: CompressionBatchStore.Batch) {
         val committing = batch.phase == Phase.COMMITTING || commitRunning
-        binding.batchProgressRow.visibility = if (committing) View.VISIBLE else View.GONE
-        if (!committing) return
+        val preparing = batch.phase == Phase.PREPARING || prepareRunning
+        binding.batchProgressRow.visibility = if (preparing || committing) View.VISIBLE else View.GONE
+        if (!(preparing || committing)) return
         val replacing = batch.commitMode == CompressionBatchStore.CommitMode.REPLACE
         // Prefer the worker's own reported totals so the bar matches what it is actually processing;
         // fall back to persisted per-item counts before the first progress tick arrives.
-        val workerTotal = commitProgress.second
-        val total = (if (workerTotal > 0) workerTotal else batch.items.count {
-            it.status == Status.READY || it.status == Status.DONE
-        }).coerceAtLeast(1)
-        val done = (if (workerTotal > 0) commitProgress.first else batch.items.count { it.status == Status.DONE })
-            .coerceIn(0, total)
+        val workerTotal = if (committing) commitProgress.second else prepareProgress.second
+        val settled = batch.items.count {
+            it.status == Status.READY || it.status == Status.NO_GAIN || it.status == Status.FAILED || it.status == Status.DONE
+        }
+        val total = (if (workerTotal > 0) workerTotal else settled).coerceAtLeast(1)
+        val done = if (workerTotal > 0) {
+            (if (committing) commitProgress.first else prepareProgress.first).coerceIn(0, total)
+        } else {
+            settled.coerceIn(0, total)
+        }
         binding.batchProgressBar.max = total
         binding.batchProgressBar.progress = done
-        binding.batchProgressText.text =
-            "${if (replacing) "Replacing" else "Saving copy"} $done / $total"
+        binding.batchProgressText.text = when {
+            committing -> "${if (replacing) "Replacing" else "Saving copy"} $done / $total"
+            else -> "Compressing $done / $total"
+        }
+        // Cancel is only meaningful before a destructive commit is confirmed — recovery, not the
+        // user, settles an interrupted replace.
+        binding.batchCancelBtn.visibility = if (committing) View.GONE else View.VISIBLE
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -577,17 +619,64 @@ class CompressionActivity : AppCompatActivity() {
 
     private fun onBack() {
         val current = batch
-        if (current != null && (current.phase == Phase.COMMITTING || commitRunning)) {
-            // Commit is destructive but crash-safe: let it finish in the background.
-            MetroBanner.show(this, "Continuing in the background — watch the notification")
+        if (current != null && current.phase == Phase.DONE) {
             finishWithResult(current)
             return
         }
-        // Pre-decision: leaving abandons the (non-destructive) preparation.
-        current?.let { abandon(it) }
+        if (current != null && current.isActive) {
+            // Encoding and committing both run in WorkManager, so leaving the screen no longer
+            // cancels anything — the batch keeps going and the notification brings the user
+            // straight back to it. Only the explicit cancel discards work.
+            MetroBanner.show(this, "Still running in the background — tap the notification to return")
+        }
         setResult(RESULT_CANCELED)
         finished = true
         finish()
+    }
+
+    /** Explicit discard for a pre-decision batch: staged previews go, originals stay untouched. */
+    private fun confirmCancelCompression() {
+        val current = batch ?: return
+        if (current.phase == Phase.COMMITTING || commitRunning) {
+            MetroBanner.show(this, "Can't cancel while replacing — let it finish")
+            return
+        }
+        MetroDialog.confirm(
+            context = this,
+            title = "Cancel compression?",
+            message = "The compressed previews are discarded and the batch stops. " +
+                "Your original photos are never touched.",
+            positive = "Cancel compression",
+            negative = "Keep going",
+            danger = true,
+            iconRes = R.drawable.ic_fluent_delete_24_regular
+        ) {
+            abandon(current)
+            finished = true
+            setResult(RESULT_CANCELED)
+            finish()
+        }
+    }
+
+    /** A new selection arrived while a batch was already running: ask before discarding it. */
+    private fun promptReplaceActiveBatchIfNeeded() {
+        val pending = pendingSelectionPrompt ?: return
+        pendingSelectionPrompt = null
+        if (isFinishing || isDestroyed) return
+        MetroDialog.confirm(
+            context = this,
+            title = "Compression already running",
+            message = "A batch of ${pending.activeCount} photos is still running in the background. " +
+                "Discard it and start compressing the ${pending.selected.size} newly selected photos instead?",
+            positive = "Discard and start new",
+            negative = "Keep current",
+            danger = true,
+            iconRes = R.drawable.ic_fluent_image_24_regular
+        ) {
+            batch?.let { abandon(it) }
+            startFresh(pending.items, pending.selected)
+            refresh()
+        }
     }
 
     private fun finishWithResult(batch: CompressionBatchStore.Batch) {

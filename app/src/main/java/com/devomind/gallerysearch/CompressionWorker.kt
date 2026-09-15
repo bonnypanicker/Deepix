@@ -66,6 +66,11 @@ class CompressionWorker(
                             it.phase = CompressionBatchStore.Phase.AWAITING_DECISION
                         }
                     }
+                    // The user may have left the screen long ago: the encode pass ending is the
+                    // moment they must be pulled back in to choose keep vs replace.
+                    store.load()
+                        ?.takeIf { it.id == batchId && it.phase == CompressionBatchStore.Phase.AWAITING_DECISION }
+                        ?.let { showReadyForReview(it) }
                 }
                 // Commit pass (freshly confirmed, or resumed after process death): finish + notify.
                 CompressionBatchStore.Phase.COMMITTING -> {
@@ -386,7 +391,6 @@ class CompressionWorker(
     }
 
     private fun showCompletion(batch: CompressionBatchStore.Batch) {
-        ensureChannel()
         val doneCount = batch.replacedUris.size + batch.copiedUris.size
         val noun = if (doneCount == 1) "photo" else "photos"
         val verb = if (batch.commitMode == CompressionBatchStore.CommitMode.REPLACE) "replaced" else "compressed"
@@ -394,8 +398,28 @@ class CompressionWorker(
             append("$doneCount $noun $verb")
             if (batch.savedBytes > 0L) append(" · ${formatBytes(batch.savedBytes)} saved")
         }
+        postSummaryNotification("Compression finished", text)
+    }
+
+    /** Posted when the encode pass finishes: the user must come back to choose keep vs replace. */
+    private fun showReadyForReview(batch: CompressionBatchStore.Batch) {
+        val ready = batch.items.filter { it.status == CompressionBatchStore.ItemStatus.READY }
+        if (ready.isEmpty()) return
+        val saved = ready.sumOf { (it.sizeBefore - it.sizeAfter).coerceAtLeast(0L) }
+        val noun = if (ready.size == 1) "photo" else "photos"
+        val text = buildString {
+            append("${ready.size} $noun ready")
+            if (saved > 0L) append(" · ${formatBytes(saved)} smaller")
+        }
+        postSummaryNotification("Compression ready", "$text — tap to choose keep or replace")
+    }
+
+    /** Summaries post on their own id: WorkManager cancels the foreground notification id when
+     *  the worker stops, which would swallow a summary posted with the same id. */
+    private fun postSummaryNotification(title: String, text: String) {
+        ensureChannel()
         val notification = NotificationCompat.Builder(applicationContext, ChannelId)
-            .setContentTitle("Compression finished")
+            .setContentTitle(title)
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setOngoing(false)
@@ -404,14 +428,16 @@ class CompressionWorker(
             .build()
         runCatching {
             val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.notify(NotificationId, notification)
+            manager.notify(SummaryNotificationId, notification)
         }
     }
 
     private fun contentIntent(): PendingIntent? = runCatching {
+        // The compression screen adopts an active batch with no hand-off, so a notification tap
+        // lands the user straight back on the conversion review — from anywhere.
         PendingIntent.getActivity(
             applicationContext, 0,
-            Intent(applicationContext, MainActivity::class.java)
+            Intent(applicationContext, CompressionActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -443,6 +469,7 @@ class CompressionWorker(
         private const val Tag = "CompressionWorker"
         private const val ChannelId = "gallery_compression_channel"
         private const val NotificationId = 1004
+        private const val SummaryNotificationId = 1005
         private const val FOREGROUND_THROTTLE_MS = 500L
     }
 }

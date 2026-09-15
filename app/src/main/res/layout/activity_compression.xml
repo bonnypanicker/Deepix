@@ -169,6 +169,24 @@
             android:max="100"
             android:progress="0"
             android:progressTint="?attr/accentColor" />
+
+        <TextView
+            android:id="@+id/batchCancelBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/metro_row_pressed"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingStart="12dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="6dp"
+            android:text="Cancel"
+            android:textColor="@color/metroDanger"
+            android:textSize="13sp"
+            android:fontFamily="sans-serif-medium" />
     </LinearLayout>
 
     <TextView
