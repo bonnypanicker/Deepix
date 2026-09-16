@@ -173,6 +173,95 @@
                     android:textColor="?attr/accentColor"
                     android:textSize="13sp" />
             </LinearLayout>
+
+            <!-- Multi-select bar: count + select-all on top, batch actions below. -->
+            <LinearLayout
+                android:id="@+id/selectionBar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="20dp"
+                    android:paddingTop="10dp"
+                    android:paddingEnd="20dp">
+
+                    <TextView
+                        android:id="@+id/selectionCount"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:includeFontPadding="false"
+                        android:textColor="@color/metroTextPrimary"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/selectionAllBtn"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/metro_row_pressed"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:includeFontPadding="false"
+                        android:letterSpacing="0.04"
+                        android:paddingStart="12dp"
+                        android:paddingTop="6dp"
+                        android:paddingEnd="12dp"
+                        android:paddingBottom="6dp"
+                        android:text="@string/select_all_lower"
+                        android:textAllCaps="true"
+                        android:textColor="?attr/accentColor"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:paddingStart="16dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="16dp"
+                    android:paddingBottom="12dp">
+
+                    <TextView
+                        android:id="@+id/selectionRestoreBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/onboarding_button_bg"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:includeFontPadding="false"
+                        android:letterSpacing="0.04"
+                        android:text="@string/restore_lower"
+                        android:textAllCaps="true"
+                        android:textColor="@color/metroTextPrimary"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/selectionRemoveBtn"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/metro_row_pressed"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:includeFontPadding="false"
+                        android:letterSpacing="0.04"
+                        android:text="@string/remove_lower"
+                        android:textAllCaps="true"
+                        android:textColor="@color/metroDanger"
+                        android:textSize="13sp" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
@@ -303,4 +392,44 @@
             android:textSize="13sp"
             android:visibility="gone" />
     </LinearLayout>
+
+    <!-- ===================== Full-screen viewer =====================
+         In-activity overlay (not a separate activity): keeps FLAG_SECURE, and never trips the
+         onStop relock contract while the user is swiping through photos. -->
+    <FrameLayout
+        android:id="@+id/viewerOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:visibility="gone">
+
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/viewerPager"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <ImageButton
+            android:id="@+id/viewerBackBtn"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="top|start"
+            android:layout_marginStart="6dp"
+            android:layout_marginTop="40dp"
+            android:background="@drawable/metro_row_pressed"
+            android:contentDescription="@string/back"
+            android:padding="12dp"
+            android:src="@drawable/ic_fluent_back_24_regular"
+            android:tint="@color/metroTextPrimary" />
+
+        <TextView
+            android:id="@+id/viewerPosition"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginTop="52dp"
+            android:fontFamily="sans-serif-medium"
+            android:includeFontPadding="false"
+            android:textColor="@color/metroTextPrimary"
+            android:textSize="13sp" />
+    </FrameLayout>
 </FrameLayout>

@@ -12,4 +12,22 @@
         android:background="@color/metroBgCard"
         android:contentDescription="@null"
         android:scaleType="centerCrop" />
+
+    <!-- Multi-select state: dark scrim + accent check over the selected photo. -->
+    <View
+        android:id="@+id/selectionScrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#66000000"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/selectionCheck"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_gravity="center"
+        android:contentDescription="@null"
+        android:src="@drawable/ic_fluent_checkmark_24_regular"
+        android:tint="?attr/accentColor"
+        android:visibility="gone" />
 </FrameLayout>

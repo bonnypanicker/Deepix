@@ -1,9 +1,7 @@
 package com.devomind.gallerysearch
 
-import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -11,13 +9,14 @@ import android.net.Uri
 import android.os.Bundle
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.util.LruCache
+import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -31,8 +30,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.viewpager2.widget.ViewPager2
 import com.devomind.gallerysearch.databinding.ActivitySafeBinding
-import com.github.chrisbanes.photoview.PhotoView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,6 +59,15 @@ class SafeActivity : AppCompatActivity() {
     ) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
     }
+
+    /** Full-resolution decrypted pages for the in-Safe viewer; separate from the grid's thumbs. */
+    private val viewerCache = object : LruCache<String, Bitmap>(
+        (Runtime.getRuntime().maxMemory() / 4).toInt().coerceAtLeast(8 * 1024 * 1024)
+    ) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+    }
+    private var viewerAdapter: SafeViewerPagerAdapter? = null
+    private var viewerPosition = 0
 
     private var pendingImportUris: List<Uri> = emptyList()
     private val importedForDeletion = ArrayList<Uri>()
@@ -100,15 +108,18 @@ class SafeActivity : AppCompatActivity() {
         pendingImportUris = (intent.getParcelableArrayListExtra<Uri>(ExtraImportUris) ?: arrayListOf())
 
         adapter = SafeItemAdapter(
-            onClick = { pos -> if (pos >= 0) showPhoto(adapter.itemAt(pos)) },
-            onLongClick = { item -> showItemOptions(item) },
-            bindThumb = ::bindThumb
+            onClick = { pos -> if (pos >= 0) onPhotoTapped(pos) },
+            onLongClick = { item ->
+                if (adapter.isSelectionMode()) adapter.toggle(item) else adapter.enterSelection(item)
+            },
+            bindThumb = ::bindThumb,
+            onSelectionChanged = ::updateSelectionUi
         )
         binding.safeGrid.layoutManager = GridLayoutManager(this, 3)
         binding.safeGrid.adapter = adapter
         binding.safeGrid.setHasFixedSize(true)
 
-        binding.backBtn.setOnClickListener { finish() }
+        binding.backBtn.setOnClickListener { handleBack() }
         binding.overflowBtn.setOnClickListener { showOverflow() }
         binding.addPhotosBtn.visibility = View.GONE
         binding.fingerprintBtn.setOnClickListener { authenticateToUnlock() }
@@ -116,7 +127,41 @@ class SafeActivity : AppCompatActivity() {
         binding.lockPasswordInput.setOnEditorActionListener { _, _, _ -> onPasswordUnlock(); true }
         binding.forgotPasswordBtn.setOnClickListener { offerResetOrphanedVault() }
 
+        binding.selectionAllBtn.setOnClickListener { adapter.selectAll() }
+        binding.selectionRestoreBtn.setOnClickListener { restoreSelected() }
+        binding.selectionRemoveBtn.setOnClickListener { confirmRemoveSelected() }
+        binding.viewerPager.registerOnPageChangeCallback(viewerPageCallback)
+        binding.viewerBackBtn.setOnClickListener { closeViewer() }
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() = handleBack()
+        })
+
         if (!SafeManager.isConfigured(this)) startSetup() else showLock()
+    }
+
+    private fun handleBack() {
+        when {
+            binding.viewerOverlay.visibility == View.VISIBLE -> closeViewer()
+            adapter.isSelectionMode() -> adapter.clearSelection()
+            else -> finish()
+        }
+    }
+
+    /**
+     * Paging is strictly single-finger (same contract as the main viewer): the moment a 2nd
+     * finger lands for a pinch-zoom, disable ViewPager2 so the gesture can't also flip pages.
+     */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (binding.viewerOverlay.visibility == View.VISIBLE) {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_POINTER_DOWN ->
+                    if (ev.pointerCount >= 2) binding.viewerPager.isUserInputEnabled = false
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
+                    binding.viewerPager.isUserInputEnabled = true
+            }
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     override fun onStop() {
@@ -509,85 +554,118 @@ class SafeActivity : AppCompatActivity() {
 
     // ---- Item actions ----
 
-    private fun showPhoto(item: SafeManager.VaultItem) {
-        showBusy()
+    private fun onPhotoTapped(position: Int) {
+        val item = adapter.itemAt(position)
+        if (adapter.isSelectionMode()) adapter.toggle(item) else openViewer(position)
+    }
+
+    private fun updateSelectionUi(count: Int) {
+        binding.selectionBar.visibility = if (count > 0) View.VISIBLE else View.GONE
+        binding.selectionCount.text = if (count == 1) "1 photo selected" else "$count photos selected"
+    }
+
+    /** Restores every selected photo back to the gallery, then drops the vault copies. */
+    private fun restoreSelected() {
+        val targets = adapter.selectedItems()
+        if (targets.isEmpty()) return
+        showBusy(if (targets.size > 1) "Restoring 1 of ${targets.size}…" else "Restoring…")
         lifecycleScope.launch {
-            val bmp = withContext(Dispatchers.IO) { SafeManager.decryptToBitmap(this@SafeActivity, item) }
+            var restored = 0
+            var failed = 0
+            for ((index, item) in targets.withIndex()) {
+                if (targets.size > 1) {
+                    binding.busyLabel.text = "Restoring ${index + 1} of ${targets.size}…"
+                }
+                val ok = withContext(Dispatchers.IO) {
+                    SafeManager.restoreToGallery(this@SafeActivity, item) != null &&
+                        SafeManager.removeItem(this@SafeActivity, item)
+                }
+                if (ok) restored++ else failed++
+            }
+            targets.forEach { thumbCache.remove(it.entryName) }
+            adapter.clearSelection()
             hideBusy()
-            if (bmp == null) {
-                MetroBanner.show(this@SafeActivity, "Couldn't open photo")
-                return@launch
-            }
-            openFullscreen(bmp)
+            MetroBanner.show(this@SafeActivity, buildString {
+                append("$restored ${if (restored == 1) "photo" else "photos"} saved back to gallery")
+                if (failed > 0) append(" · $failed failed")
+            })
+            loadItems()
         }
     }
 
-    private fun openFullscreen(bitmap: Bitmap) {
-        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-        val photoView = PhotoView(this).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            setBackgroundColor(Color.BLACK)
-            setImageBitmap(bitmap)
-            setOnClickListener { dialog.dismiss() }
-        }
-        dialog.window?.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE
-        )
-        dialog.setContentView(photoView)
-        dialog.show()
-    }
-
-    private fun showItemOptions(item: SafeManager.VaultItem) {
-        MetroDialog.items(
-            this,
-            options = listOf("Save back to gallery", "Remove from Safe"),
-            dangerIndices = setOf(1)
-        ) { which ->
-            when (which) {
-                0 -> restoreItem(item)
-                1 -> confirmRemove(item)
-            }
-        }
-    }
-
-    private fun restoreItem(item: SafeManager.VaultItem) {
-        showBusy("Decrypting…")
-        lifecycleScope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                val restored = SafeManager.restoreToGallery(this@SafeActivity, item)
-                if (restored != null) SafeManager.removeItem(this@SafeActivity, item) else false
-            }
-            hideBusy()
-            MetroBanner.show(
-                this@SafeActivity,
-                if (ok) "Saved back to gallery" else "Couldn't restore"
-            )
-            if (ok) loadItems()
-        }
-    }
-
-    private fun confirmRemove(item: SafeManager.VaultItem) {
+    private fun confirmRemoveSelected() {
+        val targets = adapter.selectedItems()
+        if (targets.isEmpty()) return
+        val noun = if (targets.size == 1) "photo" else "photos"
         MetroDialog.confirm(
             this,
-            title = "Remove from Safe?",
-            message = "This permanently deletes the encrypted copy. Save it back to your gallery first if you want to keep it.",
+            title = "Remove ${targets.size} $noun from Safe?",
+            message = "This permanently deletes the encrypted copies. Save them back to your " +
+                "gallery first if you want to keep them.",
             positive = "Remove",
             danger = true
         ) {
             lifecycleScope.launch {
-                val ok = withContext(Dispatchers.IO) { SafeManager.removeItem(this@SafeActivity, item) }
-                if (ok) {
-                    thumbCache.remove(item.entryName)
-                    loadItems()
-                } else {
-                    MetroBanner.show(this@SafeActivity, "Couldn't remove")
+                var removed = 0
+                var failed = 0
+                for (item in targets) {
+                    if (withContext(Dispatchers.IO) { SafeManager.removeItem(this@SafeActivity, item) }) {
+                        removed++
+                    } else {
+                        failed++
+                    }
                 }
+                targets.forEach { thumbCache.remove(it.entryName) }
+                adapter.clearSelection()
+                if (failed > 0) {
+                    MetroBanner.show(this@SafeActivity, "$removed removed · $failed failed")
+                }
+                loadItems()
             }
         }
+    }
+
+    // ---- Full-screen viewer (swipe between decrypted photos) ----
+
+    private val viewerPageCallback = object : ViewPager2.OnPageChangeCallback() {
+        override fun onPageSelected(position: Int) {
+            viewerPosition = position
+            updateViewerLabel()
+        }
+    }
+
+    private fun openViewer(position: Int) {
+        viewerPosition = position
+        viewerAdapter = SafeViewerPagerAdapter(
+            items = adapter.snapshot(),
+            cache = viewerCache,
+            scope = lifecycleScope,
+            decrypt = { item -> SafeManager.decryptToBitmap(this, item) },
+            onTap = ::toggleViewerChrome
+        )
+        binding.viewerPager.adapter = viewerAdapter
+        binding.viewerPager.setCurrentItem(position, false)
+        binding.viewerBackBtn.visibility = View.VISIBLE
+        binding.viewerPosition.visibility = View.VISIBLE
+        updateViewerLabel()
+        binding.viewerOverlay.visibility = View.VISIBLE
+    }
+
+    private fun closeViewer() {
+        binding.viewerOverlay.visibility = View.GONE
+        binding.viewerPager.adapter = null
+        viewerAdapter = null
+    }
+
+    private fun toggleViewerChrome() {
+        val show = binding.viewerBackBtn.visibility != View.VISIBLE
+        binding.viewerBackBtn.visibility = if (show) View.VISIBLE else View.GONE
+        binding.viewerPosition.visibility = if (show) View.VISIBLE else View.GONE
+    }
+
+    private fun updateViewerLabel() {
+        val total = viewerAdapter?.itemCount ?: 0
+        binding.viewerPosition.text = if (total > 0) "${viewerPosition + 1} / $total" else ""
     }
 
     // ---- Overflow menu ----

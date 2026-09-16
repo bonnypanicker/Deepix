@@ -77,6 +77,8 @@
     <string name="sort_newest_first">Newest first</string>
     <string name="sort_change_order">Change sort order</string>
     <string name="select_all_lower">select all</string>
+    <string name="restore_lower">restore</string>
+    <string name="remove_lower">remove</string>
     <string name="share_selected">Share selected</string>
     <string name="share_lower">share</string>
     <string name="move_to_safe">Move to Safe</string>
