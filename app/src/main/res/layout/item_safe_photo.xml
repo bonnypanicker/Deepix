@@ -18,7 +18,7 @@
         android:id="@+id/selectionScrim"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#66000000"
+        android:background="@color/metroDimScrim"
         android:visibility="gone" />
 
     <ImageView

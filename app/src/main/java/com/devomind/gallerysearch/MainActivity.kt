@@ -7,6 +7,9 @@ import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
@@ -54,6 +57,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
@@ -105,6 +110,18 @@ class MainActivity : AppCompatActivity() {
     private var lastFaceIndexPeopleRefresh = -1
     /** Prevent worker callbacks from rendering or pruning pins before MediaStore is loaded. */
     private var librarySnapshotReady = false
+    private var mediaObserverRegistered = false
+    private val libraryRefreshMutex = Mutex()
+    private val mediaRefreshScheduler by lazy {
+        MediaRefreshScheduler(lifecycleScope) {
+            refreshVisibleItems(onlyIfMediaChanged = true)?.join()
+        }
+    }
+    private val mediaObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            mediaRefreshScheduler.onMediaChanged()
+        }
+    }
     private var folderTreeRoots = listOf<FolderNode>()
     private var folderSort = FolderSort.Name
     private var currentMode = Mode.Browse
@@ -835,6 +852,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initializeCore() {
+        if (!mediaObserverRegistered) {
+            contentResolver.registerContentObserver(MediaStore.AUTHORITY_URI, true, mediaObserver)
+            mediaObserverRegistered = true
+        }
         // -------------------- TRACK A (UI critical path) --------------
         lifecycleScope.launch {
             setBusy("Loading gallery…")
@@ -947,6 +968,8 @@ class MainActivity : AppCompatActivity() {
                 showFatalError(error)
                 return@launch
             }
+
+            mediaRefreshScheduler.onReady()
 
             // -------------------- TRACK B (model warm-up) -------------
             loadEncodersInBackground()
@@ -4192,65 +4215,76 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshVisibleItems(
         afterCompletedIndexPass: Boolean = false,
-        reRender: Boolean = true
-    ) {
-        val repo = repository ?: return
-        lifecycleScope.launch(Dispatchers.IO) {
-            val snapshot = loadLibrarySnapshot(repo)
-            // The worker owns its own repository instance, so this one still holds the embeddings
-            // it had before the pass ran. Re-read the on-disk index or the count and search results
-            // stay stuck at whatever was cached at load time.
-            repo.loadCachedIndexForUris(snapshot.imageItems.map { it.uri })
-            repo.loadCachedMetadataIndexForUris(snapshot.imageItems.map { it.uri })
-            val refreshedTags = withContext(Dispatchers.IO) { dbRepository?.getAllTags().orEmpty() }
-            val refreshedTagUriMap = withContext(Dispatchers.IO) {
-                refreshedTags.associate { tag ->
-                    tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
-                }
-            }
-            val refreshedPeopleCollection = loadPeopleCollection()
-            withContext(Dispatchers.Main) {
-                allTags = refreshedTags
-                tagUriMap = refreshedTagUriMap
-                applyLibrarySnapshot(snapshot)
-                peopleCollectionRefreshGeneration++
-                peopleCollection = refreshedPeopleCollection
-                // A finished pass had its chance at every in-scope photo; whatever is still missing
-                // can't be encoded, so stop counting it as outstanding work.
-                if (afterCompletedIndexPass) {
-                    permanentlyUnindexedUris = repo.unindexedUris(indexScopeUris).toSet()
-                }
-                currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
-                binding.statusText.text = indexedSummary(repo.indexedCount)
-                val pinnedAlbum = currentAlbum
-                if (!reRender) {
-                    // The grid was already updated optimistically (delete flows). Re-rendering here
-                    // would rebuild the timeline and yank the viewport back to the top, so only the
-                    // backing state is swapped. Rebuild the listing when the hide left it in a
-                    // shape the in-place path can't cover: emptied, or a page build that was
-                    // cancelled mid-flight (paging state reset but old cells still on screen).
-                    val mediaCellsVisible = adapter.cells.any {
-                        it is GalleryCell.Photo || it is GalleryCell.Collage
+        reRender: Boolean = true,
+        onlyIfMediaChanged: Boolean = false
+    ): Job? {
+        val repo = repository ?: return null
+        return lifecycleScope.launch(Dispatchers.IO) {
+            libraryRefreshMutex.withLock {
+                val snapshot = loadLibrarySnapshot(repo)
+                if (onlyIfMediaChanged) {
+                    val unchanged = withContext(Dispatchers.Main) {
+                        snapshot.imageItems.filterNot { it.uri in hiddenDeletedUris } == imageItems &&
+                            snapshot.videoItems.filterNot { it.uri in hiddenDeletedUris } == videoItems &&
+                            snapshot.albums == albums
                     }
-                    if (currentMode != Mode.Search && pagedContext != null &&
-                        (pagedItems.isEmpty() || !mediaCellsVisible)
-                    ) {
-                        renderCurrentState()
-                    } else {
-                        refreshPinnedStripInPlace()
-                        if (currentMode == Mode.Search) updateSearchMetaText()
-                    }
-                } else when {
-                    currentMode == Mode.Search -> {
-                        updateSearchMetaText()
-                        submitSearch()
-                    }
-                    currentMode == Mode.AlbumDetail && pinnedAlbum != null ->
-                        renderAlbumDetail(pinnedAlbum)
-                    else -> renderCurrentSection()
+                    if (unchanged) return@withLock
                 }
-                maybeStartBackgroundIndexing()
-                primeMetadataIndexAsync()
+                // The worker owns its own repository instance, so this one still holds the embeddings
+                // it had before the pass ran. Re-read the on-disk index or the count and search results
+                // stay stuck at whatever was cached at load time.
+                repo.loadCachedIndexForUris(snapshot.imageItems.map { it.uri })
+                repo.loadCachedMetadataIndexForUris(snapshot.imageItems.map { it.uri })
+                val refreshedTags = withContext(Dispatchers.IO) { dbRepository?.getAllTags().orEmpty() }
+                val refreshedTagUriMap = withContext(Dispatchers.IO) {
+                    refreshedTags.associate { tag ->
+                        tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
+                    }
+                }
+                val refreshedPeopleCollection = loadPeopleCollection()
+                withContext(Dispatchers.Main) {
+                    allTags = refreshedTags
+                    tagUriMap = refreshedTagUriMap
+                    applyLibrarySnapshot(snapshot)
+                    peopleCollectionRefreshGeneration++
+                    peopleCollection = refreshedPeopleCollection
+                    // A finished pass had its chance at every in-scope photo; whatever is still missing
+                    // can't be encoded, so stop counting it as outstanding work.
+                    if (afterCompletedIndexPass) {
+                        permanentlyUnindexedUris = repo.unindexedUris(indexScopeUris).toSet()
+                    }
+                    currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
+                    binding.statusText.text = indexedSummary(repo.indexedCount)
+                    val pinnedAlbum = currentAlbum
+                    if (!reRender) {
+                        // The grid was already updated optimistically (delete flows). Re-rendering here
+                        // would rebuild the timeline and yank the viewport back to the top, so only the
+                        // backing state is swapped. Rebuild the listing when the hide left it in a
+                        // shape the in-place path can't cover: emptied, or a page build that was
+                        // cancelled mid-flight (paging state reset but old cells still on screen).
+                        val mediaCellsVisible = adapter.cells.any {
+                            it is GalleryCell.Photo || it is GalleryCell.Collage
+                        }
+                        if (currentMode != Mode.Search && pagedContext != null &&
+                            (pagedItems.isEmpty() || !mediaCellsVisible)
+                        ) {
+                            renderCurrentState()
+                        } else {
+                            refreshPinnedStripInPlace()
+                            if (currentMode == Mode.Search) updateSearchMetaText()
+                        }
+                    } else when {
+                        currentMode == Mode.Search -> {
+                            updateSearchMetaText()
+                            submitSearch()
+                        }
+                        currentMode == Mode.AlbumDetail && pinnedAlbum != null ->
+                            renderAlbumDetail(pinnedAlbum)
+                        else -> renderCurrentSection()
+                    }
+                    maybeStartBackgroundIndexing()
+                    primeMetadataIndexAsync()
+                }
             }
         }
     }
@@ -4775,6 +4809,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        mediaRefreshScheduler.onResume()
         startSearchHintCycle()
         // Names/relationships saved on the People or person-detail screens feed the search row.
         searchEmptyDataLoaded = false
@@ -4783,11 +4818,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        mediaRefreshScheduler.onPause()
         super.onPause()
         stopSearchHintCycle()
     }
 
     override fun onDestroy() {
+        if (mediaObserverRegistered) {
+            contentResolver.unregisterContentObserver(mediaObserver)
+            mediaObserverRegistered = false
+        }
         super.onDestroy()
         stopSearchHintCycle()
         searchDebounceJob?.cancel()

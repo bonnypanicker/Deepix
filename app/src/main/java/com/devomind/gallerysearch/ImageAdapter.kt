@@ -58,20 +58,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Applies the Metro selection visuals to one thumbnail: an accent frame + corner
- * tick highlight the selected item; unselected items are left untouched (no dim),
- * for a cleaner WP10 look. [animate] is true only for a genuine user toggle so the
- * tick doesn't pop every time a cell is recycled/scrolled back into view.
+ * Applies the Metro selection visuals to one thumbnail: a dim scrim over the photo with a
+ * centered accent check — the same style the Safe grid uses. [animate] is true only for a
+ * genuine user toggle so the tick doesn't pop every time a cell is recycled/scrolled back
+ * into view.
  */
 private fun bindSelectionVisual(
     dimScrim: View,
-    selectionFrame: View,
     checkBadge: View,
     isSelected: Boolean,
     animate: Boolean
 ) {
-    dimScrim.visibility = View.GONE
-    selectionFrame.visibility = if (isSelected) View.VISIBLE else View.GONE
+    dimScrim.visibility = if (isSelected) View.VISIBLE else View.GONE
     checkBadge.visibility = if (isSelected) View.VISIBLE else View.GONE
     checkBadge.animate().cancel()
     if (isSelected && animate) {
@@ -807,7 +805,6 @@ class ImageAdapter(
             binding.sensitiveOverlay.visibility = if (blurred) View.VISIBLE else View.GONE
             bindSelectionVisual(
                 dimScrim = binding.dimScrim,
-                selectionFrame = binding.selectionFrame,
                 checkBadge = binding.checkBadge,
                 isSelected = isSelected,
                 animate = animate
@@ -876,7 +873,6 @@ class ImageAdapter(
                 container = binding.leadTile,
                 thumbnail = binding.leadThumbnail,
                 dimScrim = binding.leadDimScrim,
-                selectionFrame = binding.leadSelectionFrame,
                 checkBadge = binding.leadCheckBadge,
                 videoBadge = binding.leadVideoBadge,
                 durationText = binding.leadDurationText,
@@ -892,7 +888,6 @@ class ImageAdapter(
                 container = binding.topRightTile,
                 thumbnail = binding.topRightThumbnail,
                 dimScrim = binding.topRightDimScrim,
-                selectionFrame = binding.topRightSelectionFrame,
                 checkBadge = binding.topRightCheckBadge,
                 videoBadge = binding.topRightVideoBadge,
                 durationText = binding.topRightDurationText,
@@ -908,7 +903,6 @@ class ImageAdapter(
                 container = binding.bottomRightTile,
                 thumbnail = binding.bottomRightThumbnail,
                 dimScrim = binding.bottomRightDimScrim,
-                selectionFrame = binding.bottomRightSelectionFrame,
                 checkBadge = binding.bottomRightCheckBadge,
                 videoBadge = binding.bottomRightVideoBadge,
                 durationText = binding.bottomRightDurationText,
@@ -931,7 +925,6 @@ class ImageAdapter(
                 container = binding.leadTile,
                 thumbnail = binding.leadThumbnail,
                 dimScrim = binding.leadDimScrim,
-                selectionFrame = binding.leadSelectionFrame,
                 checkBadge = binding.leadCheckBadge,
                 videoBadge = binding.leadVideoBadge,
                 durationText = binding.leadDurationText,
@@ -947,7 +940,6 @@ class ImageAdapter(
                 container = binding.topRightTile,
                 thumbnail = binding.topRightThumbnail,
                 dimScrim = binding.topRightDimScrim,
-                selectionFrame = binding.topRightSelectionFrame,
                 checkBadge = binding.topRightCheckBadge,
                 videoBadge = binding.topRightVideoBadge,
                 durationText = binding.topRightDurationText,
@@ -963,7 +955,6 @@ class ImageAdapter(
                 container = binding.bottomRightTile,
                 thumbnail = binding.bottomRightThumbnail,
                 dimScrim = binding.bottomRightDimScrim,
-                selectionFrame = binding.bottomRightSelectionFrame,
                 checkBadge = binding.bottomRightCheckBadge,
                 videoBadge = binding.bottomRightVideoBadge,
                 durationText = binding.bottomRightDurationText,
@@ -981,7 +972,6 @@ class ImageAdapter(
             container: FrameLayout,
             thumbnail: ImageView,
             dimScrim: View,
-            selectionFrame: View,
             checkBadge: View,
             videoBadge: LinearLayout,
             durationText: TextView,
@@ -994,7 +984,7 @@ class ImageAdapter(
             animate: Boolean
         ) {
             ViewCompat.setTransitionName(thumbnail, "media_${item.uri}")
-            bindSelectionVisual(dimScrim, selectionFrame, checkBadge, isSelected, animate)
+            bindSelectionVisual(dimScrim, checkBadge, isSelected, animate)
             if (item.mediaType == GalleryRepository.MediaType.Video) {
                 videoBadge.visibility = View.VISIBLE
                 durationText.text = formatDuration(item.durationMillis)
