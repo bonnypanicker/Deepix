@@ -148,6 +148,9 @@ class FastScrollIndicator @JvmOverloads constructor(
 
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
+                // Hiding is alpha-only (the view stays VISIBLE), so without this gate a tap on the
+                // photo under the stale thumb position gets swallowed as a fast-scroll grab.
+                if (alpha <= 0.1f) return false
                 if (!isTouchOnThumb(event.x, event.y)) return false
                 isDragging = true
                 fadeAnim?.cancel()
