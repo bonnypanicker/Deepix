@@ -438,7 +438,11 @@ class MainActivity : AppCompatActivity() {
         binding.imageGrid.layoutManager = layoutManager
 
         val scaleGestureListener = ThumbnailScaleGestureListener { zoomIn ->
-            if (adapter.useCollageLayout) adjustCollageScale(zoomIn) else adjustGridColumns(zoomIn, layoutManager)
+            // Album cards aren't thumbnails; a pinch would resize every card on the albums page.
+            // Checked per gesture step: the listing under this adapter changes at runtime.
+            if (currentMode != Mode.Browse || activeSection != Section.Albums) {
+                if (adapter.useCollageLayout) adjustCollageScale(zoomIn) else adjustGridColumns(zoomIn, layoutManager)
+            }
         }
         val scaleGestureDetector = android.view.ScaleGestureDetector(this, scaleGestureListener)
 
