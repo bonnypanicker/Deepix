@@ -91,13 +91,23 @@ class CompressionActivity : AppCompatActivity() {
         val activeCount: Int
     )
 
+    /** Commit mode to resume after the all-files-access settings screen returns. */
+    private var pendingCommitMode = CompressionBatchStore.CommitMode.REPLACE
+
     private val allFilesLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
         if (StoragePermissions.hasAllFilesAccess(this)) {
-            confirmBatch(CompressionBatchStore.CommitMode.REPLACE)
+            confirmBatch(pendingCommitMode)
         } else {
-            MetroBanner.show(this, "All-files access is required to replace originals")
+            MetroBanner.show(
+                this,
+                if (pendingCommitMode == CompressionBatchStore.CommitMode.REPLACE) {
+                    "All-files access is required to replace originals"
+                } else {
+                    "All-files access is required to save copies"
+                }
+            )
         }
     }
 
@@ -130,7 +140,7 @@ class CompressionActivity : AppCompatActivity() {
         binding.qualityBalanced.setOnClickListener { setPreset(CompressionEngine.Presets.BALANCED) }
         binding.qualitySmall.setOnClickListener { setPreset(CompressionEngine.Presets.SMALL) }
         binding.replaceBar.setOnClickListener { onReplaceClicked() }
-        binding.keepBothBar.setOnClickListener { confirmBatch(CompressionBatchStore.CommitMode.COPY) }
+        binding.keepBothBar.setOnClickListener { onKeepBothClicked() }
         binding.compressionList.layoutManager = LinearLayoutManager(this)
         binding.compressionList.adapter = RowAdapter()
 
@@ -561,12 +571,25 @@ class CompressionActivity : AppCompatActivity() {
     // ---------------------------------------------------------------------------------------------
 
     private fun onReplaceClicked() {
+        pendingCommitMode = CompressionBatchStore.CommitMode.REPLACE
         if (!StoragePermissions.hasAllFilesAccess(this)) {
             runCatching { allFilesLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
                 .onFailure { MetroBanner.show(this, "Couldn't open storage access settings") }
             return
         }
         confirmBatch(CompressionBatchStore.CommitMode.REPLACE)
+    }
+
+    /** Saving copies writes the compressed files next to the originals — the same shared-storage
+     *  access replacing needs, so gate it identically instead of failing per item in the worker. */
+    private fun onKeepBothClicked() {
+        pendingCommitMode = CompressionBatchStore.CommitMode.COPY
+        if (!StoragePermissions.hasAllFilesAccess(this)) {
+            runCatching { allFilesLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
+                .onFailure { MetroBanner.show(this, "Couldn't open storage access settings") }
+            return
+        }
+        confirmBatch(CompressionBatchStore.CommitMode.COPY)
     }
 
     private fun confirmBatch(mode: CompressionBatchStore.CommitMode) {
