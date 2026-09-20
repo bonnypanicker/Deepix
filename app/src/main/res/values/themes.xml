@@ -114,7 +114,7 @@
     <!-- Month/date group headers in the browse timeline. -->
     <style name="TextAppearance.Metro.TimelineHeader">
         <item name="android:fontFamily">sans-serif-light</item>
-        <item name="android:textSize">22sp</item>
+        <item name="android:textSize">18sp</item>
         <item name="android:letterSpacing">-0.02</item>
     </style>
 
