@@ -418,7 +418,16 @@ class ImageAdapter(
             is GalleryCell.TimeFilters,
             is GalleryCell.ContentShortcuts,
             is GalleryCell.RecentSearches -> totalSpanCount
-            is GalleryCell.AlbumCell -> totalSpanCount / 2
+            is GalleryCell.AlbumCell -> {
+                if (useCollageLayout) {
+                    // Collage lays photos out on a wide span canvas; keep album cards at the width
+                    // grid mode gives them (gridColumnCount/2 of the columns) so switching layouts
+                    // doesn't resize every card on the albums page.
+                    (totalSpanCount * (gridColumnCount / 2) / gridColumnCount).coerceAtLeast(1)
+                } else {
+                    totalSpanCount / 2
+                }
+            }
             is GalleryCell.FolderCell -> totalSpanCount
             is GalleryCell.Photo -> {
                 if (useCollageLayout) {
