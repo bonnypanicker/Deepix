@@ -125,13 +125,8 @@
 
                         <ProgressBar
                             android:id="@+id/progressBar"
-                            style="@android:style/Widget.ProgressBar.Horizontal"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:max="100"
-                            android:progress="0"
-                            android:progressTint="?attr/accentColor" />
+                            style="@style/MetroProgressBar"
+                            android:layout_marginTop="8dp" />
                     </LinearLayout>
 
                     <!-- Indexing-incomplete notice -->
@@ -261,16 +256,6 @@
                         android:gravity="center_vertical"
                         android:orientation="horizontal">
 
-                        <ImageButton
-                            android:id="@+id/detailSortBtn"
-                            android:layout_width="48dp"
-                            android:layout_height="48dp"
-                            android:background="@drawable/metro_row_pressed"
-                            android:contentDescription="@string/sort_change_order"
-                            android:padding="12dp"
-                            android:src="@drawable/ic_fluent_arrow_sort_24_regular"
-                            android:tint="@color/metroTextPrimary" />
-
                         <TextView
                             android:id="@+id/selectAllBtn"
                             android:layout_width="wrap_content"
@@ -285,16 +270,34 @@
                     </LinearLayout>
                 </FrameLayout>
 
-                <TextView
-                    android:id="@+id/detailHint"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:includeFontPadding="false"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
                     android:paddingStart="20dp"
                     android:paddingEnd="20dp"
-                    android:paddingBottom="10dp"
-                    android:textColor="@color/metroTextSecondary"
-                    android:textSize="13sp" />
+                    android:paddingBottom="10dp">
+
+                    <TextView
+                        android:id="@+id/detailHint"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:includeFontPadding="false"
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="13sp" />
+
+                    <ImageButton
+                        android:id="@+id/detailSortBtn"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:background="@drawable/metro_row_pressed"
+                        android:contentDescription="@string/sort_change_order"
+                        android:padding="12dp"
+                        android:src="@drawable/ic_fluent_arrow_sort_24_regular"
+                        android:tint="@color/metroTextPrimary" />
+                </LinearLayout>
 
                 <!-- Album filter for the COMPRESSIBLE "Choose other photos" mode only; hidden
                      everywhere else. Chips are inflated at runtime into albumChipRow. -->

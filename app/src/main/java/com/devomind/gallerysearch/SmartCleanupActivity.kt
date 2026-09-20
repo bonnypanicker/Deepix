@@ -614,6 +614,9 @@ class SmartCleanupActivity : AppCompatActivity() {
         binding.overviewView.visibility = View.GONE
         binding.detailView.visibility = View.VISIBLE
         binding.detailTitle.text = categoryTitle(category)
+        val isCompressible = category == CleanupAnalyzer.Category.COMPRESSIBLE
+        // The compression page has no hint line; that row holds the sort control instead.
+        binding.detailHint.visibility = if (isCompressible) View.GONE else View.VISIBLE
         binding.detailHint.text = when (category) {
             CleanupAnalyzer.Category.DUPLICATES -> "Best copy kept; extra copies pre-selected"
             CleanupAnalyzer.Category.SIMILAR -> "Best shot kept; near-identical ones pre-selected"
@@ -628,8 +631,7 @@ class SmartCleanupActivity : AppCompatActivity() {
             CleanupAnalyzer.Category.DARK -> "Very dark photos — tap to select"
             CleanupAnalyzer.Category.BRIGHT -> "Overexposed photos — tap to select"
             CleanupAnalyzer.Category.LOW_RESOLUTION -> "Low-resolution images — tap to select"
-            CleanupAnalyzer.Category.COMPRESSIBLE ->
-                "Large photos that HEIC shrinks — face photos excluded from recommendations"
+            else -> ""
         }
 
         // The action bar compresses (accent) instead of deleting (red) for this category.
@@ -697,11 +699,6 @@ class SmartCleanupActivity : AppCompatActivity() {
     private fun toggleCompressibleSource() {
         val category = currentCategory ?: return
         showingAllPhotos = !showingAllPhotos
-        binding.detailHint.text = if (showingAllPhotos) {
-            "All photos that can be compressed — tap to select"
-        } else {
-            "Large photos that HEIC shrinks — face photos excluded from recommendations"
-        }
         selectedAlbumId = null
         renderAlbumChips()
         adapter.replaceCells(detailCells(category))
