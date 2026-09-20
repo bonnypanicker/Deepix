@@ -607,13 +607,9 @@ class CompressionActivity : AppCompatActivity() {
             context = this,
             title = if (replace) "Replace originals?" else "Save compressed copies?",
             message = if (replace) {
-                "The compressed versions of $noun replace the original files (already prepared, " +
-                    "so this is quick). Originals are backed up until each replacement verifies; " +
-                    "if anything goes wrong mid-way, they're restored automatically. This keeps " +
-                    "running in the background if you leave."
+                "$noun will be replaced with the smaller compressed versions."
             } else {
-                "$noun will be saved as smaller copies next to the originals; nothing is deleted. " +
-                    "This keeps running in the background if you leave."
+                "$noun will be saved as smaller copies next to the originals."
             },
             positive = if (replace) "Replace originals" else "Save copies",
             iconRes = R.drawable.ic_fluent_image_24_regular
