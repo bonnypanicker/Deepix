@@ -7,6 +7,9 @@ import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
@@ -21,6 +24,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.IntentSenderRequest
@@ -54,6 +58,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
@@ -105,6 +111,18 @@ class MainActivity : AppCompatActivity() {
     private var lastFaceIndexPeopleRefresh = -1
     /** Prevent worker callbacks from rendering or pruning pins before MediaStore is loaded. */
     private var librarySnapshotReady = false
+    private var mediaObserverRegistered = false
+    private val libraryRefreshMutex = Mutex()
+    private val mediaRefreshScheduler by lazy {
+        MediaRefreshScheduler(lifecycleScope) {
+            refreshVisibleItems(onlyIfMediaChanged = true)?.join()
+        }
+    }
+    private val mediaObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            mediaRefreshScheduler.onMediaChanged()
+        }
+    }
     private var folderTreeRoots = listOf<FolderNode>()
     private var folderSort = FolderSort.Name
     private var currentMode = Mode.Browse
@@ -159,6 +177,15 @@ class MainActivity : AppCompatActivity() {
     private var searchHintIndex = 0
     private var indexProgressCurrent = 0
     private var indexProgressTotal = 0
+    private var cleanupRunning = false
+    private var cleanupQueued = false
+    private var cleanupProgress = 0 to 0
+    private var compressionPrepareRunning = false
+    private var compressionCommitRunning = false
+    private var compressionPrepareProgress = 0 to 0
+    private var compressionCommitProgress = 0 to 0
+    private var compressionBatchPhase: CompressionBatchStore.Phase? = null
+    private var compressionReviewCount = 0
     private val searchHintRunnable = Runnable { cycleSearchHint() }
     private val activeFilters = LinkedHashSet<String>()
 
@@ -510,6 +537,7 @@ class MainActivity : AppCompatActivity() {
         requestGalleryPermission()
         observeIndexWorker()
         observeFaceIndexWorker()
+        observeBackgroundWorkers()
     }
 
     private fun ensureNotificationPermission() {
@@ -566,13 +594,17 @@ class MainActivity : AppCompatActivity() {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             startSmartCleanup()
         }
-        binding.drawerCompression.setOnClickListener {
+        binding.drawerTaskCleanup.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            startSmartCleanup()
+        }
+        binding.drawerTaskCompression.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             // The screen adopts the active batch with no hand-off; if it finished in the
             // meantime it just closes again.
             startActivity(Intent(this, CompressionActivity::class.java))
         }
-        binding.drawerIndex.setOnClickListener {
+        binding.drawerTaskIndexing.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             onIndexDrawerAction()
         }
@@ -835,6 +867,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initializeCore() {
+        if (!mediaObserverRegistered) {
+            contentResolver.registerContentObserver(MediaStore.AUTHORITY_URI, true, mediaObserver)
+            mediaObserverRegistered = true
+        }
         // -------------------- TRACK A (UI critical path) --------------
         lifecycleScope.launch {
             setBusy("Loading gallery…")
@@ -948,6 +984,8 @@ class MainActivity : AppCompatActivity() {
                 return@launch
             }
 
+            mediaRefreshScheduler.onReady()
+
             // -------------------- TRACK B (model warm-up) -------------
             loadEncodersInBackground()
 
@@ -1054,13 +1092,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun maybePromptIndexingConsent() {
         if (IndexPreferences.isIndexPaused(applicationContext)) {
-            binding.statusText.text = "Indexing paused"
-            updateIndexDrawerLabel()
+            updateIndexingRow()
             return
         }
         // User explicitly stopped indexing — don't silently restart it.
         if (IndexPreferences.isIndexStopped(applicationContext)) {
-            updateIndexDrawerLabel()
+            updateIndexingRow()
             return
         }
         if (IndexPreferences.isIndexConsentGiven(applicationContext)) {
@@ -1106,8 +1143,7 @@ class MainActivity : AppCompatActivity() {
         indexRunning = false
         indexQueued = false
         binding.searchSparkle.setIndexing(false)
-        binding.statusText.text = "Indexing paused"
-        updateIndexDrawerLabel()
+        updateIndexingRow()
         refreshSearchEmptyStateIfVisible()
         MetroBanner.show(this, "Indexing paused")
     }
@@ -1116,17 +1152,44 @@ class MainActivity : AppCompatActivity() {
         IndexPreferences.setIndexPaused(this, false)
         IndexPreferences.setIndexStopped(this, false)
         enqueueIndexWork(ExistingWorkPolicy.KEEP)
-        updateIndexDrawerLabel()
+        updateIndexingRow()
         refreshSearchEmptyStateIfVisible()
         MetroBanner.show(this, "Indexing resumed")
     }
 
-    private fun updateIndexDrawerLabel() {
-        binding.drawerIndex.text = when {
-            indexRunning -> "pause indexing"
-            IndexPreferences.isIndexPaused(this) -> "resume indexing"
-            else -> "start indexing"
+    private fun updateIndexingRow() {
+        val row = binding.drawerTaskIndexing
+        val bar = binding.drawerTaskIndexingProgress
+        if (!indexRunning && !IndexPreferences.isIndexPaused(this)) {
+            row.visibility = View.GONE
+            bar.visibility = View.GONE
+            updateBackgroundHeaderVisibility()
+            return
         }
+        row.visibility = View.VISIBLE
+        binding.drawerTaskIndexingStatus.text = when {
+            indexRunning && indexProgressTotal > 0 ->
+                getString(R.string.drawer_task_status_progress, indexProgressCurrent, indexProgressTotal)
+            indexRunning ->
+                if (IndexPreferences.isChargingOnlyIndexing(this)) {
+                    getString(R.string.drawer_task_status_queued_charge)
+                } else {
+                    getString(R.string.drawer_task_status_starting)
+                }
+            else -> getString(R.string.drawer_task_status_paused)
+        }
+        if (indexRunning && indexProgressTotal > 0) {
+            bar.isIndeterminate = false
+            bar.max = indexProgressTotal
+            bar.progress = indexProgressCurrent.coerceIn(0, indexProgressTotal)
+            bar.visibility = View.VISIBLE
+        } else if (indexRunning) {
+            bar.isIndeterminate = true
+            bar.visibility = View.VISIBLE
+        } else {
+            bar.visibility = View.GONE
+        }
+        updateBackgroundHeaderVisibility()
     }
 
     private fun enqueueIndexWork(policy: ExistingWorkPolicy, initialDelaySeconds: Long = 0) {
@@ -3891,17 +3954,116 @@ class MainActivity : AppCompatActivity() {
     // Smart cleanup — opens a dedicated, interactive screen.
     // ---------------------------------------------------------------------------------------------
 
-    /** Drawer entry for an in-flight compression batch: the conversion screen stays reachable
-     *  from the home surface at any time while the background batch is alive. */
-    private fun refreshCompressionDrawerEntry() {
+    /** Drawer "background" section re-sync: the compression row reads the batch store (phase and
+     *  review count live there, not in worker progress), the other two just re-apply current
+     *  state so changes made while the drawer was closed show up. */
+    private fun refreshBackgroundTaskRows() {
+        refreshCompressionTaskRow()
+        updateIndexingRow()
+        updateCleanupRow()
+    }
+
+    private fun refreshCompressionTaskRow() {
         lifecycleScope.launch {
-            val active = withContext(Dispatchers.IO) {
-                CompressionBatchStore.isCompressionActive(this@MainActivity)
+            val batch = withContext(Dispatchers.IO) {
+                runCatching { CompressionBatchStore(applicationContext).load() }.getOrNull()
             }
-            if (!isDestroyed && !isFinishing) {
-                binding.drawerCompression.visibility = if (active) View.VISIBLE else View.GONE
+            if (isDestroyed || isFinishing) return@launch
+            compressionBatchPhase = batch?.phase
+            compressionReviewCount = batch?.items?.size ?: 0
+            updateCompressionRow()
+        }
+    }
+
+    private fun updateCompressionRow() {
+        val row = binding.drawerTaskCompression
+        val phase = compressionBatchPhase
+        val active = phase == CompressionBatchStore.Phase.PREPARING ||
+            phase == CompressionBatchStore.Phase.AWAITING_DECISION ||
+            phase == CompressionBatchStore.Phase.COMMITTING
+        if (!active) {
+            row.visibility = View.GONE
+            updateBackgroundHeaderVisibility()
+            return
+        }
+        row.visibility = View.VISIBLE
+        val bar = binding.drawerTaskCompressionProgress
+        when (phase) {
+            CompressionBatchStore.Phase.PREPARING -> {
+                binding.drawerTaskCompressionStatus.text =
+                    getString(R.string.drawer_task_compression_preparing)
+                showTaskProgress(
+                    bar,
+                    compressionPrepareProgress.first,
+                    compressionPrepareProgress.second,
+                    compressionPrepareRunning
+                )
+            }
+            CompressionBatchStore.Phase.AWAITING_DECISION -> {
+                binding.drawerTaskCompressionStatus.text =
+                    getString(R.string.drawer_task_compression_review, compressionReviewCount)
+                bar.visibility = View.GONE
+            }
+            else -> {
+                binding.drawerTaskCompressionStatus.text = getString(
+                    R.string.drawer_task_compression_saving,
+                    compressionCommitProgress.first,
+                    compressionCommitProgress.second
+                )
+                showTaskProgress(
+                    bar,
+                    compressionCommitProgress.first,
+                    compressionCommitProgress.second,
+                    compressionCommitRunning
+                )
             }
         }
+        updateBackgroundHeaderVisibility()
+    }
+
+    private fun updateCleanupRow() {
+        val row = binding.drawerTaskCleanup
+        val bar = binding.drawerTaskCleanupProgress
+        if (!cleanupRunning && !cleanupQueued) {
+            row.visibility = View.GONE
+            bar.visibility = View.GONE
+            updateBackgroundHeaderVisibility()
+            return
+        }
+        row.visibility = View.VISIBLE
+        binding.drawerTaskCleanupStatus.text =
+            if (cleanupProgress.second > 0) {
+                getString(
+                    R.string.drawer_task_cleanup_running,
+                    cleanupProgress.first,
+                    cleanupProgress.second
+                )
+            } else {
+                getString(R.string.drawer_task_status_starting)
+            }
+        showTaskProgress(bar, cleanupProgress.first, cleanupProgress.second, cleanupRunning)
+        updateBackgroundHeaderVisibility()
+    }
+
+    /** Determinate when live progress is known, indeterminate while merely queued/starting. */
+    private fun showTaskProgress(bar: ProgressBar, current: Int, total: Int, running: Boolean) {
+        if (running && total > 0) {
+            bar.isIndeterminate = false
+            bar.max = total
+            bar.progress = current.coerceIn(0, total)
+        } else {
+            bar.isIndeterminate = true
+        }
+        bar.visibility = View.VISIBLE
+    }
+
+    /** The whole section (header included) exists only while background work is running —
+     *  or paused, for indexing, since the row is the drawer's resume affordance. */
+    private fun updateBackgroundHeaderVisibility() {
+        val anyActive = binding.drawerTaskIndexing.visibility == View.VISIBLE ||
+            binding.drawerTaskCleanup.visibility == View.VISIBLE ||
+            binding.drawerTaskCompression.visibility == View.VISIBLE
+        binding.drawerBackgroundHeader.visibility = if (anyActive) View.VISIBLE else View.GONE
     }
 
     private fun startSmartCleanup() {
@@ -4192,65 +4354,76 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshVisibleItems(
         afterCompletedIndexPass: Boolean = false,
-        reRender: Boolean = true
-    ) {
-        val repo = repository ?: return
-        lifecycleScope.launch(Dispatchers.IO) {
-            val snapshot = loadLibrarySnapshot(repo)
-            // The worker owns its own repository instance, so this one still holds the embeddings
-            // it had before the pass ran. Re-read the on-disk index or the count and search results
-            // stay stuck at whatever was cached at load time.
-            repo.loadCachedIndexForUris(snapshot.imageItems.map { it.uri })
-            repo.loadCachedMetadataIndexForUris(snapshot.imageItems.map { it.uri })
-            val refreshedTags = withContext(Dispatchers.IO) { dbRepository?.getAllTags().orEmpty() }
-            val refreshedTagUriMap = withContext(Dispatchers.IO) {
-                refreshedTags.associate { tag ->
-                    tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
-                }
-            }
-            val refreshedPeopleCollection = loadPeopleCollection()
-            withContext(Dispatchers.Main) {
-                allTags = refreshedTags
-                tagUriMap = refreshedTagUriMap
-                applyLibrarySnapshot(snapshot)
-                peopleCollectionRefreshGeneration++
-                peopleCollection = refreshedPeopleCollection
-                // A finished pass had its chance at every in-scope photo; whatever is still missing
-                // can't be encoded, so stop counting it as outstanding work.
-                if (afterCompletedIndexPass) {
-                    permanentlyUnindexedUris = repo.unindexedUris(indexScopeUris).toSet()
-                }
-                currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
-                binding.statusText.text = indexedSummary(repo.indexedCount)
-                val pinnedAlbum = currentAlbum
-                if (!reRender) {
-                    // The grid was already updated optimistically (delete flows). Re-rendering here
-                    // would rebuild the timeline and yank the viewport back to the top, so only the
-                    // backing state is swapped. Rebuild the listing when the hide left it in a
-                    // shape the in-place path can't cover: emptied, or a page build that was
-                    // cancelled mid-flight (paging state reset but old cells still on screen).
-                    val mediaCellsVisible = adapter.cells.any {
-                        it is GalleryCell.Photo || it is GalleryCell.Collage
+        reRender: Boolean = true,
+        onlyIfMediaChanged: Boolean = false
+    ): Job? {
+        val repo = repository ?: return null
+        return lifecycleScope.launch(Dispatchers.IO) {
+            libraryRefreshMutex.withLock {
+                val snapshot = loadLibrarySnapshot(repo)
+                if (onlyIfMediaChanged) {
+                    val unchanged = withContext(Dispatchers.Main) {
+                        snapshot.imageItems.filterNot { it.uri in hiddenDeletedUris } == imageItems &&
+                            snapshot.videoItems.filterNot { it.uri in hiddenDeletedUris } == videoItems &&
+                            snapshot.albums == albums
                     }
-                    if (currentMode != Mode.Search && pagedContext != null &&
-                        (pagedItems.isEmpty() || !mediaCellsVisible)
-                    ) {
-                        renderCurrentState()
-                    } else {
-                        refreshPinnedStripInPlace()
-                        if (currentMode == Mode.Search) updateSearchMetaText()
-                    }
-                } else when {
-                    currentMode == Mode.Search -> {
-                        updateSearchMetaText()
-                        submitSearch()
-                    }
-                    currentMode == Mode.AlbumDetail && pinnedAlbum != null ->
-                        renderAlbumDetail(pinnedAlbum)
-                    else -> renderCurrentSection()
+                    if (unchanged) return@withLock
                 }
-                maybeStartBackgroundIndexing()
-                primeMetadataIndexAsync()
+                // The worker owns its own repository instance, so this one still holds the embeddings
+                // it had before the pass ran. Re-read the on-disk index or the count and search results
+                // stay stuck at whatever was cached at load time.
+                repo.loadCachedIndexForUris(snapshot.imageItems.map { it.uri })
+                repo.loadCachedMetadataIndexForUris(snapshot.imageItems.map { it.uri })
+                val refreshedTags = withContext(Dispatchers.IO) { dbRepository?.getAllTags().orEmpty() }
+                val refreshedTagUriMap = withContext(Dispatchers.IO) {
+                    refreshedTags.associate { tag ->
+                        tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
+                    }
+                }
+                val refreshedPeopleCollection = loadPeopleCollection()
+                withContext(Dispatchers.Main) {
+                    allTags = refreshedTags
+                    tagUriMap = refreshedTagUriMap
+                    applyLibrarySnapshot(snapshot)
+                    peopleCollectionRefreshGeneration++
+                    peopleCollection = refreshedPeopleCollection
+                    // A finished pass had its chance at every in-scope photo; whatever is still missing
+                    // can't be encoded, so stop counting it as outstanding work.
+                    if (afterCompletedIndexPass) {
+                        permanentlyUnindexedUris = repo.unindexedUris(indexScopeUris).toSet()
+                    }
+                    currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
+                    binding.statusText.text = indexedSummary(repo.indexedCount)
+                    val pinnedAlbum = currentAlbum
+                    if (!reRender) {
+                        // The grid was already updated optimistically (delete flows). Re-rendering here
+                        // would rebuild the timeline and yank the viewport back to the top, so only the
+                        // backing state is swapped. Rebuild the listing when the hide left it in a
+                        // shape the in-place path can't cover: emptied, or a page build that was
+                        // cancelled mid-flight (paging state reset but old cells still on screen).
+                        val mediaCellsVisible = adapter.cells.any {
+                            it is GalleryCell.Photo || it is GalleryCell.Collage
+                        }
+                        if (currentMode != Mode.Search && pagedContext != null &&
+                            (pagedItems.isEmpty() || !mediaCellsVisible)
+                        ) {
+                            renderCurrentState()
+                        } else {
+                            refreshPinnedStripInPlace()
+                            if (currentMode == Mode.Search) updateSearchMetaText()
+                        }
+                    } else when {
+                        currentMode == Mode.Search -> {
+                            updateSearchMetaText()
+                            submitSearch()
+                        }
+                        currentMode == Mode.AlbumDetail && pinnedAlbum != null ->
+                            renderAlbumDetail(pinnedAlbum)
+                        else -> renderCurrentSection()
+                    }
+                    maybeStartBackgroundIndexing()
+                    primeMetadataIndexAsync()
+                }
             }
         }
     }
@@ -4316,7 +4489,7 @@ class MainActivity : AppCompatActivity() {
             if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
             initialDelaySeconds
         )
-        updateIndexDrawerLabel()
+        updateIndexingRow()
         if (showBanner) {
             MetroBanner.show(this, "Indexing started")
         }
@@ -4330,26 +4503,24 @@ class MainActivity : AppCompatActivity() {
                 indexRunning = work.state == WorkInfo.State.RUNNING || work.state == WorkInfo.State.ENQUEUED
                 indexQueued = work.state == WorkInfo.State.ENQUEUED || work.state == WorkInfo.State.BLOCKED
                 binding.searchSparkle.setIndexing(work.state == WorkInfo.State.RUNNING)
-                updateIndexDrawerLabel()
                 when (work.state) {
                     WorkInfo.State.ENQUEUED,
                     WorkInfo.State.BLOCKED -> {
-                        binding.statusText.text =
-                            if (IndexPreferences.isChargingOnlyIndexing(this)) "Indexing queued · waiting to charge"
-                            else "Indexing starting…"
+                        // Progress from the previous run is stale once work is re-queued.
+                        indexProgressCurrent = 0
+                        indexProgressTotal = 0
                     }
                     WorkInfo.State.RUNNING -> {
                         val current = work.progress.getInt(IndexWorker.ProgressCurrentKey, 0)
                         val total = work.progress.getInt(IndexWorker.ProgressTotalKey, 0)
                         indexProgressCurrent = current
                         indexProgressTotal = total
-                        binding.statusText.text = "Indexing: $current / $total"
                         maybeRefreshLiveIndex(current)
                     }
                     WorkInfo.State.SUCCEEDED -> {
                         binding.progressBar.visibility = View.GONE
                         if (IndexPreferences.isIndexPaused(this)) {
-                            binding.statusText.text = "Indexing paused"
+                            updateIndexingRow()
                             refreshSearchEmptyStateIfVisible()
                             return@observe
                         }
@@ -4359,18 +4530,56 @@ class MainActivity : AppCompatActivity() {
                     }
                     WorkInfo.State.FAILED -> {
                         binding.progressBar.visibility = View.GONE
-                        binding.statusText.text = "Indexing failed"
+                        MetroBanner.show(this, "Indexing failed")
                     }
                     WorkInfo.State.CANCELLED -> {
                         binding.progressBar.visibility = View.GONE
-                        binding.statusText.text = if (IndexPreferences.isIndexPaused(this)) {
-                            "Indexing paused"
-                        } else {
-                            "Indexing cancelled"
-                        }
                     }
                 }
+                updateIndexingRow()
                 refreshSearchEmptyStateIfVisible()
+            }
+    }
+
+    /** Live status for the drawer's "background" section: compression prepare/commit and the
+     *  smart-cleanup scan. Indexing has its own observer — it also drives search-side UI. */
+    private fun observeBackgroundWorkers() {
+        val workManager = WorkManager.getInstance(this)
+        workManager.getWorkInfosForUniqueWorkLiveData(CompressionWorker.PrepareWorkName)
+            .observe(this) { infos ->
+                val work = IndexWorker.pickRelevantWorkInfo(infos)
+                compressionPrepareRunning =
+                    work?.state == WorkInfo.State.RUNNING || work?.state == WorkInfo.State.ENQUEUED
+                if (work?.state == WorkInfo.State.RUNNING) {
+                    compressionPrepareProgress = work.progress.getInt(CompressionWorker.ProgressCurrentKey, 0) to
+                        work.progress.getInt(CompressionWorker.ProgressTotalKey, 0)
+                }
+                refreshCompressionTaskRow()
+            }
+        workManager.getWorkInfosForUniqueWorkLiveData(CompressionWorker.CommitWorkName)
+            .observe(this) { infos ->
+                val work = IndexWorker.pickRelevantWorkInfo(infos)
+                compressionCommitRunning =
+                    work?.state == WorkInfo.State.RUNNING || work?.state == WorkInfo.State.ENQUEUED
+                if (work?.state == WorkInfo.State.RUNNING) {
+                    compressionCommitProgress = work.progress.getInt(CompressionWorker.ProgressCurrentKey, 0) to
+                        work.progress.getInt(CompressionWorker.ProgressTotalKey, 0)
+                }
+                refreshCompressionTaskRow()
+            }
+        workManager.getWorkInfosForUniqueWorkLiveData(CleanupWorker.WorkName)
+            .observe(this) { infos ->
+                val work = IndexWorker.pickRelevantWorkInfo(infos)
+                cleanupRunning = work?.state == WorkInfo.State.RUNNING
+                cleanupQueued = work?.state == WorkInfo.State.ENQUEUED || work?.state == WorkInfo.State.BLOCKED
+                if (work?.state == WorkInfo.State.RUNNING) {
+                    cleanupProgress = work.progress.getInt(CleanupWorker.ProgressCurrentKey, 0) to
+                        work.progress.getInt(CleanupWorker.ProgressTotalKey, 0)
+                } else if (cleanupQueued) {
+                    // Progress from the previous scan is stale once work is re-queued.
+                    cleanupProgress = 0 to 0
+                }
+                updateCleanupRow()
             }
     }
 
@@ -4417,7 +4626,6 @@ class MainActivity : AppCompatActivity() {
             repo.loadCachedIndexForUris(allUris)
             repo.loadCachedMetadataIndexForUris(allUris)
             withContext(Dispatchers.Main) {
-                binding.statusText.text = "Indexing: $current · live search ready"
                 if (query.isNotBlank() && currentMode == Mode.Search) {
                     submitSearch()
                 }
@@ -4455,21 +4663,17 @@ class MainActivity : AppCompatActivity() {
         if (!IndexPreferences.isIndexConsentGiven(applicationContext)) return  // wait for user approval
         if (!hasUnindexedWork(repo)) return
         if (IndexPreferences.isIndexPaused(applicationContext)) {
-            binding.statusText.text =
-                "Indexing paused · ${indexedSummary(repo.indexedCount)}"
-            updateIndexDrawerLabel()
+            updateIndexingRow()
             return
         }
         // Respect an explicit Stop — don't silently restart while browsing.
         if (IndexPreferences.isIndexStopped(applicationContext)) {
-            updateIndexDrawerLabel()
+            updateIndexingRow()
             return
         }
         // Startup already waits for the initial UI/library load before calling this, so enqueue
         // immediately instead of adding an extra fixed delay that leaves indexing "queued".
         enqueueIndexWork(ExistingWorkPolicy.KEEP)
-        binding.statusText.text =
-            "Background indexing starting · ${indexedSummary(repo.indexedCount)}"
     }
 
     private fun primeMetadataIndexAsync() {
@@ -4585,7 +4789,7 @@ class MainActivity : AppCompatActivity() {
         binding.drawerFolders.setBackgroundColor(
             if (currentMode != Mode.Search && activeSection == Section.Folders) active else inactive
         )
-        updateIndexDrawerLabel()
+        updateIndexingRow()
     }
 
     /** Pinch step in grid mode: fewer columns on zoom-in (bigger), more on zoom-out (smaller). */
@@ -4775,19 +4979,25 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        mediaRefreshScheduler.onResume()
         startSearchHintCycle()
         // Names/relationships saved on the People or person-detail screens feed the search row.
         searchEmptyDataLoaded = false
         refreshSearchEmptyStateIfVisible()
-        refreshCompressionDrawerEntry()
+        refreshBackgroundTaskRows()
     }
 
     override fun onPause() {
+        mediaRefreshScheduler.onPause()
         super.onPause()
         stopSearchHintCycle()
     }
 
     override fun onDestroy() {
+        if (mediaObserverRegistered) {
+            contentResolver.unregisterContentObserver(mediaObserver)
+            mediaObserverRegistered = false
+        }
         super.onDestroy()
         stopSearchHintCycle()
         searchDebounceJob?.cancel()

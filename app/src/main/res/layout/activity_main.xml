@@ -505,62 +505,127 @@
         android:orientation="vertical"
         android:paddingTop="0dp">
 
-        <TextView
-            android:id="@+id/drawerCollection"
-            style="@style/MetroDrawerItem"
-            android:text="@string/drawer_collection" />
+        <ScrollView
+            android:id="@+id/drawerScroll"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:fillViewport="true"
+            android:overScrollMode="never"
+            android:scrollbars="none">
 
-        <TextView
-            android:id="@+id/drawerAlbums"
-            style="@style/MetroDrawerItem"
-            android:text="@string/drawer_albums" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/drawerSearch"
-            style="@style/MetroDrawerItem"
-            android:text="@string/drawer_search" />
+                <TextView
+                    android:id="@+id/drawerCollection"
+                    style="@style/MetroDrawerItem"
+                    android:text="@string/drawer_collection" />
 
-        <TextView
-            android:id="@+id/drawerFolders"
-            style="@style/MetroDrawerItem"
-            android:text="@string/drawer_folders" />
+                <TextView
+                    android:id="@+id/drawerAlbums"
+                    style="@style/MetroDrawerItem"
+                    android:text="@string/drawer_albums" />
 
-        <TextView
-            android:id="@+id/drawerSafe"
-            style="@style/MetroDrawerItem"
-            android:text="@string/safe_lower" />
+                <TextView
+                    android:id="@+id/drawerSearch"
+                    style="@style/MetroDrawerItem"
+                    android:text="@string/drawer_search" />
 
-        <TextView
-            android:id="@+id/drawerPeople"
-            style="@style/MetroDrawerItem"
-            android:text="@string/people_title_lower" />
+                <TextView
+                    android:id="@+id/drawerFolders"
+                    style="@style/MetroDrawerItem"
+                    android:text="@string/drawer_folders" />
 
-        <TextView
-            android:id="@+id/drawerBin"
-            style="@style/MetroDrawerItem"
-            android:text="@string/bin_title" />
+                <TextView
+                    android:id="@+id/drawerSafe"
+                    style="@style/MetroDrawerItem"
+                    android:text="@string/safe_lower" />
 
-        <TextView
-            android:id="@+id/drawerSmartCleanup"
-            style="@style/MetroDrawerItem"
-            android:text="@string/smart_cleanup_title" />
+                <TextView
+                    android:id="@+id/drawerPeople"
+                    style="@style/MetroDrawerItem"
+                    android:text="@string/people_title_lower" />
 
-        <!-- Visible only while a compression batch is alive: reopens the conversion screen. -->
-        <TextView
-            android:id="@+id/drawerCompression"
-            style="@style/MetroDrawerItem"
-            android:text="Compression"
-            android:visibility="gone" />
+                <TextView
+                    android:id="@+id/drawerBin"
+                    style="@style/MetroDrawerItem"
+                    android:text="@string/bin_title" />
 
-        <TextView
-            android:id="@+id/drawerIndex"
-            style="@style/MetroDrawerItem"
-            android:text="@string/drawer_start_indexing" />
+                <TextView
+                    android:id="@+id/drawerSmartCleanup"
+                    style="@style/MetroDrawerItem"
+                    android:text="@string/smart_cleanup_title" />
 
-        <TextView
-            android:id="@+id/drawerSettings"
-            style="@style/MetroDrawerItem"
-            android:text="@string/settings_lower" />
+                <TextView
+                    android:id="@+id/drawerSettings"
+                    style="@style/MetroDrawerItem"
+                    android:text="@string/settings_lower" />
+
+                <!-- Live status for long-running background work. Rows exist only while their
+                     task is actually running (or paused, for indexing); the header follows suit. -->
+                <TextView
+                    android:id="@+id/drawerBackgroundHeader"
+                    style="@style/MetroDrawerSectionHeader"
+                    android:visibility="gone"
+                    android:text="@string/drawer_background_header" />
+
+                <LinearLayout
+                    android:id="@+id/drawerTaskIndexing"
+                    style="@style/MetroDrawerTaskItem"
+                    android:visibility="gone">
+
+                    <TextView
+                        style="@style/MetroDrawerTaskTitle"
+                        android:text="@string/drawer_task_indexing" />
+
+                    <TextView
+                        android:id="@+id/drawerTaskIndexingStatus"
+                        style="@style/MetroDrawerTaskStatus" />
+
+                    <ProgressBar
+                        android:id="@+id/drawerTaskIndexingProgress"
+                        style="@style/MetroDrawerTaskProgress" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/drawerTaskCleanup"
+                    style="@style/MetroDrawerTaskItem">
+
+                    <TextView
+                        style="@style/MetroDrawerTaskTitle"
+                        android:text="@string/drawer_task_cleanup" />
+
+                    <TextView
+                        android:id="@+id/drawerTaskCleanupStatus"
+                        style="@style/MetroDrawerTaskStatus" />
+
+                    <ProgressBar
+                        android:id="@+id/drawerTaskCleanupProgress"
+                        style="@style/MetroDrawerTaskProgress" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/drawerTaskCompression"
+                    style="@style/MetroDrawerTaskItem"
+                    android:visibility="gone">
+
+                    <TextView
+                        style="@style/MetroDrawerTaskTitle"
+                        android:text="@string/drawer_task_compression" />
+
+                    <TextView
+                        android:id="@+id/drawerTaskCompressionStatus"
+                        style="@style/MetroDrawerTaskStatus" />
+
+                    <ProgressBar
+                        android:id="@+id/drawerTaskCompressionProgress"
+                        style="@style/MetroDrawerTaskProgress" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
 
         <TextView
             android:id="@+id/statusText"
@@ -596,6 +661,7 @@
             android:paddingStart="24dp"
             android:paddingTop="14dp"
             android:paddingEnd="24dp"
+            android:paddingBottom="16dp"
             android:textColor="?attr/accentColorLight"
             android:textSize="12sp" />
     </LinearLayout>
