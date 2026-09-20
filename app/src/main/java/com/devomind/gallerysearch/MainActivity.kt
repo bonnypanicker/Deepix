@@ -590,6 +590,10 @@ class MainActivity : AppCompatActivity() {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             startActivity(Intent(this, BinActivity::class.java))
         }
+        binding.drawerSmartCleanup.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            startSmartCleanup()
+        }
         binding.drawerTaskCleanup.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             startSmartCleanup()
@@ -1088,7 +1092,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun maybePromptIndexingConsent() {
         if (IndexPreferences.isIndexPaused(applicationContext)) {
-            binding.statusText.text = "Indexing paused"
             updateIndexingRow()
             return
         }
@@ -1140,7 +1143,6 @@ class MainActivity : AppCompatActivity() {
         indexRunning = false
         indexQueued = false
         binding.searchSparkle.setIndexing(false)
-        binding.statusText.text = "Indexing paused"
         updateIndexingRow()
         refreshSearchEmptyStateIfVisible()
         MetroBanner.show(this, "Indexing paused")
@@ -1156,7 +1158,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateIndexingRow() {
+        val row = binding.drawerTaskIndexing
         val bar = binding.drawerTaskIndexingProgress
+        if (!indexRunning && !IndexPreferences.isIndexPaused(this)) {
+            row.visibility = View.GONE
+            bar.visibility = View.GONE
+            updateBackgroundHeaderVisibility()
+            return
+        }
+        row.visibility = View.VISIBLE
         binding.drawerTaskIndexingStatus.text = when {
             indexRunning && indexProgressTotal > 0 ->
                 getString(R.string.drawer_task_status_progress, indexProgressCurrent, indexProgressTotal)
@@ -1166,8 +1176,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     getString(R.string.drawer_task_status_starting)
                 }
-            IndexPreferences.isIndexPaused(this) -> getString(R.string.drawer_task_status_paused)
-            else -> getString(R.string.drawer_task_status_tap_to_start)
+            else -> getString(R.string.drawer_task_status_paused)
         }
         if (indexRunning && indexProgressTotal > 0) {
             bar.isIndeterminate = false
@@ -1180,6 +1189,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             bar.visibility = View.GONE
         }
+        updateBackgroundHeaderVisibility()
     }
 
     private fun enqueueIndexWork(policy: ExistingWorkPolicy, initialDelaySeconds: Long = 0) {
@@ -3973,6 +3983,7 @@ class MainActivity : AppCompatActivity() {
             phase == CompressionBatchStore.Phase.COMMITTING
         if (!active) {
             row.visibility = View.GONE
+            updateBackgroundHeaderVisibility()
             return
         }
         row.visibility = View.VISIBLE
@@ -4007,26 +4018,31 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+        updateBackgroundHeaderVisibility()
     }
 
     private fun updateCleanupRow() {
+        val row = binding.drawerTaskCleanup
         val bar = binding.drawerTaskCleanupProgress
-        if (cleanupRunning || cleanupQueued) {
-            binding.drawerTaskCleanupStatus.text =
-                if (cleanupProgress.second > 0) {
-                    getString(
-                        R.string.drawer_task_cleanup_running,
-                        cleanupProgress.first,
-                        cleanupProgress.second
-                    )
-                } else {
-                    getString(R.string.drawer_task_status_starting)
-                }
-            showTaskProgress(bar, cleanupProgress.first, cleanupProgress.second, cleanupRunning)
-        } else {
-            binding.drawerTaskCleanupStatus.text = getString(R.string.drawer_task_cleanup_idle)
+        if (!cleanupRunning && !cleanupQueued) {
+            row.visibility = View.GONE
             bar.visibility = View.GONE
+            updateBackgroundHeaderVisibility()
+            return
         }
+        row.visibility = View.VISIBLE
+        binding.drawerTaskCleanupStatus.text =
+            if (cleanupProgress.second > 0) {
+                getString(
+                    R.string.drawer_task_cleanup_running,
+                    cleanupProgress.first,
+                    cleanupProgress.second
+                )
+            } else {
+                getString(R.string.drawer_task_status_starting)
+            }
+        showTaskProgress(bar, cleanupProgress.first, cleanupProgress.second, cleanupRunning)
+        updateBackgroundHeaderVisibility()
     }
 
     /** Determinate when live progress is known, indeterminate while merely queued/starting. */
@@ -4039,6 +4055,15 @@ class MainActivity : AppCompatActivity() {
             bar.isIndeterminate = true
         }
         bar.visibility = View.VISIBLE
+    }
+
+    /** The whole section (header included) exists only while background work is running —
+     *  or paused, for indexing, since the row is the drawer's resume affordance. */
+    private fun updateBackgroundHeaderVisibility() {
+        val anyActive = binding.drawerTaskIndexing.visibility == View.VISIBLE ||
+            binding.drawerTaskCleanup.visibility == View.VISIBLE ||
+            binding.drawerTaskCompression.visibility == View.VISIBLE
+        binding.drawerBackgroundHeader.visibility = if (anyActive) View.VISIBLE else View.GONE
     }
 
     private fun startSmartCleanup() {
@@ -4484,22 +4509,17 @@ class MainActivity : AppCompatActivity() {
                         // Progress from the previous run is stale once work is re-queued.
                         indexProgressCurrent = 0
                         indexProgressTotal = 0
-                        binding.statusText.text =
-                            if (IndexPreferences.isChargingOnlyIndexing(this)) "Indexing queued · waiting to charge"
-                            else "Indexing starting…"
                     }
                     WorkInfo.State.RUNNING -> {
                         val current = work.progress.getInt(IndexWorker.ProgressCurrentKey, 0)
                         val total = work.progress.getInt(IndexWorker.ProgressTotalKey, 0)
                         indexProgressCurrent = current
                         indexProgressTotal = total
-                        binding.statusText.text = "Indexing: $current / $total"
                         maybeRefreshLiveIndex(current)
                     }
                     WorkInfo.State.SUCCEEDED -> {
                         binding.progressBar.visibility = View.GONE
                         if (IndexPreferences.isIndexPaused(this)) {
-                            binding.statusText.text = "Indexing paused"
                             updateIndexingRow()
                             refreshSearchEmptyStateIfVisible()
                             return@observe
@@ -4510,15 +4530,10 @@ class MainActivity : AppCompatActivity() {
                     }
                     WorkInfo.State.FAILED -> {
                         binding.progressBar.visibility = View.GONE
-                        binding.statusText.text = "Indexing failed"
+                        MetroBanner.show(this, "Indexing failed")
                     }
                     WorkInfo.State.CANCELLED -> {
                         binding.progressBar.visibility = View.GONE
-                        binding.statusText.text = if (IndexPreferences.isIndexPaused(this)) {
-                            "Indexing paused"
-                        } else {
-                            "Indexing cancelled"
-                        }
                     }
                 }
                 updateIndexingRow()
@@ -4611,7 +4626,6 @@ class MainActivity : AppCompatActivity() {
             repo.loadCachedIndexForUris(allUris)
             repo.loadCachedMetadataIndexForUris(allUris)
             withContext(Dispatchers.Main) {
-                binding.statusText.text = "Indexing: $current · live search ready"
                 if (query.isNotBlank() && currentMode == Mode.Search) {
                     submitSearch()
                 }
@@ -4649,8 +4663,6 @@ class MainActivity : AppCompatActivity() {
         if (!IndexPreferences.isIndexConsentGiven(applicationContext)) return  // wait for user approval
         if (!hasUnindexedWork(repo)) return
         if (IndexPreferences.isIndexPaused(applicationContext)) {
-            binding.statusText.text =
-                "Indexing paused · ${indexedSummary(repo.indexedCount)}"
             updateIndexingRow()
             return
         }
@@ -4662,8 +4674,6 @@ class MainActivity : AppCompatActivity() {
         // Startup already waits for the initial UI/library load before calling this, so enqueue
         // immediately instead of adding an extra fixed delay that leaves indexing "queued".
         enqueueIndexWork(ExistingWorkPolicy.KEEP)
-        binding.statusText.text =
-            "Background indexing starting · ${indexedSummary(repo.indexedCount)}"
     }
 
     private fun primeMetadataIndexAsync() {

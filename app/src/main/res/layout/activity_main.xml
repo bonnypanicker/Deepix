@@ -555,19 +555,27 @@
                     android:text="@string/bin_title" />
 
                 <TextView
+                    android:id="@+id/drawerSmartCleanup"
+                    style="@style/MetroDrawerItem"
+                    android:text="@string/smart_cleanup_title" />
+
+                <TextView
                     android:id="@+id/drawerSettings"
                     style="@style/MetroDrawerItem"
                     android:text="@string/settings_lower" />
 
-                <!-- Live status for long-running background work. Each row keeps its own
-                     progress bar; the compression row only exists while a batch is alive. -->
+                <!-- Live status for long-running background work. Rows exist only while their
+                     task is actually running (or paused, for indexing); the header follows suit. -->
                 <TextView
+                    android:id="@+id/drawerBackgroundHeader"
                     style="@style/MetroDrawerSectionHeader"
+                    android:visibility="gone"
                     android:text="@string/drawer_background_header" />
 
                 <LinearLayout
                     android:id="@+id/drawerTaskIndexing"
-                    style="@style/MetroDrawerTaskItem">
+                    style="@style/MetroDrawerTaskItem"
+                    android:visibility="gone">
 
                     <TextView
                         style="@style/MetroDrawerTaskTitle"
