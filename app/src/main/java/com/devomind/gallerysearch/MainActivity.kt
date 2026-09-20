@@ -1025,10 +1025,13 @@ class MainActivity : AppCompatActivity() {
         // eagerly when a background index pass is actually going to run (it needs them). When
         // indexing is paused, stopped, or complete, defer the load until the user searches — so an
         // idle/paused cold start opens fast instead of reloading the models against the first frames.
-        if (shouldRunBackgroundIndexing()) {
-            ensureEncodersLoaded(warmupDelayMs = ENCODER_WARMUP_DELAY_MS)
-        } else {
-            lifecycleScope.launch {
+        // The readiness check reads the whole on-disk embedding index (and can block on a still
+        // warming SharedPreferences load), so it must not run on the main thread — it once stalled
+        // the first frame by seconds.
+        lifecycleScope.launch {
+            if (shouldRunBackgroundIndexing()) {
+                ensureEncodersLoaded(warmupDelayMs = ENCODER_WARMUP_DELAY_MS)
+            } else {
                 maybeStartBackgroundIndexing()   // updates paused/idle status text + drawer label
                 refreshSensitiveBlur()           // no-ops until the text encoder is loaded
             }
@@ -1101,7 +1104,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (IndexPreferences.isIndexConsentGiven(applicationContext)) {
-            maybeStartBackgroundIndexing()
+            lifecycleScope.launch { maybeStartBackgroundIndexing() }
             return
         }
         // First run: auto-start indexing once the initial UI/library load has completed.
@@ -4388,9 +4391,12 @@ class MainActivity : AppCompatActivity() {
                     peopleCollectionRefreshGeneration++
                     peopleCollection = refreshedPeopleCollection
                     // A finished pass had its chance at every in-scope photo; whatever is still missing
-                    // can't be encoded, so stop counting it as outstanding work.
+                    // can't be encoded, so stop counting it as outstanding work. The scan compares
+                    // against the on-disk index, so keep it off the main thread.
                     if (afterCompletedIndexPass) {
-                        permanentlyUnindexedUris = repo.unindexedUris(indexScopeUris).toSet()
+                        permanentlyUnindexedUris = withContext(Dispatchers.IO) {
+                            repo.unindexedUris(indexScopeUris).toSet()
+                        }
                     }
                     currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
                     binding.statusText.text = indexedSummary(repo.indexedCount)
@@ -4636,28 +4642,30 @@ class MainActivity : AppCompatActivity() {
     /**
      * True when a background index pass should run now: consent given, work remaining, and neither
      * paused nor stopped. Used both to enqueue the worker and to decide whether to warm the CLIP
-     * encoders eagerly at startup (only when indexing needs them).
+     * encoders eagerly at startup (only when indexing needs them). Runs on IO: it reads the whole
+     * on-disk embedding index to find unindexed photos, which once blocked cold start for seconds.
      */
-    private fun shouldRunBackgroundIndexing(): Boolean {
-        val repo = repository ?: return false
-        if (indexScopeUris.isEmpty()) return false
-        if (!IndexPreferences.isIndexConsentGiven(applicationContext)) return false
-        if (!hasUnindexedWork(repo)) return false
-        if (IndexPreferences.isIndexPaused(applicationContext)) return false
-        if (IndexPreferences.isIndexStopped(applicationContext)) return false
-        return true
+    private suspend fun shouldRunBackgroundIndexing(): Boolean = withContext(Dispatchers.IO) {
+        val repo = repository ?: return@withContext false
+        if (indexScopeUris.isEmpty()) return@withContext false
+        if (!IndexPreferences.isIndexConsentGiven(applicationContext)) return@withContext false
+        if (!hasUnindexedWork(repo)) return@withContext false
+        if (IndexPreferences.isIndexPaused(applicationContext)) return@withContext false
+        if (IndexPreferences.isIndexStopped(applicationContext)) return@withContext false
+        true
     }
 
     /**
      * Compares URIs rather than counts. A count check can't tell "work remaining" apart from
      * "these photos can never be encoded" (corrupt file, unsupported codec), and the latter used to
      * leave indexedCount permanently below the target — so every refresh re-enqueued the worker,
-     * which finished, refreshed, and re-enqueued again.
+     * which finished, refreshed, and re-enqueued again. The index read runs on IO.
      */
-    private fun hasUnindexedWork(repo: GalleryRepository): Boolean =
+    private suspend fun hasUnindexedWork(repo: GalleryRepository): Boolean = withContext(Dispatchers.IO) {
         repo.unindexedUris(indexScopeUris).any { it !in permanentlyUnindexedUris }
+    }
 
-    private fun maybeStartBackgroundIndexing() {
+    private suspend fun maybeStartBackgroundIndexing() {
         val repo = repository ?: return
         if (indexScopeUris.isEmpty()) return
         if (!IndexPreferences.isIndexConsentGiven(applicationContext)) return  // wait for user approval
