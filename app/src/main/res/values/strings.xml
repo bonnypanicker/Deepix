@@ -158,13 +158,9 @@
     <string name="section_navigation">NAVIGATION</string>
     <string name="bottom_bar_order">Bottom bar order</string>
     <string name="bottom_bar_order_subtitle">Arrange enabled destinations</string>
-    <string name="bottom_bar_order_help">Use the arrows to arrange destinations. Optional tabs keep their position while hidden.</string>
-    <string name="bottom_bar_hidden">Hidden · enable in Navigation settings</string>
+    <string name="bottom_bar_order_help">Use the arrows to arrange destinations. Tick boxes show or hide the optional tabs.</string>
     <string name="move_up">Move %1$s up</string>
     <string name="move_down">Move %1$s down</string>
-    <string name="bottom_bar_folders">Show Folders in bottom bar</string>
-    <string name="bottom_bar_albums">Show Albums in bottom bar</string>
-    <string name="bottom_bar_safe">Show Safe in bottom bar</string>
     <string name="default_page">Default page</string>
     <string name="section_indexing">INDEXING</string>
     <string name="indexing_label">Indexing</string>
@@ -176,8 +172,6 @@
     <string name="section_storage">STORAGE</string>
     <string name="recycle_bin_label">Recycle bin</string>
     <string name="section_about">ABOUT</string>
-    <string name="on_device_ai">On-device AI</string>
-    <string name="on_device_ai_subtitle">MobileCLIP-S2 · runs fully offline</string>
     <string name="smart_cleanup_title">smart cleanup</string>
     <string name="analyzing_library">Analyzing your library…</string>
     <string name="cleanup_indexing_unfinished">Indexing isn&#8217;t finished</string>

@@ -207,48 +207,6 @@
 
                 <View style="@style/SettingsDivider" />
 
-                <LinearLayout android:id="@+id/rowBottomBarFolders" style="@style/SettingsRow">
-                    <LinearLayout style="@style/SettingsRowText">
-                        <TextView style="@style/SettingsRowTitle" android:text="@string/bottom_bar_folders" />
-                    </LinearLayout>
-                    <androidx.appcompat.widget.SwitchCompat
-                        android:id="@+id/switchBottomBarFolders"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:clickable="false"
-                        android:focusable="false" />
-                </LinearLayout>
-
-                <View style="@style/SettingsDivider" />
-
-                <LinearLayout android:id="@+id/rowBottomBarAlbums" style="@style/SettingsRow">
-                    <LinearLayout style="@style/SettingsRowText">
-                        <TextView style="@style/SettingsRowTitle" android:text="@string/bottom_bar_albums" />
-                    </LinearLayout>
-                    <androidx.appcompat.widget.SwitchCompat
-                        android:id="@+id/switchBottomBarAlbums"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:clickable="false"
-                        android:focusable="false" />
-                </LinearLayout>
-
-                <View style="@style/SettingsDivider" />
-
-                <LinearLayout android:id="@+id/rowBottomBarSafe" style="@style/SettingsRow">
-                    <LinearLayout style="@style/SettingsRowText">
-                        <TextView style="@style/SettingsRowTitle" android:text="@string/bottom_bar_safe" />
-                    </LinearLayout>
-                    <androidx.appcompat.widget.SwitchCompat
-                        android:id="@+id/switchBottomBarSafe"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:clickable="false"
-                        android:focusable="false" />
-                </LinearLayout>
-
-                <View style="@style/SettingsDivider" />
-
                 <LinearLayout android:id="@+id/rowDefaultPage" style="@style/SettingsRow">
                     <LinearLayout style="@style/SettingsRowText">
                         <TextView style="@style/SettingsRowTitle" android:text="@string/default_page" />
@@ -280,29 +238,6 @@
                             android:id="@+id/indexingSubtitle"
                             style="@style/SettingsRowSubtitle"
                             android:text="@string/manage_indexing" />
-                    </LinearLayout>
-
-                    <ImageView
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:contentDescription="@null"
-                        android:src="@drawable/ic_fluent_chevron_right_24_regular"
-                        android:tint="@color/metroTextTertiary" />
-                </LinearLayout>
-
-                <!-- People Phase 1 harness — only in debug builds -->
-                <LinearLayout
-                    android:id="@+id/rowFaceValidation"
-                    style="@style/SettingsRow"
-                    android:visibility="gone">
-
-                    <LinearLayout style="@style/SettingsRowText">
-
-                        <TextView style="@style/SettingsRowTitle" android:text="face validation (debug)" />
-
-                        <TextView
-                            style="@style/SettingsRowSubtitle"
-                            android:text="run YuNet + MobileFaceNet on a photo" />
                     </LinearLayout>
 
                     <ImageView
@@ -402,20 +337,6 @@
                             android:id="@+id/aboutVersion"
                             style="@style/SettingsRowSubtitle"
                             android:text="@string/version" />
-                    </LinearLayout>
-                </LinearLayout>
-
-                <View style="@style/SettingsDivider" />
-
-                <LinearLayout style="@style/SettingsRow">
-
-                    <LinearLayout style="@style/SettingsRowText">
-
-                        <TextView style="@style/SettingsRowTitle" android:text="@string/on_device_ai" />
-
-                        <TextView
-                            style="@style/SettingsRowSubtitle"
-                            android:text="@string/on_device_ai_subtitle" />
                     </LinearLayout>
                 </LinearLayout>
             </LinearLayout>

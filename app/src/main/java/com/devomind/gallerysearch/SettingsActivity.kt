@@ -13,6 +13,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.AppCompatCheckBox
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -147,29 +148,11 @@ class SettingsActivity : AppCompatActivity() {
     private fun bindBottomBar() {
         updateBottomBarSettings()
         binding.rowBottomBarOrder.setOnClickListener { showBottomBarOrderDialog() }
-        binding.rowBottomBarFolders.setOnClickListener {
-            val enabled = !binding.switchBottomBarFolders.isChecked
-            BottomBarConfig.setFoldersEnabled(this, enabled)
-            updateBottomBarSettings()
-        }
-        binding.rowBottomBarAlbums.setOnClickListener {
-            val enabled = !binding.switchBottomBarAlbums.isChecked
-            BottomBarConfig.setAlbumsEnabled(this, enabled)
-            updateBottomBarSettings()
-        }
-        binding.rowBottomBarSafe.setOnClickListener {
-            val enabled = !binding.switchBottomBarSafe.isChecked
-            BottomBarConfig.setSafeEnabled(this, enabled)
-            updateBottomBarSettings()
-        }
         binding.rowDefaultPage.setOnClickListener { showDefaultPageDialog() }
     }
 
     private fun updateBottomBarSettings() {
         val enabled = BottomBarConfig.enabledOrder(this)
-        binding.switchBottomBarFolders.isChecked = BottomBarConfig.isFoldersEnabled(this)
-        binding.switchBottomBarAlbums.isChecked = BottomBarConfig.isAlbumsEnabled(this)
-        binding.switchBottomBarSafe.isChecked = BottomBarConfig.isSafeEnabled(this)
         binding.bottomBarOrderSubtitle.text = enabled.joinToString(" · ") { getString(it.labelRes) }
         binding.defaultPageSubtitle.text = getString(BottomBarConfig.defaultPage(this).labelRes)
     }
@@ -202,15 +185,23 @@ class SettingsActivity : AppCompatActivity() {
                 val row = layoutInflater.inflate(R.layout.item_bottom_bar_order, list, false)
                 row.findViewById<ImageView>(R.id.orderIcon).setImageResource(destination.iconRes)
                 row.findViewById<TextView>(R.id.orderTitle).text = getString(destination.labelRes)
-                val optionalHidden = when (destination) {
-                    BottomBarDestination.Albums -> !BottomBarConfig.isAlbumsEnabled(this)
-                    BottomBarDestination.Folders -> !BottomBarConfig.isFoldersEnabled(this)
-                    BottomBarDestination.Safe -> !BottomBarConfig.isSafeEnabled(this)
-                    else -> false
-                }
-                row.findViewById<TextView>(R.id.orderSubtitle).apply {
-                    visibility = if (optionalHidden) View.VISIBLE else View.GONE
-                    text = getString(R.string.bottom_bar_hidden)
+                val check = row.findViewById<AppCompatCheckBox>(R.id.orderCheck)
+                if (destination.optional) {
+                    check.visibility = View.VISIBLE
+                    // State before listener, so the initial sync can't write a spurious enable.
+                    check.isChecked = when (destination) {
+                        BottomBarDestination.Albums -> BottomBarConfig.isAlbumsEnabled(this)
+                        BottomBarDestination.Folders -> BottomBarConfig.isFoldersEnabled(this)
+                        else -> BottomBarConfig.isSafeEnabled(this)
+                    }
+                    check.setOnCheckedChangeListener { _, checked ->
+                        when (destination) {
+                            BottomBarDestination.Albums -> BottomBarConfig.setAlbumsEnabled(this, checked)
+                            BottomBarDestination.Folders -> BottomBarConfig.setFoldersEnabled(this, checked)
+                            else -> BottomBarConfig.setSafeEnabled(this, checked)
+                        }
+                        updateBottomBarSettings()
+                    }
                 }
                 row.findViewById<ImageButton>(R.id.orderUp).apply {
                     isEnabled = index > 0
@@ -414,11 +405,6 @@ class SettingsActivity : AppCompatActivity() {
     private fun bindIndexing() {
         binding.rowIndexing.setOnClickListener {
             startActivity(android.content.Intent(this, IndexingActivity::class.java))
-        }
-
-        binding.rowFaceValidation.apply {
-            if (BuildConfig.DEBUG) visibility = View.VISIBLE
-            setOnClickListener { FaceValidationActivity.launch(this@SettingsActivity) }
         }
 
         WorkManager.getInstance(this)

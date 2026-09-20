@@ -5,38 +5,33 @@
     android:background="@drawable/metro_row_pressed"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:paddingStart="24dp"
+    android:paddingStart="12dp"
     android:paddingEnd="12dp">
+
+    <androidx.appcompat.widget.AppCompatCheckBox
+        android:id="@+id/orderCheck"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:buttonTint="?attr/accentColor"
+        android:minWidth="0dp"
+        android:visibility="gone" />
 
     <ImageView
         android:id="@+id/orderIcon"
         android:layout_width="24dp"
         android:layout_height="24dp"
+        android:layout_marginStart="10dp"
         android:contentDescription="@null"
         android:tint="?attr/accentColor" />
 
-    <LinearLayout
+    <TextView
+        android:id="@+id/orderTitle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginStart="16dp"
         android:layout_weight="1"
-        android:orientation="vertical">
-
-        <TextView
-            android:id="@+id/orderTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:includeFontPadding="false"
-            android:textAppearance="@style/TextAppearance.Metro.Body" />
-
-        <TextView
-            android:id="@+id/orderSubtitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:includeFontPadding="false"
-            android:textAppearance="@style/TextAppearance.Metro.Caption"
-            android:visibility="gone" />
-    </LinearLayout>
+        android:includeFontPadding="false"
+        android:textAppearance="@style/TextAppearance.Metro.Body" />
 
     <ImageButton
         android:id="@+id/orderUp"

@@ -7,14 +7,15 @@ import androidx.annotation.StringRes
 enum class BottomBarDestination(
     val key: String,
     @StringRes val labelRes: Int,
-    @DrawableRes val iconRes: Int
+    @DrawableRes val iconRes: Int,
+    val optional: Boolean = false
 ) {
     Collection("collection", R.string.tab_collection, R.drawable.ic_deepix_collections_24_regular),
     Videos("videos", R.string.tab_videos, R.drawable.ic_deepix_video_24_regular),
-    Albums("albums", R.string.tab_albums, R.drawable.ic_deepix_albums_24_regular),
+    Albums("albums", R.string.tab_albums, R.drawable.ic_deepix_albums_24_regular, optional = true),
     Favorites("favorites", R.string.tab_favorites, R.drawable.ic_deepix_favorite_24_regular),
-    Folders("folders", R.string.tab_folders, R.drawable.ic_deepix_folders_24_regular),
-    Safe("safe", R.string.safe_title, R.drawable.ic_deepix_safe_nav_24_regular);
+    Folders("folders", R.string.tab_folders, R.drawable.ic_deepix_folders_24_regular, optional = true),
+    Safe("safe", R.string.safe_title, R.drawable.ic_deepix_safe_nav_24_regular, optional = true);
 
     companion object {
         fun fromKey(key: String?): BottomBarDestination? = entries.firstOrNull { it.key == key }
