@@ -24,6 +24,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.IntentSenderRequest
@@ -176,6 +177,15 @@ class MainActivity : AppCompatActivity() {
     private var searchHintIndex = 0
     private var indexProgressCurrent = 0
     private var indexProgressTotal = 0
+    private var cleanupRunning = false
+    private var cleanupQueued = false
+    private var cleanupProgress = 0 to 0
+    private var compressionPrepareRunning = false
+    private var compressionCommitRunning = false
+    private var compressionPrepareProgress = 0 to 0
+    private var compressionCommitProgress = 0 to 0
+    private var compressionBatchPhase: CompressionBatchStore.Phase? = null
+    private var compressionReviewCount = 0
     private val searchHintRunnable = Runnable { cycleSearchHint() }
     private val activeFilters = LinkedHashSet<String>()
 
@@ -527,6 +537,7 @@ class MainActivity : AppCompatActivity() {
         requestGalleryPermission()
         observeIndexWorker()
         observeFaceIndexWorker()
+        observeBackgroundWorkers()
     }
 
     private fun ensureNotificationPermission() {
@@ -579,17 +590,17 @@ class MainActivity : AppCompatActivity() {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             startActivity(Intent(this, BinActivity::class.java))
         }
-        binding.drawerSmartCleanup.setOnClickListener {
+        binding.drawerTaskCleanup.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             startSmartCleanup()
         }
-        binding.drawerCompression.setOnClickListener {
+        binding.drawerTaskCompression.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             // The screen adopts the active batch with no hand-off; if it finished in the
             // meantime it just closes again.
             startActivity(Intent(this, CompressionActivity::class.java))
         }
-        binding.drawerIndex.setOnClickListener {
+        binding.drawerTaskIndexing.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             onIndexDrawerAction()
         }
@@ -1078,12 +1089,12 @@ class MainActivity : AppCompatActivity() {
     private fun maybePromptIndexingConsent() {
         if (IndexPreferences.isIndexPaused(applicationContext)) {
             binding.statusText.text = "Indexing paused"
-            updateIndexDrawerLabel()
+            updateIndexingRow()
             return
         }
         // User explicitly stopped indexing — don't silently restart it.
         if (IndexPreferences.isIndexStopped(applicationContext)) {
-            updateIndexDrawerLabel()
+            updateIndexingRow()
             return
         }
         if (IndexPreferences.isIndexConsentGiven(applicationContext)) {
@@ -1130,7 +1141,7 @@ class MainActivity : AppCompatActivity() {
         indexQueued = false
         binding.searchSparkle.setIndexing(false)
         binding.statusText.text = "Indexing paused"
-        updateIndexDrawerLabel()
+        updateIndexingRow()
         refreshSearchEmptyStateIfVisible()
         MetroBanner.show(this, "Indexing paused")
     }
@@ -1139,16 +1150,35 @@ class MainActivity : AppCompatActivity() {
         IndexPreferences.setIndexPaused(this, false)
         IndexPreferences.setIndexStopped(this, false)
         enqueueIndexWork(ExistingWorkPolicy.KEEP)
-        updateIndexDrawerLabel()
+        updateIndexingRow()
         refreshSearchEmptyStateIfVisible()
         MetroBanner.show(this, "Indexing resumed")
     }
 
-    private fun updateIndexDrawerLabel() {
-        binding.drawerIndex.text = when {
-            indexRunning -> "pause indexing"
-            IndexPreferences.isIndexPaused(this) -> "resume indexing"
-            else -> "start indexing"
+    private fun updateIndexingRow() {
+        val bar = binding.drawerTaskIndexingProgress
+        binding.drawerTaskIndexingStatus.text = when {
+            indexRunning && indexProgressTotal > 0 ->
+                getString(R.string.drawer_task_status_progress, indexProgressCurrent, indexProgressTotal)
+            indexRunning ->
+                if (IndexPreferences.isChargingOnlyIndexing(this)) {
+                    getString(R.string.drawer_task_status_queued_charge)
+                } else {
+                    getString(R.string.drawer_task_status_starting)
+                }
+            IndexPreferences.isIndexPaused(this) -> getString(R.string.drawer_task_status_paused)
+            else -> getString(R.string.drawer_task_status_tap_to_start)
+        }
+        if (indexRunning && indexProgressTotal > 0) {
+            bar.isIndeterminate = false
+            bar.max = indexProgressTotal
+            bar.progress = indexProgressCurrent.coerceIn(0, indexProgressTotal)
+            bar.visibility = View.VISIBLE
+        } else if (indexRunning) {
+            bar.isIndeterminate = true
+            bar.visibility = View.VISIBLE
+        } else {
+            bar.visibility = View.GONE
         }
     }
 
@@ -3914,17 +3944,101 @@ class MainActivity : AppCompatActivity() {
     // Smart cleanup — opens a dedicated, interactive screen.
     // ---------------------------------------------------------------------------------------------
 
-    /** Drawer entry for an in-flight compression batch: the conversion screen stays reachable
-     *  from the home surface at any time while the background batch is alive. */
-    private fun refreshCompressionDrawerEntry() {
+    /** Drawer "background" section re-sync: the compression row reads the batch store (phase and
+     *  review count live there, not in worker progress), the other two just re-apply current
+     *  state so changes made while the drawer was closed show up. */
+    private fun refreshBackgroundTaskRows() {
+        refreshCompressionTaskRow()
+        updateIndexingRow()
+        updateCleanupRow()
+    }
+
+    private fun refreshCompressionTaskRow() {
         lifecycleScope.launch {
-            val active = withContext(Dispatchers.IO) {
-                CompressionBatchStore.isCompressionActive(this@MainActivity)
+            val batch = withContext(Dispatchers.IO) {
+                runCatching { CompressionBatchStore(applicationContext).load() }.getOrNull()
             }
-            if (!isDestroyed && !isFinishing) {
-                binding.drawerCompression.visibility = if (active) View.VISIBLE else View.GONE
+            if (isDestroyed || isFinishing) return@launch
+            compressionBatchPhase = batch?.phase
+            compressionReviewCount = batch?.items?.size ?: 0
+            updateCompressionRow()
+        }
+    }
+
+    private fun updateCompressionRow() {
+        val row = binding.drawerTaskCompression
+        val phase = compressionBatchPhase
+        val active = phase == CompressionBatchStore.Phase.PREPARING ||
+            phase == CompressionBatchStore.Phase.AWAITING_DECISION ||
+            phase == CompressionBatchStore.Phase.COMMITTING
+        if (!active) {
+            row.visibility = View.GONE
+            return
+        }
+        row.visibility = View.VISIBLE
+        val bar = binding.drawerTaskCompressionProgress
+        when (phase) {
+            CompressionBatchStore.Phase.PREPARING -> {
+                binding.drawerTaskCompressionStatus.text =
+                    getString(R.string.drawer_task_compression_preparing)
+                showTaskProgress(
+                    bar,
+                    compressionPrepareProgress.first,
+                    compressionPrepareProgress.second,
+                    compressionPrepareRunning
+                )
+            }
+            CompressionBatchStore.Phase.AWAITING_DECISION -> {
+                binding.drawerTaskCompressionStatus.text =
+                    getString(R.string.drawer_task_compression_review, compressionReviewCount)
+                bar.visibility = View.GONE
+            }
+            else -> {
+                binding.drawerTaskCompressionStatus.text = getString(
+                    R.string.drawer_task_compression_saving,
+                    compressionCommitProgress.first,
+                    compressionCommitProgress.second
+                )
+                showTaskProgress(
+                    bar,
+                    compressionCommitProgress.first,
+                    compressionCommitProgress.second,
+                    compressionCommitRunning
+                )
             }
         }
+    }
+
+    private fun updateCleanupRow() {
+        val bar = binding.drawerTaskCleanupProgress
+        if (cleanupRunning || cleanupQueued) {
+            binding.drawerTaskCleanupStatus.text =
+                if (cleanupProgress.second > 0) {
+                    getString(
+                        R.string.drawer_task_cleanup_running,
+                        cleanupProgress.first,
+                        cleanupProgress.second
+                    )
+                } else {
+                    getString(R.string.drawer_task_status_starting)
+                }
+            showTaskProgress(bar, cleanupProgress.first, cleanupProgress.second, cleanupRunning)
+        } else {
+            binding.drawerTaskCleanupStatus.text = getString(R.string.drawer_task_cleanup_idle)
+            bar.visibility = View.GONE
+        }
+    }
+
+    /** Determinate when live progress is known, indeterminate while merely queued/starting. */
+    private fun showTaskProgress(bar: ProgressBar, current: Int, total: Int, running: Boolean) {
+        if (running && total > 0) {
+            bar.isIndeterminate = false
+            bar.max = total
+            bar.progress = current.coerceIn(0, total)
+        } else {
+            bar.isIndeterminate = true
+        }
+        bar.visibility = View.VISIBLE
     }
 
     private fun startSmartCleanup() {
@@ -4350,7 +4464,7 @@ class MainActivity : AppCompatActivity() {
             if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
             initialDelaySeconds
         )
-        updateIndexDrawerLabel()
+        updateIndexingRow()
         if (showBanner) {
             MetroBanner.show(this, "Indexing started")
         }
@@ -4364,10 +4478,12 @@ class MainActivity : AppCompatActivity() {
                 indexRunning = work.state == WorkInfo.State.RUNNING || work.state == WorkInfo.State.ENQUEUED
                 indexQueued = work.state == WorkInfo.State.ENQUEUED || work.state == WorkInfo.State.BLOCKED
                 binding.searchSparkle.setIndexing(work.state == WorkInfo.State.RUNNING)
-                updateIndexDrawerLabel()
                 when (work.state) {
                     WorkInfo.State.ENQUEUED,
                     WorkInfo.State.BLOCKED -> {
+                        // Progress from the previous run is stale once work is re-queued.
+                        indexProgressCurrent = 0
+                        indexProgressTotal = 0
                         binding.statusText.text =
                             if (IndexPreferences.isChargingOnlyIndexing(this)) "Indexing queued · waiting to charge"
                             else "Indexing starting…"
@@ -4384,6 +4500,7 @@ class MainActivity : AppCompatActivity() {
                         binding.progressBar.visibility = View.GONE
                         if (IndexPreferences.isIndexPaused(this)) {
                             binding.statusText.text = "Indexing paused"
+                            updateIndexingRow()
                             refreshSearchEmptyStateIfVisible()
                             return@observe
                         }
@@ -4404,7 +4521,50 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
+                updateIndexingRow()
                 refreshSearchEmptyStateIfVisible()
+            }
+    }
+
+    /** Live status for the drawer's "background" section: compression prepare/commit and the
+     *  smart-cleanup scan. Indexing has its own observer — it also drives search-side UI. */
+    private fun observeBackgroundWorkers() {
+        val workManager = WorkManager.getInstance(this)
+        workManager.getWorkInfosForUniqueWorkLiveData(CompressionWorker.PrepareWorkName)
+            .observe(this) { infos ->
+                val work = IndexWorker.pickRelevantWorkInfo(infos)
+                compressionPrepareRunning =
+                    work?.state == WorkInfo.State.RUNNING || work?.state == WorkInfo.State.ENQUEUED
+                if (work?.state == WorkInfo.State.RUNNING) {
+                    compressionPrepareProgress = work.progress.getInt(CompressionWorker.ProgressCurrentKey, 0) to
+                        work.progress.getInt(CompressionWorker.ProgressTotalKey, 0)
+                }
+                refreshCompressionTaskRow()
+            }
+        workManager.getWorkInfosForUniqueWorkLiveData(CompressionWorker.CommitWorkName)
+            .observe(this) { infos ->
+                val work = IndexWorker.pickRelevantWorkInfo(infos)
+                compressionCommitRunning =
+                    work?.state == WorkInfo.State.RUNNING || work?.state == WorkInfo.State.ENQUEUED
+                if (work?.state == WorkInfo.State.RUNNING) {
+                    compressionCommitProgress = work.progress.getInt(CompressionWorker.ProgressCurrentKey, 0) to
+                        work.progress.getInt(CompressionWorker.ProgressTotalKey, 0)
+                }
+                refreshCompressionTaskRow()
+            }
+        workManager.getWorkInfosForUniqueWorkLiveData(CleanupWorker.WorkName)
+            .observe(this) { infos ->
+                val work = IndexWorker.pickRelevantWorkInfo(infos)
+                cleanupRunning = work?.state == WorkInfo.State.RUNNING
+                cleanupQueued = work?.state == WorkInfo.State.ENQUEUED || work?.state == WorkInfo.State.BLOCKED
+                if (work?.state == WorkInfo.State.RUNNING) {
+                    cleanupProgress = work.progress.getInt(CleanupWorker.ProgressCurrentKey, 0) to
+                        work.progress.getInt(CleanupWorker.ProgressTotalKey, 0)
+                } else if (cleanupQueued) {
+                    // Progress from the previous scan is stale once work is re-queued.
+                    cleanupProgress = 0 to 0
+                }
+                updateCleanupRow()
             }
     }
 
@@ -4491,12 +4651,12 @@ class MainActivity : AppCompatActivity() {
         if (IndexPreferences.isIndexPaused(applicationContext)) {
             binding.statusText.text =
                 "Indexing paused · ${indexedSummary(repo.indexedCount)}"
-            updateIndexDrawerLabel()
+            updateIndexingRow()
             return
         }
         // Respect an explicit Stop — don't silently restart while browsing.
         if (IndexPreferences.isIndexStopped(applicationContext)) {
-            updateIndexDrawerLabel()
+            updateIndexingRow()
             return
         }
         // Startup already waits for the initial UI/library load before calling this, so enqueue
@@ -4619,7 +4779,7 @@ class MainActivity : AppCompatActivity() {
         binding.drawerFolders.setBackgroundColor(
             if (currentMode != Mode.Search && activeSection == Section.Folders) active else inactive
         )
-        updateIndexDrawerLabel()
+        updateIndexingRow()
     }
 
     /** Pinch step in grid mode: fewer columns on zoom-in (bigger), more on zoom-out (smaller). */
@@ -4814,7 +4974,7 @@ class MainActivity : AppCompatActivity() {
         // Names/relationships saved on the People or person-detail screens feed the search row.
         searchEmptyDataLoaded = false
         refreshSearchEmptyStateIfVisible()
-        refreshCompressionDrawerEntry()
+        refreshBackgroundTaskRows()
     }
 
     override fun onPause() {

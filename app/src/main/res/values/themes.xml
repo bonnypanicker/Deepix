@@ -202,6 +202,61 @@
         <item name="android:background">@drawable/drawer_item_bg</item>
     </style>
 
+    <!-- Drawer "background" section: live-status rows for indexing / cleanup / compression. -->
+    <style name="MetroDrawerSectionHeader">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:paddingStart">24dp</item>
+        <item name="android:paddingTop">26dp</item>
+        <item name="android:paddingBottom">6dp</item>
+        <item name="android:textColor">?attr/accentColor</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="MetroDrawerTaskItem">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:background">@drawable/drawer_item_bg</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:paddingStart">24dp</item>
+        <item name="android:paddingTop">12dp</item>
+        <item name="android:paddingEnd">24dp</item>
+        <item name="android:paddingBottom">12dp</item>
+    </style>
+
+    <style name="MetroDrawerTaskTitle">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/metroTextPrimary</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="MetroDrawerTaskStatus">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:paddingTop">3dp</item>
+        <item name="android:textColor">@color/metroTextSecondary</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="MetroDrawerTaskProgress" parent="@android:style/Widget.Material.ProgressBar.Horizontal">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">2dp</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:indeterminate">true</item>
+        <item name="android:indeterminateTint">?attr/accentColor</item>
+        <item name="android:progressTint">?attr/accentColor</item>
+        <item name="android:progressBackgroundTint">@color/metroBgCard</item>
+        <item name="android:visibility">gone</item>
+    </style>
+
     <style name="SettingsSectionHeader">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
