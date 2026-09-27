@@ -1201,6 +1201,9 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     private fun edit(uri: Uri) {
+        // The player ignores the Activity lifecycle, so it must be paused explicitly before the
+        // editor screen covers this one.
+        getCurrentPageViewHolder()?.pausePlayback()
         val item = items.getOrNull(currentPosition)
         val intent = if (item?.mediaType == GalleryRepository.MediaType.Video) {
             Intent(this, VideoEditorActivity::class.java).apply {
