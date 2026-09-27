@@ -101,6 +101,8 @@ class MainActivity : AppCompatActivity() {
     private var permanentlyUnindexedUris: Set<Uri> = emptySet()
     private var allTags: List<com.devomind.gallerysearch.db.TagEntity> = emptyList()
     private var tagUriMap: Map<Long, Set<String>> = emptyMap()
+    /** The viewer edits tags as Room-only writes this screen never observes — set on resume. */
+    private var tagCacheStale = false
     private var currentAlbum: GalleryRepository.Album? = null
     private var currentFolder: FolderNode? = null
     private var currentSmartAlbum: SmartAlbum? = null
@@ -2744,8 +2746,11 @@ class MainActivity : AppCompatActivity() {
         if (!alreadyLanding) resetGridToTop()
         val total = searchResultsMaster.size
         val albumOnlySection = searchSectionResults.singleOrNull { it.section == SearchSection.Albums }
+        val tagOnlySection = searchSectionResults.singleOrNull { it.section == SearchSection.Tags }
         setSearchResultSummary(if (total == 0 && albumOnlySection != null) {
             "${SearchSection.Albums.label} · ${albumOnlySection.count}"
+        } else if (total == 0 && tagOnlySection != null) {
+            "${SearchSection.Tags.label} · ${tagOnlySection.count}"
         } else if (total == 1) {
             resources.getQuantityString(R.plurals.result_count, 1, 1)
         } else {
@@ -3440,6 +3445,19 @@ class MainActivity : AppCompatActivity() {
         applySortAndShow()
     }
 
+    /** Re-reads the search-only tag cache after the viewer (Room-only tag writes) may have changed it. */
+    private suspend fun refreshTagCache() {
+        val tags = withContext(Dispatchers.IO) { dbRepository?.getAllTags().orEmpty() }
+        val uris = withContext(Dispatchers.IO) {
+            tags.associate { tag ->
+                tag.id to dbRepository?.getMediaUrisForTag(tag.id).orEmpty().toSet()
+            }
+        }
+        allTags = tags
+        tagUriMap = uris
+        tagCacheStale = false
+    }
+
     private suspend fun buildSearchSections(
         query: String,
         results: List<PhotoSearchResult>,
@@ -3449,6 +3467,8 @@ class MainActivity : AppCompatActivity() {
     ): List<SearchSectionResult> {
         val resultByUri = results.associateBy { it.item.uri.toString() }
         val text = StructuredSearch.parse(query).textQuery.trim().lowercase(Locale.getDefault())
+        // Tag edits never reach this screen as media events, so unstale the cache at search time.
+        if (tagCacheStale) refreshTagCache()
         val smart = results.filter { it.sources.ai }
         val metadata = results.filter { it.sources.metadata }
         val matchedAlbums = if (text.isBlank()) emptyList() else albums.filter { it.name.lowercase(Locale.getDefault()).contains(text) }
@@ -4995,6 +5015,8 @@ class MainActivity : AppCompatActivity() {
         startSearchHintCycle()
         // Names/relationships saved on the People or person-detail screens feed the search row.
         searchEmptyDataLoaded = false
+        // The viewer may have applied tag edits while this screen was paused.
+        tagCacheStale = true
         refreshSearchEmptyStateIfVisible()
         refreshBackgroundTaskRows()
     }

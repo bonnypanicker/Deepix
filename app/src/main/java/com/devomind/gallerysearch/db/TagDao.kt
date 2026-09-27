@@ -38,14 +38,8 @@ interface TagDao {
     )
     suspend fun getTagsForMedia(mediaUri: String): List<TagEntity>
 
-    @Transaction
-    @Query(
-        """
-        SELECT media_metadata.uri FROM media_metadata
-        INNER JOIN media_tag_cross_ref ON media_metadata.uri = media_tag_cross_ref.mediaUri
-        WHERE media_tag_cross_ref.tagId = :tagId
-        """
-    )
+    // Direct cross-ref read: joining media_metadata hid tagged photos until an indexing pass reached them.
+    @Query("SELECT mediaUri FROM media_tag_cross_ref WHERE tagId = :tagId")
     suspend fun getMediaUrisForTag(tagId: Long): List<String>
 
     @Query("SELECT * FROM tags WHERE name = :name LIMIT 1")
