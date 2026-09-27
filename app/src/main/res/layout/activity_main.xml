@@ -126,9 +126,10 @@
 
                 <com.devomind.gallerysearch.IndexingOrbView
                     android:id="@+id/searchSparkle"
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
                     android:layout_marginStart="3dp"
+                    android:layout_marginEnd="2dp"
                     android:contentDescription="@string/ai_search" />
 
                 <EditText
