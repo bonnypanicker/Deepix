@@ -507,6 +507,11 @@ class CompressionActivity : AppCompatActivity() {
         val committing = batch.phase == Phase.COMMITTING || commitRunning
         val preparing = batch.phase == Phase.PREPARING || prepareRunning
         binding.batchProgressRow.visibility = if (preparing || committing) View.VISIBLE else View.GONE
+        // Cancel must stay reachable through the review wait (AWAITING_DECISION) — replace vs
+        // keep-both is a choice, never a requirement. Only an in-flight commit locks it out:
+        // recovery, not the user, settles an interrupted replace.
+        binding.batchCancelBtn.visibility =
+            if (batch.phase == Phase.DONE || committing) View.GONE else View.VISIBLE
         if (!(preparing || committing)) return
         val replacing = batch.commitMode == CompressionBatchStore.CommitMode.REPLACE
         // Prefer the worker's own reported totals so the bar matches what it is actually processing;
@@ -527,9 +532,6 @@ class CompressionActivity : AppCompatActivity() {
             committing -> "${if (replacing) "Replacing" else "Saving copy"} $done / $total"
             else -> "Compressing $done / $total"
         }
-        // Cancel is only meaningful before a destructive commit is confirmed — recovery, not the
-        // user, settles an interrupted replace.
-        binding.batchCancelBtn.visibility = if (committing) View.GONE else View.VISIBLE
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -646,7 +648,12 @@ class CompressionActivity : AppCompatActivity() {
             // Encoding and committing both run in WorkManager, so leaving the screen no longer
             // cancels anything — the batch keeps going and the notification brings the user
             // straight back to it. Only the explicit cancel discards work.
-            MetroBanner.show(this, "Still running in the background — tap the notification to return")
+            val waitingToDecide = current.phase == Phase.AWAITING_DECISION && !prepareRunning
+            MetroBanner.show(
+                this,
+                if (waitingToDecide) "Waiting for your decision — reopen compression from the drawer anytime"
+                else "Still running in the background — tap the notification to return"
+            )
         }
         setResult(RESULT_CANCELED)
         finished = true

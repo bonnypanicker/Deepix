@@ -164,25 +164,30 @@
             android:id="@+id/batchProgressBar"
             style="@style/MetroProgressBar"
             android:layout_marginTop="6dp" />
-
-        <TextView
-            android:id="@+id/batchCancelBtn"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="end"
-            android:layout_marginTop="4dp"
-            android:background="@drawable/metro_row_pressed"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingStart="12dp"
-            android:paddingTop="6dp"
-            android:paddingEnd="12dp"
-            android:paddingBottom="6dp"
-            android:text="Cancel"
-            android:textColor="@color/metroDanger"
-            android:textSize="13sp"
-            android:fontFamily="sans-serif-medium" />
     </LinearLayout>
+
+    <!-- Lives outside the progress row on purpose: it must stay visible once the encode pass
+         settles and the batch sits at the replace / keep-both decision. -->
+    <TextView
+        android:id="@+id/batchCancelBtn"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="6dp"
+        android:background="@drawable/metro_row_pressed"
+        android:clickable="true"
+        android:focusable="true"
+        android:paddingStart="12dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="6dp"
+        android:text="Cancel"
+        android:textColor="@color/metroDanger"
+        android:textSize="13sp"
+        android:fontFamily="sans-serif-medium"
+        android:visibility="gone" />
 
     <TextView
         android:id="@+id/keepBothBar"
