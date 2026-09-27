@@ -53,8 +53,8 @@ class SmartCleanupActivity : AppCompatActivity() {
     private var showingAllPhotos = false
 
     /** Sort order for the COMPRESSIBLE detail lists (recommended + choose-other). Scoped to this
-     *  screen: first run defaults to Recent regardless of the global sort default. */
-    private var compressibleSort: SortOption = SortOption.NewestFirst
+     *  screen: first run defaults to Largest regardless of the global sort default. */
+    private var compressibleSort: SortOption = SortOption.LargestFirst
 
     /** Album filter inside "Choose other photos" mode; null = "All" (no filter). */
     private var selectedAlbumId: String? = null
@@ -213,8 +213,8 @@ class SmartCleanupActivity : AppCompatActivity() {
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         binding.refreshBtn.setOnClickListener { startScan(replace = true) }
         binding.selectAllBtn.setOnClickListener { toggleSelectAll() }
-        compressibleSort = SortManager.optionFor(this, COMPRESSIBLE_SORT_SCOPE, SortOption.NewestFirst)
-        binding.detailSortBtn.setOnClickListener { showCompressibleSortMenu(it) }
+        compressibleSort = SortManager.optionFor(this, COMPRESSIBLE_SORT_SCOPE, SortOption.LargestFirst)
+        binding.detailSortControl.setOnClickListener { showCompressibleSortMenu(it) }
         binding.deleteBar.setOnClickListener {
             if (currentCategory == CleanupAnalyzer.Category.COMPRESSIBLE) {
                 launchCompressionReview()
@@ -641,8 +641,8 @@ class SmartCleanupActivity : AppCompatActivity() {
         )
         // Sorting is wired only for the compression lists; other categories have semantic order
         // (burst grouping, scan order) that a sort would break.
-        binding.detailSortBtn.visibility =
-            if (category == CleanupAnalyzer.Category.COMPRESSIBLE) View.VISIBLE else View.GONE
+        binding.detailSortControl.visibility = if (isCompressible) View.VISIBLE else View.GONE
+        if (isCompressible) updateCompressibleSortChip()
 
         adapter.replaceCells(detailCells(category))
         binding.cleanupGrid.scrollToPosition(0)
@@ -690,10 +690,18 @@ class SmartCleanupActivity : AppCompatActivity() {
         SortMenu.show(anchor, compressibleSort, SortOption.MEDIA_OPTIONS) { picked ->
             compressibleSort = picked
             SortManager.setOption(this, COMPRESSIBLE_SORT_SCOPE, picked)
+            updateCompressibleSortChip()
             val category = currentCategory ?: return@show
             adapter.replaceCells(detailCells(category))
             binding.cleanupGrid.scrollToPosition(0)
         }
+    }
+
+    /** Keeps the collections-style sort chip's label and accessibility text on the current order. */
+    private fun updateCompressibleSortChip() {
+        binding.detailSortLabel.text = compressibleSort.label
+        binding.detailSortControl.contentDescription =
+            getString(R.string.sort_change_order) + ": " + compressibleSort.label
     }
 
     private fun toggleCompressibleSource() {

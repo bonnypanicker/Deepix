@@ -3,17 +3,17 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Up arrow (left), down arrow (right): sort-direction combo, Fluent-regular stroke style. -->
+    <!-- Down arrow (left), up arrow (right): sort combo with single-flag heads, Fluent-regular stroke. -->
     <path
         android:strokeColor="#FFFFFFFF"
         android:strokeWidth="1.5"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M8,20 L8,4 M4.7,7.3 L8,4 L11.3,7.3" />
+        android:pathData="M8,20 L8,4 M3.5,15.5 L8,20" />
     <path
         android:strokeColor="#FFFFFFFF"
         android:strokeWidth="1.5"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M16,4 L16,20 M12.7,16.7 L16,20 L19.3,16.7" />
+        android:pathData="M16,4 L16,20 M16,4 L20.5,8.5" />
 </vector>
