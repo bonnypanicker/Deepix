@@ -34,6 +34,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.app.ActivityOptionsCompat
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.GravityCompat
 import androidx.core.view.ViewCompat
@@ -4810,7 +4811,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateDrawerState() {
         val inactive = Color.rgb(10, 10, 10)
-        val active = Color.rgb(17, 17, 17)
+        // Selected page wears a shade of the active accent, blended over the same dark base as
+        // the idle rows so the block stays one surface while following the theme palette.
+        val active = ColorUtils.blendARGB(inactive, DesignTokens.accent(this), 0.30f)
         binding.drawerCollection.setBackgroundColor(
             if (currentMode != Mode.Search && activeSection == Section.Collection) active else inactive
         )
