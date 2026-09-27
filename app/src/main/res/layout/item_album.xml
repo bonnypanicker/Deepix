@@ -18,22 +18,14 @@
             android:contentDescription="@null"
             android:scaleType="centerCrop" />
 
-        <TextView
-            android:id="@+id/smartBadge"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+        <com.devomind.gallerysearch.IndexingOrbView
+            android:id="@+id/smartOrb"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
             android:layout_gravity="top|end"
             android:layout_margin="6dp"
-            android:background="@drawable/search_filter_chip_active_bg"
-            android:includeFontPadding="false"
-            android:paddingStart="6dp"
-            android:paddingTop="2dp"
-            android:paddingEnd="6dp"
-            android:paddingBottom="2dp"
-            android:text="@string/ai_badge"
-            android:textAllCaps="true"
-            android:textColor="@color/metroTextPrimary"
-            android:textSize="10sp"
+            android:background="@drawable/search_section_icon_bg"
+            android:contentDescription="@string/ai_search"
             android:visibility="gone" />
     </FrameLayout>
 

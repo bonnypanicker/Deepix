@@ -1057,18 +1057,15 @@ class ImageAdapter(
                 height = coverHeight
             }
             binding.albumName.text = album.name
-            val countText = when {
-                album.isSmart -> "CLIP search"
-                album.count == 1 -> "1 item"
-                else -> "${album.count} items"
-            }
+            // Smart albums carry their member count like any other album, so one branch covers both.
+            val countText = if (album.count == 1) "1 item" else "${album.count} items"
             val showSize = !album.isSmart && showFolderSize
             binding.albumCount.text = if (showSize && album.sizeBytes > 0L) {
                 "$countText \u00b7 ${formatStorageSize(album.sizeBytes)}"
             } else {
                 countText
             }
-            binding.smartBadge.visibility = if (album.isSmart) View.VISIBLE else View.GONE
+            binding.smartOrb.visibility = if (album.isSmart) View.VISIBLE else View.GONE
             Glide.with(binding.albumCover.context)
                 .load(album.coverUri)
                 .format(DecodeFormat.PREFER_RGB_565)
