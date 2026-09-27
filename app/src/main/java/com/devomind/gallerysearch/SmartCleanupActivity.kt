@@ -211,7 +211,6 @@ class SmartCleanupActivity : AppCompatActivity() {
         binding.cleanupGrid.adapter = adapter
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
-        binding.refreshBtn.setOnClickListener { startScan(replace = true) }
         binding.selectAllBtn.setOnClickListener { toggleSelectAll() }
         compressibleSort = SortManager.optionFor(this, COMPRESSIBLE_SORT_SCOPE, SortOption.LargestFirst)
         binding.detailSortControl.setOnClickListener { showCompressibleSortMenu(it) }
@@ -249,7 +248,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         observeIndexing()
         observeCleanup()
         observeCompression()
-        if (!paused) startScan(replace = false)
+        if (!paused) startScan()
         updateScanControls()
     }
 
@@ -287,7 +286,7 @@ class SmartCleanupActivity : AppCompatActivity() {
 
     /**
      * Smart cleanup is live: it analyzes whatever is indexed right now, and refreshes
-     * automatically when background indexing finishes (or when the user taps refresh).
+     * automatically when background indexing finishes.
      */
     private fun observeIndexing() {
         WorkManager.getInstance(this)
@@ -328,19 +327,19 @@ class SmartCleanupActivity : AppCompatActivity() {
                 val progress = if (indexProgressTotal > 0) " ($indexProgressCurrent/$indexProgressTotal)" else ""
                 binding.indexingBannerText.text =
                     "Indexing is still running$progress. These results cover what's indexed so far — " +
-                        "they'll refresh automatically when it finishes, or tap ↻ to update now."
+                        "they'll refresh automatically when it finishes."
             }
             indexedCount in 1 until total -> {
                 binding.indexingBanner.visibility = View.VISIBLE
                 binding.indexingBannerText.text =
                     "$indexedCount of $total photos are indexed. Duplicate and category detection cover " +
-                        "indexed photos only — tap ↻ after indexing to update."
+                        "indexed photos only — they'll update automatically when indexing finishes."
             }
             indexedCount == 0 -> {
                 binding.indexingBanner.visibility = View.VISIBLE
                 binding.indexingBannerText.text =
                     "The AI index isn't built yet, so duplicate and category detection are limited. " +
-                        "Blur and quality checks still work. Tap ↻ as indexing progresses."
+                        "Blur and quality checks still work, and results update as indexing progresses."
             }
             else -> binding.indexingBanner.visibility = View.GONE
         }
@@ -350,17 +349,14 @@ class SmartCleanupActivity : AppCompatActivity() {
     // Background analysis (CleanupWorker) + live store loading
     // ---------------------------------------------------------------------------------------------
 
-    /** Enqueues the background scan. KEEP reuses an in-flight scan; REPLACE forces a fresh one. */
-    private fun startScan(replace: Boolean) {
+    /** Enqueues the background scan; KEEP reuses an in-flight scan. */
+    private fun startScan() {
         paused = false
         userStopped = false
         IndexPreferences.setCleanupPaused(this, false)
-        if (replace) cleanupStore.clear()
         val request = CleanupWorker.buildWorkRequest()
         WorkManager.getInstance(this).enqueueUniqueWork(
-            CleanupWorker.WorkName,
-            if (replace) androidx.work.ExistingWorkPolicy.REPLACE else androidx.work.ExistingWorkPolicy.KEEP,
-            request
+            CleanupWorker.WorkName, androidx.work.ExistingWorkPolicy.KEEP, request
         )
         updateScanControls()
     }
@@ -397,7 +393,6 @@ class SmartCleanupActivity : AppCompatActivity() {
     private fun updateScanControls() {
         val showRow = !userStopped && (scanRunning || (paused && !scanComplete && (progressTotal > 0 || progressDone > 0)))
         binding.progressRow.visibility = if (showRow) View.VISIBLE else View.GONE
-        binding.refreshBtn.isEnabled = !scanRunning
         binding.pauseResumeBtn.text = if (scanRunning) "Pause" else "Resume"
         if (progressTotal > 0) {
             binding.progressBar.max = progressTotal
