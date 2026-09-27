@@ -169,10 +169,6 @@ class MainActivity : AppCompatActivity() {
     private var searchLandingVisible = false
     private var currentDisplayedSearchResultCount = 0
     private var searchResultsMaster: List<PhotoSearchResult> = emptyList()
-    /** Search-only ordering; null means relevance (ranked by score), which browse listings have no equivalent of. */
-    private var currentSearchSort: SortOption? = null
-    private var showFilter = ShowFilter.All
-    private var lastSearchStatusText = ""
     private var imageSearchActive = false
     private var suppressSearchInput = false
     // "Alive" search bar: the empty-state hint crossfades through what search can do
@@ -563,7 +559,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, IndexingActivity::class.java))
         }
         binding.searchTrailingBtn.setOnClickListener {
-            if (currentMode == Mode.Search) showSortFilterSheet() else openSearch()
+            if (currentMode == Mode.Search) submitSearch() else openSearch()
         }
         binding.searchClearBtn.setOnClickListener {
             if (currentMode == Mode.Search) onSearchClear()
@@ -880,7 +876,6 @@ class MainActivity : AppCompatActivity() {
         }
         // -------------------- TRACK A (UI critical path) --------------
         lifecycleScope.launch {
-            setBusy("Loading gallery…")
             try {
                 // Repository constructors touch disk (prefs, filesDir) — keep them off the main thread.
                 val repo = withContext(Dispatchers.IO) { GalleryRepository(applicationContext) }
@@ -939,9 +934,6 @@ class MainActivity : AppCompatActivity() {
                     )
                     currentAlbum = null
                     lastProgressRefresh = -1
-                    binding.progressBar.visibility = View.GONE
-                    binding.statusText.text =
-                        indexedSummary(repo.indexedCount)
                     renderCurrentState()
                     firstFrameWasPreview = true
 
@@ -968,9 +960,6 @@ class MainActivity : AppCompatActivity() {
                 if (!firstFrameWasPreview) {
                     currentAlbum = null
                     lastProgressRefresh = -1
-                    binding.progressBar.visibility = View.GONE
-                    binding.statusText.text =
-                        indexedSummary(repo.indexedCount)
                     renderCurrentState()
                     if (openSafeAfterInitialRender) {
                         openSafeAfterInitialRender = false
@@ -986,7 +975,6 @@ class MainActivity : AppCompatActivity() {
                 tagUriMap = tagUris
                 primeMetadataIndexAsync()
             } catch (error: Throwable) {
-                binding.progressBar.visibility = View.GONE
                 showFatalError(error)
                 return@launch
             }
@@ -1391,7 +1379,6 @@ class MainActivity : AppCompatActivity() {
         currentMode = Mode.Browse
         pagedContext = null  // folder tree is not a paged timeline
         binding.searchPanel.visibility = View.GONE
-        binding.resultCount.text = ""
         updateTopBarForMode("folders")
         updateDrawerState()
         updateBottomPanelState()
@@ -1401,13 +1388,6 @@ class MainActivity : AppCompatActivity() {
         val roots = buildFolderTree(collectionItems, previousExpanded)
         folderTreeRoots = roots
         val cells = flattenFolderNodes(roots)
-        val folderCount = roots.sumOf { 1 + it.folderCount }
-        binding.resultCount.text = when {
-            folderCount == 1 && collectionItems.size == 1 -> "1 folder · 1 item"
-            folderCount == 1 -> "1 folder · ${collectionItems.size} items"
-            collectionItems.size == 1 -> "$folderCount folders · 1 item"
-            else -> "$folderCount folders · ${collectionItems.size} items"
-        }
         adapter.replaceCells(
             if (cells.isEmpty()) {
                 listOf(
@@ -1616,11 +1596,6 @@ class MainActivity : AppCompatActivity() {
         currentFolder = folder
         binding.searchPanel.visibility = View.GONE
         val items = folderDetailItems(folder)
-        binding.resultCount.text = when (items.size) {
-            0 -> ""
-            1 -> "1 item"
-            else -> "${items.size} items"
-        }
         updateTopBarForMode(folder.name)
         updateDrawerState()
         updateBottomPanelState()
@@ -1641,7 +1616,6 @@ class MainActivity : AppCompatActivity() {
         renderJob?.cancel()
         currentMode = Mode.Browse
         binding.searchPanel.visibility = View.GONE
-        binding.resultCount.text = ""
         updateTopBarForMode(title)
         updateDrawerState()
         updateBottomPanelState()
@@ -1704,11 +1678,35 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * The Albums-page order ([AlbumsSortScope]) over the current library. Shared by the Albums grid
+     * and the Albums search section so both list the same albums in the same sequence.
+     */
+    private fun albumComparator(option: SortOption): Comparator<GalleryRepository.Album> {
+        val albumDates = collectionItems.groupingBy { it.bucketId }
+            .fold(0L) { latest, item -> maxOf(latest, item.dateMillis) }
+        val smartDates = smartAlbums.associate { it.id to it.updatedAt }
+        // A smart album's "date" is when it was last rebuilt; a device album's is its newest photo.
+        fun dateOf(album: GalleryRepository.Album): Long =
+            smartDates[album.id] ?: albumDates[album.id] ?: 0L
+        return when (option) {
+            SortOption.NameAsc -> Comparator { first, second ->
+                String.CASE_INSENSITIVE_ORDER.compare(first.name, second.name)
+            }
+            SortOption.NameDesc -> Comparator { first, second ->
+                String.CASE_INSENSITIVE_ORDER.compare(second.name, first.name)
+            }
+            SortOption.OldestFirst -> compareBy<GalleryRepository.Album> { dateOf(it) }
+                .thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }
+            else -> compareByDescending<GalleryRepository.Album> { dateOf(it) }
+                .thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }
+        }
+    }
+
     private fun renderAlbums() {
         currentMode = Mode.Browse
         pagedContext = null  // albums grid is not a paged timeline
         binding.searchPanel.visibility = View.GONE
-        binding.resultCount.text = ""
 
         // Never prune pins against an empty/partial album list — that erases saved pins.
         if (albums.isNotEmpty()) {
@@ -1722,25 +1720,8 @@ class MainActivity : AppCompatActivity() {
         val albumById = (albums + smartById.values).associateBy { it.id }
 
         val pinnedAlbums = pinnedIds.mapNotNull { albumById[it] }
-        val albumDates = collectionItems.groupingBy { it.bucketId }
-            .fold(0L) { latest, item -> maxOf(latest, item.dateMillis) }
-        val smartDates = smartAlbums.associate { it.id to it.updatedAt }
         val currentSort = SortManager.optionFor(this, AlbumsSortScope)
-        val albumComparator = when (currentSort) {
-            SortOption.NameAsc -> Comparator { first, second ->
-                String.CASE_INSENSITIVE_ORDER.compare(first.name, second.name)
-            }
-            SortOption.NameDesc -> Comparator { first, second ->
-                String.CASE_INSENSITIVE_ORDER.compare(second.name, first.name)
-            }
-            SortOption.OldestFirst -> compareBy<GalleryRepository.Album> {
-                smartDates[it.id] ?: albumDates[it.id] ?: 0L
-            }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }
-            else -> compareByDescending<GalleryRepository.Album> {
-                smartDates[it.id] ?: albumDates[it.id] ?: 0L
-            }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }
-        }
-        val normalAlbums = albums.filter { it.id !in pinnedIds }.sortedWith(albumComparator)
+        val normalAlbums = albums.filter { it.id !in pinnedIds }.sortedWith(albumComparator(currentSort))
 
         val cells = mutableListOf<GalleryCell>()
         // Onboarding: nudge first-time users to try smart albums (until dismissed).
@@ -1820,7 +1801,6 @@ class MainActivity : AppCompatActivity() {
         currentAlbum = album
         binding.searchPanel.visibility = View.GONE
         val items = albumDetailItems
-        binding.resultCount.text = if (items.isEmpty()) "" else if (items.size == 1) "1 item" else "${items.size} items"
         updateTopBarForMode(album.name)
         updateDrawerState()
         updateBottomPanelState()
@@ -1864,7 +1844,6 @@ class MainActivity : AppCompatActivity() {
         binding.searchPanel.visibility = View.VISIBLE
         binding.screenTitle.visibility = View.GONE
         binding.searchBox.visibility = View.VISIBLE
-        binding.resultCount.text = ""
         binding.imageGrid.removeCallbacks(fastScrollVisibilityRunnable)
         binding.fastScrollIndicator.visibility = View.GONE
         if (imageSearchActive) {
@@ -1873,7 +1852,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             startSearchHintCycle()
         }
-        updateSearchTrailingIcon()
+        syncSearchClearButton()
         binding.searchInput.requestFocus()
         updateSearchMetaText()
         updateDrawerState()
@@ -1893,18 +1872,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateSearchTrailingIcon() {
-        val isSearching = currentMode == Mode.Search
-        val res = if (isSearching) {
-            R.drawable.ic_fluent_filter_24_regular
-        } else {
-            R.drawable.ic_fluent_search_24_regular
-        }
-        binding.searchTrailingBtn.setImageResource(res)
-        binding.searchTrailingBtn.contentDescription = getString(
-            if (isSearching) R.string.sort_filter else R.string.search
-        )
-        binding.searchClearBtn.visibility = if (isSearching) View.VISIBLE else View.GONE
+    /** The trailing button is always the search glyph; only the in-box clear button tracks mode. */
+    private fun syncSearchClearButton() {
+        binding.searchClearBtn.visibility =
+            if (currentMode == Mode.Search) View.VISIBLE else View.GONE
     }
 
     private fun closeSearch(clearQuery: Boolean) {
@@ -1925,7 +1896,7 @@ class MainActivity : AppCompatActivity() {
         searchEmptyDataLoaded = false
         currentMode = if (currentAlbum != null) Mode.AlbumDetail else Mode.Browse
         startSearchHintCycle()
-        updateSearchTrailingIcon()
+        syncSearchClearButton()
         renderCurrentState()
     }
 
@@ -2010,15 +1981,11 @@ class MainActivity : AppCompatActivity() {
         if (!parsedQuery.hasAnyCriteria) {
             renderSearchEmptyState()
             resetGridToTop()
-            binding.resultCount.text = ""
-            binding.statusText.text = indexedSummary(repo.indexedCount)
             return
         }
 
         currentMode = Mode.Search
         clearSearchPresentationForPendingInput()
-        binding.progressBar.visibility = View.VISIBLE
-        binding.statusText.text = "Searching..."
         val favoriteKeys = favoritesStore.all()
 
         searchJob = lifecycleScope.launch {
@@ -2070,7 +2037,6 @@ class MainActivity : AppCompatActivity() {
                         query = query,
                         results = results,
                         emptyText = "No matching results",
-                        statusText = indexedSummary(repo.indexedCount),
                         peopleResultUris = poolItems.mapTo(LinkedHashSet()) { it.uri.toString() }
                     )
                     return@launch
@@ -2088,10 +2054,8 @@ class MainActivity : AppCompatActivity() {
                     renderSearchResults(
                         query = query,
                         results = emptyList(),
-                        emptyText = "No photos match the active filters",
-                        statusText = "No filter matches"
+                        emptyText = "No photos match the active filters"
                     )
-                    binding.progressBar.visibility = View.GONE
                     return@launch
                 }
 
@@ -2113,7 +2077,6 @@ class MainActivity : AppCompatActivity() {
                             buildMergedPhotoSearchResults(filteredItems, metadataHits, emptyList())
                         },
                         emptyText = "No matching results",
-                        statusText = indexedSummary(repo.indexedCount),
                         personScoped = personScoped,
                         forceSmartSection = personScoped
                     )
@@ -2139,7 +2102,6 @@ class MainActivity : AppCompatActivity() {
                         query = query,
                         results = interimResults,
                         emptyText = "No matching results",
-                        statusText = "Searching with AI…",
                         preserveSelection = true,
                         personScoped = personScoped,
                         forceSmartSection = personScoped
@@ -2148,7 +2110,9 @@ class MainActivity : AppCompatActivity() {
                     clearSearchSections()
                     adapter.replaceCells(listOf(GalleryCell.Loading(getString(R.string.search_loading))))
                     resetGridToTop()
-                    setSearchResultSummary(getString(R.string.search_loading))
+                    // Only the centered loading cell carries the label; keeping the summary empty
+                    // collapses the header row above it so "Searching your library" isn't drawn twice.
+                    setSearchResultSummary("")
                 }
 
                 val semanticResults = if (textEncoder == null) {
@@ -2169,7 +2133,6 @@ class MainActivity : AppCompatActivity() {
                     query = query,
                     results = finalResults,
                     emptyText = "No matching results",
-                    statusText = indexedSummary(repo.indexedCount),
                     preserveSelection = interimResults.isNotEmpty(),
                     personScoped = personScoped,
                     forceSmartSection = personScoped
@@ -2196,11 +2159,7 @@ class MainActivity : AppCompatActivity() {
                         )
                     )
                     resetGridToTop()
-                    binding.resultCount.text = ""
-                    binding.statusText.text = "Search failed"
                 }
-            } finally {
-                binding.progressBar.visibility = View.GONE
             }
         }
     }
@@ -2679,7 +2638,6 @@ class MainActivity : AppCompatActivity() {
         query: String,
         results: List<PhotoSearchResult>,
         emptyText: String,
-        statusText: String,
         preserveSelection: Boolean = false,
         /** Person-scoped sentence: every result is already person-filtered — hide the People pill. */
         personScoped: Boolean = false,
@@ -2690,7 +2648,6 @@ class MainActivity : AppCompatActivity() {
     ) {
         val visibleResults = results.filterNot { it.item.uri in hiddenDeletedUris }
         searchResultsMaster = visibleResults
-        lastSearchStatusText = statusText
         currentDisplayedSearchResultCount = 0
         searchSectionResults = buildSearchSections(
             query = query,
@@ -2707,7 +2664,6 @@ class MainActivity : AppCompatActivity() {
             adapter.replaceCells(listOf(searchEmptyCell(emptyText)))
             resetGridToTop()
             setSearchResultSummary(getString(R.string.no_results))
-            binding.statusText.text = statusText
             return
         }
 
@@ -2757,7 +2713,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             getString(R.string.photos_count_summary, total)
         })
-        binding.statusText.text = lastSearchStatusText
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -2994,33 +2949,39 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Renders search results. Relevance and non-date orders keep the flat grid with infinite
-     * pagination; date orders group results under month headers (the reference's philosophy).
+     * Renders the open search section's results in its own sort scope. Date orders group results
+     * under day headers; the rest keep the flat grid with infinite pagination. Either way the first
+     * header — or a slim row above a headerless grid — carries the sort chip, like the browse listings.
      */
     private fun applySortAndShow() {
-        fullSearchResults = sortResults(fullSearchResults, currentSearchSort)
+        val sort = searchSortOption()
+        // Re-derive from the section's own ranked list every time: fullSearchResults is already
+        // shuffled by whatever order was applied last, so Relevance can't be restored from it.
+        val ranked = searchSectionResults.firstOrNull { it.section == selectedSearchSection }?.results
+            ?: fullSearchResults
+        fullSearchResults = sortResults(ranked, sort)
         currentDisplayedSearchResultCount = 0
 
-        if (currentSearchSort?.dateOrdered == true) {
+        val cells = if (sort.dateOrdered) {
             // Date-grouped: render all (capped) with day headers; pagination disabled.
             val capped = fullSearchResults.take(SEARCH_DISPLAY_CAP)
             currentDisplayedSearchResultCount = fullSearchResults.size
-            adapter.replaceCells(buildSearchTimelineCells(capped))
+            buildSearchTimelineCells(capped)
         } else {
             val firstPage = fullSearchResults.take(SEARCH_PAGE_SIZE)
             currentDisplayedSearchResultCount = firstPage.size
-            adapter.replaceCells(buildSearchPhotoCells(firstPage))
+            buildSearchPhotoCells(firstPage)
         }
+        adapter.replaceCells(withSortAffordance(cells, sort.label))
         resetGridToTop()
         updateFastScrollVisibility()
         binding.fastScrollIndicator.syncToRecyclerView()
         updateSearchResultCount()
-        binding.statusText.text = lastSearchStatusText
     }
 
     /**
-     * Flat ranked results (Relevance). In collage mode they run through the justified-rows
-     * builder so search matches the browse collage; in grid mode they stay 1-span photos.
+     * Flat result grid for a sorted search section. In collage mode it runs through the
+     * justified-rows builder so search matches the browse collage; in grid mode it stays 1-span photos.
      */
     private fun buildSearchPhotoCells(results: List<PhotoSearchResult>): List<GalleryCell> {
         if (!adapter.useCollageLayout) {
@@ -3075,11 +3036,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Orders search results. [option] null keeps the score ranking; otherwise the shared
-     * [MediaSorter] orders the underlying items and the results follow.
+     * Orders search results with the listing [option]. [SortOption.Relevance] keeps the score
+     * ranking the results arrive in, which [MediaSorter] has no way to reproduce.
      */
-    private fun sortResults(results: List<PhotoSearchResult>, option: SortOption?): List<PhotoSearchResult> {
-        if (option == null) return results // already ranked by score
+    private fun sortResults(results: List<PhotoSearchResult>, option: SortOption): List<PhotoSearchResult> {
+        if (option == SortOption.Relevance) return results
         val byUri = results.associateBy { it.item.uri }
         return MediaSorter.sort(results.map { it.item }, option).mapNotNull { byUri[it.uri] }
     }
@@ -3111,7 +3072,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
         activeFilters.clear()
-        showFilter = ShowFilter.All
         imageSearchActive = false
         clearImageSearchThumb()
         suppressSearchInput = true
@@ -3122,128 +3082,6 @@ class MainActivity : AppCompatActivity() {
         resetGridToTop()
         setSearchResultSummary("")
         binding.searchInput.requestFocus()
-    }
-
-    /** Metro-style bottom sheet: sort order, match engine, and a quick type filter. */
-    private fun showSortFilterSheet() {
-        val view = layoutInflater.inflate(R.layout.sheet_search_filter, null)
-        val container = view.findViewById<LinearLayout>(R.id.sheetContainer)
-
-        var pendingSort = currentSearchSort
-        var pendingMode = searchMode
-        var pendingShow = showFilter
-
-        // We rebuild the whole option list whenever a selection changes so checkmarks update.
-        var rebuild: () -> Unit = {}
-        rebuild = {
-            container.removeAllViews()
-            addSheetHeader(container, "SORT BY")
-            addSheetOption(container, "Relevance", pendingSort == null) {
-                pendingSort = null
-                rebuild()
-            }
-            SortOption.MEDIA_OPTIONS.forEach { option ->
-                addSheetOption(container, option.label, pendingSort == option) {
-                    pendingSort = option
-                    rebuild()
-                }
-            }
-            addSheetHeader(container, "MATCH")
-            listOf(
-                SearchMode.Hybrid to "Smart + text",
-                SearchMode.AiOnly to "Smart only",
-                SearchMode.MetadataOnly to "Text only"
-            ).forEach { (mode, label) ->
-                addSheetOption(container, label, pendingMode == mode) {
-                    pendingMode = mode
-                    rebuild()
-                }
-            }
-            addSheetHeader(container, "SHOW")
-            ShowFilter.entries.forEach { show ->
-                addSheetOption(container, show.label, pendingShow == show) {
-                    pendingShow = show
-                    rebuild()
-                }
-            }
-        }
-        rebuild()
-
-        val dialog = AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog).setView(view).create()
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-        dialog.window?.setGravity(android.view.Gravity.BOTTOM)
-        dialog.window?.setLayout(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-
-        view.findViewById<TextView>(R.id.sheetCancel).setOnClickListener { dialog.dismiss() }
-        view.findViewById<TextView>(R.id.sheetApply).setOnClickListener {
-            dialog.dismiss()
-            applySheetSelections(pendingSort, pendingMode, pendingShow)
-        }
-        dialog.show()
-    }
-
-    private fun addSheetHeader(container: LinearLayout, title: String) {
-        container.addView(TextView(this).apply {
-            text = title
-            textSize = 11f
-            isAllCaps = true
-            letterSpacing = 0.06f
-            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.metroTextTertiary))
-            setPadding(dp(20), dp(16), dp(20), dp(6))
-        })
-    }
-
-    private fun addSheetOption(container: LinearLayout, label: String, selected: Boolean, onClick: () -> Unit) {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            background = ContextCompat.getDrawable(this@MainActivity, R.drawable.metro_row_pressed)
-            isClickable = true
-            isFocusable = true
-            setPadding(dp(20), dp(13), dp(20), dp(13))
-            setOnClickListener { onClick() }
-        }
-        row.addView(TextView(this).apply {
-            text = label
-            textSize = 15f
-            includeFontPadding = false
-            setTextColor(if (selected) DesignTokens.accent(this@MainActivity) else Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        })
-        row.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_fluent_checkmark_24_regular)
-            imageTintList = ColorStateList.valueOf(DesignTokens.accent(this@MainActivity))
-            layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
-            visibility = if (selected) View.VISIBLE else View.INVISIBLE
-        })
-        container.addView(row)
-    }
-
-    private fun applySheetSelections(sort: SortOption?, mode: SearchMode, show: ShowFilter) {
-        currentSearchSort = sort
-        searchMode = mode
-        showFilter = show
-        if (imageSearchActive) {
-            // Re-sort the existing similar-image results without re-running the search.
-            if (searchResultsMaster.isNotEmpty()) applySortAndShow()
-            return
-        }
-        if (effectiveQuery().isBlank()) {
-            renderSearchEmptyState()
-            resetGridToTop()
-            setSearchResultSummary("")
-        } else {
-            submitSearch()
-        }
-    }
-
-    private fun showFilterToken(): String = when (showFilter) {
-        ShowFilter.All -> ""
-        ShowFilter.Favorites -> "fav=yes"
-        ShowFilter.Screenshots -> "is=screenshot"
     }
 
     private fun paginateSearchResults() {
@@ -3265,7 +3103,6 @@ class MainActivity : AppCompatActivity() {
     /** Image-to-image search across the whole library using the CLIP image embedding. */
     private fun searchSimilarImage(uri: Uri, cropRect: FloatArray? = null) {
         val repo = repository ?: return
-        val name = imageItems.firstOrNull { it.uri == uri }?.displayName ?: "image"
         val isRegion = cropRect != null && cropRect.size >= 4
 
         currentMode = Mode.Search
@@ -3279,17 +3116,15 @@ class MainActivity : AppCompatActivity() {
         binding.fastScrollIndicator.visibility = View.GONE
         binding.screenTitle.visibility = View.GONE
         binding.searchBox.visibility = View.VISIBLE
-        updateSearchTrailingIcon()
+        syncSearchClearButton()
         updateDrawerState()
         updateBottomPanelState()
         updateSearchPillState()
-        binding.progressBar.visibility = View.VISIBLE
-        binding.statusText.text = if (isRegion) "Finding photos similar to this region…" else "Finding similar photos…"
-        binding.resultCount.text = ""
         // Consistent with text search: a loading screen while the embedding pass runs.
         adapter.replaceCells(listOf(GalleryCell.Loading(getString(R.string.search_loading))))
         resetGridToTop()
-        setSearchResultSummary(getString(R.string.search_loading))
+        // The centered loading cell owns the label; the header row above it stays collapsed.
+        setSearchResultSummary("")
 
         searchJob?.cancel()
         searchJob = lifecycleScope.launch {
@@ -3307,11 +3142,10 @@ class MainActivity : AppCompatActivity() {
                 } ?: return@withContext null
                 repo.searchByEmbedding(embedding, excludeUri = uri.toString(), floor = SIMILAR_IMAGE_FLOOR, limit = 500)
             }
-            binding.progressBar.visibility = View.GONE
             if (!imageSearchActive || currentMode != Mode.Search) return@launch
             if (hits == null) {
                 MetroBanner.show(this@MainActivity, "Couldn't analyze this image yet — try after indexing")
-                renderSearchResults("", emptyList(), "No similar photos", "Similar photos")
+                renderSearchResults("", emptyList(), "No similar photos")
                 return@launch
             }
             val results = hits.mapNotNull { hit ->
@@ -3319,9 +3153,7 @@ class MainActivity : AppCompatActivity() {
                     PhotoSearchResult(item, SearchSources(ai = true, metadata = false), hit.score)
                 }
             }
-            currentSearchSort = null
-            val title = if (isRegion) "Similar to region" else "Similar to $name"
-            renderSearchResults("", results, "No similar photos found", title)
+            renderSearchResults("", results, "No similar photos found")
         }
     }
 
@@ -3338,10 +3170,10 @@ class MainActivity : AppCompatActivity() {
             currentAlbum?.id == albumId
     }
 
-    /** Composes free text, selected filters, and the media filter into the search query. */
+    /** Composes the free text and the selected structured filters into the search query. */
     private fun effectiveQuery(): String {
         val text = binding.searchInput.text?.toString()?.trim().orEmpty()
-        return (listOf(text) + activeFilters + listOf(showFilterToken()))
+        return (listOf(text) + activeFilters)
             .filter { it.isNotBlank() }
             .joinToString(" ")
             .trim()
@@ -3356,7 +3188,6 @@ class MainActivity : AppCompatActivity() {
             clearSearchSections()
             renderSearchEmptyState()
             resetGridToTop()
-            binding.resultCount.text = ""
         } else {
             submitSearch()
         }
@@ -3414,13 +3245,14 @@ class MainActivity : AppCompatActivity() {
         clearSearchSections()
         if (effectiveQuery().isBlank() && !imageSearchActive) {
             renderSearchEmptyState()
-            setSearchResultSummary("")
-            binding.resultCount.text = ""
         } else {
             adapter.replaceCells(listOf(GalleryCell.Loading(getString(R.string.search_loading))))
-            setSearchResultSummary(getString(R.string.search_loading))
-            binding.statusText.text = "Searching…"
+            // One label only — the centered loading cell, so it stays the single owner of
+            // "Searching your library" while the query is pending.
         }
+        // Collapses the header row above the grid: there is no count to show yet, and it can't
+        // go stale if the search then fails.
+        setSearchResultSummary("")
     }
 
     private fun openSearchSection(section: SearchSection) {
@@ -3432,14 +3264,10 @@ class MainActivity : AppCompatActivity() {
             // every photo inside a matching album into a search hit.
             fullSearchResults = emptyList()
             currentDisplayedSearchResultCount = 0
-            adapter.replaceCells(group.albums.map(GalleryCell::AlbumCell))
+            val albumSort = SortManager.optionFor(this, AlbumsSortScope)
+            val cells = group.albums.sortedWith(albumComparator(albumSort)).map(GalleryCell::AlbumCell)
+            adapter.replaceCells(withSortAffordance(cells, albumSort.label))
             resetGridToTop()
-            binding.resultCount.text = resources.getQuantityString(
-                R.plurals.result_count,
-                group.albums.size,
-                group.albums.size
-            )
-            binding.statusText.text = lastSearchStatusText
             return
         }
         fullSearchResults = group.results
@@ -3607,7 +3435,6 @@ class MainActivity : AppCompatActivity() {
         if (effectiveQuery().isBlank()) {
             renderSearchEmptyState()
             resetGridToTop()
-            binding.resultCount.text = ""
         } else {
             submitSearch()
         }
@@ -3688,11 +3515,6 @@ class MainActivity : AppCompatActivity() {
         return 1f - (index.toFloat() / total.toFloat())
     }
 
-    private fun setBusy(message: String) {
-        binding.statusText.text = message
-        binding.progressBar.visibility = View.VISIBLE
-    }
-
     private fun openAlbum(album: GalleryRepository.Album) {
         if (album.id == PeopleAlbumId) {
             startActivity(Intent(this, PersonAlbumsActivity::class.java))
@@ -3743,15 +3565,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleSmartAlbumRefresh(smart: SmartAlbum) {
-        binding.progressBar.visibility = View.VISIBLE
-        binding.statusText.text = "Refreshing…"
         lifecycleScope.launch {
             refreshSmartAlbum(smart)
-            binding.progressBar.visibility = View.GONE
-            val repo = repository
-            val summary = if (repo != null)
-                indexedSummary(repo.indexedCount) else ""
-            binding.statusText.text = summary
             if (currentMode == Mode.SmartAlbumDetail && currentSmartAlbum?.id == smart.id) {
                 val refreshed = smartAlbumStore.get(smart.id)
                 if (refreshed != null) renderSmartAlbumDetail(refreshed)
@@ -3831,13 +3646,6 @@ class MainActivity : AppCompatActivity() {
             .filter { it.uri.toString() in uriOrder.keys }
             .sortedBy { uriOrder[it.uri.toString()] ?: Int.MAX_VALUE }
 
-        binding.resultCount.text = if (items.isEmpty()) {
-            ""
-        } else {
-            resources.getQuantityString(R.plurals.result_count, items.size, items.size)
-        }
-        binding.progressBar.visibility = View.GONE
-        binding.statusText.text = indexedSummary(repository?.indexedCount ?: 0)
         renderPagedTimeline(
             items,
             GalleryCell.Empty(
@@ -3896,9 +3704,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createSmartAlbum(name: String, prompt: String) {
-        val repo = repository ?: return
-        binding.progressBar.visibility = View.VISIBLE
-        binding.statusText.text = "Creating smart album…"
+        if (repository == null) return
         lifecycleScope.launch {
             val resultUris = runSearchPipeline(
                 query = prompt,
@@ -3919,8 +3725,6 @@ class MainActivity : AppCompatActivity() {
             smartAlbumStore.upsert(album)
             smartAlbums = smartAlbumStore.getAll()
             albumPinStore.pin(album.id)
-            binding.progressBar.visibility = View.GONE
-            binding.statusText.text = indexedSummary(repo.indexedCount)
             if (resultUris.isEmpty()) {
                 MetroBanner.show(this@MainActivity, "No matches yet — you can refresh later")
             }
@@ -4424,7 +4228,6 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     currentAlbum = currentAlbum?.let { current -> albums.firstOrNull { it.id == current.id } }
-                    binding.statusText.text = indexedSummary(repo.indexedCount)
                     val pinnedAlbum = currentAlbum
                     if (!reRender) {
                         // The grid was already updated optimistically (delete flows). Re-rendering here
@@ -4549,7 +4352,6 @@ class MainActivity : AppCompatActivity() {
                         maybeRefreshLiveIndex(current)
                     }
                     WorkInfo.State.SUCCEEDED -> {
-                        binding.progressBar.visibility = View.GONE
                         if (IndexPreferences.isIndexPaused(this)) {
                             updateIndexingRow()
                             refreshSearchEmptyStateIfVisible()
@@ -4560,11 +4362,7 @@ class MainActivity : AppCompatActivity() {
                         MetroBanner.show(this, "Indexing complete — AI search is ready")
                     }
                     WorkInfo.State.FAILED -> {
-                        binding.progressBar.visibility = View.GONE
                         MetroBanner.show(this, "Indexing failed")
-                    }
-                    WorkInfo.State.CANCELLED -> {
-                        binding.progressBar.visibility = View.GONE
                     }
                 }
                 updateIndexingRow()
@@ -4637,11 +4435,6 @@ class MainActivity : AppCompatActivity() {
                     refreshSearchEmptyStateIfVisible()
                 }
             }
-    }
-
-    private fun indexedSummary(indexedCount: Int): String {
-        val scoped = !IndexScopeStore.isAllFolders(applicationContext)
-        return if (scoped) "$indexedCount indexed · selected folders" else "$indexedCount indexed"
     }
 
     private fun maybeRefreshLiveIndex(current: Int) {
@@ -4771,13 +4564,13 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * The paging context key of the current listing, which doubles as the sort-preference scope.
-     * Null on screens that don't sort media (albums grid, folder tree, search).
+     * Null on screens that don't sort media (albums grid, folder tree).
      */
     private fun currentScopeKey(): String? = when (currentMode) {
         Mode.AlbumDetail -> currentAlbum?.let { "album:${it.id}" }
         Mode.FolderDetail -> currentFolder?.let { "folder:${it.path}" }
         Mode.SmartAlbumDetail -> currentSmartAlbum?.let { "smart:${it.id}" }
-        Mode.Search -> null
+        Mode.Search -> searchSortScope()
         Mode.Browse -> when (activeSection) {
             Section.Collection, Section.Videos, Section.Favorites -> "section:$activeSection"
             Section.Albums, Section.Folders -> null
@@ -4785,16 +4578,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Header-level sort chip click. In the Albums section the chip lives on the "OTHERS" header and
-     * uses album-specific options; everywhere else it delegates to the media sort menu.
+     * Header-level sort chip click. Album tiles — on the Albums section and in the Albums search
+     * section — use the album orders; every other listing uses the media orders.
      */
     private fun onHeaderSortClick(anchor: View) {
-        if (currentMode == Mode.Browse && activeSection == Section.Albums) {
-            showAlbumSortMenu(anchor)
-        } else {
-            showSortMenu(anchor)
-        }
+        val albumsListing = (currentMode == Mode.Browse && activeSection == Section.Albums) ||
+            (currentMode == Mode.Search && selectedSearchSection == SearchSection.Albums)
+        if (albumsListing) showAlbumSortMenu(anchor) else showSortMenu(anchor)
     }
+
+    /**
+     * Each search section keeps its own order, the way each browse section does. Smart is the only
+     * one with a ranking of its own, so it alone offers Relevance — and opens on it.
+     */
+    private fun searchSortScope(): String? =
+        selectedSearchSection?.let { "$SearchSortScopePrefix${it.name}" }
+
+    private fun searchHasRelevance(): Boolean =
+        currentMode == Mode.Search && selectedSearchSection == SearchSection.Smart
+
+    private fun searchSortOptions(): List<SortOption> =
+        if (searchHasRelevance()) SortOption.SEARCH_OPTIONS else SortOption.MEDIA_OPTIONS
+
+    private fun searchSortOption(): SortOption = SortManager.optionFor(
+        this,
+        searchSortScope(),
+        if (searchHasRelevance()) SortOption.Relevance else null
+    )
 
     /**
      * Opens the sort dropdown for the active listing. The scope is read at click time rather than
@@ -4802,10 +4612,16 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showSortMenu(anchor: View) {
         val scopeKey = currentScopeKey() ?: return
-        val current = SortManager.optionFor(this, scopeKey)
-        SortMenu.show(anchor, current, SortOption.MEDIA_OPTIONS) { picked ->
+        // Smart opens on the engine's ranking and offers it back; every other listing opens on
+        // the global order.
+        val searching = currentMode == Mode.Search
+        val current = if (searching) searchSortOption() else SortManager.optionFor(this, scopeKey)
+        val options = if (searching) searchSortOptions() else SortOption.MEDIA_OPTIONS
+        SortMenu.show(anchor, current, options) { picked ->
             SortManager.setOption(this, scopeKey, picked)
-            renderCurrentState()
+            // A search section is its own result set — re-order it in place instead of re-rendering
+            // the browse listing that happens to sit behind it.
+            if (searching) applySortAndShow() else renderCurrentState()
         }
     }
 
@@ -4959,7 +4775,8 @@ class MainActivity : AppCompatActivity() {
         val current = SortManager.optionFor(this, AlbumsSortScope)
         SortMenu.show(anchor, current, SortOption.ALBUM_OPTIONS) { picked ->
             SortManager.setOption(this, AlbumsSortScope, picked)
-            renderAlbums()
+            // The same order drives the Albums search section, so re-open it in place there.
+            if (currentMode == Mode.Search) openSearchSection(SearchSection.Albums) else renderAlbums()
         }
     }
 
@@ -5051,6 +4868,8 @@ class MainActivity : AppCompatActivity() {
         private const val TAG = "MainActivity"
         private const val STATE_SECTION = "state_section"
         private const val AlbumsSortScope = "section:Albums"
+        // Prefix of every search section's own sort scope, e.g. "search:Smart".
+        private const val SearchSortScopePrefix = "search:"
         private const val INDEX_WORK_NAME = "gallery_background_index"
         private const val PeopleAlbumId = "virtual:people"
         private const val MinPeopleFaces = 5
@@ -5100,11 +4919,5 @@ class MainActivity : AppCompatActivity() {
         Hybrid,
         AiOnly,
         MetadataOnly
-    }
-
-    private enum class ShowFilter(val label: String) {
-        All("All results"),
-        Favorites("Favorites only"),
-        Screenshots("Screenshots only")
     }
 }

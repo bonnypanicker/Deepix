@@ -17,6 +17,9 @@ object MediaSorter {
     ): List<GalleryRepository.MediaItem> {
         if (items.size < 2) return items
         return when (option) {
+            // Score order lives on the search results, not on a media item — callers that have the
+            // ranked list keep it as-is; nothing here can reproduce it.
+            SortOption.Relevance -> items
             SortOption.NameAsc -> sortByName(items, descending = false)
             SortOption.NameDesc -> sortByName(items, descending = true)
             SortOption.NewestFirst -> items.sortedWith(byLong(descending = true) { it.dateMillis })

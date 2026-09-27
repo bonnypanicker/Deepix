@@ -627,43 +627,5 @@
                 </LinearLayout>
             </LinearLayout>
         </ScrollView>
-
-        <TextView
-            android:id="@+id/statusText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:accessibilityLiveRegion="polite"
-            android:includeFontPadding="false"
-            android:paddingStart="24dp"
-            android:paddingTop="24dp"
-            android:paddingEnd="24dp"
-            android:text="@string/waiting_permission"
-            android:textAllCaps="true"
-            android:textColor="@color/metroTextSecondary"
-            android:textSize="12sp" />
-
-        <ProgressBar
-            android:id="@+id/progressBar"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="2dp"
-            android:layout_marginStart="24dp"
-            android:layout_marginTop="10dp"
-            android:layout_marginEnd="24dp"
-            android:indeterminate="true"
-            android:indeterminateTint="?attr/accentColor"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/resultCount"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:includeFontPadding="false"
-            android:paddingStart="24dp"
-            android:paddingTop="14dp"
-            android:paddingEnd="24dp"
-            android:paddingBottom="16dp"
-            android:textColor="?attr/accentColorLight"
-            android:textSize="12sp" />
     </LinearLayout>
 </androidx.drawerlayout.widget.DrawerLayout>
