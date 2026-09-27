@@ -4338,8 +4338,10 @@ class MainActivity : AppCompatActivity() {
                 indexQueued = work.state == WorkInfo.State.ENQUEUED || work.state == WorkInfo.State.BLOCKED
                 binding.searchSparkle.setIndexing(work.state == WorkInfo.State.RUNNING)
                 when (work.state) {
+                    // CANCELLED is the pause path; its progress is stale like a re-queued run's.
                     WorkInfo.State.ENQUEUED,
-                    WorkInfo.State.BLOCKED -> {
+                    WorkInfo.State.BLOCKED,
+                    WorkInfo.State.CANCELLED -> {
                         // Progress from the previous run is stale once work is re-queued.
                         indexProgressCurrent = 0
                         indexProgressTotal = 0
