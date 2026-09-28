@@ -243,6 +243,9 @@ class MainActivity : AppCompatActivity() {
     private var pagedPrefixCount = 0            // non-timeline cells prepended (e.g. pinned header)
     // Day headers only make sense while the list is in date order; name/size orders go flat.
     private var pagedDateOrdered = true
+    // Incremented only by a real user/content scroll. Async renders capture this before work
+    // starts so a late completion cannot pull an active fling back to the first item.
+    private var gridScrollRevision = 0L
 
     // Collage thumbnail scale (1..5); adjustable by pinch gesture + Settings. Cached here so the
     // justified-rows builder doesn't hit SharedPreferences per day-row.
@@ -474,6 +477,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.imageGrid.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                if (dy != 0) gridScrollRevision++
                 if (dy <= 0) return
                 val layoutManager = rv.layoutManager as GridLayoutManager
                 val lastVisible = layoutManager.findLastVisibleItemPosition()
@@ -2352,6 +2356,7 @@ class MainActivity : AppCompatActivity() {
         dateSorted: Boolean = false
     ) {
         renderJob?.cancel()
+        val scrollRevisionAtRenderStart = gridScrollRevision
         val sortOption = SortManager.optionFor(this, scopeKey)
         val contextKey = "$scopeKey|${sortOption.key}"
         pagedItems = emptyList()
@@ -2365,7 +2370,7 @@ class MainActivity : AppCompatActivity() {
         if (items.isEmpty()) {
             adapter.replaceCells(prefixCells + emptyCell)
             pagedContext = null
-            resetGridToTop()
+            resetGridToTop(scrollRevisionAtRenderStart)
             updateFastScrollVisibility()
             binding.fastScrollIndicator.syncToRecyclerView()
             return
@@ -2390,7 +2395,7 @@ class MainActivity : AppCompatActivity() {
             pagedDisplayedCount = page.end
             pagedLastDay = page.lastDay
             adapter.replaceCells(prefixCells + withSortAffordance(page.cells, sortOption.label))
-            resetGridToTop()
+            resetGridToTop(scrollRevisionAtRenderStart)
             updateFastScrollVisibility()
             binding.fastScrollIndicator.syncToRecyclerView()
         }
@@ -3455,7 +3460,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun resetGridToTop() {
+    private fun resetGridToTop(expectedScrollRevision: Long? = null) {
+        // A timeline render can take long enough for the user to start scrolling the previous
+        // content. In that case the newer content may still be applied, but it must not reset
+        // their viewport once the asynchronous build finishes.
+        if (expectedScrollRevision != null && gridScrollRevision != expectedScrollRevision) return
+        val resetRevision = gridScrollRevision
         // Clear GridLayoutManager's span caches so a freshly replaced cell list
         // lays out with the correct span sizes on the very first pass (otherwise
         // collage tiles briefly render with stale span widths).
@@ -3468,6 +3478,11 @@ class MainActivity : AppCompatActivity() {
         binding.imageGrid.stopScroll()
         binding.imageGrid.post {
             if (!binding.imageGrid.isAttachedToWindow) return@post
+            if (gridScrollRevision != resetRevision) {
+                binding.fastScrollIndicator.syncToRecyclerView()
+                dismissLoadingOverlay()
+                return@post
+            }
             binding.imageGrid.scrollToPosition(0)
             binding.fastScrollIndicator.syncToRecyclerView()
             dismissLoadingOverlay()
@@ -3927,8 +3942,12 @@ class MainActivity : AppCompatActivity() {
         ViewerItemsHolder.store(items)
         // A center-cropped grid frame cannot transition cleanly into a fit-mode video surface;
         // Android briefly stretches that frame before playback. Photos retain the shared transition.
-        val transitionName = if (item.mediaType == GalleryRepository.MediaType.Image) {
-            ViewCompat.getTransitionName(sharedView) ?: ""
+        val transitionName = if (item.mediaType == GalleryRepository.MediaType.Image &&
+            sharedView.isAttachedToWindow && sharedView.width > 0 && sharedView.height > 0
+        ) {
+            // RecyclerView may rebind a thumbnail between taps. Restore the canonical name at
+            // launch instead of trusting a recycled view's previous transition state.
+            "media_${item.uri}".also { ViewCompat.setTransitionName(sharedView, it) }
         } else {
             null
         }

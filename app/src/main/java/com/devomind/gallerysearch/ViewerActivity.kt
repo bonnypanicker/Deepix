@@ -15,11 +15,15 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.transition.ChangeBounds
+import android.transition.ChangeImageTransform
+import android.transition.TransitionSet
 import android.util.Log
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
 import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
@@ -80,6 +84,7 @@ class ViewerActivity : AppCompatActivity() {
     private var findSimilarCrop: FloatArray? = null
     private var cropMode = false
     private var searchActionsVisible = false
+    private var enterTransitionStarted = false
 
     private enum class GestureDirection {
         UNDETERMINED, HORIZONTAL_PAGE, VERTICAL_DISMISS, VERTICAL_INFO
@@ -184,6 +189,7 @@ class ViewerActivity : AppCompatActivity() {
         window.navigationBarColor = Color.BLACK
         binding = ActivityViewerBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        configureSharedElementTransitions()
         configureEdgeToEdge()
 
         val markerUri = intent.getStringExtra(ExtraMarker)
@@ -213,6 +219,13 @@ class ViewerActivity : AppCompatActivity() {
 
         if (transitionName != null) {
             postponeEnterTransition()
+            // Glide normally starts this as soon as the full image is ready. Keep a short
+            // fallback so a recycled/cached target can never leave a repeat open without its
+            // shared-element transition.
+            binding.viewPager.postDelayed(
+                { startSharedElementEnterTransition() },
+                ENTER_TRANSITION_FALLBACK_MS
+            )
         }
 
         adapter = MediaPagerAdapter(
@@ -220,7 +233,7 @@ class ViewerActivity : AppCompatActivity() {
             initialPosition = currentPosition,
             initialTransitionName = transitionName,
             onInitialImageLoaded = {
-                startPostponedEnterTransition()
+                startSharedElementEnterTransition()
             },
             onMediaTap = {
                 if (gestureDirection == GestureDirection.HORIZONTAL_PAGE) {
@@ -300,6 +313,24 @@ class ViewerActivity : AppCompatActivity() {
             binding.infoPanel.updatePadding(bottom = systemInsets.bottom)
             insets
         }
+    }
+
+    private fun configureSharedElementTransitions() {
+        fun transition() = TransitionSet().apply {
+            ordering = TransitionSet.ORDERING_TOGETHER
+            addTransition(ChangeBounds())
+            addTransition(ChangeImageTransform())
+            duration = SHARED_ELEMENT_DURATION_MS
+            interpolator = DecelerateInterpolator()
+        }
+        window.sharedElementEnterTransition = transition()
+        window.sharedElementReturnTransition = transition()
+    }
+
+    private fun startSharedElementEnterTransition() {
+        if (enterTransitionStarted) return
+        enterTransitionStarted = true
+        startPostponedEnterTransition()
     }
 
     private fun configureCutoutMode() {
@@ -1052,30 +1083,20 @@ class ViewerActivity : AppCompatActivity() {
 
     private fun animateDismissReset() {
         val mediaView = getCurrentMediaView() ?: return
-        SpringAnimation(mediaView, DynamicAnimation.TRANSLATION_Y, 0f).apply {
-            spring.dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
-            spring.stiffness = SpringForce.STIFFNESS_MEDIUM
-            start()
-        }
-        // Bitmap-baked rotation keeps the resting view transform identity, so snap back to 1f.
-        val baseScale = 1f
-        SpringAnimation(mediaView, DynamicAnimation.SCALE_X, baseScale).apply {
-            spring.dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
-            spring.stiffness = SpringForce.STIFFNESS_MEDIUM
-            start()
-        }
-        SpringAnimation(mediaView, DynamicAnimation.SCALE_Y, baseScale).apply {
-            spring.dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
-            spring.stiffness = SpringForce.STIFFNESS_MEDIUM
-            start()
-        }
-        binding.viewerRoot.animate()
-            .setDuration(220)
-            .withEndAction { binding.viewerRoot.setBackgroundColor(Color.BLACK) }
+        mediaView.animate().cancel()
+        // A cancelled dismiss should return decisively to its resting transform. A spring makes
+        // a short swipe feel rubbery and can leave the image visibly oscillating on release.
+        mediaView.animate()
+            .translationY(0f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(DISMISS_RESET_DURATION_MS)
+            .setInterpolator(DecelerateInterpolator())
             .start()
+        binding.viewerRoot.setBackgroundColor(Color.BLACK)
         val targetAlpha = if (controlsVisible) 1f else 0f
-        binding.topBar.animate().alpha(targetAlpha).setDuration(220).start()
-        binding.bottomControls.animate().alpha(targetAlpha).setDuration(220).start()
+        binding.topBar.animate().alpha(targetAlpha).setDuration(DISMISS_RESET_DURATION_MS).start()
+        binding.bottomControls.animate().alpha(targetAlpha).setDuration(DISMISS_RESET_DURATION_MS).start()
     }
 
     private fun getCurrentMediaView(): View? {
@@ -1385,6 +1406,9 @@ class ViewerActivity : AppCompatActivity() {
     companion object {
         private const val Tag = "ViewerActivity"
         private const val DISMISS_VELOCITY_PX_PER_SEC = 1200f
+        private const val DISMISS_RESET_DURATION_MS = 140L
+        private const val SHARED_ELEMENT_DURATION_MS = 180L
+        private const val ENTER_TRANSITION_FALLBACK_MS = 220L
         private const val INFO_PANEL_VELOCITY_PX_PER_SEC = 600f
         private const val GEOCODER_TIMEOUT_MS = 3000L
         private const val SCRIM_MAX_ALPHA = 0.72f

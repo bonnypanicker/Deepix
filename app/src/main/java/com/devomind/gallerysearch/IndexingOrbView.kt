@@ -6,12 +6,13 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
+import android.view.animation.LinearInterpolator
 import kotlin.math.min
 
 /**
  * Two-shape accent orb (ring + disc) breathing in inverse phase while indexing runs, drawn
  * statically otherwise. Geometry follows the reference artifact (ring r88/stroke10, disc r72 of
- * a 200 viewBox) scaled so the 1.18x ring peak stays inside the view — no square clip at the
+ * a 200 viewBox) scaled so the ring peak stays inside the view — no square clip at the
  * widest point. The breath is a cosine wave, so velocity is continuous across the whole loop:
  * it never dwells at rest or peak, and 0 and 1 of the phase close seamlessly.
  */
@@ -35,14 +36,17 @@ class IndexingOrbView @JvmOverloads constructor(
 
     private var animator: ValueAnimator? = null
     private var indexing = false
-    private var visibleToUser = false
     private var phase = 0f
 
     fun setIndexing(active: Boolean) {
-        if (indexing == active) return
         indexing = active
         updateAnimation()
         invalidate()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        updateAnimation()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -85,25 +89,39 @@ class IndexingOrbView @JvmOverloads constructor(
 
     override fun onVisibilityAggregated(isVisible: Boolean) {
         super.onVisibilityAggregated(isVisible)
-        visibleToUser = isVisible
+        updateAnimation()
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
         updateAnimation()
     }
 
     override fun onDetachedFromWindow() {
-        visibleToUser = false
         stopAnimation()
         super.onDetachedFromWindow()
     }
 
     private fun updateAnimation() {
-        if (indexing && visibleToUser) startAnimation() else stopAnimation()
+        if (indexing && isAttachedToWindow && isShown && windowVisibility == VISIBLE) {
+            startAnimation()
+        } else {
+            stopAnimation()
+        }
     }
 
     private fun startAnimation() {
         if (animator?.isRunning == true) return
+
+        // A cancelled animator can remain referenced after the app returns to the foreground.
+        // Replacing a non-running instance lets the orb recover without a new worker-state event.
+        animator?.cancel()
+        phase = 0f
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = LOOP_DURATION_MS
+            interpolator = LinearInterpolator()
             repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
             addUpdateListener {
                 phase = it.animatedValue as Float
                 invalidate()
@@ -120,14 +138,14 @@ class IndexingOrbView @JvmOverloads constructor(
     }
 
     private companion object {
-        const val LOOP_DURATION_MS = 1_600L
+        const val LOOP_DURATION_MS = 2_600L
 
         // Reference proportions (ring 0.44/stroke 0.05/disc 0.36 of the viewBox) scaled by
-        // 1/1.10 so the ring's 1.18x peak stays fractionally inside the view bounds.
+        // 1/1.10 so the ring's gentle peak stays fractionally inside the view bounds.
         const val RING_RADIUS = 0.40f
         const val RING_STROKE = 0.045f
         const val DISC_RADIUS = 0.327f
-        const val RING_PEAK_SCALE = 1.18f
-        const val DISC_MIN_SCALE = 0.72f
+        const val RING_PEAK_SCALE = 1.12f
+        const val DISC_MIN_SCALE = 0.88f
     }
 }
