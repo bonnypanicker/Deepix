@@ -99,17 +99,8 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         // Beta sensitive-content blur is temporarily disabled — hide the whole Privacy section.
-        if (NsfwClassifier.FEATURE_ENABLED) {
-            binding.switchBlurSensitive.isChecked = IndexPreferences.isBlurSensitive(this)
-            binding.rowBlurSensitive.setOnClickListener {
-                val newValue = !binding.switchBlurSensitive.isChecked
-                binding.switchBlurSensitive.isChecked = newValue
-                IndexPreferences.setBlurSensitive(this, newValue)
-            }
-        } else {
-            binding.privacyHeader.visibility = View.GONE
-            binding.rowBlurSensitive.visibility = View.GONE
-        }
+        binding.privacyHeader.visibility = View.GONE
+        binding.rowBlurSensitive.visibility = View.GONE
     }
 
     /**

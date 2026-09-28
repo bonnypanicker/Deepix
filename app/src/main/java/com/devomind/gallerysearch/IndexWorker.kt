@@ -205,9 +205,26 @@ class IndexWorker(
         }
     }
 
+    /**
+     * Android 14+ requires a concrete foreground-service type at both manifest and runtime.
+     * WorkManager's two-argument ForegroundInfo constructor reports `none`, which Android 16
+     * rejects with InvalidForegroundServiceTypeException even when its service is declared as
+     * dataSync in the manifest.
+     */
+    override suspend fun getForegroundInfo(): ForegroundInfo = createForegroundInfo()
+
     private fun createForegroundInfo(): ForegroundInfo {
         ensureChannel()
-        return ForegroundInfo(NotificationId, buildStatusNotification(applicationContext))
+        val notification = buildStatusNotification(applicationContext)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                NotificationId,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            ForegroundInfo(NotificationId, notification)
+        }
     }
 
     private fun ensureChannel() {

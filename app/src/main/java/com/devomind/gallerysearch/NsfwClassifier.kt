@@ -65,7 +65,7 @@ class NsfwClassifier(private val textEncoder: TextEncoder) {
     companion object {
         // Master switch for sensitive-content features (the Beta blur + Smart Cleanup's Sensitive
         // category). Was temporarily OFF; re-enabled when the cleanup integration shipped.
-        const val FEATURE_ENABLED = true
+        const val FEATURE_ENABLED = false
 
         // Calibrated on MobileCLIP-S2 over 200 safe photos (tools/nsfw_calibration): safe photos have
         // median margin -0.012; ~0.5% exceed +0.05, ~0% exceed +0.07. 0.05 favors precision (few

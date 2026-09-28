@@ -1028,7 +1028,6 @@ class MainActivity : AppCompatActivity() {
                 ensureEncodersLoaded(warmupDelayMs = ENCODER_WARMUP_DELAY_MS)
             } else {
                 maybeStartBackgroundIndexing()   // updates paused/idle status text + drawer label
-                refreshSensitiveBlur()           // no-ops until the text encoder is loaded
             }
         }
     }
@@ -1083,7 +1082,6 @@ class MainActivity : AppCompatActivity() {
                 submitSearch()
             }
             maybeStartBackgroundIndexing()
-            refreshSensitiveBlur()
         }
         return ready
     }
