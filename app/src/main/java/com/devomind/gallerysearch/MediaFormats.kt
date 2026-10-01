@@ -21,6 +21,8 @@ object MediaFormats {
         "tiff" to "image/tiff",
         "tif" to "image/tiff",
         "jxl" to "image/jxl",
+        // Not indexed by MediaStore, but Safe vault / Bin write paths can still meet it.
+        "svg" to "image/svg+xml",
         // Camera raw — MediaStore indexes these as images on most OEM builds.
         "dng" to "image/x-adobe-dng",
         "cr2" to "image/x-canon-cr2",

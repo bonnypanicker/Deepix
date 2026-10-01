@@ -832,8 +832,14 @@ class ImageAdapter(
                 }
             )
             if (cell.item.mediaType == GalleryRepository.MediaType.Video) {
+                binding.badgeIcon.visibility = View.VISIBLE
                 binding.videoBadge.visibility = View.VISIBLE
                 binding.videoBadge.findViewById<TextView>(R.id.durationText)?.text = formatDuration(cell.item.durationMillis)
+            } else if (isGifMime(cell.item.mimeType)) {
+                // Reuse the video badge chrome so animated GIFs are identifiable in the grid.
+                binding.badgeIcon.visibility = View.GONE
+                binding.videoBadge.visibility = View.VISIBLE
+                binding.videoBadge.findViewById<TextView>(R.id.durationText)?.text = GIF_BADGE_LABEL
             } else {
                 binding.videoBadge.visibility = View.GONE
             }
@@ -908,6 +914,7 @@ class ImageAdapter(
                 dimScrim = binding.bottomRightDimScrim,
                 checkBadge = binding.bottomRightCheckBadge,
                 videoBadge = binding.bottomRightVideoBadge,
+                badgeIcon = binding.bottomRightBadgeIcon,
                 durationText = binding.bottomRightDurationText,
                 item = cell.items[2],
                 overrideWidth = regularSize,
@@ -960,6 +967,7 @@ class ImageAdapter(
                 dimScrim = binding.bottomRightDimScrim,
                 checkBadge = binding.bottomRightCheckBadge,
                 videoBadge = binding.bottomRightVideoBadge,
+                badgeIcon = binding.bottomRightBadgeIcon,
                 durationText = binding.bottomRightDurationText,
                 item = cell.items[2],
                 overrideWidth = regularSize,
@@ -977,6 +985,7 @@ class ImageAdapter(
             dimScrim: View,
             checkBadge: View,
             videoBadge: LinearLayout,
+            badgeIcon: ImageView,
             durationText: TextView,
             item: GalleryRepository.MediaItem,
             overrideWidth: Int,
@@ -989,8 +998,13 @@ class ImageAdapter(
             ViewCompat.setTransitionName(thumbnail, "media_${item.uri}")
             bindSelectionVisual(dimScrim, checkBadge, isSelected, animate)
             if (item.mediaType == GalleryRepository.MediaType.Video) {
+                badgeIcon.visibility = View.VISIBLE
                 videoBadge.visibility = View.VISIBLE
                 durationText.text = formatDuration(item.durationMillis)
+            } else if (isGifMime(item.mimeType)) {
+                badgeIcon.visibility = View.GONE
+                videoBadge.visibility = View.VISIBLE
+                durationText.text = GIF_BADGE_LABEL
             } else {
                 videoBadge.visibility = View.GONE
             }
@@ -1606,5 +1620,9 @@ class ImageAdapter(
             val seconds = totalSeconds % 60
             return String.format("%d:%02d", minutes, seconds)
         }
+
+        private const val GIF_BADGE_LABEL = "GIF"
+
+        private fun isGifMime(mimeType: String?): Boolean = mimeType.equals("image/gif", ignoreCase = true)
     }
 }

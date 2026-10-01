@@ -55,6 +55,7 @@
             android:paddingBottom="3dp"
             android:visibility="gone">
             <ImageView
+                android:id="@+id/leadBadgeIcon"
                 android:layout_width="12dp"
                 android:layout_height="12dp"
                 android:src="@drawable/ic_fluent_play_24_regular"
@@ -190,6 +191,7 @@
                 android:paddingBottom="3dp"
                 android:visibility="gone">
                 <ImageView
+                    android:id="@+id/bottomRightBadgeIcon"
                     android:layout_width="12dp"
                     android:layout_height="12dp"
                     android:src="@drawable/ic_fluent_play_24_regular"

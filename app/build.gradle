@@ -86,6 +86,11 @@ dependencies {
     implementation "androidx.viewpager2:viewpager2:1.1.0"
     implementation "androidx.work:work-runtime-ktx:2.9.1"
     implementation "com.github.bumptech.glide:glide:4.16.0"
+    // AVIF decode on API < 31 (31+ decodes natively). Registered by its @GlideModule, which the
+    // kapt compiler picks up even though manifest parsing is disabled in GalleryGlideModule.
+    implementation "com.github.bumptech.glide:avif-integration:4.16.0"
+    // SVG decode; wired into Glide in GalleryGlideModule.
+    implementation "com.caverock:androidsvg-aar:1.4"
     implementation "com.github.chrisbanes:PhotoView:2.3.0"
     implementation "com.microsoft.onnxruntime:onnxruntime-android:1.28.0"
     implementation "net.lingala.zip4j:zip4j:2.11.5"
