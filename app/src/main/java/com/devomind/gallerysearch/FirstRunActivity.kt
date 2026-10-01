@@ -77,13 +77,9 @@ class FirstRunActivity : AppCompatActivity() {
     companion object {
         private const val FirstRunLightningBurstSize = 500
 
-        /** Cold-start entrypoint: only prompts the user once ever. */
+        /** Cold-start entrypoint: only prompts the user once ever. Temporarily hidden. */
         fun ensure(context: android.content.Context) {
-            if (IndexPreferences.hasSeenFirstRun(context)) return
-            val intent = android.content.Intent(context, FirstRunActivity::class.java).apply {
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
+            return
         }
     }
 }

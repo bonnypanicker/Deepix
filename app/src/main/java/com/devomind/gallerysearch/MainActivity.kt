@@ -1728,10 +1728,10 @@ class MainActivity : AppCompatActivity() {
         val normalAlbums = albums.filter { it.id !in pinnedIds }.sortedWith(albumComparator(currentSort))
 
         val cells = mutableListOf<GalleryCell>()
-        // Onboarding panel temporarily hidden.
-        // if (smartAlbums.isEmpty() && !IndexPreferences.isSmartAlbumOnboardingDismissed(this)) {
-        //     cells += GalleryCell.SmartAlbumOnboarding
-        // }
+        // Onboarding: nudge first-time users to try smart albums (until dismissed).
+        if (smartAlbums.isEmpty() && !IndexPreferences.isSmartAlbumOnboardingDismissed(this)) {
+            cells += GalleryCell.SmartAlbumOnboarding
+        }
         if (pinnedAlbums.isNotEmpty()) {
             cells += GalleryCell.Header("PINNED", "")
             pinnedAlbums.forEach { cells += GalleryCell.AlbumCell(it) }

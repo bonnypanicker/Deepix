@@ -111,37 +111,44 @@ class PersonAlbumsActivity : AppCompatActivity() {
         val requestGeneration = ++peopleLoadGeneration
         lifecycleScope.launch {
             val db = GalleryDatabase.getInstance(applicationContext)
-            val people = withContext(Dispatchers.IO) {
+            // Face rows intentionally outlive MediaStore deletes so indexing can reconcile on its
+            // own schedule. Never let one of those stale rows create an empty People tile: a
+            // successful dimension lookup is also proof that the source photo still exists.
+            val peopleWithFaces = withContext(Dispatchers.IO) {
                 db.personDao().allVisible()
-                    .map { p ->
-                        val faces = db.faceDao().findByPerson(p.personId)
-                        val photoCount = faces.mapTo(HashSet()) { it.photoUri }.size
-                        // A person matcher keeps a diverse exemplar pool for recognition, but the
-                        // People cover should favour the sharpest, largest eligible source face.
-                        val exemplarFace = faces
-                            .asSequence()
-                            .filter { it.embeddingJson != null && !it.isLowQuality }
-                            .maxByOrNull { it.qualityScore }
-                            ?: p.exemplarFaceId.takeIf { it > 0 }
-                                ?.let { id -> faces.find { it.faceId == id } }
-                            ?: faces.maxByOrNull { it.qualityScore }
-                        PersonSummary(
-                            person = p,
-                            faceCount = faces.size,
-                            photoCount = photoCount,
-                            exemplarFace = exemplarFace
-                        )
-                    }
-                    .sortedWith(
-                        compareByDescending<PersonSummary> { it.photoCount }
-                            .thenByDescending { it.faceCount }
-                            .thenBy { it.person.personId }
-                    )
+                    .map { person -> person to db.faceDao().findByPerson(person.personId) }
             }
             // Resolve original photo dimensions for each exemplar face so the cover can be cropped
-            // to the actual face (bbox is in source-image pixels).
-            val exemplarUris = people.mapNotNull { it.exemplarFace?.photoUri }.toHashSet()
-            val dimensions = withContext(Dispatchers.IO) { resolvePhotoDimensions(exemplarUris) }
+            // to the actual face (bbox is in source-image pixels). It also filters out persisted
+            // face records whose MediaStore photo has been deleted.
+            val faceUris = peopleWithFaces.asSequence()
+                .flatMap { (_, faces) -> faces.asSequence().map { it.photoUri } }
+                .toHashSet()
+            val dimensions = withContext(Dispatchers.IO) { resolvePhotoDimensions(faceUris) }
+            val people = peopleWithFaces.mapNotNull { (person, storedFaces) ->
+                val faces = storedFaces.filter { it.photoUri in dimensions }
+                if (faces.isEmpty()) return@mapNotNull null
+                val photoCount = faces.mapTo(HashSet()) { it.photoUri }.size
+                // A person matcher keeps a diverse exemplar pool for recognition, but the People
+                // cover should favour the sharpest, largest eligible source face.
+                val exemplarFace = faces
+                    .asSequence()
+                    .filter { it.embeddingJson != null && !it.isLowQuality }
+                    .maxByOrNull { it.qualityScore }
+                    ?: person.exemplarFaceId.takeIf { it > 0 }
+                        ?.let { id -> faces.find { it.faceId == id } }
+                    ?: faces.maxByOrNull { it.qualityScore }
+                PersonSummary(
+                    person = person,
+                    faceCount = faces.size,
+                    photoCount = photoCount,
+                    exemplarFace = exemplarFace
+                )
+            }.sortedWith(
+                compareByDescending<PersonSummary> { it.photoCount }
+                    .thenByDescending { it.faceCount }
+                    .thenBy { it.person.personId }
+            )
             val faceTotal = withContext(Dispatchers.IO) { db.faceDao().countAll() }
             if (requestGeneration != peopleLoadGeneration) return@launch
             lastFaceCount = faceTotal
