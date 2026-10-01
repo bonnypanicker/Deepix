@@ -831,7 +831,6 @@ class ImageAdapter(
                     else -> null
                 }
             )
-            bindSearchBadges(cell.searchSources)
             if (cell.item.mediaType == GalleryRepository.MediaType.Video) {
                 binding.videoBadge.visibility = View.VISIBLE
                 binding.videoBadge.findViewById<TextView>(R.id.durationText)?.text = formatDuration(cell.item.durationMillis)
@@ -855,11 +854,6 @@ class ImageAdapter(
             const val BLUR_DOWNSCALE_PX = 16
         }
 
-        private fun bindSearchBadges(sources: SearchSources) {
-            binding.searchBadgeRow.visibility = if (sources.hasAny) View.VISIBLE else View.GONE
-            binding.aiBadge.visibility = if (sources.ai) View.VISIBLE else View.GONE
-            binding.metadataBadge.visibility = if (sources.metadata) View.VISIBLE else View.GONE
-        }
     }
 
     class CollageViewHolder(

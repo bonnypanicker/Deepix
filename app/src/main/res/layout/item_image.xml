@@ -49,35 +49,6 @@
             android:textSize="12sp" />
     </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/searchBadgeRow"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|start"
-        android:layout_marginStart="8dp"
-        android:layout_marginTop="8dp"
-        android:orientation="horizontal"
-        android:visibility="gone">
-
-        <ImageView
-            android:id="@+id/aiBadge"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:contentDescription="@string/ai_match"
-            android:src="@drawable/ic_deepix_ai_orb_mono_24"
-            android:visibility="gone" />
-
-        <ImageView
-            android:id="@+id/metadataBadge"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:layout_marginStart="6dp"
-            android:contentDescription="@string/text_match"
-            android:src="@drawable/ic_fluent_tag_24_regular"
-            android:tint="@color/metroTextPrimary"
-            android:visibility="gone" />
-    </LinearLayout>
-
     <ImageView
         android:id="@+id/checkBadge"
         android:layout_width="28dp"

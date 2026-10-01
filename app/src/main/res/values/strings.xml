@@ -104,7 +104,7 @@
     <string name="folder_expand">Expand %1$s</string>
     <string name="folder_collapse">Collapse %1$s</string>
     <string name="settings_lower">settings</string>
-    <string name="drawer_background_header">background</string>
+    <string name="drawer_background_header">BACKGROUND</string>
     <string name="drawer_task_indexing">indexing</string>
     <string name="drawer_task_cleanup">smart cleanup</string>
     <string name="drawer_task_compression">compression</string>

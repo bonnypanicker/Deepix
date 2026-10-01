@@ -166,6 +166,8 @@ class MainActivity : AppCompatActivity() {
     private var fullSearchResults: List<PhotoSearchResult> = emptyList()
     private var searchSectionResults: List<SearchSectionResult> = emptyList()
     private var selectedSearchSection: SearchSection? = null
+    /** Album filter shown above an open Smart grid; null represents the unfiltered result set. */
+    private var selectedSmartSearchAlbumId: String? = null
     private var searchLandingVisible = false
     private var currentDisplayedSearchResultCount = 0
     private var searchResultsMaster: List<PhotoSearchResult> = emptyList()
@@ -2694,6 +2696,7 @@ class MainActivity : AppCompatActivity() {
         // Landing is card-only; the grid's infinite scroll must not paginate section results.
         fullSearchResults = emptyList()
         currentDisplayedSearchResultCount = 0
+        clearSmartSearchAlbumChips()
         val alreadyLanding = searchLandingVisible
         adapter.updateCells(
             searchSectionResults.map { section ->
@@ -2962,7 +2965,15 @@ class MainActivity : AppCompatActivity() {
         // shuffled by whatever order was applied last, so Relevance can't be restored from it.
         val ranked = searchSectionResults.firstOrNull { it.section == selectedSearchSection }?.results
             ?: fullSearchResults
-        fullSearchResults = sortResults(ranked, sort)
+        renderSmartSearchAlbumChips(ranked)
+        val filtered = if (selectedSearchSection == SearchSection.Smart) {
+            selectedSmartSearchAlbumId?.let { albumId ->
+                ranked.filter { it.item.bucketId == albumId }
+            } ?: ranked
+        } else {
+            ranked
+        }
+        fullSearchResults = sortResults(filtered, sort)
         currentDisplayedSearchResultCount = 0
 
         val cells = if (sort.dateOrdered) {
@@ -3048,17 +3059,19 @@ class MainActivity : AppCompatActivity() {
         return MediaSorter.sort(results.map { it.item }, option).mapNotNull { byUri[it.uri] }
     }
 
-    /**
-     * Single funnel for the result summary header: an empty summary collapses the whole
-     * searchPanel (it only wraps this label), so the pre-query empty state has no dead
-     * header band between the search box and the indexing banner/suggestions.
-     */
+    /** Updates the small result-header area without leaving an empty band above the grid. */
     private fun setSearchResultSummary(text: CharSequence) {
         binding.searchResultSummary.text = text
-        binding.searchPanel.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
+        updateSearchHeaderVisibility()
     }
 
     private fun updateSearchResultCount() {
+        // Smart has a useful album filter in this position; a photo count would merely repeat
+        // information the grid already communicates.
+        if (selectedSearchSection == SearchSection.Smart) {
+            setSearchResultSummary("")
+            return
+        }
         val section = searchSectionResults.firstOrNull { it.section == selectedSearchSection }
         val total = section?.count ?: fullSearchResults.size
         setSearchResultSummary(when {
@@ -3237,7 +3250,9 @@ class MainActivity : AppCompatActivity() {
     private fun clearSearchSections() {
         searchSectionResults = emptyList()
         selectedSearchSection = null
+        selectedSmartSearchAlbumId = null
         searchLandingVisible = false
+        clearSmartSearchAlbumChips()
     }
 
     /** Clears every result owner before a changed query starts its debounce/search lifecycle. */
@@ -3262,6 +3277,7 @@ class MainActivity : AppCompatActivity() {
         val group = searchSectionResults.firstOrNull { it.section == section } ?: return
         selectedSearchSection = section
         searchLandingVisible = false
+        if (section != SearchSection.Smart) clearSmartSearchAlbumChips()
         if (section == SearchSection.Albums && group.albums.isNotEmpty()) {
             // Album search is based solely on album names. Open album tiles rather than turning
             // every photo inside a matching album into a search hit.
@@ -3275,6 +3291,73 @@ class MainActivity : AppCompatActivity() {
         }
         fullSearchResults = group.results
         applySortAndShow()
+    }
+
+    /**
+     * Reuses the horizontal album-pill treatment from Compression's "Choose other photos" view.
+     * Pills are built from the Smart hits themselves, so each choice always yields a non-empty
+     * result grid. When search began inside a real album, its MediaStore bucket is selected by
+     * default and the original scoped search remains intact.
+     */
+    private fun renderSmartSearchAlbumChips(results: List<PhotoSearchResult>) {
+        val showChips = selectedSearchSection == SearchSection.Smart
+        binding.searchAlbumChipScroll.visibility = if (showChips) View.VISIBLE else View.GONE
+        if (!showChips) {
+            updateSearchHeaderVisibility()
+            return
+        }
+
+        val albumsInResults = results
+            .groupBy { it.item.bucketId }
+            .mapNotNull { (id, matches) ->
+                id.takeIf { it.isNotBlank() }?.let { Triple(it, matches.first().item.bucketName, matches.size) }
+            }
+            .sortedWith(compareByDescending<Triple<String, String, Int>> { it.third }.thenBy { it.second })
+
+        val availableIds = albumsInResults.mapTo(HashSet()) { it.first }
+        if (selectedSmartSearchAlbumId !in availableIds) {
+            selectedSmartSearchAlbumId = currentAlbum
+                ?.takeIf { !it.isSmart && it.id in availableIds }
+                ?.id
+        }
+
+        binding.searchAlbumChipRow.removeAllViews()
+        fun addChip(label: String, albumId: String?) {
+            val chip = layoutInflater.inflate(
+                R.layout.item_search_chip,
+                binding.searchAlbumChipRow,
+                false
+            ) as TextView
+            chip.text = label
+            val active = selectedSmartSearchAlbumId == albumId
+            chip.setBackgroundColor(if (active) DesignTokens.accent(this) else getColor(R.color.metroBgCard))
+            chip.setTextColor(
+                if (active) getColor(R.color.metroTextPrimary) else getColor(R.color.metroTextStrong)
+            )
+            chip.setOnClickListener {
+                if (selectedSmartSearchAlbumId == albumId) return@setOnClickListener
+                selectedSmartSearchAlbumId = albumId
+                applySortAndShow()
+            }
+            binding.searchAlbumChipRow.addView(chip)
+        }
+
+        addChip("All", null)
+        albumsInResults.forEach { (id, name) -> addChip(name, id) }
+        updateSearchHeaderVisibility()
+    }
+
+    private fun clearSmartSearchAlbumChips() {
+        binding.searchAlbumChipScroll.visibility = View.GONE
+        binding.searchAlbumChipRow.removeAllViews()
+        updateSearchHeaderVisibility()
+    }
+
+    private fun updateSearchHeaderVisibility() {
+        val hasSummary = binding.searchResultSummary.text.isNotEmpty()
+        binding.searchHeaderRow.visibility = if (hasSummary) View.VISIBLE else View.GONE
+        val hasAlbumChips = binding.searchAlbumChipScroll.visibility == View.VISIBLE
+        binding.searchPanel.visibility = if (hasSummary || hasAlbumChips) View.VISIBLE else View.GONE
     }
 
     /** Re-reads the search-only tag cache after the viewer (Room-only tag writes) may have changed it. */

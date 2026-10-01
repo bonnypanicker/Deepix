@@ -182,7 +182,7 @@
                 android:paddingStart="16dp"
                 android:paddingTop="4dp"
                 android:paddingEnd="16dp"
-                android:paddingBottom="14dp"
+                android:paddingBottom="6dp"
                 android:visibility="gone">
 
                 <LinearLayout
@@ -203,6 +203,26 @@
                         android:textColor="@color/metroTextSecondary"
                         android:textSize="12sp" />
                 </LinearLayout>
+
+                <!-- Smart results use this compact, scrollable album filter instead of a
+                     redundant result count. The content is supplied only for that section. -->
+                <HorizontalScrollView
+                    android:id="@+id/searchAlbumChipScroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipToPadding="false"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:scrollbars="none"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:id="@+id/searchAlbumChipRow"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:paddingBottom="2dp" />
+                </HorizontalScrollView>
             </LinearLayout>
         </LinearLayout>
 
