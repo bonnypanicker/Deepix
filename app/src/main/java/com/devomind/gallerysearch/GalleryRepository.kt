@@ -59,10 +59,15 @@ class GalleryRepository(
     /** A newly persisted CLIP vector, exposed to the face-candidate queue without re-encoding it. */
     data class IndexedEmbedding(val uri: Uri, val vector: FloatArray)
 
-    /** Attaches the MobileCLIP encoders once they finish loading on a background thread. */
-    fun attachEncoders(image: ImageEncoder, text: TextEncoder?) {
-        this.imageEncoder = image
-        this.textEncoder = text
+    /**
+     * Attaches the MobileCLIP encoders as they finish loading on a background thread. Either may be
+     * null: a text query only needs [text], and the vision session loads separately for
+     * image-to-image search. A null argument leaves that slot untouched, so the two loads can't
+     * overwrite each other when they finish out of order.
+     */
+    fun attachEncoders(image: ImageEncoder?, text: TextEncoder?) {
+        image?.let { this.imageEncoder = it }
+        text?.let { this.textEncoder = it }
     }
 
     @Parcelize

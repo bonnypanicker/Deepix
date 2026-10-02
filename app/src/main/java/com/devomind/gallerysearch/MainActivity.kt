@@ -82,10 +82,14 @@ class MainActivity : AppCompatActivity() {
     private var nsfwClassifier: NsfwClassifier? = null
     private var nsfwComputeJob: Job? = null
     private var textEncoder: TextEncoder? = null
-    // Tracks the one-shot CLIP encoder load. The ~135 MB models are only warmed eagerly when a
-    // background index pass will run; otherwise they load lazily on the first search so idle/paused
-    // cold starts stay light. Completes true once encoders are attached, false if the load failed.
+    // Tracks the one-shot text-encoder load — the search critical path. The ~135 MB models are
+    // only warmed eagerly when a background index pass will run; otherwise they load lazily on the
+    // first search so idle/paused cold starts stay light. Completes true once the text encoder is
+    // attached, false if the load failed.
     private var encodersReady: kotlinx.coroutines.CompletableDeferred<Boolean>? = null
+    // The vision model (72 MB) is only needed by image-to-image search, so it loads after — and
+    // never blocks — a text query. Null until that load has been requested.
+    private var visionEncodersReady: kotlinx.coroutines.CompletableDeferred<Boolean>? = null
     private var repository: GalleryRepository? = null
     private var dbRepository: DbRepository? = null
     private var albums: List<GalleryRepository.Album> = emptyList()
@@ -1022,10 +1026,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadEncodersInBackground() {
-        // The CLIP encoders are ~135 MB and dominate cold-start memory pressure. Only warm them
-        // eagerly when a background index pass is actually going to run (it needs them). When
-        // indexing is paused, stopped, or complete, defer the load until the user searches — so an
-        // idle/paused cold start opens fast instead of reloading the models against the first frames.
+        // The text encoder (64 MB) dominates cold-start memory pressure, so it is only warmed
+        // eagerly when a background index pass is actually going to run. When indexing is paused,
+        // stopped, or complete, it waits for the user to search — so an idle/paused cold start
+        // opens fast instead of reloading the model against the first frames. The vision session
+        // is never warmed here; IndexWorker builds its own and image-to-image loads it on demand.
         // The readiness check reads the whole on-disk embedding index (and can block on a still
         // warming SharedPreferences load), so it must not run on the main thread — it once stalled
         // the first frame by seconds.
@@ -1039,10 +1044,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Loads the CLIP image/text encoders and the on-disk embedding caches exactly once, then wires
-     * them into the repository. Safe to call from multiple entry points: returns the same in-flight
-     * [CompletableDeferred] so callers can await readiness. On failure the guard is reset so the next
-     * search can retry. [warmupDelayMs] lets the eager (indexing) path yield to the first frames.
+     * Loads the CLIP *text* encoder and the on-disk embedding caches exactly once, then wires them
+     * into the repository. Safe to call from multiple entry points: returns the same in-flight
+     * [CompletableDeferred] so callers can await readiness. On failure the guard is reset so the
+     * next search can retry. [warmupDelayMs] lets the eager (indexing) path yield to the first
+     * frames. The vision encoder is not loaded here at all — see [loadVisionEncoder].
      */
     private fun ensureEncodersLoaded(
         warmupDelayMs: Long = 0
@@ -1053,18 +1059,14 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             if (warmupDelayMs > 0) delay(warmupDelayMs)
             val sharedEncoders = (application as GallerySearchApp).sharedEncoders
-            val encoders = withContext(Dispatchers.IO) {
+            val text = withContext(Dispatchers.IO) {
                 // Persist the fixed ORT thread count before encoder construction so every startup
                 // path uses the same session configuration without paying benchmark latency.
                 ThreadBenchmark.getOrBenchmark(applicationContext)
-                val imageAsync = async { runCatching { sharedEncoders.getImageEncoder() }.getOrNull() }
-                val textAsync = async { runCatching { sharedEncoders.getTextEncoder() }.getOrNull() }
-                imageAsync.await() to textAsync.await()
+                runCatching { sharedEncoders.getTextEncoder() }.getOrNull()
             }
-            val image = encoders.first
-            val text = encoders.second
-            if (image == null) {
-                Log.w(TAG, "Vision encoder failed to load; semantic search disabled.")
+            if (text == null) {
+                Log.w(TAG, "Text encoder failed to load; semantic search disabled.")
                 encodersReady = null      // allow a retry on the next search
                 ready.complete(false)
                 // Metadata/filename search still works — say so instead of failing silently.
@@ -1075,9 +1077,8 @@ class MainActivity : AppCompatActivity() {
                 )
                 return@launch
             }
-            imageEncoder = image
             textEncoder = text
-            repository?.attachEncoders(image, text)
+            repository?.attachEncoders(imageEncoder, text)
             withContext(Dispatchers.IO) {
                 repository?.loadCachedIndexForUris(allUris)
                 repository?.loadCachedMetadataIndexForUris(allUris)
@@ -1088,6 +1089,37 @@ class MainActivity : AppCompatActivity() {
                 submitSearch()
             }
             maybeStartBackgroundIndexing()
+        }
+        return ready
+    }
+
+    /**
+     * Loads the CLIP vision encoder — the only thing that needs it is image-to-image search, which
+     * awaits this call. Nothing on the text-search path starts it: its OrtSession is a second
+     * 72 MB asset read plus graph parse, and paying that beside a query's scoring pass is exactly
+     * the latency the text path is meant to avoid. Idempotent: returns the same in-flight deferred,
+     * or an already-completed one when the encoder is attached. Indexing is unaffected — IndexWorker
+     * builds its own repository and encodes through the process-wide SharedEncoders cache.
+     */
+    private fun loadVisionEncoder(): kotlinx.coroutines.CompletableDeferred<Boolean> {
+        imageEncoder?.let { return kotlinx.coroutines.CompletableDeferred(true) }
+        visionEncodersReady?.let { return it }
+        val ready = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        visionEncodersReady = ready
+        lifecycleScope.launch {
+            val sharedEncoders = (application as GallerySearchApp).sharedEncoders
+            val image = withContext(Dispatchers.IO) {
+                runCatching { sharedEncoders.getImageEncoder() }.getOrNull()
+            }
+            if (image == null) {
+                Log.w(TAG, "Vision encoder failed to load; image-to-image search disabled.")
+                visionEncodersReady = null    // allow a retry on the next request
+                ready.complete(false)
+                return@launch
+            }
+            imageEncoder = image
+            repository?.attachEncoders(image, textEncoder)
+            ready.complete(true)
         }
         return ready
     }
@@ -3183,8 +3215,8 @@ class MainActivity : AppCompatActivity() {
 
         searchJob?.cancel()
         searchJob = lifecycleScope.launch {
-            // Image-to-image needs the CLIP image encoder; load it on demand if it was deferred.
-            if (imageEncoder == null) ensureEncodersLoaded().await()
+            // Image-to-image needs the CLIP vision encoder; load it on demand if it was deferred.
+            if (imageEncoder == null) loadVisionEncoder().await()
             if (!imageSearchActive || currentMode != Mode.Search) return@launch
             val pool = imageItems
             val byUri = pool.associateBy { it.uri }
