@@ -26,6 +26,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@color/metroBgPrimary"
+            android:clipChildren="false"
             android:orientation="vertical">
 
             <FrameLayout
@@ -179,9 +180,9 @@
                 android:layout_height="wrap_content"
                 android:background="@color/metroBgPrimary"
                 android:orientation="vertical"
-                android:paddingStart="16dp"
+                android:paddingStart="0dp"
                 android:paddingTop="4dp"
-                android:paddingEnd="16dp"
+                android:paddingEnd="0dp"
                 android:paddingBottom="6dp"
                 android:visibility="gone">
 
@@ -191,7 +192,9 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
                     android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    android:orientation="horizontal"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp">
 
                     <TextView
                         android:id="@+id/searchResultSummary"
@@ -204,15 +207,17 @@
                         android:textSize="12sp" />
                 </LinearLayout>
 
-                <!-- Smart results use this compact, scrollable album filter instead of a
-                     redundant result count. The content is supplied only for that section. -->
+                <!-- Photo-grid search sections (Smart/Metadata/Tags/Locations) use this compact,
+                     scrollable album filter instead of a redundant result count.
+                     The inset sits on the scroll view itself, so the chips roll all the way to
+                     the screen edge instead of being cut 16dp short. -->
                 <HorizontalScrollView
                     android:id="@+id/searchAlbumChipScroll"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:clipToPadding="false"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
+                    android:paddingStart="20dp"
+                    android:paddingEnd="20dp"
                     android:scrollbars="none"
                     android:visibility="gone">
 
