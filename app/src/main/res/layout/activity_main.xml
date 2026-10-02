@@ -160,6 +160,23 @@
                     android:tint="@color/metroTextPrimary"
                     android:visibility="gone" />
 
+                <!-- Selection count for search mode. It occupies the query field's slot so the
+                     overlay keeps its exact height while multi-selecting — growing the title row
+                     instead would push the whole grid down mid-gesture. -->
+                <TextView
+                    android:id="@+id/selectionCaption"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginEnd="8dp"
+                    android:ellipsize="end"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/metroTextPrimary"
+                    android:textSize="16sp"
+                    android:visibility="gone" />
+
                 </LinearLayout>
 
                 <ImageButton

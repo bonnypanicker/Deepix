@@ -4125,14 +4125,23 @@ class MainActivity : AppCompatActivity() {
         binding.bottomPanel.visibility = if (selecting) View.GONE else View.VISIBLE
 
         if (selecting) {
-            binding.screenTitle.visibility = View.VISIBLE
-            binding.screenTitle.text = resources.getQuantityString(R.plurals.selected_count, count, count)
+            val label = resources.getQuantityString(R.plurals.selected_count, count, count)
+            // Search mode hides the title row; revealing it would grow the overlay and shove the
+            // grid down under the finger. There the count takes the query field's slot instead.
+            val inSearchBar = currentMode == Mode.Search
+            binding.screenTitle.visibility = if (inSearchBar) View.GONE else View.VISIBLE
+            binding.screenTitle.text = label
+            binding.selectionCaption.visibility = if (inSearchBar) View.VISIBLE else View.GONE
+            binding.selectionCaption.text = label
+            binding.searchInput.visibility = if (inSearchBar) View.GONE else View.VISIBLE
+            binding.searchBox.visibility = if (inSearchBar) View.VISIBLE else View.GONE
+            binding.searchTrailingBtn.visibility = View.GONE
             binding.menuBtn.setImageResource(R.drawable.ic_fluent_back_24_regular)
             binding.menuBtn.alpha = 1f
             binding.menuBtn.setOnClickListener { adapter.clearSelection() }
-            binding.searchBox.visibility = View.GONE
-            binding.searchTrailingBtn.visibility = View.GONE
         } else {
+            binding.selectionCaption.visibility = View.GONE
+            binding.searchInput.visibility = View.VISIBLE
             binding.searchBox.visibility = View.VISIBLE
             binding.searchTrailingBtn.visibility = View.VISIBLE
             updateTopBarForMode(currentTopTitle())
@@ -4691,8 +4700,13 @@ class MainActivity : AppCompatActivity() {
         binding.screenTitle.visibility = if (title == null || currentMode == Mode.Search) View.GONE else View.VISIBLE
         binding.screenTitle.text = title.orEmpty()
         val showSearchChrome = adapter.selectionCount == 0
-        binding.searchBox.visibility = if (showSearchChrome) View.VISIBLE else View.GONE
+        // Search keeps the box while multi-selecting: its caption carries the count in the query
+        // field's slot, which is what holds the overlay at a constant height.
+        val captionInSearchBox = !showSearchChrome && currentMode == Mode.Search
+        binding.searchBox.visibility = if (showSearchChrome || captionInSearchBox) View.VISIBLE else View.GONE
         binding.searchTrailingBtn.visibility = if (showSearchChrome) View.VISIBLE else View.GONE
+        binding.selectionCaption.visibility = if (captionInSearchBox) View.VISIBLE else View.GONE
+        binding.searchInput.visibility = if (captionInSearchBox) View.GONE else View.VISIBLE
         val isAlbumsSection = activeSection == Section.Albums &&
             currentMode == Mode.Browse &&
             adapter.selectionCount == 0
