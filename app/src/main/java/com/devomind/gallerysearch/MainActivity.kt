@@ -166,8 +166,8 @@ class MainActivity : AppCompatActivity() {
     private var fullSearchResults: List<PhotoSearchResult> = emptyList()
     private var searchSectionResults: List<SearchSectionResult> = emptyList()
     private var selectedSearchSection: SearchSection? = null
-    /** Album filter shown above an open Smart grid; null represents the unfiltered result set. */
-    private var selectedSmartSearchAlbumId: String? = null
+    /** Album filter shown above an open photo-grid search section; null = the unfiltered set. */
+    private var selectedSearchAlbumId: String? = null
     private var searchLandingVisible = false
     private var currentDisplayedSearchResultCount = 0
     private var searchResultsMaster: List<PhotoSearchResult> = emptyList()
@@ -1296,7 +1296,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun currentSearchPhotoItems(): List<GalleryRepository.MediaItem> {
         return when {
-            currentAlbum != null -> albumDetailItems.filter { it.mediaType == GalleryRepository.MediaType.Image }
+            // Album context no longer narrows the pool: the whole library is searched and the
+            // album pills scope the grid — the originating album's pill is auto-selected, and
+            // every other album with hits stays one tap away.
+            currentAlbum != null -> imageItems
             currentFolder != null -> folderDetailItems().filter { it.mediaType == GalleryRepository.MediaType.Image }
             activeSection == Section.Collection -> imageItems
             activeSection == Section.Favorites -> favoriteItems.filter { it.mediaType == GalleryRepository.MediaType.Image }
@@ -1972,7 +1975,12 @@ class MainActivity : AppCompatActivity() {
         input.postDelayed(searchHintRunnable, SEARCH_HINT_INTERVAL_MS)
     }
 
-    private fun submitSearch() {
+    /**
+     * [liveRefresh] is the indexing-driven re-score: results only grow as more embeddings land,
+     * so the current presentation (drilled-in section, scroll position) is preserved and no
+     * loading cell replaces the grid while the pipeline reruns underneath.
+     */
+    private fun submitSearch(liveRefresh: Boolean = false) {
         val query = effectiveQuery()
         val repo = repository ?: return
         searchDebounceJob?.cancel()
@@ -1989,7 +1997,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         currentMode = Mode.Search
-        clearSearchPresentationForPendingInput()
+        if (!liveRefresh) clearSearchPresentationForPendingInput()
         val favoriteKeys = favoritesStore.all()
 
         searchJob = lifecycleScope.launch {
@@ -2041,7 +2049,9 @@ class MainActivity : AppCompatActivity() {
                         query = query,
                         results = results,
                         emptyText = "No matching results",
-                        peopleResultUris = poolItems.mapTo(LinkedHashSet()) { it.uri.toString() }
+                        preserveSelection = liveRefresh,
+                        peopleResultUris = poolItems.mapTo(LinkedHashSet()) { it.uri.toString() },
+                        preserveViewport = liveRefresh
                     )
                     return@launch
                 }
@@ -2081,8 +2091,10 @@ class MainActivity : AppCompatActivity() {
                             buildMergedPhotoSearchResults(filteredItems, metadataHits, emptyList())
                         },
                         emptyText = "No matching results",
+                        preserveSelection = liveRefresh,
                         personScoped = personScoped,
-                        forceSmartSection = personScoped
+                        forceSmartSection = personScoped,
+                        preserveViewport = liveRefresh
                     )
                     return@launch
                 }
@@ -2101,7 +2113,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     emptyList()
                 }
-                if (interimResults.isNotEmpty()) {
+                if (interimResults.isNotEmpty() && !liveRefresh) {
                     renderSearchResults(
                         query = query,
                         results = interimResults,
@@ -2110,7 +2122,7 @@ class MainActivity : AppCompatActivity() {
                         personScoped = personScoped,
                         forceSmartSection = personScoped
                     )
-                } else {
+                } else if (!liveRefresh) {
                     clearSearchSections()
                     adapter.replaceCells(listOf(GalleryCell.Loading(getString(R.string.search_loading))))
                     resetGridToTop()
@@ -2137,9 +2149,10 @@ class MainActivity : AppCompatActivity() {
                     query = query,
                     results = finalResults,
                     emptyText = "No matching results",
-                    preserveSelection = interimResults.isNotEmpty(),
+                    preserveSelection = liveRefresh || interimResults.isNotEmpty(),
                     personScoped = personScoped,
-                    forceSmartSection = personScoped
+                    forceSmartSection = personScoped,
+                    preserveViewport = liveRefresh
                 )
             } catch (cancelled: CancellationException) {
                 Log.d(TAG, "Search job cancelled.", cancelled)
@@ -2649,9 +2662,14 @@ class MainActivity : AppCompatActivity() {
         /** Direct one-word person lookup: the explicit People card owns its result set. */
         peopleResultUris: Set<String>? = null,
         /** A people-containing sentence belongs in Smart even if its stripped scene text is blank. */
-        forceSmartSection: Boolean = false
+        forceSmartSection: Boolean = false,
+        /** Indexing-driven re-score: update the drilled-in grid in place, keeping scroll position. */
+        preserveViewport: Boolean = false
     ) {
         val visibleResults = results.filterNot { it.item.uri in hiddenDeletedUris }
+        // Captured before the reset below: a viewport-preserving refresh keeps every row the
+        // user already paginated to, otherwise the grid would collapse back to the first page.
+        val previouslyDisplayedCount = currentDisplayedSearchResultCount
         searchResultsMaster = visibleResults
         currentDisplayedSearchResultCount = 0
         searchSectionResults = buildSearchSections(
@@ -2678,7 +2696,10 @@ class MainActivity : AppCompatActivity() {
         if (preserveSelection && selectedSection != null && !searchLandingVisible) {
             searchSectionResults.firstOrNull { it.section == selectedSection }?.let { group ->
                 fullSearchResults = group.results
-                applySortAndShow()
+                applySortAndShow(
+                    preserveViewport = preserveViewport,
+                    previouslyDisplayed = previouslyDisplayedCount
+                )
                 return
             }
         }
@@ -2696,7 +2717,7 @@ class MainActivity : AppCompatActivity() {
         // Landing is card-only; the grid's infinite scroll must not paginate section results.
         fullSearchResults = emptyList()
         currentDisplayedSearchResultCount = 0
-        clearSmartSearchAlbumChips()
+        clearSearchAlbumChips()
         val alreadyLanding = searchLandingVisible
         adapter.updateCells(
             searchSectionResults.map { section ->
@@ -2916,7 +2937,14 @@ class MainActivity : AppCompatActivity() {
      * expected); otherwise nudges toward relaxing filters / trying different words.
      */
     private fun searchEmptyCell(emptyText: String): GalleryCell.Empty {
-        val progress = IndexPreferences.getIndexProgressPercent(this)
+        // Prefer the live WorkManager progress over the persisted percent: the SharedPreferences
+        // value lags the running pass (starts at 0, or stays stale from a previous run), which
+        // showed "Indexing is 0% done" while the banner already reported real counts.
+        val progress = if (indexRunning && indexProgressTotal > 0) {
+            (indexProgressCurrent * 100 / indexProgressTotal).coerceIn(0, 100)
+        } else {
+            IndexPreferences.getIndexProgressPercent(this)
+        }
         val stillIndexing = indexRunning || (progress in 1..99 && !IndexPreferences.isIndexStopped(this))
         val indexIdle = !indexRunning && progress < 100 &&
             (IndexPreferences.isIndexStopped(this) || IndexPreferences.isIndexPaused(this))
@@ -2959,15 +2987,15 @@ class MainActivity : AppCompatActivity() {
      * under day headers; the rest keep the flat grid with infinite pagination. Either way the first
      * header — or a slim row above a headerless grid — carries the sort chip, like the browse listings.
      */
-    private fun applySortAndShow() {
+    private fun applySortAndShow(preserveViewport: Boolean = false, previouslyDisplayed: Int = 0) {
         val sort = searchSortOption()
         // Re-derive from the section's own ranked list every time: fullSearchResults is already
         // shuffled by whatever order was applied last, so Relevance can't be restored from it.
         val ranked = searchSectionResults.firstOrNull { it.section == selectedSearchSection }?.results
             ?: fullSearchResults
-        renderSmartSearchAlbumChips(ranked)
-        val filtered = if (selectedSearchSection == SearchSection.Smart) {
-            selectedSmartSearchAlbumId?.let { albumId ->
+        renderSearchAlbumChips(ranked)
+        val filtered = if (selectedSearchSection in SearchAlbumChipSections) {
+            selectedSearchAlbumId?.let { albumId ->
                 ranked.filter { it.item.bucketId == albumId }
             } ?: ranked
         } else {
@@ -2982,12 +3010,23 @@ class MainActivity : AppCompatActivity() {
             currentDisplayedSearchResultCount = fullSearchResults.size
             buildSearchTimelineCells(capped)
         } else {
-            val firstPage = fullSearchResults.take(SEARCH_PAGE_SIZE)
+            val pageTarget = if (preserveViewport) {
+                maxOf(SEARCH_PAGE_SIZE, previouslyDisplayed)
+            } else {
+                SEARCH_PAGE_SIZE
+            }
+            val firstPage = fullSearchResults.take(pageTarget)
             currentDisplayedSearchResultCount = firstPage.size
             buildSearchPhotoCells(firstPage)
         }
-        adapter.replaceCells(withSortAffordance(cells, sort.label))
-        resetGridToTop()
+        if (preserveViewport) {
+            // Diff-based in-place update: the user's scroll position and drilled-in section
+            // survive an indexing-driven re-score.
+            adapter.updateCells(withSortAffordance(cells, sort.label))
+        } else {
+            adapter.replaceCells(withSortAffordance(cells, sort.label))
+            resetGridToTop()
+        }
         updateFastScrollVisibility()
         binding.fastScrollIndicator.syncToRecyclerView()
         updateSearchResultCount()
@@ -3066,9 +3105,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSearchResultCount() {
-        // Smart has a useful album filter in this position; a photo count would merely repeat
-        // information the grid already communicates.
-        if (selectedSearchSection == SearchSection.Smart) {
+        // Chip sections carry a useful album filter in this position; a photo count would merely
+        // repeat information the grid already communicates.
+        if (selectedSearchSection in SearchAlbumChipSections) {
             setSearchResultSummary("")
             return
         }
@@ -3250,9 +3289,9 @@ class MainActivity : AppCompatActivity() {
     private fun clearSearchSections() {
         searchSectionResults = emptyList()
         selectedSearchSection = null
-        selectedSmartSearchAlbumId = null
+        selectedSearchAlbumId = null
         searchLandingVisible = false
-        clearSmartSearchAlbumChips()
+        clearSearchAlbumChips()
     }
 
     /** Clears every result owner before a changed query starts its debounce/search lifecycle. */
@@ -3277,7 +3316,7 @@ class MainActivity : AppCompatActivity() {
         val group = searchSectionResults.firstOrNull { it.section == section } ?: return
         selectedSearchSection = section
         searchLandingVisible = false
-        if (section != SearchSection.Smart) clearSmartSearchAlbumChips()
+        if (section !in SearchAlbumChipSections) clearSearchAlbumChips()
         if (section == SearchSection.Albums && group.albums.isNotEmpty()) {
             // Album search is based solely on album names. Open album tiles rather than turning
             // every photo inside a matching album into a search hit.
@@ -3295,12 +3334,12 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Reuses the horizontal album-pill treatment from Compression's "Choose other photos" view.
-     * Pills are built from the Smart hits themselves, so each choice always yields a non-empty
+     * Pills are built from the section's hits themselves, so each choice always yields a non-empty
      * result grid. When search began inside a real album, its MediaStore bucket is selected by
-     * default and the original scoped search remains intact.
+     * default; the pool spans the whole library, so every album with hits gets a pill.
      */
-    private fun renderSmartSearchAlbumChips(results: List<PhotoSearchResult>) {
-        val showChips = selectedSearchSection == SearchSection.Smart
+    private fun renderSearchAlbumChips(results: List<PhotoSearchResult>) {
+        val showChips = selectedSearchSection in SearchAlbumChipSections
         binding.searchAlbumChipScroll.visibility = if (showChips) View.VISIBLE else View.GONE
         if (!showChips) {
             updateSearchHeaderVisibility()
@@ -3315,8 +3354,8 @@ class MainActivity : AppCompatActivity() {
             .sortedWith(compareByDescending<Triple<String, String, Int>> { it.third }.thenBy { it.second })
 
         val availableIds = albumsInResults.mapTo(HashSet()) { it.first }
-        if (selectedSmartSearchAlbumId !in availableIds) {
-            selectedSmartSearchAlbumId = currentAlbum
+        if (selectedSearchAlbumId !in availableIds) {
+            selectedSearchAlbumId = currentAlbum
                 ?.takeIf { !it.isSmart && it.id in availableIds }
                 ?.id
         }
@@ -3329,14 +3368,14 @@ class MainActivity : AppCompatActivity() {
                 false
             ) as TextView
             chip.text = label
-            val active = selectedSmartSearchAlbumId == albumId
+            val active = selectedSearchAlbumId == albumId
             chip.setBackgroundColor(if (active) DesignTokens.accent(this) else getColor(R.color.metroBgCard))
             chip.setTextColor(
                 if (active) getColor(R.color.metroTextPrimary) else getColor(R.color.metroTextStrong)
             )
             chip.setOnClickListener {
-                if (selectedSmartSearchAlbumId == albumId) return@setOnClickListener
-                selectedSmartSearchAlbumId = albumId
+                if (selectedSearchAlbumId == albumId) return@setOnClickListener
+                selectedSearchAlbumId = albumId
                 applySortAndShow()
             }
             binding.searchAlbumChipRow.addView(chip)
@@ -3347,7 +3386,7 @@ class MainActivity : AppCompatActivity() {
         updateSearchHeaderVisibility()
     }
 
-    private fun clearSmartSearchAlbumChips() {
+    private fun clearSearchAlbumChips() {
         binding.searchAlbumChipScroll.visibility = View.GONE
         binding.searchAlbumChipRow.removeAllViews()
         updateSearchHeaderVisibility()
@@ -4548,12 +4587,15 @@ class MainActivity : AppCompatActivity() {
 
         val query = binding.searchInput.text?.toString()?.trim().orEmpty()
         val repo = repository ?: return
+        // A user-driven search already snapshots the freshest index when its CLIP pass runs;
+        // cancelling it here would flash the grid. The next progress step re-scores instead.
+        if (searchJob?.isActive == true) return
         lifecycleScope.launch(Dispatchers.IO) {
             repo.loadCachedIndexForUris(allUris)
             repo.loadCachedMetadataIndexForUris(allUris)
             withContext(Dispatchers.Main) {
                 if (query.isNotBlank() && currentMode == Mode.Search) {
-                    submitSearch()
+                    submitSearch(liveRefresh = true)
                 }
             }
         }
@@ -5002,6 +5044,11 @@ class MainActivity : AppCompatActivity() {
         // Search empty state: past queries shown / person clusters in the face row.
         private const val MaxRecentSearchesShown = 10
         private const val MaxPersonPreviews = 10
+        // Photo-grid search sections that carry the album-pill filter (All + albums with hits).
+        // Albums shows album tiles instead; People is a single identity-scoped set.
+        private val SearchAlbumChipSections = setOf(
+            SearchSection.Smart, SearchSection.Metadata, SearchSection.Tags, SearchSection.Locations
+        )
 
         /** Per-process dismissal of the search-screen indexing banner; resets on app start. */
         @Volatile
