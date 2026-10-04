@@ -177,7 +177,9 @@ class FaceIndexWorker(
                     photoDao.setStatus(item.uri.toString(), PersonPhotoEntity.Status.UNPROCESSED)
                     Log.w(Tag, "per-item failure on ${item.uri}", t)
                 }
-                if (mode == Mode.REMAINDER) delay(ResidualPhotoIdleMillis)
+                // The bench used to run its decodes and detections back-to-back with no gap at all,
+                // while the slower residual sweep paced itself.
+                delay(if (mode == Mode.REMAINDER) ResidualPhotoIdleMillis else CandidatePhotoIdleMillis)
             }
 
             logThroughput(stats, preGated)
@@ -606,7 +608,10 @@ class FaceIndexWorker(
         private const val ProgressEvery = 5
         private const val MaxRetries = 3
         private const val CandidateBatchLimit = 24
-        private const val ResidualPhotoIdleMillis = 900L
+        private const val ResidualPhotoIdleMillis = 1_200L
+        /** Gap between queued candidates. Shorter than the residual sweep's because these photos were
+         *  already gated — it is the detection decode that makes them hot, not the count of them. */
+        private const val CandidatePhotoIdleMillis = 400L
         private const val ResidualStartDelaySeconds = 20L
         private const val StaleClaimMillis = 20 * 60 * 1000L
         /** Phase 2 SLA target — photos/min while charging (spec: 30–60). Used by [logThroughput]. */
