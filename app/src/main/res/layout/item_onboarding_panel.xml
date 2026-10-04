@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One tour page. A feature page centers its glyph in the weighted icon area and puts the copy at
-     the bottom; the permissions page collapses that area to a top gap and lets the row list take the
-     weight instead. OnboardingPanelAdapter swaps those weights and rescales every size to the screen. -->
+<!-- One tour page. A feature page splits the spare height around the copy: the glyph gets the larger
+     share above, a smaller gap is held under the text, so the block settles in the lower-middle of
+     the screen instead of sitting on the bottom padding. The permissions page collapses the icon area
+     to a fixed top gap and lets the ruled row list take the weight, with no gap below it.
+     OnboardingPanelAdapter swaps those weights and rescales every size to the screen. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/panelRoot"
     android:layout_width="match_parent"
@@ -57,6 +59,12 @@
         android:maxWidth="280dp"
         android:textColor="@color/metroTextSecondary"
         android:textSize="13.5sp" />
+
+    <View
+        android:id="@+id/panelBottomSpacer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="0" />
 
     <View
         android:id="@+id/permTopDivider"

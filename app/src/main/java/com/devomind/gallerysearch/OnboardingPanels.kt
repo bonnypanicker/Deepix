@@ -218,7 +218,7 @@ class OnboardingPanelAdapter(
             if (panel.permissions.isEmpty()) bindFeaturePage(panel) else bindPermissionsPage(panel)
         }
 
-        /** Glyph in the flexible area above the copy, which sits at the bottom as drawn. */
+        /** Glyph in the larger share of the spare height, copy settled above a gap below it. */
         private fun bindFeaturePage(panel: OnboardingPanel) {
             b.panelIconArea.visibility = View.VISIBLE
             b.panelIcon.visibility = View.VISIBLE
@@ -232,6 +232,11 @@ class OnboardingPanelAdapter(
                     height = 0
                     weight = 1f
                 }
+            b.panelBottomSpacer.layoutParams =
+                (b.panelBottomSpacer.layoutParams as LinearLayout.LayoutParams).apply {
+                    height = 0
+                    weight = 0.8f
+                }
             b.permTopDivider.visibility = View.GONE
             b.permList.visibility = View.GONE
             b.permList.removeAllViews()
@@ -243,6 +248,11 @@ class OnboardingPanelAdapter(
             b.panelIconArea.layoutParams =
                 (b.panelIconArea.layoutParams as LinearLayout.LayoutParams).apply {
                     height = metrics.units(38f)
+                    weight = 0f
+                }
+            b.panelBottomSpacer.layoutParams =
+                (b.panelBottomSpacer.layoutParams as LinearLayout.LayoutParams).apply {
+                    height = 0
                     weight = 0f
                 }
             b.permTopDivider.visibility = View.VISIBLE
