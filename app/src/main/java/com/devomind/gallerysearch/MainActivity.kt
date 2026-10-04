@@ -14,6 +14,8 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
+import android.os.Trace
 import android.provider.MediaStore
 import android.text.TextUtils
 import android.util.Log
@@ -2035,6 +2037,24 @@ class MainActivity : AppCompatActivity() {
         val favoriteKeys = favoritesStore.all()
 
         searchJob = lifecycleScope.launch {
+            // Per-query stage timings: "smart results are slow" can only be fixed once the slow stage
+            // is known — encoder wait, text encode + library scoring, or the grid render. Trace
+            // sections are thread-local, so every mark() runs on this coroutine's Main thread and
+            // never inside a withContext block; the withContext hops show up as gaps in the slices.
+            val timingStart = SystemClock.elapsedRealtime()
+            val timingLog = StringBuilder()
+            var timingMark = timingStart
+            var timingSection: String? = null
+            fun mark(stage: String) {
+                if (!BuildConfig.DEBUG) return
+                val now = SystemClock.elapsedRealtime()
+                if (timingSection != null) Trace.endSection()
+                timingSection = stage
+                Trace.beginSection("search:$stage")
+                if (timingLog.isNotEmpty()) timingLog.append(' ')
+                timingLog.append(stage).append('=').append(now - timingMark).append("ms")
+                timingMark = now
+            }
             try {
                 val filterLookup = if (parsedQuery.needsFilterLookup) {
                     withContext(Dispatchers.IO) { buildFilterLookup(parsedQuery, currentSearchPhotoItems()) }
@@ -2042,11 +2062,13 @@ class MainActivity : AppCompatActivity() {
                     StructuredSearch.FilterLookup()
                 }
                 val structuredItems = parsedQuery.filterItems(currentSearchPhotoItems(), favoriteKeys, filterLookup)
+                mark("filter")
 
                 // Natural-language people: "photos of john", "me and my brother at a beach".
                 // Person mentions become a photo-pool constraint (AND across mentions) and leave a
                 // stripped text that CLIP/metadata actually rank ("john" has no visual embedding).
                 var personClause = withContext(Dispatchers.IO) { resolvePersonQueryClause(parsedQuery.textQuery) }
+                mark("person")
                 // A bare person word ("john", "me", "brother") is answered directly from the
                 // People index: the whole pool under the People pill, no CLIP pass (a name has no
                 // visual embedding). Person found but pool empty → drop the person reading and run
@@ -2079,6 +2101,7 @@ class MainActivity : AppCompatActivity() {
                         emptyList()
                     }
                     val results = mergePersonAndMetadataResults(peopleResults, metadataResults)
+                    mark("metadata")
                     renderSearchResults(
                         query = query,
                         results = results,
@@ -2087,6 +2110,7 @@ class MainActivity : AppCompatActivity() {
                         peopleResultUris = poolItems.mapTo(LinkedHashSet()) { it.uri.toString() },
                         preserveViewport = liveRefresh
                     )
+                    mark("render")
                     return@launch
                 }
                 if (barePersonWord) personClause = null
@@ -2116,20 +2140,24 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     emptyList()
                 }
+                mark("metadata")
 
                 if (!shouldSearchAi) {
                     if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
+                    val metadataOnly = withContext(Dispatchers.Default) {
+                        buildMergedPhotoSearchResults(filteredItems, metadataHits, emptyList())
+                    }
+                    mark("merge")
                     renderSearchResults(
                         query = query,
-                        results = withContext(Dispatchers.Default) {
-                            buildMergedPhotoSearchResults(filteredItems, metadataHits, emptyList())
-                        },
+                        results = metadataOnly,
                         emptyText = "No matching results",
                         preserveSelection = liveRefresh,
                         personScoped = personScoped,
                         forceSmartSection = personScoped,
                         preserveViewport = liveRefresh
                     )
+                    mark("render")
                     return@launch
                 }
 
@@ -2140,6 +2168,7 @@ class MainActivity : AppCompatActivity() {
                     ensureEncodersLoaded().await()
                     if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
                 }
+                mark("encoder")
                 val interimResults = if (metadataHits.isNotEmpty()) {
                     withContext(Dispatchers.Default) {
                         buildMergedPhotoSearchResults(filteredItems, metadataHits, emptyList())
@@ -2164,12 +2193,14 @@ class MainActivity : AppCompatActivity() {
                     // collapses the header row above it so "Searching your library" isn't drawn twice.
                     setSearchResultSummary("")
                 }
+                mark("interim")
 
                 val semanticResults = if (textEncoder == null) {
                     emptyList()
                 } else {
                     withContext(Dispatchers.Default) { repo.search(effectiveText) }
                 }
+                mark("clip")
                 val finalResults = withContext(Dispatchers.Default) {
                     buildMergedPhotoSearchResults(
                         baseItems = filteredItems,
@@ -2177,6 +2208,7 @@ class MainActivity : AppCompatActivity() {
                         semanticResults = semanticResults
                     )
                 }
+                mark("merge")
 
                 if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
                 renderSearchResults(
@@ -2188,6 +2220,7 @@ class MainActivity : AppCompatActivity() {
                     forceSmartSection = personScoped,
                     preserveViewport = liveRefresh
                 )
+                mark("render")
             } catch (cancelled: CancellationException) {
                 Log.d(TAG, "Search job cancelled.", cancelled)
             } catch (error: Throwable) {
@@ -2210,6 +2243,16 @@ class MainActivity : AppCompatActivity() {
                         )
                     )
                     resetGridToTop()
+                }
+            } finally {
+                // Runs on every exit path, including cancelled queries mid-typing.
+                if (timingSection != null) Trace.endSection()
+                if (BuildConfig.DEBUG) {
+                    Log.d(
+                        TAG,
+                        "search \"${query.take(32)}\" total=${SystemClock.elapsedRealtime() - timingStart}ms " +
+                            timingLog
+                    )
                 }
             }
         }
