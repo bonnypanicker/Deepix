@@ -54,7 +54,6 @@
     <string name="indexing_title">indexing</string>
     <string name="section_status">STATUS</string>
     <string name="indexing_preparing">Preparing…</string>
-    <string name="indexing_offline_note">On-device AI · nothing leaves your phone</string>
     <string name="section_media_processing">MEDIA PROCESSING</string>
     <string name="indexing_privacy_para">Your photos never leave your device. Everything is processed locally using on-device AI to enrich your library with intelligent metadata — no internet connection required.</string>
     <string name="indexing_initial_scan_intro">During the initial scan, you may notice:</string>

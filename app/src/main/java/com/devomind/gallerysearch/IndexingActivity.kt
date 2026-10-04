@@ -106,24 +106,6 @@ class IndexingActivity : AppCompatActivity() {
                 } else -1
                 renderIndexing(work?.state, livePercent, current, total)
             }
-
-        // Phase 2 face-index pipeline status: shows running face-processing stats (faces seen,
-        // persons created, gate activity) alongside the CLIP index progress.
-        WorkManager.getInstance(this)
-            .getWorkInfosForUniqueWorkLiveData(IndexWorker.WorkName)
-            .observe(this) { infos ->
-                val work = infos.firstOrNull {
-                    FaceIndexWorker.WorkTag in it.tags && it.state == WorkInfo.State.RUNNING
-                } ?: return@observe
-                val faces = work.progress.getInt(FaceIndexWorker.StatsFacesKey, 0)
-                val persons = work.progress.getInt(FaceIndexWorker.StatsPersonsKey, 0)
-                val visited = work.progress.getInt(FaceIndexWorker.ProgressVisitedKey, 0)
-                val total = work.progress.getInt(FaceIndexWorker.ProgressTotalKey, -1)
-                if (total > 0) {
-                    binding.indexSubStatus.text =
-                        "Indexing your photos… + face pass ($visited / $total · $faces faces · $persons persons)"
-                }
-            }
     }
 
     private fun isRunningState(state: WorkInfo.State?): Boolean =
@@ -136,13 +118,8 @@ class IndexingActivity : AppCompatActivity() {
         val chargingOnly = IndexPreferences.isChargingOnlyIndexing(this)
         val nightOnly = IndexPreferences.isNightChargingOnly(this)
         val waitReason = IndexPreferences.getLastIndexWaitReason(this)
-        val deviceState = runCatching {
-            IndexRunPolicy.deviceStateLabel(IndexHardwareMonitor.snapshot(this))
-        }.getOrDefault("")
 
         binding.indexProgress.progress = percent
-        binding.indexDeviceState.text = deviceState
-        binding.indexDeviceState.visibility = if (deviceState.isBlank()) View.GONE else View.VISIBLE
 
         // "N of M photos" count line — only while actively running with real totals.
         if (state == WorkInfo.State.RUNNING && current >= 0 && total > 0) {
@@ -157,7 +134,6 @@ class IndexingActivity : AppCompatActivity() {
                 binding.indexProgress.isIndeterminate = false
                 binding.indexProgress.progress = percent
                 binding.indexStatus.text = "Indexing your photos… $percent%"
-                binding.indexSubStatus.text = "On-device AI · nothing leaves your phone"
                 setToggle(R.drawable.ic_fluent_pause_24_regular, getString(R.string.pause))
             }
             state == WorkInfo.State.ENQUEUED || state == WorkInfo.State.BLOCKED -> {
@@ -167,32 +143,27 @@ class IndexingActivity : AppCompatActivity() {
                     chargingOnly -> "Waiting to charge"
                     else -> "Queued…"
                 }
-                binding.indexSubStatus.text = "On-device AI · nothing leaves your phone"
                 setToggle(R.drawable.ic_fluent_pause_24_regular, getString(R.string.pause))
             }
             paused -> {
                 binding.indexProgress.isIndeterminate = false
                 binding.indexStatus.text = "Indexing paused · $percent%"
-                binding.indexSubStatus.text = "Resume to finish building your AI search index"
                 setToggle(R.drawable.ic_fluent_play_24_regular, "Resume")
             }
             stopped && percent < 100 -> {
                 binding.indexProgress.isIndeterminate = false
                 binding.indexStatus.text = "Indexing stopped · $percent%"
-                binding.indexSubStatus.text = "Start again to finish building your AI search index"
                 setToggle(R.drawable.ic_fluent_play_24_regular, "Start")
             }
             percent >= 100 || state == WorkInfo.State.SUCCEEDED -> {
                 binding.indexProgress.isIndeterminate = false
                 binding.indexProgress.progress = 100
                 binding.indexStatus.text = "Your photos are indexed"
-                binding.indexSubStatus.text = "New photos are indexed automatically"
                 setToggle(R.drawable.ic_fluent_replay_24_regular, "Re-index")
             }
             else -> {
                 binding.indexProgress.isIndeterminate = false
                 binding.indexStatus.text = "Indexing not started"
-                binding.indexSubStatus.text = "Build a private, on-device index to search by description"
                 setToggle(R.drawable.ic_fluent_play_24_regular, "Start")
             }
         }
