@@ -116,26 +116,42 @@ class FaceIndexWorker(
             if (released > 0) Log.w(Tag, "Released $released stale face-processing claims.")
             val stats = Stats(startedAtMs = android.os.SystemClock.elapsedRealtime())
             val mediaByUri = images.associateBy { it.uri.toString() }
-            // The MobileCLIP image embeddings IndexWorker just persisted — keyed by uri string.
-            // Loaded once and reused for every photo's CLIP person-gate so the gate reuses the
-            // stored embedding (spec: "reuse existing MobileCLIP-S2 embeddings") instead of
-            // re-decoding + re-encoding each photo. Empty when the CLIP pass hasn't run yet; in
-            // that case processOne falls back to a live encode of the already-decoded bitmap.
-            val clipEmbeddings = if (mode == Mode.REMAINDER) {
-                runCatching { repository.allEmbeddings() }.getOrDefault(emptyMap())
-            } else {
+            // The MobileCLIP image embeddings IndexWorker just persisted — keyed by uri string. Only the
+            // residual sweep needs it: it gates every photo from scratch, so it reuses the stored
+            // embedding (spec: "reuse existing MobileCLIP-S2 embeddings") instead of re-decoding +
+            // re-encoding each one. Candidate mode doesn't load it at all — the queue already ran the
+            // gate and left the score on the row — so an empty map there is the normal case.
+            val preGated = mode == Mode.CANDIDATES
+            val clipEmbeddings = if (preGated) {
                 emptyMap()
-            }
-            if (clipEmbeddings.isEmpty()) {
-                Log.w(Tag, "No stored CLIP embeddings found — gate will live-encode each photo.")
             } else {
-                Log.i(Tag, "Reusing ${clipEmbeddings.size} stored CLIP embeddings for person-gate.")
+                runCatching { repository.allEmbeddings() }.getOrDefault(emptyMap())
+            }
+            if (!preGated) {
+                if (clipEmbeddings.isEmpty()) {
+                    Log.w(Tag, "No stored CLIP embeddings found — gate will live-encode each photo.")
+                } else {
+                    Log.i(Tag, "Reusing ${clipEmbeddings.size} stored CLIP embeddings for person-gate.")
+                }
             }
             val work = when (mode) {
-                Mode.CANDIDATES -> photoDao.findByStatus(
-                    PersonPhotoEntity.Status.CLIP_CANDIDATE,
-                    CandidateBatchLimit
-                ).mapNotNull { row -> mediaByUri[row.uri]?.let { it to row.clipPersonScore } }
+                Mode.CANDIDATES -> {
+                    val rows = photoDao.findByStatus(
+                        PersonPhotoEntity.Status.CLIP_CANDIDATE,
+                        CandidateBatchLimit
+                    )
+                    // Every candidate row is stored with lastAnalyzedAt = 0, so the bench's ORDER BY can't
+                    // see past them: a head of rows whose photo has since vanished would be selected,
+                    // dropped by the lookup below, and re-selected forever. Prune them instead. The gate
+                    // verdict is re-derivable from the stored embedding, so losing a row only costs the
+                    // residual sweep one re-gate.
+                    val (live, gone) = rows.partition { mediaByUri.containsKey(it.uri) }
+                    if (gone.isNotEmpty()) {
+                        gone.forEach { photoDao.deleteByUri(it.uri) }
+                        Log.i(Tag, "Pruned ${gone.size} face candidates whose photo is no longer in the library.")
+                    }
+                    live.map { row -> mediaByUri.getValue(row.uri) to row.clipPersonScore }
+                }
                 else -> images.map { it to null }
             }.sortedByDescending { it.first.dateMillis }
             if (work.isEmpty()) {
@@ -153,7 +169,10 @@ class FaceIndexWorker(
                 }
                 if (!claim(item, mode)) continue
                 try {
-                    processOne(item, repository, stats, total, mediaByUri, clipEmbeddings, queuedClipScore)
+                    processOne(
+                        item, repository, stats, total, mediaByUri,
+                        clipEmbeddings, queuedClipScore, preGated
+                    )
                 } catch (t: Throwable) {
                     photoDao.setStatus(item.uri.toString(), PersonPhotoEntity.Status.UNPROCESSED)
                     Log.w(Tag, "per-item failure on ${item.uri}", t)
@@ -161,7 +180,7 @@ class FaceIndexWorker(
                 if (mode == Mode.REMAINDER) delay(ResidualPhotoIdleMillis)
             }
 
-            logThroughput(stats)
+            logThroughput(stats, preGated)
             Log.i(Tag, "Face index done: $stats")
             // Persist any staged face embeddings to the mmap vector index so the next run /
             // search starts from a consistent on-disk state. (Lost staging on a crash is
@@ -193,7 +212,8 @@ class FaceIndexWorker(
         total: Int,
         mediaByUri: Map<String, GalleryRepository.MediaItem>,
         clipEmbeddings: Map<String, FloatArray>,
-        queuedClipScore: Float?
+        queuedClipScore: Float?,
+        preGated: Boolean
     ) {
         updateStats(stats) { visited++ }
 
@@ -212,10 +232,11 @@ class FaceIndexWorker(
         var faceBitmap: android.graphics.Bitmap? = null
         try {
             // ── CLIP gate ───────────────────────────────────────────────────────────────────
-            // Reuse the stored CLIP embedding when available. If not, fall back to a cheap
-            // 512px decode for the gate; only photos that survive the gate pay the 2560px
-            // face-detection decode.
-            val personVerdict = if (queuedClipScore == null) {
+            // A queued candidate was gated by the CLIP pass already, so there is no verdict left to
+            // compute and no reason to load the embedding map. Otherwise reuse the stored embedding;
+            // if none is available, fall back to a cheap 512px decode for the gate — only photos that
+            // survive the gate pay the 2560px face-detection decode.
+            val personVerdict = if (queuedClipScore == null && !preGated) {
                 val storedEmbedding = clipEmbeddings[uriStr]
                 if (storedEmbedding == null) {
                     photoDao.insert(
@@ -492,17 +513,23 @@ class FaceIndexWorker(
      * Logs the effective photos/min over the run and flags it against [ThroughputTargetPhotosPerMinute]
      * so a backfill that drifts below the SLA is visible in logcat without a dedicated UI.
      */
-    private fun logThroughput(stats: Stats) {
+    private fun logThroughput(stats: Stats, preGated: Boolean) {
         val elapsedMs = android.os.SystemClock.elapsedRealtime() - stats.startedAtMs
         if (elapsedMs <= 0L || stats.visited <= 0) return
         val photosPerMin = (stats.visited * 60_000f / elapsedMs).toInt()
-        val reused = stats.clipReused
         val verdict = if (photosPerMin >= ThroughputTargetPhotosPerMinute) "met" else "below target"
+        // Candidate runs legitimately report zero reuse: the CLIP pass scored those rows already, so
+        // there was no vector for this run to look up. Saying so keeps the line from reading as a miss.
+        val gateLine = if (preGated) {
+            "the CLIP pass scored these rows already"
+        } else {
+            "${stats.clipReused} stored vectors reused"
+        }
         Log.i(
             Tag,
             "Throughput: $photosPerMin photos/min over ${elapsedMs / 1000}s (${stats.visited} photos) " +
                 "— SLA ${ThroughputTargetPhotosPerMinute}/min $verdict. " +
-                "CLIP gate: $reused stored vectors reused; no image vectors re-encoded."
+                "CLIP gate: $gateLine; no image vectors re-encoded."
         )
     }
 
