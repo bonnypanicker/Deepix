@@ -98,9 +98,9 @@ MediaPagerAdapter ctor cb += onPlayStateChanged(position, playing)  // play/paus
 MediaPagerAdapter.PageViewHolder.togglePlayback()/setVideoControlsVisible()
 StructuredSearch.ScreenshotFilter                                   // is=screenshot (name/path heuristic)
 IndexPreferences.isCleanupPaused()/setCleanupPaused()
-IndexPreferences.isIndexConsentGiven()/setIndexConsentGiven()/wasIndexConsentAsked()/setIndexConsentAsked()
+IndexPreferences.isIndexConsentGiven()/setIndexConsentGiven()
 IndexPreferences.isChargingOnlyIndexing()/setChargingOnlyIndexing()
-MainActivity: maybePromptIndexingConsent()/showIndexingStartedDialog()/onIndexDrawerAction()/pauseIndexing()/resumeIndexing()/enqueueIndexWork(policy)
+MainActivity: startIndexingIfAllowed()/onIndexDrawerAction()/pauseIndexing()/resumeIndexing()/enqueueIndexWork(policy)
 IndexWorker.buildWorkRequest(context, selection)                   // SINGLE source of truth for index work request (applies charging constraint); used by MainActivity + IndexControlReceiver
 IndexController.pause/resume/stop/start(context)                   // shared indexing lifecycle; stop clears notification (uses IndexPreferences.isIndexStopped)
 IndexPreferences.getIndexProgressPercent()/setIndexProgressPercent()  // last progress %, shown in Settings while paused/idle

@@ -18,7 +18,6 @@ object IndexPreferences {
     private const val KeyIndexStopped = "index_stopped"
     private const val KeyCleanupPaused = "cleanup_paused"
     private const val KeyIndexConsentGiven = "index_consent_given"
-    private const val KeyIndexConsentAsked = "index_consent_asked"
     private const val KeyChargingOnly = "index_charging_only"
     private const val KeyNightChargingOnly = "index_night_charging_only"
     private const val KeyRequiresUserIdle = "index_requires_user_idle"
@@ -140,7 +139,7 @@ object IndexPreferences {
             .apply()
     }
 
-    /** Whether the user has approved building the AI photo index. */
+    /** Whether indexing was ever started. Indexing needs no approval dialog to begin. */
     fun isIndexConsentGiven(context: Context): Boolean {
         return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .getBoolean(KeyIndexConsentGiven, false)
@@ -150,20 +149,6 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KeyIndexConsentGiven, given)
-            .putBoolean(KeyIndexConsentAsked, true)
-            .apply()
-    }
-
-    /** Whether we've shown the one-time consent prompt (so we don't auto-nag again). */
-    fun wasIndexConsentAsked(context: Context): Boolean {
-        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .getBoolean(KeyIndexConsentAsked, false)
-    }
-
-    fun setIndexConsentAsked(context: Context) {
-        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(KeyIndexConsentAsked, true)
             .apply()
     }
 

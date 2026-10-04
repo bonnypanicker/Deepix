@@ -999,7 +999,7 @@ class MainActivity : AppCompatActivity() {
 
             // -------------------- TRACK C (index after first render) ----
             binding.root.post {
-                maybePromptIndexingConsent()
+                startIndexingIfAllowed()
                 maybeShowGridGestureHint()
             }
             // Model compatibility and vector-index repair are maintenance, not prerequisites for
@@ -1131,7 +1131,13 @@ class MainActivity : AppCompatActivity() {
         return ready
     }
 
-    private fun maybePromptIndexingConsent() {
+    /**
+     * Indexing begins on its own. The tour already told the user what the scan does and where it runs,
+     * and [enqueueBackgroundIndexing] records that as consent, so a first launch starts quietly instead
+     * of interrupting with a dialog. A deliberate pause or stop still holds until the user says
+     * otherwise.
+     */
+    private fun startIndexingIfAllowed() {
         if (IndexPreferences.isIndexPaused(applicationContext)) {
             updateIndexingRow()
             return
@@ -1143,31 +1149,9 @@ class MainActivity : AppCompatActivity() {
         }
         if (IndexPreferences.isIndexConsentGiven(applicationContext)) {
             lifecycleScope.launch { maybeStartBackgroundIndexing() }
-            return
-        }
-        // First run: auto-start indexing once the initial UI/library load has completed.
-        if (!IndexPreferences.wasIndexConsentAsked(applicationContext)) {
+        } else {
             enqueueBackgroundIndexing(showBanner = false)
-            showIndexingStartedDialog()
         }
-    }
-
-    private fun showIndexingStartedDialog() {
-        IndexPreferences.setIndexConsentAsked(applicationContext)
-        val message =
-            "Pixa AI Gallery is building a private search index of your photos with on-device AI, so you can " +
-                "find them just by describing them — try \"beach\", \"my dog\" or \"receipts\".\n\n" +
-                "This full scan runs once. After that, only newly added photos are indexed automatically.\n\n" +
-                "It works entirely offline — nothing ever leaves your phone. Indexing runs in the background " +
-                "and uses extra battery while it works; you can pause or resume it anytime from the side menu " +
-                "or Settings."
-        MetroDialog.message(
-            this,
-            title = "Local AI photo search",
-            message = message,
-            iconRes = R.drawable.ic_deepix_ai_orb_24,
-            positive = "Got it"
-        )
     }
 
     private fun onIndexDrawerAction() {
