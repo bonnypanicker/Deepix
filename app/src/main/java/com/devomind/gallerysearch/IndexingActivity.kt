@@ -135,8 +135,14 @@ class IndexingActivity : AppCompatActivity() {
         val percent = livePercent ?: IndexPreferences.getIndexProgressPercent(this)
         val chargingOnly = IndexPreferences.isChargingOnlyIndexing(this)
         val nightOnly = IndexPreferences.isNightChargingOnly(this)
+        val waitReason = IndexPreferences.getLastIndexWaitReason(this)
+        val deviceState = runCatching {
+            IndexRunPolicy.deviceStateLabel(IndexHardwareMonitor.snapshot(this))
+        }.getOrDefault("")
 
         binding.indexProgress.progress = percent
+        binding.indexDeviceState.text = deviceState
+        binding.indexDeviceState.visibility = if (deviceState.isBlank()) View.GONE else View.VISIBLE
 
         // "N of M photos" count line — only while actively running with real totals.
         if (state == WorkInfo.State.RUNNING && current >= 0 && total > 0) {
@@ -156,7 +162,7 @@ class IndexingActivity : AppCompatActivity() {
             }
             state == WorkInfo.State.ENQUEUED || state == WorkInfo.State.BLOCKED -> {
                 binding.indexProgress.isIndeterminate = true
-                binding.indexStatus.text = when {
+                binding.indexStatus.text = waitReason?.let(IndexRunPolicy::waitReasonLabel) ?: when {
                     nightOnly && chargingOnly -> "Waiting for night (10 PM – 7 AM) while charging"
                     chargingOnly -> "Waiting to charge"
                     else -> "Queued…"

@@ -84,6 +84,15 @@
                         android:textSize="13sp" />
 
                     <TextView
+                        android:id="@+id/indexDeviceState"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:includeFontPadding="false"
+                        android:paddingTop="3dp"
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="13sp" />
+
+                    <TextView
                         android:id="@+id/indexCount"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"

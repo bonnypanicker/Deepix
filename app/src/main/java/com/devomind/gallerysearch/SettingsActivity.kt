@@ -414,9 +414,11 @@ class SettingsActivity : AppCompatActivity() {
         val state = latestIndexState
         val nightOnly = IndexPreferences.isNightChargingOnly(this)
         val chargingOnly = IndexPreferences.isChargingOnlyIndexing(this)
+        val waitReason = IndexPreferences.getLastIndexWaitReason(this)
         return when {
             state == WorkInfo.State.RUNNING -> "Indexing… $percent%"
             state == WorkInfo.State.ENQUEUED || state == WorkInfo.State.BLOCKED -> when {
+                waitReason != null -> IndexRunPolicy.waitReasonLabel(waitReason)
                 nightOnly && chargingOnly -> "Waiting for night (10 PM – 7 AM)"
                 chargingOnly -> "Waiting to charge"
                 else -> "Queued"
