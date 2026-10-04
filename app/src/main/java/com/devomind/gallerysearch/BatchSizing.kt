@@ -7,13 +7,71 @@ import android.content.Context
  * Single source of truth for the device-scaled index batch size used by [GalleryRepository].
  */
 object BatchSizing {
-    fun computeBatchSize(context: Context): Int {
-        IndexPreferences.getIndexBatchSizeOverride(context).takeIf { it > 0 }?.let { return it }
-        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        return when {
+    /** Highest batch this device's memory tier allows, before any profile boost or OOM clamp. */
+    fun deviceBatchCeiling(context: Context): Int = deviceBatchCeiling(context.activityManager())
+
+    /**
+     * Images per inference batch: the device tier scaled by the thermal profile, then lowered — never
+     * raised — by the OOM cap. The cap used to return early, which made every profile compute the
+     * same number once a device had OOM'd.
+     */
+    fun computeBatchSize(
+        context: Context,
+        profile: IndexRunProfile = IndexRunProfile.Normal
+    ): Int {
+        val activityManager = context.activityManager()
+        val base = when {
             activityManager.isLowRamDevice -> 2
             activityManager.memoryClass >= 192 -> 6
             else -> 4
         }
+        val boosted = when (profile) {
+            IndexRunProfile.Max -> base + 4
+            IndexRunProfile.High -> base + 2
+            IndexRunProfile.Normal -> base
+            IndexRunProfile.Cooldown -> maxOf(2, base / 2)
+            // Someone is holding the phone: smallest batch, plus [pacingDelayMillis] between them.
+            IndexRunProfile.Quiet -> 2
+        }
+        val profiled = boosted.coerceIn(1, deviceBatchCeiling(activityManager))
+        val oomCap = IndexPreferences.getOomBatchCap(context)
+        return if (oomCap > 0) minOf(profiled, oomCap) else profiled
     }
+
+    fun computeDecodeConcurrency(
+        context: Context,
+        batchSize: Int,
+        profile: IndexRunProfile = IndexRunProfile.Normal
+    ): Int {
+        val activityManager = context.activityManager()
+        if (activityManager.isLowRamDevice) return 1
+        val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+        val cap = when (profile) {
+            IndexRunProfile.Max -> 6
+            IndexRunProfile.High -> 5
+            IndexRunProfile.Normal -> 4
+            IndexRunProfile.Cooldown -> 2
+            IndexRunProfile.Quiet -> 1
+        }
+        return minOf(cores, batchSize, cap)
+    }
+
+    /** Idle time forced between batches. Only [IndexRunProfile.Quiet] uses any of it — the way to
+     *  hand CPU back to a foreground user without stopping the run and paying reconciliation again. */
+    fun pacingDelayMillis(profile: IndexRunProfile): Long = when (profile) {
+        IndexRunProfile.Quiet -> QuietPacingMillis
+        else -> 0L
+    }
+
+    private fun Context.activityManager(): ActivityManager =
+        getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+
+    private fun deviceBatchCeiling(activityManager: ActivityManager): Int = when {
+        activityManager.isLowRamDevice -> 2
+        activityManager.memoryClass >= 256 -> 10
+        activityManager.memoryClass >= 192 -> 8
+        else -> 6
+    }
+
+    private const val QuietPacingMillis = 1_200L
 }

@@ -6,9 +6,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.os.BatteryManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
@@ -27,25 +26,24 @@ class IndexWorker(
     appContext: Context,
     params: WorkerParameters
 ) : CoroutineWorker(appContext, params) {
-
-    /** True if the device is currently connected to power. */
-    private fun isCurrentlyCharging(): Boolean {
-        return runCatching {
-            val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-            val battery = applicationContext.registerReceiver(null, filter) ?: return false
-            val status = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-            val plugged = battery.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
-            val hasPowerCable =
-                plugged == BatteryManager.BATTERY_PLUGGED_AC ||
-                    plugged == BatteryManager.BATTERY_PLUGGED_USB ||
-                    plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS
-            hasPowerCable ||
-                status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                status == BatteryManager.BATTERY_STATUS_FULL
-        }.getOrDefault(false)
-    }
+    private var cachedDecision: IndexRunDecision? = null
+    private var lastProbeAt: Long = 0L
 
     override suspend fun doWork(): Result {
+        val result = try {
+            runPass()
+        } catch (cancelled: CancellationException) {
+            // A cancel normally means a fresher request replaced this one, and the replacement wants
+            // the session this pass already paid to build. Keep it cached.
+            throw cancelled
+        }
+        // Every other exit is a wait of minutes-to-hours (charger, thermals, compression) or the end
+        // of the job: hand the 72 MB vision session back rather than pinning it for the process.
+        (applicationContext as GallerySearchApp).sharedEncoders.releaseImageEncoderAfterIndexing()
+        return result
+    }
+
+    private suspend fun runPass(): Result {
         // Paused means quiet: no worker run and nothing in the notification panel.
         if (IndexPreferences.isIndexPaused(applicationContext)) {
             return Result.success()
@@ -56,20 +54,20 @@ class IndexWorker(
         // charger gate below — never counts toward MaxRetryCount failure.
         if (CompressionBatchStore.isCompressionActive(applicationContext)) {
             Log.i(Tag, "Compression in progress — deferring index run.")
+            IndexPreferences.setLastIndexWaitReason(
+                applicationContext,
+                IndexWaitReason.WaitingForCompression
+            )
             return Result.retry()
         }
 
-        // Night-charging-only runtime guard: if the worker fires outside the night window (e.g. a
-        // delayed retry), reschedule it for the next window rather than running the heavy scan now.
-        if (IndexPreferences.isChargingOnlyIndexing(applicationContext) &&
-            IndexPreferences.isNightChargingOnly(applicationContext)
-        ) {
-            val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-            if (!IndexPreferences.isNightChargeHour(hour)) {
-                Log.i(Tag, "Outside night charging window — deferring index run.")
-                return Result.retry()
-            }
+        val initialDecision = evaluateHardwarePolicy()
+        if (initialDecision is IndexRunDecision.Wait) {
+            Log.i(Tag, "Index worker waiting: ${initialDecision.reason}.")
+            showWaitingNotificationFor(initialDecision.reason)
+            return Result.retry()
         }
+        val initialProfile = (initialDecision as IndexRunDecision.Run).profile
 
         try {
             setForeground(createForegroundInfo())
@@ -109,7 +107,12 @@ class IndexWorker(
                     .getImageEncoder(configuredThreadCount, modelBytes)
                 encoder to configuredThreadCount
             }
-            val repository = GalleryRepository(applicationContext, imageEncoder, null)
+            val repository = GalleryRepository(
+                applicationContext,
+                imageEncoder,
+                null,
+                initialProfile
+            )
 
             // The full set of images currently in scope (empty scope = all folders).
             // buildIndex reconciles the index against this exact set: it encodes newly-added
@@ -127,20 +130,22 @@ class IndexWorker(
             val total = max(1, items.size)
             val mediaByUri = items.associateBy { it.uri.toString() }
             val faceCandidateQueue = FaceCandidateQueue(applicationContext)
+            var encodedAnyThisPass = false
 
             repository.buildIndex(items, onProgress = { current, _ ->
                 if (IndexPreferences.isIndexPaused(applicationContext)) {
                     throw IndexPausedException()
                 }
-                // Honor "index only while charging" at runtime. This is a constraint wait, not a
-                // user pause: keep the work retryable so WorkManager can continue when power returns.
-                if (IndexPreferences.isChargingOnlyIndexing(applicationContext) && !isCurrentlyCharging()) {
-                    throw IndexWaitingForChargeException()
+                when (val decision = evaluateHardwarePolicy()) {
+                    is IndexRunDecision.Wait -> throw IndexWaitingException(decision.reason)
+                    // Hand the profile down to the live run: this is the mid-pass step-down the
+                    // Wait/Run split used to discard.
+                    is IndexRunDecision.Run -> repository.indexRunProfile = decision.profile
                 }
                 // Compression can start mid-pass (user kicked a batch off from Smart Cleanup):
                 // yield now and let the retry reconcile + resume without re-encoding.
                 if (CompressionBatchStore.isCompressionActive(applicationContext)) {
-                    throw CompressionRunningException()
+                    throw IndexWaitingException(IndexWaitReason.WaitingForCompression)
                 }
                 val bounded = current.coerceAtMost(total)
                 val progressPercent = (bounded * 100) / total
@@ -153,6 +158,7 @@ class IndexWorker(
                         .build()
                 )
             }, onEmbeddingsStored = { indexed ->
+                if (indexed.isNotEmpty()) encodedAnyThisPass = true
                 if (faceCandidateQueue.enqueueCandidates(indexed, mediaByUri) > 0) {
                     FaceIndexWorker.enqueueCandidates(applicationContext)
                 }
@@ -177,16 +183,19 @@ class IndexWorker(
             IndexPreferences.saveLastIndexedTime(applicationContext)
             IndexPreferences.setIndexProgressPercent(applicationContext, 100)
 
+            // A clean pass that actually ran inference shows the batch it used is safe: climb the cap
+            // one step. Without this a single long-ago OOM would pin batching low forever.
+            if (encodedAnyThisPass) {
+                IndexPreferences.healOomBatchCap(
+                    applicationContext,
+                    BatchSizing.deviceBatchCeiling(applicationContext)
+                )
+            }
+
             Result.success()
-        } catch (waiting: IndexWaitingForChargeException) {
-            Log.i(Tag, "Index worker waiting for charger.")
-            showWaitingForChargeNotification(applicationContext)
-            Result.retry()
-        } catch (held: CompressionRunningException) {
-            // Constraint wait, not a failure: retry unbounded until the batch settles, then the
-            // pass reconciles and continues. No "waiting" notification — the compression
-            // notification already explains why the device is busy.
-            Log.i(Tag, "Index worker yielding to compression.")
+        } catch (waiting: IndexWaitingException) {
+            Log.i(Tag, "Index worker waiting: ${waiting.reason}.")
+            showWaitingNotificationFor(waiting.reason)
             Result.retry()
         } catch (paused: IndexPausedException) {
             // Pause clears the panel; resume republishes the running pill when work restarts.
@@ -196,13 +205,36 @@ class IndexWorker(
             throw cancelled
         } catch (oom: OutOfMemoryError) {
             Log.w(Tag, "Index worker OOM on attempt $runAttemptCount; reducing batch size.", oom)
-            // Persist the smallest batch so the retried run degrades instead of OOM-ing again.
-            IndexPreferences.saveIndexBatchSizeOverride(applicationContext, 2)
+            // Ceiling, not override: the retry still steps down with the thermal profile, it just
+            // can't go above this. A clean pass later heals it back up one step at a time.
+            IndexPreferences.saveOomBatchCap(applicationContext, 2)
             if (runAttemptCount < MaxRetryCount) Result.retry() else Result.failure()
         } catch (error: Throwable) {
             Log.w(Tag, "Index worker failed on attempt $runAttemptCount.", error)
             if (runAttemptCount < MaxRetryCount) Result.retry() else Result.failure()
         }
+    }
+
+    private fun evaluateHardwarePolicy(): IndexRunDecision {
+        val now = SystemClock.elapsedRealtime()
+        val cached = cachedDecision
+        // The probe is several binder calls (power-save, idle, interactive, thermal headroom) and it
+        // used to run on every flushed batch — thousands of times per pass. Thermal state moves on
+        // minute-scale time, so a short cache window cannot miss a real overheat while keeping the
+        // calls off the hot path. Pause and compression checks stay per batch.
+        if (cached != null && now - lastProbeAt < HardwareProbeIntervalMillis) return cached
+        lastProbeAt = now
+        val decision = IndexHardwareMonitor.decision(applicationContext).second
+        cachedDecision = decision
+        if (decision is IndexRunDecision.Run) {
+            IndexPreferences.setLastIndexWaitReason(applicationContext, null)
+        }
+        return decision
+    }
+
+    private fun showWaitingNotificationFor(reason: IndexWaitReason) {
+        IndexPreferences.setLastIndexWaitReason(applicationContext, reason)
+        showWaitingNotification(applicationContext)
     }
 
     /**
@@ -245,6 +277,7 @@ class IndexWorker(
         const val ProgressPercentKey = "progress_percent"
         private const val Tag = "IndexWorker"
         private const val MaxRetryCount = 3
+        private const val HardwareProbeIntervalMillis = 5_000L
         private const val ChannelId = "gallery_index_channel"
         private const val NotificationId = 1001
         private const val PausedNotificationId = 1002
@@ -278,6 +311,13 @@ class IndexWorker(
             val constraints = androidx.work.Constraints.Builder()
                 .apply {
                     if (IndexPreferences.isChargingOnlyIndexing(context)) setRequiresCharging(true)
+                    if (IndexPreferences.isUserIdleRequiredForIndexing(context)) setRequiresDeviceIdle(true)
+                    if (IndexPreferences.isBatteryNotLowRequiredForIndexing(context)) {
+                        setRequiresBatteryNotLow(true)
+                    }
+                    if (IndexPreferences.isStorageNotLowRequiredForIndexing(context)) {
+                        setRequiresStorageNotLow(true)
+                    }
                 }
                 .build()
             val totalDelaySeconds = maxOf(initialDelaySeconds, nightChargeDelaySeconds(context))
@@ -344,7 +384,7 @@ class IndexWorker(
                 .build()
         }
 
-        fun showWaitingForChargeNotification(context: Context) {
+        fun showWaitingNotification(context: Context) {
             ensureChannel(context)
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.notify(NotificationId, buildStatusNotification(context))
@@ -371,4 +411,4 @@ class IndexWorker(
 }
 
 private class IndexPausedException : RuntimeException()
-private class IndexWaitingForChargeException : RuntimeException()
+private class IndexWaitingException(val reason: IndexWaitReason) : RuntimeException()

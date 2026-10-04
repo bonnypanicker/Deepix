@@ -142,6 +142,7 @@ class SharedEncoders(private val context: android.content.Context) {
     @Volatile private var textEncoder: TextEncoder? = null
     @Volatile private var faceEmbedder: FaceEmbedder? = null
     @Volatile private var faceDetector: YuNetDetector? = null
+    @Volatile private var visionHeldByForeground = false
 
     // Separate lock per encoder: constructing an ImageEncoder and a TextEncoder are independent
     // (separate OrtSessions, separate model assets) — sharing one lock would serialize them even
@@ -161,6 +162,32 @@ class SharedEncoders(private val context: android.content.Context) {
         return imageEncoder ?: synchronized(imageLock) {
             imageEncoder ?: ImageEncoder.create(context, threadCount ?: optimalThreadCount(), preloadedModelBytes)
                 .also { imageEncoder = it }
+        }
+    }
+
+    /**
+     * Foreground acquire for image-to-image search. Marks the session as held *while* taking the lock,
+     * so a pass finishing on the indexing thread can't close the instance between fetching and
+     * attaching it.
+     */
+    fun acquireVisionEncoder(): ImageEncoder = synchronized(imageLock) {
+        visionHeldByForeground = true
+        getImageEncoder()
+    }
+
+    /**
+     * Frees the vision OrtSession when an indexing pass ends — its memory is otherwise held for the
+     * life of the process after work that runs minutes a day. Refuses once the Activity has attached
+     * the session: closing it from under image-to-image search would fail every later encode on the
+     * stale reference that screen keeps.
+     */
+    fun releaseImageEncoderAfterIndexing() {
+        synchronized(imageLock) {
+            if (visionHeldByForeground) return
+            imageEncoder?.let { encoder ->
+                runCatching { encoder.close() }.onFailure { Log.w("SharedEncoders", "close imageEncoder", it) }
+            }
+            imageEncoder = null
         }
     }
 

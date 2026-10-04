@@ -25,6 +25,14 @@ class ImageEncoder private constructor(
     /** Guards the shared OrtSession so indexing and live queries never call run() concurrently. */
     private val sessionLock = Any()
 
+    /**
+     * Feature length this model emits, learned from the first encode (0 until one has run). Batch
+     * output has no shape of its own — it's a flat float block split evenly across the batch — so
+     * without a reference length an off-by-one split would pass silently and poison the index.
+     */
+    @Volatile var embeddingDim: Int = 0
+        private set
+
     init {
         val options = OnnxSessionOptions.create(
             tag = Tag,
@@ -56,7 +64,9 @@ class ImageEncoder private constructor(
                     val value = result.get(outputName).orElseThrow {
                         IllegalStateException("Vision model did not return output '$outputName'")
                     }.value
-                    return EmbeddingUtils.l2Normalize(OnnxOutput.flattenFloatArray(value))
+                    val vector = EmbeddingUtils.l2Normalize(OnnxOutput.flattenFloatArray(value))
+                    if (embeddingDim == 0) embeddingDim = vector.size
+                    return vector
                 }
             }
         }
@@ -116,41 +126,36 @@ class ImageEncoder private constructor(
      * Handles both Array<FloatArray> (rank-2) and flat FloatArray outputs.
      */
     private fun extractBatchEmbeddings(value: Any, batchSize: Int): List<FloatArray> {
-        return when (value) {
-            is Array<*> -> {
-                // Output is Array<FloatArray> with shape [N, embeddingDim]
-                val results = mutableListOf<FloatArray>()
-                for (i in 0 until batchSize) {
-                    val row = value[i]
-                    val flat = OnnxOutput.flattenFloatArray(row!!)
-                    results.add(EmbeddingUtils.l2Normalize(flat))
-                }
-                results
-            }
-            is FloatArray -> {
-                // Flat output — split evenly into batchSize chunks
-                val embeddingDim = value.size / batchSize
-                val results = mutableListOf<FloatArray>()
-                for (i in 0 until batchSize) {
-                    val offset = i * embeddingDim
-                    val row = value.copyOfRange(offset, offset + embeddingDim)
-                    results.add(EmbeddingUtils.l2Normalize(row))
-                }
-                results
-            }
-            else -> {
-                // Fallback: flatten and split
-                val flat = OnnxOutput.flattenFloatArray(value)
-                val embeddingDim = flat.size / batchSize
-                val results = mutableListOf<FloatArray>()
-                for (i in 0 until batchSize) {
-                    val offset = i * embeddingDim
-                    val row = flat.copyOfRange(offset, offset + embeddingDim)
-                    results.add(EmbeddingUtils.l2Normalize(row))
-                }
-                results
-            }
+        val rows = when (value) {
+            // Output is Array<FloatArray> with shape [N, embeddingDim]
+            is Array<*> -> (0 until batchSize).map { OnnxOutput.flattenFloatArray(value[it]!!) }
+            is FloatArray -> splitFlatOutput(value, batchSize)
+            // Fallback: flatten and split
+            else -> splitFlatOutput(OnnxOutput.flattenFloatArray(value), batchSize)
         }
+        val expected = embeddingDim
+        if (expected > 0) {
+            rows.firstOrNull { it.size != expected }?.let { row ->
+                throw IllegalStateException(
+                    "Vision batch row is ${row.size} floats, single encodes are $expected."
+                )
+            }
+        } else if (rows.isNotEmpty()) {
+            embeddingDim = rows.first().size
+        }
+        return rows.map { EmbeddingUtils.l2Normalize(it) }
+    }
+
+    /** A flat output that doesn't divide evenly across the batch isn't [N, dim] — failing here lets
+     *  the indexer retry per image instead of storing a truncated, mis-split vector. */
+    private fun splitFlatOutput(flat: FloatArray, batchSize: Int): List<FloatArray> {
+        val dim = flat.size / batchSize
+        if (dim <= 0 || flat.size % batchSize != 0) {
+            throw IllegalStateException(
+                "Vision batch output is ${flat.size} floats for $batchSize images."
+            )
+        }
+        return (0 until batchSize).map { flat.copyOfRange(it * dim, it * dim + dim) }
     }
 
     internal fun preprocess(bitmap: Bitmap): FloatArray {

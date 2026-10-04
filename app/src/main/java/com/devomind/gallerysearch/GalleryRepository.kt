@@ -1,6 +1,5 @@
 package com.devomind.gallerysearch
 
-import android.app.ActivityManager
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
@@ -35,29 +34,38 @@ import kotlin.math.roundToInt
 class GalleryRepository(
     private val context: Context,
     @Volatile private var imageEncoder: ImageEncoder? = null,
-    @Volatile private var textEncoder: TextEncoder? = null
+    @Volatile private var textEncoder: TextEncoder? = null,
+    initialProfile: IndexRunProfile = IndexRunProfile.Normal
 ) {
     private val albumCoverStore = AlbumCoverStore(context)
 
-    /** Images per inference batch: OOM-persisted override wins, else scaled to device capability. */
-    private val batchSize: Int = BatchSizing.computeBatchSize(context)
+    /**
+     * Thermal/power profile the run is working under. IndexWorker re-assigns it between batches so
+     * a pass that starts cool and then heats up steps its batch size down instead of holding its
+     * startup profile until it's hot enough to stop entirely.
+     */
+    var indexRunProfile: IndexRunProfile = initialProfile
+        set(value) {
+            field = value
+            batchSize = BatchSizing.computeBatchSize(context, value)
+        }
+
+    /** Images per inference batch: device tier scaled by [indexRunProfile], capped by any OOM
+     *  ceiling. Recomputed only when [indexRunProfile] moves, because the consumer loop reads it
+     *  per item. */
+    @Volatile private var batchSize: Int = BatchSizing.computeBatchSize(context, initialProfile)
 
     /** Decode/preprocess workers running concurrently ahead of inference. Conservative on
      *  low-RAM devices; shrinks automatically when an OOM pins [batchSize] down since both derive
-     *  from the same override. */
-    private val decodeConcurrency: Int = computeDecodeConcurrency()
-
-    private fun computeDecodeConcurrency(): Int {
-        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        if (activityManager.isLowRamDevice) return 1
-        val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
-        return minOf(cores, batchSize, MaxDecodeConcurrency)
-    }
+     *  from the same override. The pool is built once per run, so it follows the starting profile. */
+    private val decodeConcurrency: Int =
+        BatchSizing.computeDecodeConcurrency(context, batchSize, initialProfile)
 
     data class SemanticSearchHit(val uri: Uri, val score: Float)
 
-    /** A newly persisted CLIP vector, exposed to the face-candidate queue without re-encoding it. */
-    data class IndexedEmbedding(val uri: Uri, val vector: FloatArray)
+    /** A newly persisted CLIP vector, plus the burst-duplicate hash taken from the same decode, so
+     *  the face side-bench never has to decode this photo a second time. */
+    data class IndexedEmbedding(val uri: Uri, val vector: FloatArray, val dhash: Long = 0L)
 
     /**
      * Attaches the MobileCLIP encoders as they finish loading on a background thread. Either may be
@@ -510,72 +518,83 @@ class GalleryRepository(
         // Report the already-indexed count immediately
         onProgress(alreadyDone, total)
 
-        coroutineScope {
-            val inputChannel = Channel<MediaItem>(capacity = decodeConcurrency * 2)
-            val outputChannel = Channel<PreparedItem>(capacity = decodeConcurrency * 2)
+        try {
+            coroutineScope {
+                val inputChannel = Channel<MediaItem>(capacity = decodeConcurrency * 2)
+                val outputChannel = Channel<PreparedItem>(capacity = decodeConcurrency * 2)
 
-            // Persist on a wall-clock interval, off the consumer's critical path, instead of a
-            // synchronous full-file rewrite every N items blocking the next batch's inference.
-            val saveTicker = launch(Dispatchers.IO) {
-                while (isActive) {
-                    delay(SaveIntervalMillis)
-                    if (dirty.compareAndSet(true, false)) {
-                        saveIndex(snapshotIndex())
+                // Persist on a wall-clock interval, off the consumer's critical path, instead of a
+                // synchronous full-file rewrite every N items blocking the next batch's inference.
+                val saveTicker = launch(Dispatchers.IO) {
+                    while (isActive) {
+                        delay(SaveIntervalMillis)
+                        if (dirty.compareAndSet(true, false)) {
+                            saveIndex(snapshotIndex())
+                        }
                     }
                 }
-            }
 
-            // Feeder: hands work items to the decode pool; suspends only on channel backpressure.
-            val feeder = launch(Dispatchers.Default) {
-                for (item in unindexed) {
-                    ensureActive()
-                    inputChannel.send(item)
-                }
-                inputChannel.close()
-            }
-
-            // Decode pool: N workers decode + orient + preprocess concurrently, independent of
-            // the inference session lock.
-            val decodeWorkers = List(decodeConcurrency) {
-                launch(Dispatchers.IO) {
-                    for (item in inputChannel) {
+                // Feeder: hands work items to the decode pool; suspends only on channel backpressure.
+                val feeder = launch(Dispatchers.Default) {
+                    for (item in unindexed) {
                         ensureActive()
-                        val prepared = runCatching { loadAndPreprocess(item) }
-                            .onFailure { Log.w(Tag, "Decode/preprocess failed for ${item.uri}", it) }
-                            .getOrNull()
-                        if (prepared != null) outputChannel.send(prepared)
+                        inputChannel.send(item)
+                    }
+                    inputChannel.close()
+                }
+
+                // Decode pool: N workers decode + orient + preprocess concurrently, independent of
+                // the inference session lock.
+                val decodeWorkers = List(decodeConcurrency) {
+                    launch(Dispatchers.IO) {
+                        for (item in inputChannel) {
+                            ensureActive()
+                            val prepared = runCatching { loadAndPreprocess(item) }
+                                .onFailure { Log.w(Tag, "Decode/preprocess failed for ${item.uri}", it) }
+                                .getOrNull()
+                            if (prepared != null) outputChannel.send(prepared)
+                        }
                     }
                 }
-            }
-            // Fan-in closer: closes the output channel once every decode worker is done, without
-            // blocking the consumer loop below.
-            launch(Dispatchers.Default) {
-                decodeWorkers.joinAll()
-                outputChannel.close()
-            }
+                // Fan-in closer: closes the output channel once every decode worker is done, without
+                // blocking the consumer loop below.
+                launch(Dispatchers.Default) {
+                    decodeWorkers.joinAll()
+                    outputChannel.close()
+                }
 
-            // Consumer: buffers prepared items up to batchSize, then runs inference.
-            val batchBuffer = ArrayList<PreparedItem>(batchSize)
-            suspend fun flushBatch() {
-                if (batchBuffer.isEmpty()) return
-                val indexed = encodeAndStore(batchBuffer, dirty)
-                if (indexed.isNotEmpty()) onEmbeddingsStored(indexed)
-                processedNew += batchBuffer.size
-                onProgress(alreadyDone + processedNew, total)
-                batchBuffer.clear()
-            }
-            for (prepared in outputChannel) {
-                currentCoroutineContext().ensureActive()
-                batchBuffer.add(prepared)
-                if (batchBuffer.size >= batchSize) flushBatch()
-            }
-            flushBatch()
+                // Consumer: buffers prepared items up to batchSize, then runs inference. The limit is a
+                // live read — [indexRunProfile] can step down mid-pass, so a downgrade lands on the next
+                // flush instead of waiting for the run to restart.
+                val batchBuffer = ArrayList<PreparedItem>(batchSize)
+                suspend fun flushBatch() {
+                    if (batchBuffer.isEmpty()) return
+                    val indexed = encodeAndStore(batchBuffer, dirty)
+                    if (indexed.isNotEmpty()) onEmbeddingsStored(indexed)
+                    processedNew += batchBuffer.size
+                    onProgress(alreadyDone + processedNew, total)
+                    batchBuffer.clear()
+                    // Puts CPU back on a foreground user's device without stopping the run and paying
+                    // reconciliation again; every other profile asks for no delay.
+                    val pacing = BatchSizing.pacingDelayMillis(indexRunProfile)
+                    if (pacing > 0L) delay(pacing)
+                }
+                for (prepared in outputChannel) {
+                    currentCoroutineContext().ensureActive()
+                    batchBuffer.add(prepared)
+                    if (batchBuffer.size >= batchSize) flushBatch()
+                }
+                flushBatch()
 
-            feeder.join()
-            saveTicker.cancel()
+                feeder.join()
+                saveTicker.cancel()
+            }
+        } finally {
+            // A wait/pause throw from onProgress unwinds past the normal save below. Without this the
+            // next retry re-encodes everything the ticker hasn't flushed — up to a full interval of
+            // finished inference thrown away per thermal wait.
+            saveIndex(snapshotIndex())
         }
-
-        saveIndex(snapshotIndex())
     }
 
     /** Runs inference on a prepared batch and stores valid embeddings; falls back to per-image
@@ -586,13 +605,13 @@ class GalleryRepository(
         try {
             val results = encoder.encodeBatchPrepared(batch.map { it.floats })
             batch.zip(results).forEach { (entry, embedding) ->
-                storeEmbedding(entry.uri, embedding, dirty)?.let(indexed::add)
+                storeEmbedding(entry, embedding, dirty)?.let(indexed::add)
             }
         } catch (error: Throwable) {
             Log.w(Tag, "Batch encoding failed, falling back to single-image", error)
             for (entry in batch) {
                 try {
-                    storeEmbedding(entry.uri, encoder.encodePrepared(entry.floats), dirty)?.let(indexed::add)
+                    storeEmbedding(entry, encoder.encodePrepared(entry.floats), dirty)?.let(indexed::add)
                 } catch (e: Throwable) {
                     Log.w(Tag, "Failed to encode ${entry.uri}", e)
                 }
@@ -601,16 +620,23 @@ class GalleryRepository(
         return indexed
     }
 
-    private fun storeEmbedding(uri: Uri, embedding: FloatArray, dirty: AtomicBoolean): IndexedEmbedding? {
+    private fun storeEmbedding(entry: PreparedItem, embedding: FloatArray, dirty: AtomicBoolean): IndexedEmbedding? {
+        val expectedDim = imageEncoder?.embeddingDim ?: 0
+        if (expectedDim > 0 && embedding.size != expectedDim) {
+            // A wrong-length vector scores as noise against every query forever; drop it now so it
+            // never reaches the index file.
+            Log.w(Tag, "Skipping ${entry.uri}: embedding is ${embedding.size} floats, model emits $expectedDim")
+            return null
+        }
         if (!isEmbeddingValid(embedding)) {
-            Log.w(Tag, "Skipping invalid embedding for $uri")
+            Log.w(Tag, "Skipping invalid embedding for ${entry.uri}")
             return null
         }
         synchronized(indexLock) {
-            embeddings[uri.toString()] = embedding
+            embeddings[entry.uri.toString()] = embedding
         }
         dirty.set(true)
-        return IndexedEmbedding(uri, embedding)
+        return IndexedEmbedding(entry.uri, embedding, entry.dhash)
     }
 
     /** Decodes, orients, and preprocesses one image for indexing; the bitmap never leaves this call. */
@@ -618,7 +644,9 @@ class GalleryRepository(
         val encoder = imageEncoder ?: return null
         val bitmap = decodeOrientedBitmapForIndexing(item.uri, MaxBitmapEdge, item.orientationDegrees) ?: return null
         return try {
-            PreparedItem(item.uri, encoder.preprocess(bitmap))
+            // Hashed here because this is the only decode this photo gets: the face side-bench reads
+            // the same 512px oriented geometry off the candidate row instead of decoding again.
+            PreparedItem(item.uri, encoder.preprocess(bitmap), PhashUtils.hash(bitmap))
         } finally {
             bitmap.recycle()
         }
@@ -990,6 +1018,7 @@ class GalleryRepository(
 
                 val count = input.readInt().coerceAtLeast(0)
                 val loaded = LinkedHashMap<String, FloatArray>(count)
+                val expectedDim = imageEncoder?.embeddingDim ?: 0
                 repeat(count) {
                     val uriLength = input.readInt()
                     if (uriLength <= 0 || uriLength > MaxUriBytes) throw EOFException("Invalid URI length.")
@@ -1002,6 +1031,12 @@ class GalleryRepository(
                         throw EOFException("Invalid embedding size.")
                     }
                     val embedding = FloatArray(embeddingSize) { input.readFloat() }
+                    // A record from a different model would score as noise forever; dropping the row
+                    // costs one re-index instead of degrading every query.
+                    if (expectedDim > 0 && embedding.size != expectedDim) {
+                        Log.w(Tag, "Dropping $uri: ${embedding.size} floats, model emits $expectedDim.")
+                        return@repeat
+                    }
                     loaded[uri] = embedding
                 }
                 loaded
@@ -1142,7 +1177,7 @@ class GalleryRepository(
     }
 
     /** A URI paired with its preprocessed (normalized) image data, ready for inference. */
-    private data class PreparedItem(val uri: Uri, val floats: FloatArray)
+    private data class PreparedItem(val uri: Uri, val floats: FloatArray, val dhash: Long)
 
     companion object {
         private const val Tag = "GalleryRepository"
@@ -1167,7 +1202,6 @@ class GalleryRepository(
         /** Keep each MediaStore IN query safely below SQLite's bind-parameter limit. */
         private const val MediaStoreQueryChunkSize = 900
         private const val SaveIntervalMillis = 10_000L
-        private const val MaxDecodeConcurrency = 4
         private const val MaxUriBytes = 4096
         private const val MaxEmbeddingSize = 4096
         private const val MaxTextBytes = 16_384

@@ -1113,7 +1113,9 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val sharedEncoders = (application as GallerySearchApp).sharedEncoders
             val image = withContext(Dispatchers.IO) {
-                runCatching { sharedEncoders.getImageEncoder() }.getOrNull()
+                // Acquired through the shared holder so a CLIP pass finishing at this moment can't
+                // release the session we're about to attach.
+                runCatching { sharedEncoders.acquireVisionEncoder() }.getOrNull()
             }
             if (image == null) {
                 Log.w(TAG, "Vision encoder failed to load; image-to-image search disabled.")
@@ -5088,6 +5090,13 @@ class MainActivity : AppCompatActivity() {
         mediaRefreshScheduler.onPause()
         super.onPause()
         stopSearchHintCycle()
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        // Feeds the Quiet index profile: background indexing paces itself while someone is actually
+        // using the phone rather than stopping and paying full reconciliation again.
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) IndexHardwareMonitor.noteUserInteraction()
+        return super.dispatchTouchEvent(ev)
     }
 
     override fun onDestroy() {

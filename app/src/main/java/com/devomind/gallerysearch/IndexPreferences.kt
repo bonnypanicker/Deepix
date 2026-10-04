@@ -6,7 +6,9 @@ object IndexPreferences {
     private const val PrefName = "index_prefs"
     private const val KeyLastIndexed = "last_indexed_time"
     private const val KeyOptimalThreads = "optimal_thread_count"
+    /** Legacy key: held the OOM batch size as a short-circuit before it became a clamp. */
     private const val KeyIndexBatchSizeOverride = "index_batch_size_override"
+    private const val KeyOomBatchCap = "index_oom_batch_cap"
     private const val KeyShowPinnedCollections = "show_pinned_collections"
     private const val KeyGridColumnCount = "grid_column_count"
     private const val KeyCollageScale = "collage_scale_level"
@@ -19,6 +21,10 @@ object IndexPreferences {
     private const val KeyIndexConsentAsked = "index_consent_asked"
     private const val KeyChargingOnly = "index_charging_only"
     private const val KeyNightChargingOnly = "index_night_charging_only"
+    private const val KeyRequiresUserIdle = "index_requires_user_idle"
+    private const val KeyRequireBatteryNotLow = "index_require_battery_not_low"
+    private const val KeyRequireStorageNotLow = "index_require_storage_not_low"
+    private const val KeyLastWaitReason = "index_last_wait_reason"
     private const val KeySmartAlbumOnboardingDismissed = "smart_album_onboarding_dismissed"
     private const val KeyIndexProgressPercent = "index_progress_percent"
     private const val KeyBlurSensitive = "blur_sensitive_content"
@@ -204,6 +210,63 @@ object IndexPreferences {
         return hourOfDay >= NIGHT_CHARGE_START_HOUR || hourOfDay < NIGHT_CHARGE_END_HOUR
     }
 
+    /** Optional future gate: require screen-off/device-idle before the heavy CLIP pass runs. */
+    fun isUserIdleRequiredForIndexing(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyRequiresUserIdle, false)
+    }
+
+    fun setUserIdleRequiredForIndexing(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyRequiresUserIdle, enabled)
+            .apply()
+    }
+
+    /** Aggressive default: allow battery drain unless the user later opts into this gate. */
+    fun isBatteryNotLowRequiredForIndexing(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyRequireBatteryNotLow, false)
+    }
+
+    fun setBatteryNotLowRequiredForIndexing(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyRequireBatteryNotLow, enabled)
+            .apply()
+    }
+
+    /** Storage-low is a hard safety gate: index writes need room to complete atomically. */
+    fun isStorageNotLowRequiredForIndexing(context: Context): Boolean {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyRequireStorageNotLow, true)
+    }
+
+    fun setStorageNotLowRequiredForIndexing(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyRequireStorageNotLow, enabled)
+            .apply()
+    }
+
+    fun getLastIndexWaitReason(context: Context): IndexWaitReason? {
+        val raw = context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getString(KeyLastWaitReason, null)
+        return raw?.let { value ->
+            runCatching { IndexWaitReason.valueOf(value) }.getOrNull()
+        }
+    }
+
+    fun setLastIndexWaitReason(context: Context, reason: IndexWaitReason?) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .apply {
+                if (reason == null) remove(KeyLastWaitReason)
+                else putString(KeyLastWaitReason, reason.name)
+            }
+            .apply()
+    }
+
     /** Whether the user dismissed the "Create a smart album" onboarding card. */
     fun isSmartAlbumOnboardingDismissed(context: Context): Boolean {
         return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
@@ -249,20 +312,49 @@ object IndexPreferences {
             .getInt(KeyOptimalThreads, 0)
     }
 
-    /** Returns the OOM-persisted batch size override, or 0 if none has been saved. */
-    fun getIndexBatchSizeOverride(context: Context): Int {
-        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .getInt(KeyIndexBatchSizeOverride, 0)
+    /**
+     * The largest batch indexing may attempt after an earlier [OutOfMemoryError], or 0 when nothing
+     * has been recorded. This is a clamp, not a replacement: the device tier and the thermal profile
+     * still choose the size, and this only lowers it. Builds before that treated the value as a
+     * short-circuit left the legacy key behind, which pinned every profile to the same number for
+     * the rest of the install, so it is adopted once here instead of dropped.
+     */
+    fun getOomBatchCap(context: Context): Int {
+        val prefs = context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+        val stored = prefs.getInt(KeyOomBatchCap, 0)
+        if (stored > 0) return stored
+        val legacy = prefs.getInt(KeyIndexBatchSizeOverride, 0)
+        if (legacy > 0) {
+            prefs.edit()
+                .remove(KeyIndexBatchSizeOverride)
+                .putInt(KeyOomBatchCap, legacy)
+                .apply()
+        }
+        return legacy
     }
 
-    /** Persist a reduced batch size after an OOM so the next indexing run uses it. */
-    fun saveIndexBatchSizeOverride(context: Context, size: Int) {
+    /** Pin the cap low after an OOM. Passes that finish clean climb back via [healOomBatchCap]. */
+    fun saveOomBatchCap(context: Context, size: Int) {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
-            .putInt(KeyIndexBatchSizeOverride, size)
-            // Clear the stored thread count so the next startup rewrites the fixed/default value.
-            .putInt(KeyOptimalThreads, 0)
+            .putInt(KeyOomBatchCap, size.coerceAtLeast(1))
+            .remove(KeyIndexBatchSizeOverride)
             .apply()
+    }
+
+    /**
+     * One step back toward the device ceiling after a pass that encoded without an OOM. Recovery is
+     * deliberately gradual — resetting straight to full size re-runs the batch that just failed.
+     */
+    fun healOomBatchCap(context: Context, ceiling: Int) {
+        val prefs = context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+        val current = getOomBatchCap(context)
+        if (current <= 0) return
+        if (current + 1 >= ceiling) {
+            prefs.edit().remove(KeyOomBatchCap).apply()
+        } else {
+            prefs.edit().putInt(KeyOomBatchCap, current + 1).apply()
+        }
     }
 
     fun isShowPinnedInCollections(context: Context): Boolean {
