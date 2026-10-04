@@ -170,6 +170,8 @@
     <string name="section_storage">STORAGE</string>
     <string name="recycle_bin_label">Recycle bin</string>
     <string name="section_about">ABOUT</string>
+    <string name="replay_tour">Welcome tour</string>
+    <string name="replay_tour_hint">See the introduction again</string>
     <string name="smart_cleanup_title">smart cleanup</string>
     <string name="analyzing_library">Analyzing your library…</string>
     <string name="cleanup_indexing_unfinished">Indexing isn&#8217;t finished</string>

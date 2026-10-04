@@ -339,6 +339,30 @@
                             android:text="@string/version" />
                     </LinearLayout>
                 </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <!-- Clears the seen flag before launching, so this is a cold-install tour. -->
+                <LinearLayout
+                    android:id="@+id/rowReplayTour"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/replay_tour" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="@string/replay_tour_hint" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_fluent_chevron_right_24_regular"
+                        android:tint="@color/metroTextTertiary" />
+                </LinearLayout>
             </LinearLayout>
         </ScrollView>
     </LinearLayout>

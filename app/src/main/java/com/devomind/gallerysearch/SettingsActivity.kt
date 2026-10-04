@@ -440,6 +440,13 @@ class SettingsActivity : AppCompatActivity() {
             }.versionName
         }.getOrNull() ?: "—"
         binding.aboutVersion.text = "Version $version"
+
+        // Clearing the flag first makes the tour run exactly as it does on a fresh install; it
+        // re-sets it on exit, so replaying can never leave the flag in the wrong state.
+        binding.rowReplayTour.setOnClickListener {
+            IndexPreferences.setFirstRunDone(this, false)
+            startActivity(FirstRunActivity.intent(this))
+        }
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
