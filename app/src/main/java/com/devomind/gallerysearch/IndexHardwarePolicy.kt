@@ -169,10 +169,12 @@ object IndexRunPolicy {
 
     private const val SevereThermalHeadroom = 1.0f
 
-    /** Stop indexing above this cell temperature. Li-ion warns near 45 °C, so this is deliberately
-     *  early — the job is background work and has no reason to compete with heat. */
-    private const val HotBatteryTempC = 42f
+    /** Stop indexing above this cell temperature — close to the OEM cut-out, so the platform's own
+     *  overheat report is what normally stops the run and this only catches devices that don't send
+     *  one. Raise `IndexHardwareMonitor`'s plausible-reading ceiling alongside it if this ever goes
+     *  higher, or the sensor value stops being believed. */
+    private const val HotBatteryTempC = 52f
 
-    /** Boost only when the cell is already comfortably cool. */
-    private const val MaxBoostBatteryTempC = 36f
+    /** Boost only when the cell is below this. */
+    private const val MaxBoostBatteryTempC = 46f
 }
