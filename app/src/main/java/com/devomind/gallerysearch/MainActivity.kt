@@ -4563,7 +4563,10 @@ class MainActivity : AppCompatActivity() {
                 val work = IndexWorker.pickRelevantWorkInfo(infos) ?: return@observe
                 indexRunning = work.state == WorkInfo.State.RUNNING || work.state == WorkInfo.State.ENQUEUED
                 indexQueued = work.state == WorkInfo.State.ENQUEUED || work.state == WorkInfo.State.BLOCKED
-                binding.searchSparkle.setIndexing(work.state == WorkInfo.State.RUNNING)
+                // Breathes on the same signal the drawer row reads, deliberately not on RUNNING alone: a
+                // constrained pass — charging-only, the 22:00 night delay, a thermal or compression wait
+                // that returns retry — sits in ENQUEUED, which is most of an overnight pass.
+                binding.searchSparkle.setIndexing(indexRunning)
                 when (work.state) {
                     // CANCELLED is the pause path; its progress is stale like a re-queued run's.
                     WorkInfo.State.ENQUEUED,
