@@ -276,10 +276,12 @@ class MainActivity : AppCompatActivity() {
         .withZone(ZoneId.systemDefault())
 
     /**
-     * The first-run tour owns the cold start it appears in: the storage request is issued when the
-     * tour hands the screen back, so the user reads what the app does with their photos before the
-     * system asks for them. The result registry also redelivers this after process death, so a tour
-     * killed mid-way cannot leave MainActivity with no permission path.
+     * The first-run tour owns the cold start it appears in, and its permissions page asks for media
+     * access itself — so this callback usually lands on the already-granted path of
+     * [requestGalleryPermission] and only has to bring the gallery up. Leaving the tour through Back
+     * skips that asking, which is why the callback still runs the ordinary request flow, and the
+     * result registry redelivers it after process death so a tour killed mid-way cannot leave
+     * MainActivity with no permission path.
      */
     private val onboardingLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()

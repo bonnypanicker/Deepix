@@ -1,13 +1,21 @@
 package com.devomind.gallerysearch
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.View
 import android.widget.LinearLayout
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -18,20 +26,42 @@ import com.devomind.gallerysearch.databinding.ActivityFirstRunBinding
 import kotlin.math.min
 
 /**
- * First-run tour: what Pixa does, one page per feature, ending on the permissions the app is about
- * to ask for. Cloned from the reference mock, which lays out at 360x760, and redrawn at the actual
- * screen's ratio — see [scaleFactor] and [OnboardingMetrics].
+ * First-run tour: what Pixa does, one page per feature, ending on a permissions page where each row
+ * asks for its own grant and reports what the system said. Cloned from the reference mock, which lays
+ * out at 360dp x 760dp, and redrawn at the actual screen's ratio — see [scaleFactor] and
+ * [OnboardingMetrics].
  *
- * The tour runs *before* the runtime permission prompts on purpose: it promises the library is never
- * uploaded, and the system dialog for reading it is the very next thing the user sees. The flag is
- * marked only when the user leaves the tour, so a process death mid-way shows it again instead of
- * silently skipping it.
+ * The tour runs *before* [MainActivity]'s own request flow on purpose: it promises the library is
+ * never uploaded, and the system dialog for reading it is the very next thing the user sees. Asking
+ * from the page that explains the ask keeps the two together. "Get started" stays dark while a grant
+ * the app cannot work without is still outstanding; the optional rows report their state and never
+ * hold the page shut, because a permission the user has refused is not a reason to trap them here.
+ * The flag is marked only when the user leaves, so a process death mid-way shows the tour again.
  */
-class FirstRunActivity : AppCompatActivity() {
+class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
 
     private lateinit var binding: ActivityFirstRunBinding
     private lateinit var metrics: OnboardingMetrics
+    private lateinit var panelAdapter: OnboardingPanelAdapter
     private var pageCount = 0
+    private var permissionRows: List<OnboardingPermission> = emptyList()
+
+    /** A grant is only "blocked" once we have actually seen the dialog, never on first sight. */
+    private var mediaAsked = false
+    private var notificationsAsked = false
+
+    private val mediaLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { refreshPermissions() }
+
+    private val notificationsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { refreshPermissions() }
+
+    /** All-files access and the app's settings page are screens, not dialogs — Back is a real exit. */
+    private val settingsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { refreshPermissions() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AccentPalette.apply(this)
@@ -48,11 +78,13 @@ class FirstRunActivity : AppCompatActivity() {
 
         val panels = onboardingPanels()
         pageCount = panels.size
+        permissionRows = panels.firstOrNull { it.permissions.isNotEmpty() }?.permissions.orEmpty()
         buildProgressTrack(panels.size)
         // ViewPager2 doesn't report its opening page, so paint the first segment here and let the
         // post below settle on the restored page if this is a rotation.
         syncChrome(0)
-        binding.panels.adapter = OnboardingPanelAdapter(panels, metrics)
+        panelAdapter = OnboardingPanelAdapter(panels, metrics, this)
+        binding.panels.adapter = panelAdapter
         binding.panels.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) = syncChrome(position)
         })
@@ -62,7 +94,7 @@ class FirstRunActivity : AppCompatActivity() {
             if (current >= pageCount - 1) complete() else goTo(current + 1)
         }
         // The reference's X jumps to the permissions page rather than closing the tour: that page is
-        // what explains the dialog coming next, so it is the one thing not to skip past.
+        // where the asks happen, so it is the one thing not to skip past.
         binding.dismissBtn.setOnClickListener { goTo(pageCount - 1) }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -75,6 +107,12 @@ class FirstRunActivity : AppCompatActivity() {
         binding.panels.post { syncChrome(binding.panels.currentItem) }
     }
 
+    /** Covers a settings screen left through Back, which never reaches the launcher's callback. */
+    override fun onResume() {
+        super.onResume()
+        if (::panelAdapter.isInitialized) refreshPermissions()
+    }
+
     private fun goTo(position: Int) {
         binding.panels.setCurrentItem(position.coerceIn(0, pageCount - 1), true)
     }
@@ -84,7 +122,118 @@ class FirstRunActivity : AppCompatActivity() {
         finish()
     }
 
-    /** Segments fill left to right as the tour is read; the CTA relabels once the last page shows. */
+    // ---------------------------------------------------------------------------------------------
+    // Permission rows
+    // ---------------------------------------------------------------------------------------------
+
+    override fun statusOf(kind: OnboardingPermissionKind): OnboardingPermissionStatus = when (kind) {
+        OnboardingPermissionKind.Media -> when {
+            StoragePermissions.hasMediaAccess(this) -> granted()
+            // Denied outright twice and the system won't show the dialog again; the only way left is
+            // the app's settings page, so the row offers that instead of a dead button.
+            mediaBlocked() -> OnboardingPermissionStatus(
+                OnboardingPermissionState.OUTSTANDING,
+                R.string.onboarding_perm_state_open_settings
+            )
+            else -> outstanding(R.string.onboarding_perm_state_required)
+        }
+
+        OnboardingPermissionKind.AllFiles ->
+            if (StoragePermissions.hasAllFilesAccess(this)) granted() else outstanding()
+
+        OnboardingPermissionKind.Notifications -> when {
+            Build.VERSION.SDK_INT < 33 -> OnboardingPermissionStatus(
+                OnboardingPermissionState.UNAVAILABLE,
+                R.string.onboarding_perm_state_not_needed
+            )
+            notificationGranted() -> granted()
+            permissionBlocked(Manifest.permission.POST_NOTIFICATIONS, notificationsAsked) ->
+                OnboardingPermissionStatus(
+                    OnboardingPermissionState.UNAVAILABLE,
+                    R.string.onboarding_perm_state_blocked
+                )
+            else -> outstanding()
+        }
+    }
+
+    override fun request(kind: OnboardingPermissionKind) {
+        when (kind) {
+            OnboardingPermissionKind.Media -> {
+                if (mediaBlocked()) {
+                    openAppSettings()
+                } else {
+                    mediaAsked = true
+                    mediaLauncher.launch(StoragePermissions.requiredMediaPermissions())
+                }
+            }
+
+            OnboardingPermissionKind.AllFiles -> runCatching {
+                settingsLauncher.launch(StoragePermissions.manageAllFilesIntent(this))
+            }.onFailure { MetroBanner.show(this, "Couldn't open storage access settings") }
+
+            OnboardingPermissionKind.Notifications -> {
+                if (Build.VERSION.SDK_INT < 33) return
+                notificationsAsked = true
+                notificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    /**
+     * Whether the tour still can't be finished: a required grant we could still go and get is enough.
+     * [OnboardingPermissionState.UNAVAILABLE] rows are excluded by design — the system has taken them
+     * out of play, and holding the only exit shut would strand the user on the last page.
+     */
+    private fun finishBlocked(): Boolean = permissionRows.any { row ->
+        row.required && statusOf(row.kind).state == OnboardingPermissionState.OUTSTANDING
+    }
+
+    private fun refreshPermissions() {
+        panelAdapter.refreshPermissions()
+        syncChrome(binding.panels.currentItem)
+    }
+
+    private fun mediaBlocked(): Boolean =
+        permissionBlocked(StoragePermissions.requiredMediaPermissions()[0], mediaAsked)
+
+    /**
+     * True once we have shown the dialog and the OS has taken it away: no grant, and no rationale
+     * offer left to make. Before the first ask the rationale is false too, which is why [asked] is
+     * part of the test — otherwise a fresh install reads as blocked.
+     */
+    private fun permissionBlocked(permission: String, asked: Boolean): Boolean =
+        asked &&
+            ContextCompat.checkSelfPermission(this, permission) !=
+            PackageManager.PERMISSION_GRANTED &&
+            !ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
+
+    private fun notificationGranted(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun granted() = OnboardingPermissionStatus(
+        OnboardingPermissionState.GRANTED, R.string.onboarding_perm_state_granted
+    )
+
+    private fun outstanding(
+        @StringRes labelRes: Int = R.string.onboarding_perm_state_optional
+    ) = OnboardingPermissionStatus(OnboardingPermissionState.OUTSTANDING, labelRes)
+
+    private fun openAppSettings() {
+        runCatching {
+            settingsLauncher.launch(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+            )
+        }.onFailure { MetroBanner.show(this, "Couldn't open the app's settings") }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Chrome
+    // ---------------------------------------------------------------------------------------------
+
+    /** Segments fill left to right as the tour is read; the CTA relabels, and waits, on the last page. */
     private fun syncChrome(position: Int) {
         val accent = DesignTokens.accent(this)
         val resting = ContextCompat.getColor(this, R.color.metroBgCard)
@@ -92,9 +241,13 @@ class FirstRunActivity : AppCompatActivity() {
             binding.progressTrack.getChildAt(index)
                 .setBackgroundColor(if (index <= position) accent else resting)
         }
+        val lastPage = position >= pageCount - 1
         binding.btnNext.setText(
-            if (position >= pageCount - 1) R.string.onboarding_get_started else R.string.onboarding_next
+            if (lastPage) R.string.onboarding_get_started else R.string.onboarding_next
         )
+        val canFinish = !lastPage || !finishBlocked()
+        binding.btnNext.isEnabled = canFinish
+        binding.btnNext.alpha = if (canFinish) 1f else 0.35f
     }
 
     /** One segment per page, weighted equally with the reference's 3-unit gap between them. */

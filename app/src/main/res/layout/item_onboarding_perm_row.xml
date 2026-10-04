@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One row of the permissions page: glyph, label, why it is wanted, and the hairline under it. The
-     page above contributes the matching top hairline, so rows read as one ruled list. -->
+<!-- One row of the permissions page: glyph, label, why it is wanted, the live state of that grant,
+     and the hairline under it. The page above contributes the matching top hairline, so rows read as
+     one ruled list. OnboardingPanelAdapter makes the row a button while the grant is still ours to
+     ask for, which is why the pressed background is set on the root rather than drawn here. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/permRowRoot"
     android:layout_width="match_parent"
@@ -47,6 +49,16 @@
                 android:textColor="@color/metroTextSecondary"
                 android:textSize="11.5sp" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/permRowStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.04"
+            android:textColor="@color/metroTextTertiary"
+            android:textSize="11sp" />
     </LinearLayout>
 
     <View

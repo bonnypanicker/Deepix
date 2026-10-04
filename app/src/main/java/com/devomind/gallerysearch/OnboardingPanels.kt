@@ -7,6 +7,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.devomind.gallerysearch.databinding.ItemOnboardingPanelBinding
 import com.devomind.gallerysearch.databinding.ItemOnboardingPermRowBinding
@@ -29,18 +30,52 @@ class OnboardingPanel(
     val permissions: List<OnboardingPermission> = emptyList()
 )
 
-/** A permission the app asks for at runtime, with the reason shown beside it. */
+/** Which runtime grant a row stands for, and therefore how the tour asks for it. */
+enum class OnboardingPermissionKind { Media, AllFiles, Notifications }
+
+/** What can still be done about a permission, as of the last time the page was drawn. */
+enum class OnboardingPermissionState {
+    /** Already held: the row reads its status and is no longer a button. */
+    GRANTED,
+
+    /** Not held, and asking would do something: the row is a button. */
+    OUTSTANDING,
+
+    /** Not held, and asking here cannot help — this Android has no such request, or the system has
+     *  stopped offering the dialog. Never holds the tour back. */
+    UNAVAILABLE
+}
+
+/** A permission the app asks for, with the reason shown beside it. [required] rows are the ones the
+ *  tour will not let the user finish past; the rest are offered where they are wanted later on. */
 class OnboardingPermission(
     @DrawableRes val iconRes: Int,
     @StringRes val label: Int,
-    @StringRes val summary: Int
+    @StringRes val summary: Int,
+    val kind: OnboardingPermissionKind,
+    val required: Boolean
 )
+
+/** One row's live readout: its state plus the short word drawn at the row's end. */
+data class OnboardingPermissionStatus(
+    val state: OnboardingPermissionState,
+    @StringRes val labelRes: Int
+)
+
+/**
+ * The tour answers for its own permission rows: it is asked what each one's state is right now, and
+ * it is told to go ask the system. Implemented by [FirstRunActivity], which owns the launchers.
+ */
+interface OnboardingPermissionHost {
+    fun statusOf(kind: OnboardingPermissionKind): OnboardingPermissionStatus
+    fun request(kind: OnboardingPermissionKind)
+}
 
 /**
  * The tour's contents: what Pixa does, then what it needs. The permissions page lists what this
  * build actually requests — media access gates every feature, all-files access is what lets Safe
- * and the recycle bin move or delete originals, and notifications and biometrics are the two
- * optional ones.
+ * and the recycle bin move or delete originals, and notifications are the optional one. Fingerprint
+ * is not listed: it has no runtime request and is enrolled inside Safe.
  */
 fun onboardingPanels(): List<OnboardingPanel> = listOf(
     OnboardingPanel(
@@ -102,22 +137,23 @@ fun onboardingPanels(): List<OnboardingPanel> = listOf(
             OnboardingPermission(
                 R.drawable.ic_onboarding_perm_media,
                 R.string.onboarding_perm_media,
-                R.string.onboarding_perm_media_summary
+                R.string.onboarding_perm_media_summary,
+                OnboardingPermissionKind.Media,
+                required = true
             ),
             OnboardingPermission(
                 R.drawable.ic_onboarding_perm_files,
                 R.string.onboarding_perm_files,
-                R.string.onboarding_perm_files_summary
+                R.string.onboarding_perm_files_summary,
+                OnboardingPermissionKind.AllFiles,
+                required = false
             ),
             OnboardingPermission(
                 R.drawable.ic_onboarding_perm_notifications,
                 R.string.onboarding_perm_notifications,
-                R.string.onboarding_perm_notifications_summary
-            ),
-            OnboardingPermission(
-                R.drawable.ic_onboarding_perm_biometric,
-                R.string.onboarding_perm_biometric,
-                R.string.onboarding_perm_biometric_summary
+                R.string.onboarding_perm_notifications_summary,
+                OnboardingPermissionKind.Notifications,
+                required = false
             )
         )
     )
@@ -143,8 +179,17 @@ class OnboardingMetrics(val factor: Float, val density: Float) {
 /** The pages themselves, swiped through by ViewPager2. */
 class OnboardingPanelAdapter(
     private val panels: List<OnboardingPanel>,
-    private val metrics: OnboardingMetrics
+    private val metrics: OnboardingMetrics,
+    private val host: OnboardingPermissionHost
 ) : RecyclerView.Adapter<OnboardingPanelAdapter.PanelVH>() {
+
+    /** Re-reads every row's state. Called when a dialog or the settings screen is dismissed. */
+    fun refreshPermissions() {
+        permissionsPage?.let { notifyItemChanged(it) }
+    }
+
+    private val permissionsPage: Int?
+        get() = panels.indexOfFirst { it.permissions.isNotEmpty() }.takeIf { it >= 0 }
 
     override fun getItemCount(): Int = panels.size
 
@@ -221,6 +266,7 @@ class OnboardingPanelAdapter(
             }
             r.permRowTitle.setTextSize(metrics.textSp(13.5f))
             r.permRowSummary.setTextSize(metrics.textSp(11.5f))
+            r.permRowStatus.setTextSize(metrics.textSp(11f))
             r.permRowTitle.text = context.getString(row.label)
             r.permRowSummary.text = context.getString(row.summary)
             r.permRowDivider.layoutParams = (r.permRowDivider.layoutParams as LinearLayout.LayoutParams).apply {
@@ -229,6 +275,21 @@ class OnboardingPanelAdapter(
             r.permRowContent.setPadding(0, metrics.units(13f), 0, metrics.units(13f))
             r.permRowCopy.margin { marginStart = metrics.units(16f) }
             r.permRowSummary.margin { topMargin = metrics.units(2f) }
+            r.permRowStatus.margin { marginStart = metrics.units(12f) }
+
+            // A row the user can still act on is a button in the app's one tactile language; a row
+            // that only reports is flat text.
+            val status = host.statusOf(row.kind)
+            val actionable = status.state == OnboardingPermissionState.OUTSTANDING
+            r.permRowStatus.text = context.getString(status.labelRes)
+            r.permRowStatus.setTextColor(
+                if (status.state == OnboardingPermissionState.GRANTED) DesignTokens.accent(context)
+                else ContextCompat.getColor(context, R.color.metroTextTertiary)
+            )
+            r.permRowRoot.isClickable = actionable
+            r.permRowRoot.background =
+                if (actionable) ContextCompat.getDrawable(context, R.drawable.metro_row_pressed) else null
+            r.permRowRoot.setOnClickListener { if (actionable) host.request(row.kind) }
             return r.root
         }
     }
