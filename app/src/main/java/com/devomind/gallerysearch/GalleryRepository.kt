@@ -595,10 +595,11 @@ class GalleryRepository(
                     processedNew += batchBuffer.size
                     onProgress(alreadyDone + processedNew, total)
                     batchBuffer.clear()
-                    // Puts CPU back on a foreground user's device without stopping the run and paying
-                    // reconciliation again; every other profile asks for no delay.
-                    val pacing = BatchSizing.pacingDelayMillis(indexRunProfile)
-                    if (pacing > 0L) delay(pacing)
+                    // Every profile asks for a gap now (see BatchSizing.pacingDelayMillis): the batch
+                    // before was full-clock work, and the pause is what keeps the pass out of a thermal
+                    // wait. Quiet's much longer one is how a foreground user gets the CPU back without
+                    // stopping the run and paying reconciliation again.
+                    delay(BatchSizing.pacingDelayMillis(indexRunProfile))
                 }
                 for (prepared in outputChannel) {
                     currentCoroutineContext().ensureActive()

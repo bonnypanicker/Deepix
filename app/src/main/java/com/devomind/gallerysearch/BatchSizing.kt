@@ -56,11 +56,27 @@ object BatchSizing {
         return minOf(cores, batchSize, cap)
     }
 
-    /** Idle time forced between batches. Only [IndexRunProfile.Quiet] uses any of it — the way to
-     *  hand CPU back to a foreground user without stopping the run and paying reconciliation again. */
+    /**
+     * Idle time forced between batches. Every profile gets some: a run of inference back-to-back holds
+     * the governor at full clock for hours, and a short gap after each batch lets it drop and lets the
+     * package cool, which is what keeps the run out of the thermal wait that costs far more time than
+     * the pause does. The gap also idles the decode pool, which only runs ahead of the consumer by
+     * [GalleryRepository]'s channel depth.
+     *
+     * The aggressive tiers are the *small* pauses, not the absent ones: charging is itself a heat source,
+     * so the cell arrives at the charger already warm and IndexRunPolicy only lets it boost while the
+     * reading says so. A pass that drifts up through 36 °C falls to [IndexRunProfile.Normal] and its
+     * 900 ms gap on its own, without a wait and a restart.
+     *
+     * [IndexRunProfile.Quiet] is the exception in kind, not just degree — it exists to hand CPU back to
+     * a foreground user rather than to manage heat.
+     */
     fun pacingDelayMillis(profile: IndexRunProfile): Long = when (profile) {
+        IndexRunProfile.Max -> 300L
+        IndexRunProfile.High -> 600L
+        IndexRunProfile.Normal -> 900L
+        IndexRunProfile.Cooldown -> 1_400L
         IndexRunProfile.Quiet -> QuietPacingMillis
-        else -> 0L
     }
 
     private fun Context.activityManager(): ActivityManager =
@@ -73,5 +89,5 @@ object BatchSizing {
         else -> 6
     }
 
-    private const val QuietPacingMillis = 1_200L
+    private const val QuietPacingMillis = 2_000L
 }

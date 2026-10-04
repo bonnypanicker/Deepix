@@ -142,16 +142,22 @@ object IndexRunPolicy {
     }
 
     /**
-     * Boost tiers need positive evidence that the device is cool. `Unknown` — pre-API-29, or an OEM
-     * that never reports thermal status — no longer reads as "cool"; the battery sensor has to say
-     * so. Without either signal the run still proceeds, just at the untuned profile.
+     * Boost tiers need positive evidence that the device is cool. `Unknown` thermal status — pre-API-29,
+     * or an OEM that never reports it — no longer reads as "cool"; the battery sensor has to say so.
+     * Without either signal the run still proceeds, just at the untuned profile.
+     *
+     * A warm cell also disqualifies a boost on devices that *do* report thermal status: the charger is
+     * itself a heat source, so the SoC's report can sit at `None` while the cell climbs past 40 °C.
+     * Since the aggressive tiers are the ones gated here, a charging pass paces itself down as the
+     * charge warms the battery instead of running flat out for the whole time it is plugged in.
      */
     private fun IndexHardwareState.isCoolEnoughForBoost(): Boolean {
         if (thermalStatus.blocksIndexing() || isBatteryTooHot()) return false
-        if (thermalStatus != ThermalStatus.Unknown) {
-            return thermalStatus == ThermalStatus.None || thermalStatus == ThermalStatus.Light
+        if (batteryTemperatureC?.let { it >= MaxBoostBatteryTempC } == true) return false
+        return when (thermalStatus) {
+            ThermalStatus.Unknown -> batteryTemperatureC != null
+            else -> thermalStatus == ThermalStatus.None || thermalStatus == ThermalStatus.Light
         }
-        return (batteryTemperatureC ?: HotBatteryTempC) < MaxBoostBatteryTempC
     }
 
     /** The platform's own overheat verdict, or a battery cell reading past the safety ceiling. */
@@ -173,6 +179,8 @@ object IndexRunPolicy {
      *  early — the job is background work and has no reason to compete with heat. */
     private const val HotBatteryTempC = 42f
 
-    /** Boost only when the cell is already comfortably cool. */
+    /** Boost only when the cell is already comfortably cool. Charging lifts it a few degrees on its
+     *  own, so this is what steps an overnight pass back down mid-run: being plugged in is not a signal
+     *  to go flat out, it is a signal that the cell has an extra heat source for the next hour. */
     private const val MaxBoostBatteryTempC = 36f
 }
