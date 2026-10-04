@@ -4525,6 +4525,10 @@ class MainActivity : AppCompatActivity() {
                         // Progress from the previous run is stale once work is re-queued.
                         indexProgressCurrent = 0
                         indexProgressTotal = 0
+                        // pickRelevantWorkInfo only reports CANCELLED when no pass is live, so any
+                        // status pill still up is an orphan. IndexController's pause/stop paths clear
+                        // it already; this catches cancellations WorkManager initiates itself.
+                        IndexWorker.cancelStatusNotification(this)
                     }
                     WorkInfo.State.RUNNING -> {
                         val current = work.progress.getInt(IndexWorker.ProgressCurrentKey, 0)
