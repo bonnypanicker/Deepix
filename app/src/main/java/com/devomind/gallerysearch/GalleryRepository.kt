@@ -27,6 +27,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.EOFException
 import java.io.File
+import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -121,6 +122,7 @@ class GalleryRepository(
     }
 
     private val indexFile = File(context.filesDir, IndexFileName)
+    private val indexJournalFile = File(context.filesDir, IndexJournalFileName)
     private val metadataIndexFile = File(context.filesDir, MetadataIndexFileName)
     private val indexLock = Any()
     private val metadataLock = Any()
@@ -128,17 +130,25 @@ class GalleryRepository(
     private var metadataDocuments = LinkedHashMap<String, MetadataSearch.Document>()
     @Volatile private var metadataSearchIndex: MetadataSearch.Index? = null
 
+    /** Uris stored since the last checkpoint, appended to the journal by [flushIndexAppends]. */
+    private val pendingJournalKeys = ArrayList<String>()
+
+    /** Serialises the writers: the save ticker's appends and a compaction can otherwise interleave on
+     *  the same files. Reentrant, so the fallback paths inside it are safe. */
+    private val indexWriteLock = Any()
+
     /**
-     * `indexFile.lastModified()` as of the last load/write of [embeddings] in THIS instance. The
-     * indexing worker runs in its own repository instance and saves to the same on-disk file, so
+     * `base-lastModified|journal-length` as of the last load or write of [embeddings] in THIS instance.
+     * The indexing worker runs in its own repository instance and saves to the same on-disk files, so
      * an instance that loaded early would otherwise score searches against a stale map forever
      * (e.g. newly-added index-scope folders never appearing in results until process restart).
-     * Every read path re-checks the stamp and reloads when the file moved on.
+     * Every read path re-checks the stamp and reloads when either file moved on.
      */
-    @Volatile private var indexStamp: Long = -1L
+    @Volatile private var indexStamp: String = ""
 
-    private fun currentIndexStamp(): Long =
-        runCatching { indexFile.lastModified() }.getOrDefault(0L)
+    private fun currentIndexStamp(): String = runCatching {
+        "${indexFile.lastModified()}|${indexJournalFile.length()}"
+    }.getOrDefault("")
 
     val indexedCount: Int
         get() = synchronized(indexLock) { embeddings.size }
@@ -492,6 +502,8 @@ class GalleryRepository(
         val loaded = onDisk.filterKeys { it in uriSet }
         synchronized(indexLock) {
             embeddings = LinkedHashMap(loaded)
+            // Reconciled against disk: nothing is pending until this pass stores new records.
+            pendingJournalKeys.clear()
             indexStamp = currentIndexStamp()
         }
 
@@ -503,7 +515,7 @@ class GalleryRepository(
 
         if (unindexed.isEmpty()) {
             // Nothing new to encode, but persist any pruning so removed folders don't reappear.
-            if (loaded.size != onDisk.size) saveIndex(snapshotIndex())
+            compactIndex(force = loaded.size != onDisk.size)
             Log.d(Tag, "All $total images already indexed (pruned ${onDisk.size - loaded.size})")
             onProgress(total, total)
             return
@@ -514,6 +526,9 @@ class GalleryRepository(
         val alreadyDone = total - unindexed.size
         var processedNew = 0
         val dirty = AtomicBoolean(false)
+        // The reconcile above dropped embeddings for photos that left the scope (an unchecked folder).
+        // Only a base rewrite persists that, so the exit path must not skip it as "nothing pending".
+        val scopePruned = loaded.size != onDisk.size
 
         // Report the already-indexed count immediately
         onProgress(alreadyDone, total)
@@ -523,13 +538,19 @@ class GalleryRepository(
                 val inputChannel = Channel<MediaItem>(capacity = decodeConcurrency * 2)
                 val outputChannel = Channel<PreparedItem>(capacity = decodeConcurrency * 2)
 
-                // Persist on a wall-clock interval, off the consumer's critical path, instead of a
-                // synchronous full-file rewrite every N items blocking the next batch's inference.
+                // Persist on a wall-clock interval, off the consumer's critical path. Each tick appends
+                // only the records stored since the last one; the base is rewritten when the journal
+                // grows past the compaction bound or when the pass ends.
+                val passStartedAt = android.os.SystemClock.elapsedRealtime()
+                var lastThroughputLogAt = 0L
                 val saveTicker = launch(Dispatchers.IO) {
                     while (isActive) {
                         delay(SaveIntervalMillis)
-                        if (dirty.compareAndSet(true, false)) {
-                            saveIndex(snapshotIndex())
+                        if (dirty.compareAndSet(true, false)) flushIndexAppends()
+                        val elapsedMs = android.os.SystemClock.elapsedRealtime() - passStartedAt
+                        if (processedNew > 0 && elapsedMs - lastThroughputLogAt >= ThroughputLogEveryMillis) {
+                            lastThroughputLogAt = elapsedMs
+                            logPassThroughput(processedNew, elapsedMs, total - alreadyDone)
                         }
                     }
                 }
@@ -590,11 +611,39 @@ class GalleryRepository(
                 saveTicker.cancel()
             }
         } finally {
-            // A wait/pause throw from onProgress unwinds past the normal save below. Without this the
-            // next retry re-encodes everything the ticker hasn't flushed — up to a full interval of
-            // finished inference thrown away per thermal wait.
-            saveIndex(snapshotIndex())
+            // Fold the pass's appends into the base on the way out, including on a wait/pause throw from
+            // onProgress. Without this the next retry re-encodes everything the ticker hasn't flushed —
+            // up to a full interval of finished inference thrown away per thermal wait. Skipped when
+            // there is nothing to fold: a wait that fired before any batch finished would otherwise pay
+            // a whole-library rewrite for no work at all.
+            compactIndex(force = scopePruned)
         }
+    }
+
+    /** True when records exist that the base doesn't carry yet. */
+    private fun hasUnfoldedIndexRecords(): Boolean =
+        synchronized(indexLock) { pendingJournalKeys.isNotEmpty() } ||
+            runCatching { indexJournalFile.length() > 0L }.getOrDefault(false)
+
+    /** Checkpoints the base, folding the journal in. Skipped when there is nothing to fold unless [force]. */
+    private fun compactIndex(force: Boolean) {
+        if (!force && !hasUnfoldedIndexRecords()) return
+        flushIndexAppends()
+        saveIndex(snapshotIndex())
+    }
+
+    /** The pass's own throughput line: the face worker has had one all along, the CLIP pass hadn't, so
+     *  a 33k-photo first run could only be timed by hand from other log lines. */
+    private fun logPassThroughput(encoded: Int, elapsedMs: Long, plannedCount: Int) {
+        val perMinute = encoded * 60_000f / elapsedMs
+        val remaining = (plannedCount - encoded).coerceAtLeast(0)
+        val minutesLeft = if (perMinute >= 1f) (remaining / perMinute).toInt() else -1
+        Log.i(
+            Tag,
+            "Index throughput: $encoded/$plannedCount encoded, ${perMinute.toInt()}/min over ${elapsedMs / 1000}s " +
+                "— profile=$indexRunProfile, batch=$batchSize, decoders=$decodeConcurrency" +
+                (if (minutesLeft >= 0) ", ~${minutesLeft} min remaining" else "")
+        )
     }
 
     /** Runs inference on a prepared batch and stores valid embeddings; falls back to per-image
@@ -634,6 +683,7 @@ class GalleryRepository(
         }
         synchronized(indexLock) {
             embeddings[entry.uri.toString()] = embedding
+            pendingJournalKeys.add(entry.uri.toString())
         }
         dirty.set(true)
         return IndexedEmbedding(entry.uri, embedding, entry.dhash)
@@ -1006,20 +1056,39 @@ class GalleryRepository(
     }
 
     private fun loadIndex(): LinkedHashMap<String, FloatArray> {
-        if (!indexFile.exists()) return LinkedHashMap()
+        if (!indexFile.exists() && !indexJournalFile.exists()) return LinkedHashMap()
+
+        val baseExists = indexFile.exists()
+        val loaded = if (!baseExists) LinkedHashMap() else readIndexFile(indexFile) ?: run {
+            // The base is unreadable, so the journal no longer describes a valid state of it. Losing
+            // these records costs a re-index, not the photos.
+            indexJournalFile.delete()
+            LinkedHashMap()
+        }
+        // Later records win, so the journal's appends supersede anything the base already carried.
+        readIndexFile(indexJournalFile)?.forEach { (uri, embedding) -> loaded[uri] = embedding }
+        return loaded
+    }
+
+    /** Reads one record file, or null when it is missing or unreadable. */
+    private fun readIndexFile(file: File): LinkedHashMap<String, FloatArray>? {
+        if (!file.exists()) return null
+        val isJournal = file != indexFile
+        val loaded = LinkedHashMap<String, FloatArray>()
+        var recordsRead = 0
 
         return runCatching {
-            DataInputStream(BufferedInputStream(indexFile.inputStream())).use { input ->
+            DataInputStream(BufferedInputStream(file.inputStream())).use { input ->
                 val magic = input.readInt()
                 val version = input.readInt()
                 if (magic != IndexMagic || version != IndexVersion) {
                     throw IllegalStateException("Unsupported index file version.")
                 }
-
-                val count = input.readInt().coerceAtLeast(0)
-                val loaded = LinkedHashMap<String, FloatArray>(count)
+                // The journal is an unbounded append log with no record count, so read to EOF; the base
+                // is a count-prefixed atomic write and must contain exactly `expectedCount` records.
+                val expectedCount = if (isJournal) -1 else input.readInt().coerceAtLeast(0)
                 val expectedDim = imageEncoder?.embeddingDim ?: 0
-                repeat(count) {
+                while (expectedCount < 0 || recordsRead < expectedCount) {
                     val uriLength = input.readInt()
                     if (uriLength <= 0 || uriLength > MaxUriBytes) throw EOFException("Invalid URI length.")
                     val uriBytes = ByteArray(uriLength)
@@ -1035,45 +1104,101 @@ class GalleryRepository(
                     // costs one re-index instead of degrading every query.
                     if (expectedDim > 0 && embedding.size != expectedDim) {
                         Log.w(Tag, "Dropping $uri: ${embedding.size} floats, model emits $expectedDim.")
-                        return@repeat
+                    } else {
+                        loaded[uri] = embedding
                     }
-                    loaded[uri] = embedding
+                    recordsRead++
                 }
                 loaded
             }
-        }.onFailure { error ->
-            Log.w(Tag, "Ignoring corrupt embedding index.", error)
-            indexFile.delete()
-        }.getOrDefault(LinkedHashMap())
+        }.getOrElse { error ->
+            if (isJournal) {
+                // Only an append log's tail can break — a kill mid-flush. Everything before the torn
+                // record did land, and the pass's final checkpoint folds it into the base.
+                Log.w(Tag, "Embedding index journal broke mid-record; kept $recordsRead flushed records.", error)
+                loaded
+            } else {
+                Log.w(Tag, "Ignoring corrupt embedding index.", error)
+                file.delete()
+                null
+            }
+        }
     }
 
+    private fun writeIndexRecord(output: DataOutputStream, uri: String, embedding: FloatArray) {
+        val uriBytes = uri.toByteArray(Charsets.UTF_8)
+        output.writeInt(uriBytes.size)
+        output.write(uriBytes)
+        output.writeInt(embedding.size)
+        for (value in embedding) {
+            output.writeFloat(value)
+        }
+    }
+
+    /**
+     * Flushes the records stored since the last checkpoint by appending them to the journal. Rewriting
+     * the whole base every 10 s costs ~150 GB of flash traffic across a first 33k-photo pass, which is
+     * heat and battery for a background job; appends cost the batch instead.
+     */
+    private fun flushIndexAppends() {
+        val records = synchronized(indexLock) {
+            ArrayList<Pair<String, FloatArray>>(pendingJournalKeys.size).also { list ->
+                for (key in pendingJournalKeys) embeddings[key]?.let { list.add(key to it) }
+            }.also { pendingJournalKeys.clear() }
+        }
+        if (records.isEmpty()) return
+        synchronized(indexWriteLock) {
+            runCatching {
+                val isFreshJournal = !indexJournalFile.exists() || indexJournalFile.length() == 0L
+                DataOutputStream(BufferedOutputStream(FileOutputStream(indexJournalFile, true))).use { output ->
+                    if (isFreshJournal) {
+                        output.writeInt(IndexMagic)
+                        output.writeInt(IndexVersion)
+                    }
+                    records.forEach { (uri, embedding) -> writeIndexRecord(output, uri, embedding) }
+                }
+                // The append is ours; don't make the next read reload the whole library for it.
+                indexStamp = currentIndexStamp()
+            }.onFailure { error ->
+                Log.w(Tag, "Failed to append embedding index records; falling back to a full save.", error)
+                saveIndex(snapshotIndex())
+                return
+            }
+        }
+        // Bound the journal so a reader that does have to reload never pays for more than one
+        // compaction's worth of append traffic on top of the base.
+        if (runCatching { indexJournalFile.length() }.getOrDefault(0L) >= JournalCompactBytes) {
+            saveIndex(snapshotIndex())
+        }
+    }
+
+    /** Full checkpoint: rewrites the base with [index] and retires the journal it supplements. */
     private fun saveIndex(index: Map<String, FloatArray>) {
         val tmpFile = File(indexFile.parentFile, "$IndexFileName.tmp")
-        runCatching {
-            DataOutputStream(BufferedOutputStream(tmpFile.outputStream())).use { output ->
-                output.writeInt(IndexMagic)
-                output.writeInt(IndexVersion)
-                output.writeInt(index.size)
-                for ((uri, embedding) in index) {
-                    val uriBytes = uri.toByteArray(Charsets.UTF_8)
-                    output.writeInt(uriBytes.size)
-                    output.write(uriBytes)
-                    output.writeInt(embedding.size)
-                    for (value in embedding) {
-                        output.writeFloat(value)
+        synchronized(indexWriteLock) {
+            runCatching {
+                DataOutputStream(BufferedOutputStream(tmpFile.outputStream())).use { output ->
+                    output.writeInt(IndexMagic)
+                    output.writeInt(IndexVersion)
+                    output.writeInt(index.size)
+                    for ((uri, embedding) in index) {
+                        writeIndexRecord(output, uri, embedding)
                     }
                 }
+                if (indexFile.exists()) {
+                    indexFile.delete()
+                }
+                if (tmpFile.renameTo(indexFile)) {
+                    // The base now carries every record, so the journal is redundant. Its contents are
+                    // already inside `index`, which came from the in-memory map that merged them.
+                    indexJournalFile.delete()
+                    synchronized(indexLock) { pendingJournalKeys.clear() }
+                    indexStamp = currentIndexStamp()
+                }
+            }.onFailure { error ->
+                Log.w(Tag, "Failed to save embedding index.", error)
+                tmpFile.delete()
             }
-            if (indexFile.exists()) {
-                indexFile.delete()
-            }
-            if (tmpFile.renameTo(indexFile)) {
-                // Record what we just wrote so freshness checks don't re-read our own write.
-                indexStamp = currentIndexStamp()
-            }
-        }.onFailure { error ->
-            Log.w(Tag, "Failed to save embedding index.", error)
-            tmpFile.delete()
         }
     }
 
@@ -1182,6 +1307,8 @@ class GalleryRepository(
     companion object {
         private const val Tag = "GalleryRepository"
         private const val IndexFileName = "embedding_index.bin"
+        /** Append log of the records stored since the last base checkpoint; retired on compaction. */
+        private const val IndexJournalFileName = "embedding_index.bin.journal"
         private const val MetadataIndexFileName = "metadata_index.bin"
         private const val IndexMagic = 0x47534958
         private const val IndexVersion = 2
@@ -1202,6 +1329,14 @@ class GalleryRepository(
         /** Keep each MediaStore IN query safely below SQLite's bind-parameter limit. */
         private const val MediaStoreQueryChunkSize = 900
         private const val SaveIntervalMillis = 10_000L
+        /**
+         * Rewrite the base once the append log grows past this. The bound keeps a reload (another
+         * repository instance noticing the stamp moved) from ever reading more than one compaction's
+         * worth of appends on top of the base; at 512 floats per record it is ~3,900 photos, roughly
+         * 40 minutes of a first pass.
+         */
+        private const val JournalCompactBytes = 8L * 1024 * 1024
+        private const val ThroughputLogEveryMillis = 60_000L
         private const val MaxUriBytes = 4096
         private const val MaxEmbeddingSize = 4096
         private const val MaxTextBytes = 16_384
