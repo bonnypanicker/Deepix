@@ -103,12 +103,13 @@
 
                         <ImageButton
                             android:id="@+id/btnIndexToggle"
-                            android:layout_width="48dp"
-                            android:layout_height="48dp"
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
                             android:layout_marginStart="12dp"
-                            android:background="@drawable/metro_row_pressed"
+                            android:background="@drawable/metro_circle_accent_bg"
                             android:contentDescription="@string/pause"
-                            android:padding="12dp"
+                            android:padding="10dp"
+                            android:scaleType="fitCenter"
                             android:src="@drawable/ic_fluent_pause_24_regular"
                             android:tint="@color/metroTextPrimary" />
                     </LinearLayout>

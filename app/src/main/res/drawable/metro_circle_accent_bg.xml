@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Circular accent icon button (the indexing pause/play control). Same tactile language as
+     metro_row_pressed and onboarding_button_bg: white-alpha press feedback over the accent fill. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/metroPressOverlay">
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="?attr/accentColor" />
+        </shape>
+    </item>
+</ripple>
