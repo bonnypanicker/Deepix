@@ -71,7 +71,7 @@ object BatchSizing {
      * the burst that earned it on every device.
      *
      * The coefficients put the longest rests behind the biggest bursts, which is where the heat is:
-     * [IndexRunProfile.Max] waits 3.2 s after a batch of 10, [IndexRunProfile.Quiet] 1.0 s after a batch of
+     * [IndexRunProfile.Max] waits 3.0 s after a batch of 10, [IndexRunProfile.Quiet] 1.0 s after a batch of
      * 2. Consequence to keep in mind — duty cycle is no longer ordered by tier, and Quiet is now busier
      * than Cooldown, so it yields the processor to a foreground user less than it used to.
      */
@@ -79,9 +79,9 @@ object BatchSizing {
         pacingMillisPerImage(profile) * batchSize.coerceAtLeast(1)
 
     private fun pacingMillisPerImage(profile: IndexRunProfile): Long = when (profile) {
-        IndexRunProfile.Max -> 320L
-        IndexRunProfile.High -> 375L
-        IndexRunProfile.Normal -> 467L
+        IndexRunProfile.Max -> 300L
+        IndexRunProfile.High -> 350L
+        IndexRunProfile.Normal -> 417L
         IndexRunProfile.Cooldown -> 600L
         IndexRunProfile.Quiet -> 500L
     }
