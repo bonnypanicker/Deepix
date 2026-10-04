@@ -174,6 +174,12 @@ class MainActivity : AppCompatActivity() {
     private var selectedSearchSection: SearchSection? = null
     /** Album filter shown above an open photo-grid search section; null = the unfiltered set. */
     private var selectedSearchAlbumId: String? = null
+    /**
+     * Whether the user picked an album pill during this query. Needed because null already means "All",
+     * so the field alone cannot tell "no choice made yet" from "the user chose All" — and without it the
+     * album-derived default overwrites an explicit All on the next render.
+     */
+    private var searchAlbumScopePicked = false
     private var searchLandingVisible = false
     private var currentDisplayedSearchResultCount = 0
     private var searchResultsMaster: List<PhotoSearchResult> = emptyList()
@@ -3369,6 +3375,7 @@ class MainActivity : AppCompatActivity() {
         searchSectionResults = emptyList()
         selectedSearchSection = null
         selectedSearchAlbumId = null
+        searchAlbumScopePicked = false
         searchLandingVisible = false
         clearSearchAlbumChips()
     }
@@ -3415,7 +3422,9 @@ class MainActivity : AppCompatActivity() {
      * Reuses the horizontal album-pill treatment from Compression's "Choose other photos" view.
      * Pills are built from the section's hits themselves, so each choice always yields a non-empty
      * result grid. When search began inside a real album, its MediaStore bucket is selected by
-     * default; the pool spans the whole library, so every album with hits gets a pill.
+     * default until the user taps a pill — including "All", whose id is the same null the default
+     * writes, hence [searchAlbumScopePicked]. The pool spans the whole library, so every album with
+     * hits gets a pill.
      */
     private fun renderSearchAlbumChips(results: List<PhotoSearchResult>) {
         val showChips = selectedSearchSection in SearchAlbumChipSections
@@ -3433,10 +3442,14 @@ class MainActivity : AppCompatActivity() {
             .sortedWith(compareByDescending<Triple<String, String, Int>> { it.third }.thenBy { it.second })
 
         val availableIds = albumsInResults.mapTo(HashSet()) { it.first }
-        if (selectedSearchAlbumId !in availableIds) {
+        if (!searchAlbumScopePicked) {
             selectedSearchAlbumId = currentAlbum
                 ?.takeIf { !it.isSmart && it.id in availableIds }
                 ?.id
+        } else if (selectedSearchAlbumId != null && selectedSearchAlbumId !in availableIds) {
+            // The picked album stopped having hits in this set (a section or sort change): fall back to
+            // All instead of filtering to a pill that is no longer on the row.
+            selectedSearchAlbumId = null
         }
 
         binding.searchAlbumChipRow.removeAllViews()
@@ -3453,6 +3466,9 @@ class MainActivity : AppCompatActivity() {
                 if (active) getColor(R.color.metroTextPrimary) else getColor(R.color.metroTextStrong)
             )
             chip.setOnClickListener {
+                // Recorded even when the pill is already the derived default: a tap is an explicit
+                // choice, and from now on the album-derived default must not overwrite it.
+                searchAlbumScopePicked = true
                 if (selectedSearchAlbumId == albumId) return@setOnClickListener
                 selectedSearchAlbumId = albumId
                 applySortAndShow()
