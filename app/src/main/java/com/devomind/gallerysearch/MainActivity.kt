@@ -275,6 +275,16 @@ class MainActivity : AppCompatActivity() {
     private val dayFormatter = DateTimeFormatter.ofPattern("EEEE d", Locale.getDefault())
         .withZone(ZoneId.systemDefault())
 
+    /**
+     * The first-run tour owns the cold start it appears in: the storage request is issued when the
+     * tour hands the screen back, so the user reads what the app does with their photos before the
+     * system asks for them. The result registry also redelivers this after process death, so a tour
+     * killed mid-way cannot leave MainActivity with no permission path.
+     */
+    private val onboardingLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { requestGalleryPermission() }
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
@@ -560,7 +570,12 @@ class MainActivity : AppCompatActivity() {
         // Notification permission is requested only after the storage-permission flow resolves —
         // Android drops a second runtime-permission dialog launched while the first is still
         // pending, which previously lost the notification prompt on first launch.
-        requestGalleryPermission()
+        // On the very first launch the tour goes first, and its result callback starts that flow.
+        if (FirstRunActivity.shouldShow(this)) {
+            onboardingLauncher.launch(FirstRunActivity.intent(this))
+        } else {
+            requestGalleryPermission()
+        }
         observeIndexWorker()
         observeFaceIndexWorker()
         observeBackgroundWorkers()
