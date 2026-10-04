@@ -590,16 +590,17 @@ class GalleryRepository(
                 val batchBuffer = ArrayList<PreparedItem>(batchSize)
                 suspend fun flushBatch() {
                     if (batchBuffer.isEmpty()) return
+                    val encodedCount = batchBuffer.size
                     val indexed = encodeAndStore(batchBuffer, dirty)
                     if (indexed.isNotEmpty()) onEmbeddingsStored(indexed)
-                    processedNew += batchBuffer.size
+                    processedNew += encodedCount
                     onProgress(alreadyDone + processedNew, total)
                     batchBuffer.clear()
-                    // Every profile asks for a gap now (see BatchSizing.pacingDelayMillis): the batch
-                    // before was full-clock work, and the pause is what keeps the pass out of a thermal
-                    // wait. Quiet's much longer one is how a foreground user gets the CPU back without
-                    // stopping the run and paying reconciliation again.
-                    delay(BatchSizing.pacingDelayMillis(indexRunProfile))
+                    // The pause is scaled by the batch that just ran (BatchSizing.pacingDelayMillis):
+                    // rest proportional to the energy deposited, so a short tail flush doesn't pay a full
+                    // batch's cooldown and a device whose batch collapsed to 2 isn't paced by a number
+                    // sized for a batch of ten.
+                    delay(BatchSizing.pacingDelayMillis(indexRunProfile, encodedCount))
                 }
                 for (prepared in outputChannel) {
                     currentCoroutineContext().ensureActive()

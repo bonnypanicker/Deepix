@@ -57,26 +57,33 @@ object BatchSizing {
     }
 
     /**
-     * Idle time forced between batches. Every profile gets some: a run of inference back-to-back holds
-     * the governor at full clock for hours, and a short gap after each batch lets it drop and lets the
-     * package cool, which is what keeps the run out of the thermal wait that costs far more time than
-     * the pause does. The gap also idles the decode pool, which only runs ahead of the consumer by
-     * [GalleryRepository]'s channel depth.
+     * Idle time forced after a batch, in milliseconds of rest per image that batch contained. Every
+     * profile asks for some: back-to-back inference holds the governor at full clock for hours, and the
+     * pause lets it drop and the package cool, which keeps the run out of the thermal wait that costs far
+     * more time than the pause does. The gap also idles the decode pool, which only runs ahead of the
+     * consumer by [GalleryRepository]'s channel depth.
      *
-     * The aggressive tiers are the *small* pauses, not the absent ones: charging is itself a heat source,
-     * so the cell arrives at the charger already warm and IndexRunPolicy only lets it boost while the
-     * reading says so. A pass that drifts up through 36 °C falls to [IndexRunProfile.Normal] and its
-     * 900 ms gap on its own, without a wait and a restart.
+     * The pause is proportional because the heat it answers to is: a batch of 10 deposits about ten
+     * images' worth of energy and a batch of 2 deposits two, so a fixed pause per profile over-rests the
+     * small bursts and under-rests the large ones. Keyed to the profile alone it was outright inverted on
+     * any device whose batch collapses to 2 — low-RAM, a [deviceBatchCeiling] clamp, or an OOM cap — where
+     * Cooldown's long fixed pause cooled more than Quiet's. Multiplying by the batch makes the rest track
+     * the burst that earned it on every device.
      *
-     * [IndexRunProfile.Quiet] is the exception in kind, not just degree — it exists to hand CPU back to
-     * a foreground user rather than to manage heat.
+     * The coefficients put the longest rests behind the biggest bursts, which is where the heat is:
+     * [IndexRunProfile.Max] waits 3.2 s after a batch of 10, [IndexRunProfile.Quiet] 1.0 s after a batch of
+     * 2. Consequence to keep in mind — duty cycle is no longer ordered by tier, and Quiet is now busier
+     * than Cooldown, so it yields the processor to a foreground user less than it used to.
      */
-    fun pacingDelayMillis(profile: IndexRunProfile): Long = when (profile) {
-        IndexRunProfile.Max -> 300L
-        IndexRunProfile.High -> 600L
-        IndexRunProfile.Normal -> 900L
-        IndexRunProfile.Cooldown -> 1_400L
-        IndexRunProfile.Quiet -> QuietPacingMillis
+    fun pacingDelayMillis(profile: IndexRunProfile, batchSize: Int): Long =
+        pacingMillisPerImage(profile) * batchSize.coerceAtLeast(1)
+
+    private fun pacingMillisPerImage(profile: IndexRunProfile): Long = when (profile) {
+        IndexRunProfile.Max -> 320L
+        IndexRunProfile.High -> 375L
+        IndexRunProfile.Normal -> 467L
+        IndexRunProfile.Cooldown -> 600L
+        IndexRunProfile.Quiet -> 500L
     }
 
     private fun Context.activityManager(): ActivityManager =
@@ -88,6 +95,4 @@ object BatchSizing {
         activityManager.memoryClass >= 192 -> 8
         else -> 6
     }
-
-    private const val QuietPacingMillis = 2_000L
 }
