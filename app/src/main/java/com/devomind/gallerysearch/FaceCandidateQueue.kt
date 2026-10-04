@@ -40,6 +40,9 @@ class FaceCandidateQueue(context: Context) {
                 (existing ?: PersonPhotoEntity(uri = entry.uri.toString(), capturedAt = item.dateMillis)).copy(
                     clipPersonScore = verdict.gateScore,
                     status = PersonPhotoEntity.Status.CLIP_CANDIDATE,
+                    // Carried from the same 512px decode that produced the vector: the face worker
+                    // reads it instead of decoding the photo a second time.
+                    dhash = existing?.dhash?.takeIf { it != 0L } ?: entry.dhash,
                     capturedAt = item.dateMillis,
                     // A queue time is not an analysis time; zero keeps candidate ordering stable.
                     lastAnalyzedAt = 0L

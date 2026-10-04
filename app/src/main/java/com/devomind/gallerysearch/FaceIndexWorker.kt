@@ -251,8 +251,12 @@ class FaceIndexWorker(
             }
 
             // ── lightweight hash + duplicate window lookup ───────────────────────────────────
-            val hashBitmap = lightweightBitmap ?: repository.loadBitmap(uri)
-            if (hashBitmap == null) {
+            // The CLIP pass hashed this photo at the same 512px oriented edge and stored the result
+            // on the candidate row, so a queued photo skips this decode; only rows that predate the
+            // handoff (or hashed to zero) still pay for it.
+            val storedDhash = existing?.dhash ?: 0L
+            val hashBitmap = if (storedDhash != 0L) null else repository.loadBitmap(uri)
+            if (storedDhash == 0L && hashBitmap == null) {
                 updateStats(stats) { decodeFailures++ }
                 photoDao.insert(
                     PersonPhotoEntity(
@@ -266,8 +270,8 @@ class FaceIndexWorker(
                 reportProgress(stats, total)
                 return
             }
-            if (lightweightBitmap == null) lightweightBitmap = hashBitmap
-            val dhash = PhashUtils.hash(hashBitmap)
+            if (hashBitmap != null) lightweightBitmap = hashBitmap
+            val dhash = hashBitmap?.let { PhashUtils.hash(it) } ?: storedDhash
             val siblings = photoDao.findBurstCandidates(
                 capturedAtMillis = item.dateMillis,
                 burstWindowMillis = PhashUtils.BurstWindowMillis
