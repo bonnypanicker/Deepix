@@ -1078,7 +1078,9 @@ class MainActivity : AppCompatActivity() {
                 return@launch
             }
             textEncoder = text
-            repository?.attachEncoders(imageEncoder, text)
+            // Text only: the vision encoder is attached by [loadVisionEncoder] when something that
+            // needs it asks, and attachEncoders leaves a null image argument untouched.
+            repository?.attachEncoders(null, text)
             withContext(Dispatchers.IO) {
                 repository?.loadCachedIndexForUris(allUris)
                 repository?.loadCachedMetadataIndexForUris(allUris)
