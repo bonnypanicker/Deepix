@@ -25,7 +25,8 @@ import kotlinx.coroutines.withContext
  *  - **Power** — "index only while charging" and its sub-option "night charging only" (10 PM–7 AM).
  *  - **Folders** — which device folders the AI index covers (checkboxes + a select-all master toggle).
  *    Independent of the gallery view; every photo still shows. Empty selection means "all folders".
- *  - **Media Processing** — a plain-language explainer of what the on-device scan does.
+ *  - **Media Processing** — a plain-language explainer of what the on-device scan does; the section
+ *    is hidden in the layout, its copy kept for when it returns.
  *
  * Folder-scope and power changes are persisted on [finish] / applied immediately and trigger
  * [IndexController.rescan] (REPLACE) so the index is rebuilt against the new scope/constraints.

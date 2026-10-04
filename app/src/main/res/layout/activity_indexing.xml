@@ -115,16 +115,20 @@
                 </LinearLayout>
 
                 <!-- ===================== MEDIA PROCESSING INFO ===================== -->
+                <!-- Held back rather than deleted: the explainer below is the copy that would need
+                     rewriting if it ever comes back. -->
                 <TextView
                     style="@style/SettingsSectionHeader"
-                    android:text="@string/section_media_processing" />
+                    android:text="@string/section_media_processing"
+                    android:visibility="gone" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
                     android:background="@drawable/onboarding_card_bg"
-                    android:padding="16dp">
+                    android:orientation="vertical"
+                    android:padding="16dp"
+                    android:visibility="gone">
 
                     <TextView
                         android:layout_width="match_parent"
