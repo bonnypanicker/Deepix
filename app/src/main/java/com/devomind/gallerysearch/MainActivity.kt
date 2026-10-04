@@ -288,7 +288,7 @@ class MainActivity : AppCompatActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
-        if (grants.any { it.value } || hasPartialMediaAccess()) {
+        if (grants.any { it.value } || StoragePermissions.hasPartialMediaAccess(this)) {
             initializeCore()
             maybeShowPartialAccessNotice()
             // The storage dialog has just been dismissed, so chaining the notification request
@@ -827,10 +827,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestGalleryPermission() {
-        val permissions = requiredPermissions()
-        val fullAccess =
-            permissions.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
-        if (fullAccess || hasPartialMediaAccess()) {
+        val permissions = StoragePermissions.requiredMediaPermissions()
+        if (StoragePermissions.hasMediaAccess(this)) {
             // Partial (API 34 "Select photos") counts as granted — don't re-prompt every launch.
             initializeCore()
             maybeShowPartialAccessNotice()
@@ -841,34 +839,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun requiredPermissions(): Array<String> {
-        return when {
-            Build.VERSION.SDK_INT >= 34 -> arrayOf(
-                Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO
-            )
-            Build.VERSION.SDK_INT >= 33 -> arrayOf(
-                Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO
-            )
-            else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-    }
-
-    /** API 34+ "Select photos": full media access denied but a user-selected subset granted. */
-    private fun hasPartialMediaAccess(): Boolean {
-        return Build.VERSION.SDK_INT >= 34 &&
-            ContextCompat.checkSelfPermission(
-                this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
-            ) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(
-                this, Manifest.permission.READ_MEDIA_IMAGES
-            ) != PackageManager.PERMISSION_GRANTED
-    }
-
     /** One-shot banner explaining that only selected photos are visible, with a fix action. */
     private fun maybeShowPartialAccessNotice() {
-        if (!hasPartialMediaAccess()) return
+        if (!StoragePermissions.hasPartialMediaAccess(this)) return
         MetroBanner.show(
             this,
             "Showing only the photos you selected",
