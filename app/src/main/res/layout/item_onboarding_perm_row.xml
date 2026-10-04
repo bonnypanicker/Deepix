@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One row of the permissions page: glyph, label, why it is wanted, and the hairline under it. The
+     page above contributes the matching top hairline, so rows read as one ruled list. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/permRowRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:id="@+id/permRowContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingTop="13dp"
+        android:paddingBottom="13dp">
+
+        <ImageView
+            android:id="@+id/permRowIcon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:contentDescription="@null"
+            android:tint="@color/metroTextSecondary" />
+
+        <LinearLayout
+            android:id="@+id/permRowCopy"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/permRowTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/metroTextPrimary"
+                android:textSize="13.5sp" />
+
+            <TextView
+                android:id="@+id/permRowSummary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="@color/metroTextSecondary"
+                android:textSize="11.5sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <View
+        android:id="@+id/permRowDivider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/metroBgSurface" />
+</LinearLayout>

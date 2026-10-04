@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Onboarding identity mark: a picture frame holding a ridge line and a sun. The frame is one
+     even-odd path (outer rounded square minus the inner one) so the ring stays a constant weight.
+     Filled white and tinted with ?attr/accentColor at the usage site. Distinct from IndexingOrbView,
+     which is the AI mark. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M34,26h40a8,8 0 0 1 8,8v40a8,8 0 0 1 -8,8h-40a8,8 0 0 1 -8,-8v-40a8,8 0 0 1 8,-8zM38,33a5,5 0 0 0 -5,5v32a5,5 0 0 0 5,5h32a5,5 0 0 0 5,-5v-32a5,5 0 0 0 -5,-5z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M33,73l17,-22l9,11l5,-5l11,16z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M60,40a5,5 0 1 0 10,0a5,5 0 1 0 -10,0z" />
+</vector>

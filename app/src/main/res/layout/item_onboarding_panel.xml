@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One tour page. A feature page centers its glyph in the weighted icon area and puts the copy at
+     the bottom; the permissions page collapses that area to a top gap and lets the row list take the
+     weight instead. OnboardingPanelAdapter swaps those weights and rescales every size to the screen. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/panelRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingStart="28dp"
+    android:paddingEnd="28dp"
+    android:paddingBottom="4dp">
+
+    <FrameLayout
+        android:id="@+id/panelIconArea"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <ImageView
+            android:id="@+id/panelIcon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:adjustViewBounds="true"
+            android:contentDescription="@null"
+            android:tint="?attr/accentColor" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/panelEyebrow"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.09"
+        android:textAllCaps="true"
+        android:textColor="?attr/accentColor"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/panelTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="sans-serif-light"
+        android:letterSpacing="-0.02"
+        android:lineSpacingMultiplier="1.05"
+        android:textColor="@color/metroTextPrimary"
+        android:textSize="28sp" />
+
+    <TextView
+        android:id="@+id/panelBody"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:lineSpacingMultiplier="1.35"
+        android:maxWidth="280dp"
+        android:textColor="@color/metroTextSecondary"
+        android:textSize="13.5sp" />
+
+    <View
+        android:id="@+id/permTopDivider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="18dp"
+        android:background="@color/metroBgSurface"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/permList"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:visibility="gone" />
+</LinearLayout>

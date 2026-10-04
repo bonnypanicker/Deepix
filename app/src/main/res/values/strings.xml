@@ -246,12 +246,51 @@
     <string name="people_empty">No people yet</string>
     <string name="people_empty_hint">Faces from your photos will cluster here as indexing runs.</string>
 
-    <!-- First-run onboarding -->
-    <string name="first_run_title">Meet People</string>
-    <string name="first_run_subtitle">Let Deepix find the people in your photos.</string>
-    <string name="first_run_body">Deepix will scan your library in the background and group photos by who appears in them. The results appear under the People tab in your library. All processing happens on this phone — never in the cloud.</string>
-    <string name="first_run_scan_now">Start scan</string>
-    <string name="first_run_skip">Not now</string>
+    <!-- First-run tour: seven feature pages, then the permissions page. The copy is the product's
+         own pitch, so it reads as prose rather than UI labels. -->
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_get_started">Get started</string>
+    <string name="onboarding_dismiss">Skip to permissions</string>
+
+    <string name="onboarding_welcome_eyebrow">Privacy-first photo gallery</string>
+    <string name="onboarding_welcome_title">Your gallery, kept private</string>
+    <string name="onboarding_welcome_body">Pixa is a full photo and video gallery with AI search, face grouping, and smart organization — all of it processed on your device, so your library is never uploaded anywhere.</string>
+
+    <string name="onboarding_search_eyebrow">Search</string>
+    <string name="onboarding_search_title">Search by description or by photo</string>
+    <string name="onboarding_search_body">Type a description, or select any photo to find similar ones. Results combine semantic matches, metadata, albums, people, and locations in a single search.</string>
+
+    <string name="onboarding_people_eyebrow">People</string>
+    <string name="onboarding_people_title">Automatic face grouping</string>
+    <string name="onboarding_people_body">Pixa clusters photos by the people in them during background indexing, organizing your library under the People tab without any manual tagging.</string>
+
+    <string name="onboarding_smart_album_eyebrow">Smart albums</string>
+    <string name="onboarding_smart_album_title">Self-updating albums</string>
+    <string name="onboarding_smart_album_body">Define an album with a text description — \"beach sunsets\", \"my dog\" — and Pixa automatically adds matching photos as your library grows.</string>
+
+    <string name="onboarding_cleanup_eyebrow">Smart cleanup</string>
+    <string name="onboarding_cleanup_title">Reclaim storage automatically</string>
+    <string name="onboarding_cleanup_body">Pixa detects duplicates, blurry shots, screenshots, and other clutter, then lets you review and confirm before anything is deleted.</string>
+
+    <string name="onboarding_edit_eyebrow">Edit</string>
+    <string name="onboarding_edit_title">Built-in photo and video editing</string>
+    <string name="onboarding_edit_body">Crop, adjust, and annotate photos or trim videos directly in the gallery — no separate app required.</string>
+
+    <string name="onboarding_safe_eyebrow">Safe</string>
+    <string name="onboarding_safe_title">Encrypted storage for private photos</string>
+    <string name="onboarding_safe_body">Files moved to Safe are stored in a standard AES-256 encrypted ZIP, openable with any file manager or zip utility and your password — so your photos survive even if Pixa is uninstalled.</string>
+
+    <string name="onboarding_perm_eyebrow">Before you start</string>
+    <string name="onboarding_perm_title">Permissions Pixa requests</string>
+    <string name="onboarding_perm_body">All processing happens on this device. Pixa does not upload your photos or facial data to any server.</string>
+    <string name="onboarding_perm_media">Photos &amp; videos</string>
+    <string name="onboarding_perm_media_summary">So Pixa can show, search, and index your library</string>
+    <string name="onboarding_perm_files">All files access</string>
+    <string name="onboarding_perm_files_summary">Only for Safe and the recycle bin — lets Pixa move or delete the originals you choose</string>
+    <string name="onboarding_perm_notifications">Notifications</string>
+    <string name="onboarding_perm_notifications_summary">Optional — progress while indexing runs in the background</string>
+    <string name="onboarding_perm_biometric">Fingerprint unlock</string>
+    <string name="onboarding_perm_biometric_summary">Optional — open your Safe instantly instead of typing a password</string>
     <string name="faces_section">FACES</string>
 
     <!-- Search page: pre-query empty state -->
