@@ -4621,12 +4621,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun maybeRefreshLiveIndex(current: Int) {
         if (imageItems.isEmpty()) return
+        // Progress ticks fire whether or not a search is on screen. Reloading both index files from
+        // disk every INDEX_LIVE_REFRESH_STEP photos is dead work when nothing will re-score them,
+        // so gate on the search before touching I/O.
+        val query = binding.searchInput.text?.toString()?.trim().orEmpty()
+        if (currentMode != Mode.Search || query.isEmpty()) return
         val isStep = current > 0 && (current % DesignTokens.INDEX_LIVE_REFRESH_STEP == 0 || current == 1)
         val shouldRefresh = isStep && current != lastProgressRefresh
         if (!shouldRefresh) return
         lastProgressRefresh = current
 
-        val query = binding.searchInput.text?.toString()?.trim().orEmpty()
         val repo = repository ?: return
         // A user-driven search already snapshots the freshest index when its CLIP pass runs;
         // cancelling it here would flash the grid. The next progress step re-scores instead.
