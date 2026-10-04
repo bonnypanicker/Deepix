@@ -64,6 +64,36 @@ class IndexRunPolicyTest {
         assertEquals(IndexRunDecision.Run(IndexRunProfile.Normal), decision)
     }
 
+    @Test
+    fun warmChargingCellLosesTheBoost() {
+        val decision = IndexRunPolicy.decide(
+            state = baseState(isCharging = true, isInteractive = false, batteryTemperatureC = 37f),
+            requirements = baseRequirements()
+        )
+
+        assertEquals(IndexRunDecision.Run(IndexRunProfile.Normal), decision)
+    }
+
+    @Test
+    fun hotChargingCellRunsCooldownProfile() {
+        val decision = IndexRunPolicy.decide(
+            state = baseState(isCharging = true, isInteractive = false, batteryTemperatureC = 41f),
+            requirements = baseRequirements()
+        )
+
+        assertEquals(IndexRunDecision.Run(IndexRunProfile.Cooldown), decision)
+    }
+
+    @Test
+    fun overheatingCellWaits() {
+        val decision = IndexRunPolicy.decide(
+            state = baseState(isCharging = true, isInteractive = false, batteryTemperatureC = 43f),
+            requirements = baseRequirements()
+        )
+
+        assertEquals(IndexRunDecision.Wait(IndexWaitReason.WaitingForThermalCooldown), decision)
+    }
+
     private fun baseState(
         isCharging: Boolean = true,
         isBatteryLow: Boolean = false,
@@ -74,7 +104,8 @@ class IndexRunPolicyTest {
         isDeviceLightIdle: Boolean = false,
         thermalStatus: ThermalStatus = ThermalStatus.None,
         thermalHeadroom: Float? = null,
-        hourOfDay: Int = 23
+        hourOfDay: Int = 23,
+        batteryTemperatureC: Float? = null
     ): IndexHardwareState =
         IndexHardwareState(
             isCharging = isCharging,
@@ -86,7 +117,8 @@ class IndexRunPolicyTest {
             isDeviceLightIdle = isDeviceLightIdle,
             thermalStatus = thermalStatus,
             thermalHeadroom = thermalHeadroom,
-            hourOfDay = hourOfDay
+            hourOfDay = hourOfDay,
+            batteryTemperatureC = batteryTemperatureC
         )
 
     private fun baseRequirements(

@@ -38,6 +38,8 @@ enum class IndexRunProfile {
     Normal,
     High,
     Max,
+
+    /** Deliberately reduced: a warm cell, `Moderate` thermal status, or battery saver asked for it. */
     Cooldown,
 
     /** Someone has the phone in hand: smallest batch, and a forced gap between batches. */
@@ -96,7 +98,8 @@ object IndexRunPolicy {
             // Ahead of the thermal tiers: a run that stops and restarts every time the user wakes
             // the screen pays reconciliation again, so an in-hand device slows the run instead.
             state.isUserInteracting -> IndexRunProfile.Quiet
-            state.thermalStatus == ThermalStatus.Moderate || state.isPowerSaveMode -> {
+            state.thermalStatus == ThermalStatus.Moderate || state.isPowerSaveMode ||
+                state.isBatteryWarm() -> {
                 IndexRunProfile.Cooldown
             }
             state.isCharging &&
@@ -123,6 +126,11 @@ object IndexRunPolicy {
         null -> ""
     }
 
+    /**
+     * The probe line shown while indexing runs. Its buckets mirror the tiers in [decide] on purpose:
+     * "normal" has to mean "the run is at its untuned profile", not merely "nothing is in danger", or a
+     * 41 °C cell reads as calm next to the number the same label prints.
+     */
     fun deviceStateLabel(state: IndexHardwareState): String {
         val power = if (state.isCharging) "charging" else "not charging"
         val screen = when {
@@ -134,7 +142,8 @@ object IndexRunPolicy {
         val thermal = when {
             state.thermalStatus.blocksIndexing() || state.isHeadroomSevere() ||
                 state.isBatteryTooHot() -> "hot"
-            state.thermalStatus == ThermalStatus.Moderate || state.isPowerSaveMode -> "warm"
+            state.thermalStatus == ThermalStatus.Moderate || state.isPowerSaveMode ||
+                state.isBatteryWarm() -> "warm"
             else -> "normal"
         }
         val temperature = state.batteryTemperatureC?.let { " · ${it.toInt()}°C" }.orEmpty()
@@ -164,6 +173,15 @@ object IndexRunPolicy {
     private fun IndexHardwareState.isBatteryTooHot(): Boolean =
         isBatteryOverheating || (batteryTemperatureC ?: 0f) >= HotBatteryTempC
 
+    /**
+     * A cell this warm is the run's own cue to ease off, not merely grounds for refusing a boost.
+     * `currentThermalStatus` reads a board sensor and routinely stays at `None` while the charger pushes
+     * the battery past 40 °C, so without this the pass sat at its untuned profile for the whole warm
+     * band between the boost ceiling and the stop — hot, and reporting itself as normal.
+     */
+    private fun IndexHardwareState.isBatteryWarm(): Boolean =
+        batteryTemperatureC?.let { it >= WarmBatteryTempC } == true
+
     private fun ThermalStatus.blocksIndexing(): Boolean =
         this == ThermalStatus.Severe ||
             this == ThermalStatus.Critical ||
@@ -178,6 +196,10 @@ object IndexRunPolicy {
     /** Stop indexing above this cell temperature. Li-ion warns near 45 °C, so this is deliberately
      *  early — the job is background work and has no reason to compete with heat. */
     private const val HotBatteryTempC = 42f
+
+    /** Two degrees below the stop: the band where the run is not in danger but has no margin left
+     *  either, so it takes the reduced profile instead of waiting for [HotBatteryTempC] to halt it. */
+    private const val WarmBatteryTempC = 40f
 
     /** Boost only when the cell is already comfortably cool. Charging lifts it a few degrees on its
      *  own, so this is what steps an overnight pass back down mid-run: being plugged in is not a signal
