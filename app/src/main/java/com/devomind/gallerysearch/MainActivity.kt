@@ -260,6 +260,11 @@ class MainActivity : AppCompatActivity() {
     // Incremented only by a real user/content scroll. Async renders capture this before work
     // starts so a late completion cannot pull an active fling back to the first item.
     private var gridScrollRevision = 0L
+    // Where the albums grid was scrolled when a detail page replaced it: the first visible cell
+    // and its top offset. The Albums render consumes it once so Back lands where the user left off
+    // instead of at the top; it is cleared whenever navigation leaves for another section, so a
+    // fresh visit to the albums list still starts at the top.
+    private var albumsGridScrollAnchor: Pair<Int, Int>? = null
 
     // Collage thumbnail scale (1..5); adjustable by pinch gesture + Settings. Cached here so the
     // justified-rows builder doesn't hit SharedPreferences per day-row.
@@ -1363,6 +1368,9 @@ class MainActivity : AppCompatActivity() {
         currentDisplayedSearchResultCount = 0
 
         activeSection = section
+        // A visit to another section ends the current albums listing for good; the scroll anchor
+        // that a detail page left behind must not resurface on the next fresh Albums open.
+        if (section != Section.Albums) albumsGridScrollAnchor = null
         currentAlbum = null
         currentFolder = null
         currentSmartAlbum = null
@@ -1643,6 +1651,7 @@ class MainActivity : AppCompatActivity() {
     private fun renderFolderDetail(folder: FolderNode) {
         renderJob?.cancel()
         preAlbumDetailSection = activeSection
+        rememberAlbumsGridScroll()
         currentMode = Mode.FolderDetail
         currentFolder = folder
         binding.searchPanel.visibility = View.GONE
@@ -1803,7 +1812,15 @@ class MainActivity : AppCompatActivity() {
             }
             else cells
         )
-        resetGridToTop()
+        val anchor = albumsGridScrollAnchor
+        albumsGridScrollAnchor = null
+        // Returning from an album: resume where the list was left. A list that shrank under the
+        // user (album deleted, pins reordered) falls back to the top rather than a clamped guess.
+        if (anchor != null && anchor.first < adapter.itemCount) {
+            scrollGridTo(anchor.first, anchor.second)
+        } else {
+            resetGridToTop()
+        }
         updateFastScrollVisibility()
         updateTopBarForMode("albums")
         updateDrawerState()
@@ -1848,6 +1865,7 @@ class MainActivity : AppCompatActivity() {
     private fun renderAlbumDetail(album: GalleryRepository.Album) {
         renderJob?.cancel()
         preAlbumDetailSection = activeSection
+        rememberAlbumsGridScroll()
         currentMode = Mode.AlbumDetail
         currentAlbum = album
         binding.searchPanel.visibility = View.GONE
@@ -3677,7 +3695,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun resetGridToTop(expectedScrollRevision: Long? = null) {
+    private fun resetGridToTop(expectedScrollRevision: Long? = null) = scrollGridTo(0, 0, expectedScrollRevision)
+
+    /**
+     * Notes how far the albums grid was scrolled before a detail page replaces it, so the return
+     * to the list can resume there. Recorded only while the albums list is what's on screen: a
+     * detail opened from another section disarms the resume instead of inheriting a stale spot.
+     */
+    private fun rememberAlbumsGridScroll() {
+        if (activeSection != Section.Albums || currentMode != Mode.Browse) {
+            albumsGridScrollAnchor = null
+            return
+        }
+        val manager = binding.imageGrid.layoutManager as? GridLayoutManager ?: return
+        val position = manager.findFirstVisibleItemPosition()
+        if (position < 0) return
+        val offset = (manager.findViewByPosition(position)?.top ?: 0) - binding.imageGrid.paddingTop
+        albumsGridScrollAnchor = position to offset
+    }
+
+    private fun scrollGridTo(position: Int, offset: Int, expectedScrollRevision: Long? = null) {
         // A timeline render can take long enough for the user to start scrolling the previous
         // content. In that case the newer content may still be applied, but it must not reset
         // their viewport once the asynchronous build finishes.
@@ -3700,7 +3737,14 @@ class MainActivity : AppCompatActivity() {
                 dismissLoadingOverlay()
                 return@post
             }
-            binding.imageGrid.scrollToPosition(0)
+            // Offset 0 on position 0 is the top, which is what a plain scrollToPosition(0) asked
+            // for; the paired form also lets a restored viewport land mid-row.
+            val manager = binding.imageGrid.layoutManager as? GridLayoutManager
+            if (manager != null) {
+                manager.scrollToPositionWithOffset(position, offset)
+            } else {
+                binding.imageGrid.scrollToPosition(position)
+            }
             binding.fastScrollIndicator.syncToRecyclerView()
             dismissLoadingOverlay()
         }
@@ -3863,6 +3907,7 @@ class MainActivity : AppCompatActivity() {
     private fun renderSmartAlbumDetail(smart: SmartAlbum) {
         renderJob?.cancel()
         preAlbumDetailSection = activeSection
+        rememberAlbumsGridScroll()
         currentMode = Mode.SmartAlbumDetail
         currentSmartAlbum = smart
         binding.searchPanel.visibility = View.GONE
