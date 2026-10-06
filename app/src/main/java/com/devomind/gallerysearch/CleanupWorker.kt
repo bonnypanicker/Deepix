@@ -45,6 +45,7 @@ class CleanupWorker(
             Log.i(Tag, "Compression in progress — deferring cleanup scan.")
             return Result.retry()
         }
+        val foregroundStartedAt = SystemClock.elapsedRealtime()
         runCatching { setForeground(foregroundInfo(0, 0)) }
             .onFailure { Log.w(Tag, "Foreground start not allowed; cleanup runs in background.", it) }
 
@@ -146,6 +147,13 @@ class CleanupWorker(
         } catch (error: Throwable) {
             Log.w(Tag, "Cleanup worker failed.", error)
             Result.failure()
+        } finally {
+            // Same pool as indexing and compression: the scan's foreground stretch is booked against the
+            // app's rolling allowance so the multi-hour pass can see what is actually left.
+            ForegroundBudget.addForegroundTime(
+                applicationContext,
+                SystemClock.elapsedRealtime() - foregroundStartedAt
+            )
         }
     }
 

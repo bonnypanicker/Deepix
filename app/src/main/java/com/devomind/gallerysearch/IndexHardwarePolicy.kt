@@ -53,7 +53,9 @@ enum class IndexWaitReason {
     WaitingForBattery,
     WaitingForStorage,
     WaitingForNightWindow,
-    WaitingForCompression
+    WaitingForCompression,
+    /** The app's 6 h of `dataSync` foreground time is spent; see [ForegroundBudget]. */
+    WaitingForForegroundBudget
 }
 
 sealed class IndexRunDecision {
@@ -123,6 +125,7 @@ object IndexRunPolicy {
         IndexWaitReason.WaitingForStorage -> "Waiting for storage"
         IndexWaitReason.WaitingForNightWindow -> "Waiting for night"
         IndexWaitReason.WaitingForCompression -> "Waiting for compression"
+        IndexWaitReason.WaitingForForegroundBudget -> "Waiting for today's background time"
         null -> ""
     }
 

@@ -30,12 +30,22 @@ class IndexWorker(
     private var lastProbeAt: Long = 0L
 
     override suspend fun doWork(): Result {
+        // The run is booked as one continuous stretch of foreground time — a pass whose foreground start
+        // was refused runs unmeasured instead, but charging it anyway is the safe direction for an
+        // allowance that is spent before it is fatal. The checks inside the run see the time already gone
+        // as the live segment, so a single write per pass is enough.
+        val foregroundStartedAt = SystemClock.elapsedRealtime()
         val result = try {
-            runPass()
+            runPass(foregroundStartedAt)
         } catch (cancelled: CancellationException) {
             // A cancel normally means a fresher request replaced this one, and the replacement wants
             // the session this pass already paid to build. Keep it cached.
             throw cancelled
+        } finally {
+            ForegroundBudget.addForegroundTime(
+                applicationContext,
+                SystemClock.elapsedRealtime() - foregroundStartedAt
+            )
         }
         // Every other exit is a wait of minutes-to-hours (charger, thermals, compression) or the end
         // of the job: hand the 72 MB vision session back rather than pinning it for the process.
@@ -43,7 +53,7 @@ class IndexWorker(
         return result
     }
 
-    private suspend fun runPass(): Result {
+    private suspend fun runPass(foregroundStartedAt: Long): Result {
         // Paused means quiet: no worker run and nothing in the notification panel.
         if (IndexPreferences.isIndexPaused(applicationContext)) {
             return Result.success()
@@ -68,6 +78,20 @@ class IndexWorker(
             return Result.retry()
         }
         val initialProfile = (initialDecision as IndexRunDecision.Run).profile
+
+        // Reaching the platform's 6 h of dataSync foreground time is fatal rather than merely stopped —
+        // WorkManager 2.9.1 has no answer to the timeout callback — so a pass that cannot fit inside the
+        // remaining allowance does not take the foreground at all. It queues itself for the moment the
+        // rolling window frees room, which keeps a multi-day first pass resuming on its own.
+        if (!ForegroundBudget.hasRoom(applicationContext, SystemClock.elapsedRealtime() - foregroundStartedAt)) {
+            Log.i(Tag, "Foreground-time allowance spent — deferring the index run.")
+            IndexPreferences.setLastIndexWaitReason(
+                applicationContext,
+                IndexWaitReason.WaitingForForegroundBudget
+            )
+            scheduleResumeAfterForegroundRefill(applicationContext)
+            return Result.success()
+        }
 
         try {
             setForeground(createForegroundInfo())
@@ -151,6 +175,16 @@ class IndexWorker(
                 // yield now and let the retry reconcile + resume without re-encoding.
                 if (CompressionBatchStore.isCompressionActive(applicationContext)) {
                     throw IndexWaitingException(IndexWaitReason.WaitingForCompression)
+                }
+                // Same mid-pass yield for the foreground allowance, with the reserve stopping the pass
+                // before the cap instead of at it: the batch in flight has to land inside the window
+                // rather than be cut off mid-inference by the platform.
+                if (!ForegroundBudget.hasRoom(
+                        applicationContext,
+                        SystemClock.elapsedRealtime() - foregroundStartedAt
+                    )
+                ) {
+                    throw IndexWaitingException(IndexWaitReason.WaitingForForegroundBudget)
                 }
                 val bounded = current.coerceAtMost(total)
                 val progressPercent = (bounded * 100) / total
@@ -346,6 +380,25 @@ class IndexWorker(
                     java.util.concurrent.TimeUnit.SECONDS
                 )
                 .build()
+        }
+
+        /**
+         * Queues the pass for the moment the rolling window frees the foreground allowance. Skipped when
+         * the user paused or stopped indexing: a budget resume must not resurrect a pass they turned off,
+         * which is the one place this wait differs from a charger or thermal hold — those end on their
+         * own, this one has to be re-armed.
+         *
+         * APPEND_OR_REPLACE so a budget resume already pending is updated rather than chained, and so the
+         * queued spec runs *after* this one ends instead of cancelling it.
+         */
+        private fun scheduleResumeAfterForegroundRefill(context: Context) {
+            if (IndexPreferences.isIndexPaused(context) || IndexPreferences.isIndexStopped(context)) return
+            val delaySeconds = ForegroundBudget.millisUntilRoom(context) / 1000
+            androidx.work.WorkManager.getInstance(context).enqueueUniqueWork(
+                WorkName,
+                androidx.work.ExistingWorkPolicy.APPEND_OR_REPLACE,
+                buildWorkRequest(context, delaySeconds)
+            )
         }
 
         /**

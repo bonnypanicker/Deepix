@@ -53,6 +53,7 @@ class CompressionWorker(
         val batch = store.load()
         if (batch == null || batch.id != batchId || !batch.isActive) return Result.success()
 
+        val foregroundStartedAt = SystemClock.elapsedRealtime()
         runCatching { setForeground(foregroundInfo(batch, 0, batch.items.size)) }
             .onFailure { Log.w(Tag, "Foreground start not allowed; compression runs in background.", it) }
 
@@ -98,6 +99,14 @@ class CompressionWorker(
                 }
             }
             Result.failure()
+        } finally {
+            // Compression holds the same foreground service the indexing pass waits on, so its stretch
+            // is booked against the app's rolling allowance. A batch is minutes, which is why it draws on
+            // the pool without having to bound itself by it.
+            ForegroundBudget.addForegroundTime(
+                applicationContext,
+                SystemClock.elapsedRealtime() - foregroundStartedAt
+            )
         }
     }
 
