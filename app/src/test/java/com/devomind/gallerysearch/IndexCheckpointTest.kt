@@ -2,6 +2,7 @@ package com.devomind.gallerysearch
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -16,9 +17,12 @@ import java.io.IOException
 /**
  * The stage-then-rename shape the index checkpoints depend on.
  *
- * Host note: replacing a *live* base is Android's `rename(2)` behaviour and `fd.sync()` is supported on
- * the internal filesystem there, neither of which a desktop JVM guarantees. These tests therefore assert
- * what holds on both hosts: the bytes, the staging file's fate, and which outcome is reported.
+ * Host note: replacing a *live* base is Android's `rename(2)` behaviour, which a desktop JVM does not
+ * guarantee — so the rename cases assert the bytes, the staging file's fate and which outcome is
+ * reported rather than the replace itself. The force is asserted outright: `fd.sync()` succeeds on a
+ * descriptor that is still open here and on the device, and only a *closed* one fails, which is the
+ * mistake this file used to be blind to. A host that refused the call outright would fail this build
+ * rather than ship an index whose durability was assumed.
  */
 class IndexCheckpointTest {
 
@@ -53,6 +57,10 @@ class IndexCheckpointTest {
             output.writeInt(7)
         }
         assertTrue("the checkpoint should have landed: ${checkpoint.error}", checkpoint.replaced)
+        // `replaced` alone cannot see the force being skipped: a sync on a closed descriptor throws,
+        // the checkpoint still lands, and the only signal is the error this asserts away. A host whose
+        // filesystem refuses the call outright would fail here rather than silently lose durability.
+        assertNull("the bytes should have been forced before the rename: ${checkpoint.error}", checkpoint.error)
         assertFalse("staging must not outlive the rename", staging.exists())
         assertEquals(listOf(magic, 7), intsIn(target))
     }

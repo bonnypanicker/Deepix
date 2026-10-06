@@ -43,14 +43,20 @@ object IndexCheckpoint {
         var syncError: Throwable? = null
         try {
             FileOutputStream(staging).use { stream ->
-                DataOutputStream(BufferedOutputStream(stream)).use(payload)
-                // Without this the rename can land ahead of the bytes, and a power cut leaves a target
-                // whose tail is zeros under a record count that promises more than it holds.
-                syncError = try {
-                    stream.fd.sync()
-                    null
-                } catch (error: Throwable) {
-                    error
+                DataOutputStream(BufferedOutputStream(stream)).use { output ->
+                    payload(output)
+                    // Both halves of the ordering matter. Buffered bytes have to reach the descriptor
+                    // before it is forced, and the force has to happen before `close()` releases the
+                    // descriptor — `sync()` on a closed one is a SyncFailedException on every host.
+                    output.flush()
+                    // Without the force the rename can land ahead of the bytes, and a power cut leaves
+                    // a target whose tail is zeros under a record count that promises more than it holds.
+                    syncError = try {
+                        stream.fd.sync()
+                        null
+                    } catch (error: Throwable) {
+                        error
+                    }
                 }
             }
         } catch (error: Throwable) {
