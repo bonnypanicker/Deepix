@@ -41,12 +41,16 @@ IndexWorker
   ├── GalleryRepository  (getImageUrisForAlbumIds[scope], buildIndex[reconciles: prune+add], rebuildMetadataIndex)
   │     ├── computeBatchSize()  (IndexPreferences override → ActivityManager isLowRamDevice/memoryClass → 2/4/6)
   │     ├── loadBitmap() → decodeOrientedBitmap()  (two-pass bounds decode ≤512px + EXIF orientation)
-  │     ├── ImageEncoder  (encodeBatch; per-image fallback on batch failure)
+  │     ├── ImageEncoder  (encodeBatch via BatchEncoding; per-image fallback on batch failure, OOM escapes)
+  │     ├── EmbeddingFreshness  (decide(embedded, recorded, current) → Encode | Current | Backfill)
   │     ├── MetadataSearch  (buildDocuments, indexFromDocuments)
   │     └── EmbeddingUtils  (l2Normalize, cosineSimilarity)
-  ├── DbRepository  (upsertMedia)
+  ├── DbRepository  (upsertMedia, embeddingSignatures() before the pass, recordEmbeddingSources() per batch)
   ├── IndexPreferences  (isIndexPaused, saveLastIndexedTime, saveIndexBatchSizeOverride on OOM)
   └── IndexControlReceiver  (pause/resume PendingIntents)
+
+GalleryRepository.saveIndex / saveMetadataIndex
+  └── IndexCheckpoint  (payload → `*.tmp` → rename over base → delete journal; promotable() recovers a killed rename)
 ```
 
 ### Search Pipeline
@@ -166,11 +170,17 @@ MainActivity
 ### Persistence Layer
 ```
 DbRepository
-  └── GalleryDatabase (Room singleton)
+  └── GalleryDatabase (Room singleton; SchemaVersion, MIGRATIONS, DestructiveFallbackFrom = 1,2)
         ├── MediaMetadataDao → MediaMetadataEntity
         ├── ExifMetadataDao  → ExifMetadataEntity
         ├── FavoriteDao      → FavoriteEntity
-        └── TagDao           → TagEntity + MediaTagCrossRef
+        ├── TagDao           → TagEntity + MediaTagCrossRef
+        ├── PersonPhotoDao   → PersonPhotoEntity  (invalidateForReanalysis(uri) resets one photo's face state)
+        ├── FaceDao          → FaceEntity         (idsForPhoto/deleteByPhoto; pairs with PersonDao.clearExemplarFaces)
+        └── EmbeddingSourceDao → EmbeddingSourceEntity  (what each stored CLIP embedding was encoded from)
+
+BinManager → BinLedger  (bin/data + bin/entries + *.binmeta; reconcile() at app start and before every move)
+SafeManager → SafeWorkGuard  (import/encrypt vs lock; end() returns the lock duty to the last worker out)
 
 AlbumPinStore  (SharedPreferences / JSONArray)
 SmartAlbumStore  (SharedPreferences / JSONArray)
@@ -187,7 +197,13 @@ CleanupResultStore  (JSON file: filesDir/cleanup_results.json)
 | `SearchTuning.ScoreThreshold` | `GalleryRepository.search()`, `buildMergedPhotoSearchResults()` in MainActivity |
 | `ImageEncoder.ImageSize` (256) | `preprocessor_config.json`, `ImageEncoder.preprocess()`, `GalleryRepository.buildIndex()`, `ThreadBenchmark` synthetic input |
 | `ClipTokenizer.ContextLength` (77) | `TextEncoder.encode()` shape, `QueryExpander.getEmbedding()` |
-| `GalleryDatabase` version | Add migration or `fallbackToDestructiveMigration()` is already set |
+| `GalleryDatabase` version (`SchemaVersion`) | Add the matching `Migration(n, n+1)` to `MIGRATIONS` and commit the new `app/schemas/com.devomind.gallerysearch.db.GalleryDatabase/<n>.json`; `MigrationGraphTest` fails the build when the chain stops short |
+| `embedding_source` columns / `MediaSignature` fields | `EmbeddingFreshness.decide`, `DbRepository.recordEmbeddingSources`, `MediaItem.embeddingSignature()` — a field added here must be recorded, and an existing library's rows read back as `null` (Backfill), not as a mismatch |
+| `EmbeddingFreshness.StaleSignature` | `DbRepository.invalidatePhotoForReanalysis` (the editor's overwrite) — it must stay impossible for a real file to match, or edited photos stop re-encoding |
+| `IndexCheckpoint` staging name (`*.tmp`) | `GalleryRepository.loadIndex`/`loadMetadataIndex` promote a staged base when `promotable()`; `verifyModelAssets` and the journal's own `.bin.journal` suffix are separate files |
+| `BinLedger` layout (`bin/data`, `bin/entries`, `.binmeta`) | Existing bins on a device are read by `reconcile()`/`list()`; a rename strands photos that are already in the bin — `adoptLegacyIndex` is the precedent for converting, not dropping |
+| `BinLedger.copyComplete` / quota margin | `BinManager.moveToBin` ordering (copy → verify → delete original) and `hasRoomFor`; loosening either re-opens the lost-photo path |
+| `SafeWorkGuard` duty semantics | `SafeManager.guarded`/`lock`/`applyLock` and `onStop` — `end()` returning true means a worker owes the lock; a second implementation of "busy" would let an import race the lock again |
 | `GalleryRepository.computeBatchSize()` (2/4/6 + override) | Memory pressure on low-RAM devices; `buildIndex()` chunking; OOM override persisted via `IndexPreferences.saveIndexBatchSizeOverride` (IndexWorker OOM path) |
 | `MainActivity.BROWSE_PAGE_SIZE/MAX` (120/320) | Browse timeline page size; grid is paged (no hard item cap) |
 | `DesignTokens.SEARCH_METADATA_HARD_CAP` (80) | Search pagination cap in `MainActivity` |

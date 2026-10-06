@@ -25,6 +25,11 @@ The Android app expects these files in `app/src/main/assets/`:
 
 The `.onnx` assets are tracked with Git LFS. The root-level `.onnx` files are ignored and kept only as local source copies.
 
+Every bundled model and library is listed with its licence in `THIRD_PARTY_NOTICES.md`. Two of the
+weights are research-only, which gates a commercial release; the decision record is in
+`DECISION_GATES.md`, along with the Android 15 `dataSync` foreground-service limit that bounds a
+first-time full-library indexing pass.
+
 ## Build Notes
 
 Open this folder in Android Studio and sync Gradle. The shell used during setup did not have a local Android SDK or Gradle command available, so APK compilation should be verified from Android Studio.

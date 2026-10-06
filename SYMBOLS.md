@@ -12,18 +12,18 @@ SharedEncoders            GallerySearchApp.kt      getImageEncoder(): ImageEncod
 ImageEncoder              ImageEncoder.kt          ctor(context, threadCount=DefaultThreadCount); encode(Bitmap): FloatArray; encodeBatch(List<Bitmap>): List<FloatArray>; preprocess(Bitmap): FloatArray; internal resolveVisionModelAssetName(context) (shared with ThreadBenchmark)
 TextEncoder               TextEncoder.kt           ctor(context, threadCount=DefaultThreadCount); encode(query: String): FloatArray; val tokenizer: ClipTokenizer
 ClipTokenizer             ClipTokenizer.kt         encode(query: String): TokenizedText; ContextLength=77; prepends "a photo of "
-GalleryRepository         GalleryRepository.kt     loadSnapshot(); search(); buildIndex(); semanticSearch(); loadIndex(); instance batchSize/pipelineBuffer via computeBatchSize()
-  MediaItem               GalleryRepository.kt     data class: uri,bucketId,bucketName,dateMillis,width,height,mimeType,displayName,mediaType,durationMillis,path
+GalleryRepository         GalleryRepository.kt     loadSnapshot(); search(); buildIndex(items, signatures, onProgress, onEmbeddingsStored, onUnsignedEmbeddings); semanticSearch(); loadIndex(); instance batchSize/pipelineBuffer via computeBatchSize()
+  MediaItem               GalleryRepository.kt     data class: uri,bucketId,bucketName,dateMillis,width,height,mimeType,displayName,mediaType,sizeBytes,durationMillis,path,orientationDegrees,dateModifiedMillis; embeddingSignature(): MediaSignature
   Album                   GalleryRepository.kt     data class: id,name,count,coverUri,isSmart
   SemanticSearchHit       GalleryRepository.kt     data class: uri: Uri, score: Float
   Snapshot                GalleryRepository.kt     data class: albums,imageItems,collectionItems,videoItems
-DbRepository              DbRepository.kt          upsertMedia(); toggleFavorite(); upsertExif(); addTag(); setTagsForMedia()
+DbRepository              DbRepository.kt          upsertMedia(); toggleFavorite(); upsertExif(); addTag(); setTagsForMedia(); embeddingSignatures(): Map<String,MediaSignature>; recordEmbeddingSources(items); invalidatePhotoForReanalysis(uri) [stale marker + person_photos reset + face rows removed + exemplar pointers cleared]
 IndexWorker               IndexWorker.kt           CoroutineWorker; WorkName="gallery_background_index"; runs ThreadBenchmark before encoder load; OOM → batch override 2 + retry
 IndexControlReceiver      IndexControlReceiver.kt  ActionPause/ActionResume broadcasts; pendingIntent()
 IndexPreferences          IndexPreferences.kt      save/loadLastIndexedTime; isIndexPaused/setIndexPaused; getGridColumnCount; getSafeStorageRoot/setSafeStorageRoot (SAFE_ROOT_PICTURES|SAFE_ROOT_DOCUMENTS); getOptimalThreadCount/saveOptimalThreadCount; getIndexBatchSizeOverride/saveIndexBatchSizeOverride (0=auto)
 IndexScopeStore           IndexScopeStore.kt       getFolderIds/setFolderIds/isAllFolders (empty=all); AI-index folder scope, independent of gallery view
 IndexedFoldersActivity    IndexedFoldersActivity.kt  Settings folder picker → IndexScopeStore + IndexController.rescan
-PhotoEditorActivity       PhotoEditorActivity.kt   in-app editor (crop/perspective/draw/adjust); Save + Save a copy; ExtraUri/ExtraName/ExtraEdited
+PhotoEditorActivity       PhotoEditorActivity.kt   in-app editor (crop/perspective/draw/adjust); Save + Save a copy; ExtraUri/ExtraName/ExtraEdited; overwrite → DbRepository.invalidatePhotoForReanalysis
 PhotoEditOps              PhotoEditOps.kt          rotate/flip/crop/perspective(setPolyToPoly)/colorMatrix/documentMatrix/composite
 MediaImageSaver           MediaImageSaver.kt       overwrite(uri) [RecoverableSecurityException/createWriteRequest] + saveCopy → Pictures/Deepix
 EditorCropView / EditorQuadView / EditorDrawView   crop rect+aspect / 4-corner perspective quad / freehand draw overlays
@@ -146,6 +146,24 @@ ImageEncoder.resolveVisionModelAssetName(context)                   // now inter
 
 ---
 
+## P0 hardening pass additions (crash-safety tier)
+
+```
+IndexCheckpoint           IndexCheckpoint.kt       write(target, staging, payload): Checkpoint(replaced, error); promotable(base, staging); no Log calls (host-testable) — base/.tmp staging rename is what makes an index save crash-atomic
+BatchEncoding             BatchEncoding.kt         encode(inputs, encodeBatch, encodeOne, onBatchFailure, onImageFailure): List<FloatArray?> — OOM escapes uncaught, per-image fallback preserves every slot
+EmbeddingFreshness        EmbeddingFreshness.kt    decide(embedded, recorded, current): Encode | Current | Backfill; StaleSignature = MediaSignature(-1,-1,-1,-1); MediaSignature(dateModifiedMillis,sizeBytes,width,height)
+BinLedger                 BinLedger.kt             bin state machine, Android-free: write/list/discard/claimData/copyDataOut/reconcile(root, originalPresent) + SidecarSuffix ".binmeta", dataDir="bin/data", entriesDir="bin/entries", QuotaMarginBytes=32MB, hasRoomFor(), copyComplete()
+BinManager                BinManager.kt            moveToBin/restore/deleteForever/emptyBin/purgeExpired/reconcile — every copy is verified byte-for-byte before the original is deleted; a killed op is repaired by reconcile, never by guessing
+SafeWorkGuard             SafeWorkGuard.kt         begin()/end(): Boolean/requestLock()/cancelPendingLock()/isBusy — parks a lock request made while import/encrypt is in flight, last worker out applies it
+MigrationGraphTest        (test)                   walks GalleryDatabase.MIGRATIONS to SchemaVersion; guards duplicate edges, backwards chains, and destructive fallback limited to never-released versions
+EmbeddingSourceEntity     db/EmbeddingSourceEntity.kt  table: embedding_source; PK: uri; dateModifiedMs,sizeBytes,width,height,recordedAt — what each stored CLIP embedding was encoded from
+EmbeddingSourceDao        db/EmbeddingSourceDao.kt upsert(List|one); getAll(); getByUri(uri); deleteByUri(uri)
+PersonPhotoDao.invalidateForReanalysis(uri)        db/PersonPhotoDao.kt  one-photo version of resetForEmbeddingModel (status unprocessed, dhash/faceCount/exemplar cleared)
+FaceDao.idsForPhoto(uri) / PersonDao.clearExemplarFaces(faceIds)   drop a photo's faces without leaving persons.exemplarFaceId pointing at a deleted row
+```
+
+---
+
 ## DB Entities & DAOs
 
 ```
@@ -154,7 +172,7 @@ ExifMetadataEntity    db/ExifMetadataEntity.kt   table: exif_metadata; PK: uri
 FavoriteEntity        db/FavoriteEntity.kt        table: favorites; PK: uri
 TagEntity             db/TagEntity.kt             table: tags; PK: id (autoGen); unique: name
 MediaTagCrossRef      db/MediaTagCrossRef.kt      table: media_tag_cross_ref; PK: (mediaUri, tagId)
-GalleryDatabase       db/GalleryDatabase.kt       singleton; DB name: gallery_metadata.db; v2; fallbackToDestructiveMigration
+GalleryDatabase       db/GalleryDatabase.kt       singleton; DB name: gallery_metadata.db; v9 (SchemaVersion const); schemas/ committed, no blanket destructive fallback (DestructiveFallbackFrom = 1,2)
 MediaMetadataDao      db/MediaMetadataDao.kt      upsert(List<MediaMetadataEntity>)
 ExifMetadataDao       db/ExifMetadataDao.kt       upsert(ExifMetadataEntity); getByUri(uri)
 FavoriteDao           db/FavoriteDao.kt           getAllUris(); isFavorite(uri); insert(); delete()
