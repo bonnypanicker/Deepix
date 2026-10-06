@@ -649,24 +649,24 @@ class GalleryRepository(
     }
 
     /** Runs inference on a prepared batch and stores valid embeddings; falls back to per-image
-     *  encoding (reusing the already-preprocessed data, no re-decode) if the batch call fails. */
+     *  encoding (reusing the already-preprocessed data, no re-decode) if the batch call fails. An OOM
+     *  escapes both ways so [IndexWorker] can lower the batch cap. */
     private fun encodeAndStore(batch: List<PreparedItem>, dirty: AtomicBoolean): List<IndexedEmbedding> {
         val encoder = imageEncoder ?: error("Image encoder not attached yet; indexing must wait for model load")
         val indexed = ArrayList<IndexedEmbedding>(batch.size)
-        try {
-            val results = encoder.encodeBatchPrepared(batch.map { it.floats })
-            batch.zip(results).forEach { (entry, embedding) ->
-                storeEmbedding(entry, embedding, dirty)?.let(indexed::add)
+        val vectors = BatchEncoding.encode(
+            inputs = batch.map { it.floats },
+            encodeBatch = { encoder.encodeBatchPrepared(it) },
+            encodeOne = { encoder.encodePrepared(it) },
+            onBatchFailure = { error ->
+                Log.w(Tag, "Batch encoding failed, falling back to single-image", error)
+            },
+            onImageFailure = { index, error ->
+                Log.w(Tag, "Failed to encode ${batch[index].uri}", error)
             }
-        } catch (error: Throwable) {
-            Log.w(Tag, "Batch encoding failed, falling back to single-image", error)
-            for (entry in batch) {
-                try {
-                    storeEmbedding(entry, encoder.encodePrepared(entry.floats), dirty)?.let(indexed::add)
-                } catch (e: Throwable) {
-                    Log.w(Tag, "Failed to encode ${entry.uri}", e)
-                }
-            }
+        )
+        batch.zip(vectors).forEach { (entry, embedding) ->
+            if (embedding != null) storeEmbedding(entry, embedding, dirty)?.let(indexed::add)
         }
         return indexed
     }
