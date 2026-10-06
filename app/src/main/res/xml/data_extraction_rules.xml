@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ backup rules; backup_rules.xml is the same list for API 30 and below.
+
+  The Safe's vault is a public-storage zip and was never app data, so it can't be backed up by
+  accident. These exclusions keep the things that unlock or describe it — and the embedding indices,
+  which are derived data any reinstall can recompute — out of both the cloud copy and a device-to-
+  device transfer.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="photo_safe.xml" />
+
+        <exclude domain="file" path="safe_original_paths.json" />
+        <exclude domain="file" path="safe_thumbs" />
+
+        <exclude domain="file" path="embedding_index.bin" />
+        <exclude domain="file" path="embedding_index.bin.journal" />
+        <exclude domain="file" path="embedding_index.bin.tmp" />
+        <exclude domain="file" path="metadata_index.bin" />
+        <exclude domain="file" path="metadata_index.bin.tmp" />
+
+        <exclude domain="file" path="face_vector_index.bin" />
+    </cloud-backup>
+
+    <device-transfer>
+        <exclude domain="sharedpref" path="photo_safe.xml" />
+
+        <exclude domain="file" path="safe_original_paths.json" />
+        <exclude domain="file" path="safe_thumbs" />
+
+        <exclude domain="file" path="embedding_index.bin" />
+        <exclude domain="file" path="embedding_index.bin.journal" />
+        <exclude domain="file" path="embedding_index.bin.tmp" />
+        <exclude domain="file" path="metadata_index.bin" />
+        <exclude domain="file" path="metadata_index.bin.tmp" />
+
+        <exclude domain="file" path="face_vector_index.bin" />
+    </device-transfer>
+</data-extraction-rules>
