@@ -48,8 +48,13 @@ class GallerySearchApp : Application() {
                 runCatching { app.getSharedPreferences(name, Context.MODE_PRIVATE).all }
             }
         }
-        // Enforce the Recycle Bin's 30-day retention off the main thread on each cold start.
-        thread(isDaemon = true) { runCatching { BinManager.purgeExpired(applicationContext) } }
+        // Resolve bin work an interruption left behind (a copy that finished but wasn't deleted, a
+        // partial copy, a photo whose record was lost), then enforce the 30-day retention. Both off
+        // the main thread on each cold start.
+        thread(isDaemon = true) {
+            runCatching { BinManager.reconcile(applicationContext) }
+            runCatching { BinManager.purgeExpired(applicationContext) }
+        }
         // Settle any compression interrupted by a crash/process death: originals that still exist
         // are kept, verified replacements are finalized, broken ones restored from backup. No-op
         // (one small file check) when no compression was in flight.

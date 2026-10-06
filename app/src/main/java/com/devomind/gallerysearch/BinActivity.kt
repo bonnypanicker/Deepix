@@ -70,7 +70,7 @@ class BinActivity : AppCompatActivity() {
         }
     }
 
-    private fun showOptions(entry: BinManager.BinEntry) {
+    private fun showOptions(entry: BinEntry) {
         MetroDialog.items(
             this,
             options = listOf("Restore", "Delete forever"),
@@ -83,7 +83,7 @@ class BinActivity : AppCompatActivity() {
         }
     }
 
-    private fun restore(entry: BinManager.BinEntry) {
+    private fun restore(entry: BinEntry) {
         lifecycleScope.launch {
             val ok = withContext(Dispatchers.IO) { BinManager.restore(this@BinActivity, entry) }
             MetroBanner.show(
@@ -94,7 +94,7 @@ class BinActivity : AppCompatActivity() {
         }
     }
 
-    private fun confirmDeleteForever(entry: BinManager.BinEntry) {
+    private fun confirmDeleteForever(entry: BinEntry) {
         MetroDialog.confirm(
             this,
             title = "Delete forever?",
@@ -103,7 +103,8 @@ class BinActivity : AppCompatActivity() {
             danger = true
         ) {
             lifecycleScope.launch {
-                withContext(Dispatchers.IO) { BinManager.deleteForever(this@BinActivity, entry) }
+                val gone = withContext(Dispatchers.IO) { BinManager.deleteForever(this@BinActivity, entry) }
+                if (!gone) MetroBanner.show(this@BinActivity, "Couldn't free the photo — it stays in the bin")
                 refresh()
             }
         }
@@ -128,12 +129,12 @@ class BinActivity : AppCompatActivity() {
 
     /** Reuses item_safe_photo (a plain thumbnail cell). Loads binned files via Glide. */
     private inner class BinAdapter(
-        val onClick: (BinManager.BinEntry) -> Unit
+        val onClick: (BinEntry) -> Unit
     ) : RecyclerView.Adapter<BinAdapter.VH>() {
 
-        private val items = mutableListOf<BinManager.BinEntry>()
+        private val items = mutableListOf<BinEntry>()
 
-        fun submit(list: List<BinManager.BinEntry>) {
+        fun submit(list: List<BinEntry>) {
             items.clear()
             items.addAll(list)
             notifyDataSetChanged()
@@ -147,7 +148,7 @@ class BinActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: VH, position: Int) {
             val entry = items[position]
             Glide.with(holder.image)
-                .load(entry.storedFile(this@BinActivity))
+                .load(BinManager.storedFile(this@BinActivity, entry))
                 .centerCrop()
                 .into(holder.image)
             holder.itemView.setOnClickListener { onClick(entry) }
