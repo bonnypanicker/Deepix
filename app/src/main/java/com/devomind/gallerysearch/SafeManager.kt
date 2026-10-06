@@ -51,10 +51,22 @@ object SafeManager {
     @Volatile private var thumbKey: SecretKey? = null
     @Volatile private var originalPathsCache: MutableMap<String, String>? = null
 
+    private val workGuard = SafeWorkGuard()
+
     val isUnlocked: Boolean get() = sessionPassword != null
     fun currentPassword(): String? = sessionPassword
 
+    /**
+     * Locks the vault and wipes the plaintext staging dirs — unless a vault write is mid-flight, in
+     * which case the request is parked and that write's own completion performs it. Wiping under a
+     * running import is what used to truncate an archive entry.
+     */
     fun lock(context: Context? = null) {
+        if (!workGuard.requestLock()) return
+        applyLock(context)
+    }
+
+    private fun applyLock(context: Context?) {
         sessionPassword = null
         thumbKey = null
         context?.let { ctx ->
@@ -63,6 +75,16 @@ object SafeManager {
                 ctx.cacheDir.listFiles { f -> f.isDirectory && f.name.startsWith("safe_view_") }
                     ?.forEach { it.deleteRecursively() }
             }
+        }
+    }
+
+    /** Runs one archive mutation with the lock held off until it lands. */
+    private fun <T> guarded(context: Context, body: () -> T): T {
+        workGuard.begin()
+        try {
+            return body()
+        } finally {
+            if (workGuard.end()) applyLock(context)
         }
     }
 
@@ -199,7 +221,7 @@ object SafeManager {
         runCatching { File(context.filesDir, OriginalPathsFile).delete() }
         originalPathsCache = null
         SafeStore.reset(context)
-        lock(context)
+        applyLock(context)
         runCatching { File(context.filesDir, "safe_thumbs").deleteRecursively() }
     }
 
@@ -253,6 +275,8 @@ object SafeManager {
     private fun openSession(context: Context, password: String) {
         sessionPassword = password
         thumbKey = SafeStore.saltOrNull(context)?.let { SafeCrypto.thumbKey(password, it) }
+        // The user is back inside the vault; a lock parked behind a finishing import must not eject them.
+        workGuard.cancelPendingLock()
     }
 
     // ---- Listing (folder-aware) ----
@@ -292,13 +316,15 @@ object SafeManager {
         val clean = name.trim().replace(Regex("[/\\\\]"), "_")
         if (clean.isEmpty()) return false
         val markerEntry = "$parentPath$clean/$FolderMarker"
-        return runCatching {
-            val work = File(context.cacheDir, "safe_work").apply { mkdirs() }
-            val marker = File(work, FolderMarker).apply { writeText("") }
-            SafeCrypto.addFileToZip(masterZip(context), marker, markerEntry, password.toCharArray())
-            marker.delete()
-            true
-        }.getOrDefault(false)
+        return guarded(context) {
+            runCatching {
+                val work = File(context.cacheDir, "safe_work").apply { mkdirs() }
+                val marker = File(work, FolderMarker).apply { writeText("") }
+                SafeCrypto.addFileToZip(masterZip(context), marker, markerEntry, password.toCharArray())
+                marker.delete()
+                true
+            }.getOrDefault(false)
+        }
     }
 
     // ---- Import ----
@@ -310,6 +336,16 @@ object SafeManager {
         onProgress: ((done: Int, total: Int) -> Unit)? = null
     ): ImportResult {
         val password = sessionPassword ?: return ImportResult(0, sources.size, emptyList())
+        return guarded(context) { importIntoVault(context, sources, folderPath, password, onProgress) }
+    }
+
+    private fun importIntoVault(
+        context: Context,
+        sources: List<Uri>,
+        folderPath: String,
+        password: String,
+        onProgress: ((done: Int, total: Int) -> Unit)?
+    ): ImportResult {
         vaultDir(context).mkdirs()
         val zip = masterZip(context)
         val existing = SafeCrypto.listEntryNames(zip).toMutableSet()
@@ -328,8 +364,15 @@ object SafeManager {
                 context.contentResolver.openInputStream(source)?.use { input ->
                     plain.outputStream().use { input.copyTo(it) }
                 } ?: throw IllegalStateException("Cannot read $source")
+                val staged = plain.length()
+                if (staged <= 0L) throw IllegalStateException("Nothing staged for $source")
 
                 SafeCrypto.addFileToZip(zip, plain, entryName, password.toCharArray())
+                // Read the entry back before the source can be deleted: the archive is the only copy
+                // from here on, and an interrupted append looks exactly like a successful add.
+                if (SafeCrypto.readEntrySize(zip, entryName, password.toCharArray()) != staged) {
+                    throw IllegalStateException("Entry $entryName did not read back whole")
+                }
                 existing.add(entryName)
                 sourceOriginalDir(context, source)?.let {
                     originalDirs[entryName] = it
@@ -471,11 +514,15 @@ object SafeManager {
 
     fun removeItem(context: Context, item: VaultItem): Boolean {
         val password = sessionPassword ?: return false
-        val removed = runCatching {
-            SafeCrypto.removeEntry(masterZip(context), item.entryName, password.toCharArray())
-            thumbFile(context, item.entryName).delete()
-            true
-        }.getOrDefault(false)
+        // zip4j rewrites the whole archive to drop one entry, so this is the other write a lock must
+        // not be allowed to stand on top of.
+        val removed = guarded(context) {
+            runCatching {
+                SafeCrypto.removeEntry(masterZip(context), item.entryName, password.toCharArray())
+                thumbFile(context, item.entryName).delete()
+                true
+            }.getOrDefault(false)
+        }
         if (removed) {
             originalPaths(context).remove(item.entryName)
             saveOriginalPaths(context)

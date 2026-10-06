@@ -161,6 +161,29 @@ object SafeCrypto {
         ZipFile(zip, password).use { it.addFile(source, aesZipParameters(innerName)) }
     }
 
+    /**
+     * Decrypts one entry end to end and reports how many bytes came out, or null when the archive or
+     * the entry can't be read. Cost is one pass over the photo, which is what makes it worth paying
+     * before a source file is deleted: an append that was interrupted reads back as a short entry, and
+     * the zip header alone would still list it as present.
+     */
+    fun readEntrySize(zip: File, innerName: String, password: CharArray): Long? = runCatching {
+        ZipFile(zip, password).use { archive ->
+            val header = archive.fileHeaders.firstOrNull { it.fileName == innerName }
+                ?: return@use null
+            archive.getInputStream(header).use { input ->
+                var total = 0L
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    total += read
+                }
+                total
+            }
+        }
+    }.getOrNull()
+
     /** Entry names in the archive (readable without the password — contents stay encrypted). */
     fun listEntryNames(zip: File): List<String> {
         if (!zip.exists()) return emptyList()
