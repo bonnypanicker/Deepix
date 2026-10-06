@@ -98,3 +98,29 @@ dependencies {
     kapt "androidx.room:room-compiler:2.6.1"
     kapt "com.github.bumptech.glide:compiler:4.16.0"
 }
+
+// Git LFS smudge can fail quietly and leave a short text stub where a model's weights belong. That is
+// not a build error and not a runtime error: the session loads, YuNet returns zero faces, and the
+// People page is simply empty forever. A size floor cannot tell that apart — the detector is a
+// legitimate 230 KB ONNX — so look for the pointer's own header.
+tasks.register("verifyModelAssets") {
+    description = "Fails the build when a bundled model is an un-fetched Git LFS pointer."
+    doLast {
+        def pointerPrefix = "version https://git-lfs.github.com/spec/"
+        def offenders = fileTree("src/main/assets") { include "**/*.onnx", "**/*.ort" }.findAll { model ->
+            def head = new byte[pointerPrefix.length()]
+            model.withInputStream { stream ->
+                def read = stream.read(head)
+                read == -1 || new String(head, 0, Math.max(read, 0), "UTF-8") == pointerPrefix
+            }
+        }
+        if (offenders) {
+            throw new GradleException(
+                "Model assets are Git LFS pointers, not weights — run `git lfs pull`: " +
+                    offenders.collect { it.name }.join(", ")
+            )
+        }
+    }
+}
+
+tasks.named("preBuild") { dependsOn "verifyModelAssets" }

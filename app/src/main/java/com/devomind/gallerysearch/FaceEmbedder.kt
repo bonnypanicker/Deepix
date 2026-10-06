@@ -29,7 +29,9 @@ class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.Defau
 
     init {
         val model = AssetUtils.readAssetBytes(context, ModelAsset)
-        check(!BuildConfig.DEBUG || model.size >= MinModelBytes) {
+        // verifyModelAssets now fails the build over an un-fetched LFS pointer, so the shipped
+        // build gets the same promise instead of a silent 512-D session over 130 bytes of text.
+        check(model.size >= MinModelBytes) {
             "$ModelAsset is only ${model.size} bytes; expected a real ONNX binary (>= $MinModelBytes)"
         }
         session = environment.createSession(model, OnnxSessionOptions.create(Tag, threadCount))

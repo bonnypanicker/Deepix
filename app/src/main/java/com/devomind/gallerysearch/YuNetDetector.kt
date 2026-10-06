@@ -31,7 +31,9 @@ class YuNetDetector(
     init {
         val model = AssetUtils.readAssetBytes(context, ModelAsset)
         // A Git-LFS pointer masquerading as the model once made detection silently return 0 faces.
-        check(!BuildConfig.DEBUG || model.size >= MinModelBytes) {
+        // verifyModelAssets now fails the build over it, so this is the shipped-builds half of the
+        // same promise and no longer debug-only.
+        check(model.size >= MinModelBytes) {
             "$ModelAsset is only ${model.size} bytes; expected a real ONNX binary (>= $MinModelBytes)"
         }
         session = environment.createSession(model, OnnxSessionOptions.create(Tag, ThreadCount))
