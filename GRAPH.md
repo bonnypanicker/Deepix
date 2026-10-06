@@ -47,6 +47,8 @@ IndexWorker
   │     └── EmbeddingUtils  (l2Normalize, cosineSimilarity)
   ├── DbRepository  (upsertMedia, embeddingSignatures() before the pass, recordEmbeddingSources() per batch)
   ├── IndexPreferences  (isIndexPaused, saveLastIndexedTime, saveIndexBatchSizeOverride on OOM)
+  ├── ForegroundBudget  (hasRoom() pre-flight and per-batch → IndexWaitReason.WaitingForForegroundBudget;
+  │     the whole FGS span is written back in doWork()'s finally, by every foreground worker)
   └── IndexControlReceiver  (pause/resume PendingIntents)
 
 GalleryRepository.saveIndex / saveMetadataIndex
@@ -186,6 +188,7 @@ AlbumPinStore  (SharedPreferences / JSONArray)
 SmartAlbumStore  (SharedPreferences / JSONArray)
 IndexPreferences  (SharedPreferences; incl. isCleanupPaused, optimal_thread_count, index_batch_size_override)
 CleanupResultStore  (JSON file: filesDir/cleanup_results.json)
+ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hour:millis` pairs, rolled 24 h window)
 ```
 
 ---
@@ -205,6 +208,8 @@ CleanupResultStore  (JSON file: filesDir/cleanup_results.json)
 | `BinLedger.copyComplete` / quota margin | `BinManager.moveToBin` ordering (copy → verify → delete original) and `hasRoomFor`; loosening either re-opens the lost-photo path |
 | `SafeWorkGuard` duty semantics | `SafeManager.guarded`/`lock`/`applyLock` and `onStop` — `end()` returning true means a worker owes the lock; a second implementation of "busy" would let an import race the lock again |
 | `BinManager.RETENTION_MS` | `bin_retention_note` (string resources promise the same length) and `purgeExpired()` which runs on every cold start — shortening it deletes photos people are still expecting to find, and no test can recover them |
+| `ForegroundBudget.CapMillis` / `StopReserveMillis` | The platform's own 6 h per rolling 24 h grant (`dataSync` FGS, Android 14+) — raising the cap past it trades the deferred run for the `RemoteServiceException` crash again; the reserve is the time left to checkpoint and stop cleanly |
+| `ForegroundBudget` window (`WindowHours`) | `IndexWorker.scheduleResumeAfterForegroundRefill()`'s delay and every worker's `finally` bookkeeping — the ledger must roll like the platform's window or old spend is counted twice |
 | `GalleryRepository.computeBatchSize()` (2/4/6 + override) | Memory pressure on low-RAM devices; `buildIndex()` chunking; OOM override persisted via `IndexPreferences.saveIndexBatchSizeOverride` (IndexWorker OOM path) |
 | `MainActivity.BROWSE_PAGE_SIZE/MAX` (120/320) | Browse timeline page size; grid is paged (no hard item cap) |
 | `DesignTokens.SEARCH_METADATA_HARD_CAP` (80) | Search pagination cap in `MainActivity` |
