@@ -12,6 +12,14 @@ detekt {
     parallel = true
 }
 
+// Room writes one JSON per schema version here and they are committed. The history of the database
+// is what a migration is checked against, so it has to live in the repo rather than in a build dir.
+kapt {
+    arguments {
+        arg("room.schemaLocation", "$projectDir/schemas".toString())
+    }
+}
+
 android {
     namespace "com.devomind.gallerysearch"
     compileSdk 35

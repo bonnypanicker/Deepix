@@ -7,6 +7,13 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+/**
+ * Room's `@Database` is a CLASS-retention annotation, so the version is unreadable at runtime. It is
+ * declared here and the migration-coverage test walks the graph up to it: bumping this without adding
+ * the matching edge fails the build.
+ */
+internal const val SchemaVersion = 9
+
 @Database(
     entities = [
         MediaMetadataEntity::class,
@@ -18,10 +25,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PersonEntity::class,
         FaceEntity::class,
         PersonMergeLogEntity::class,
-        RecentSearchEntity::class
+        RecentSearchEntity::class,
+        EmbeddingSourceEntity::class
     ],
-    version = 8,
-    exportSchema = false
+    version = SchemaVersion,
+    exportSchema = true
 )
 abstract class GalleryDatabase : RoomDatabase() {
 
@@ -34,6 +42,7 @@ abstract class GalleryDatabase : RoomDatabase() {
     abstract fun faceDao(): FaceDao
     abstract fun personMergeLogDao(): PersonMergeLogDao
     abstract fun recentSearchDao(): RecentSearchDao
+    abstract fun embeddingSourceDao(): EmbeddingSourceDao
 
     companion object {
         private const val DATABASE_NAME = "gallery_metadata.db"
@@ -43,6 +52,9 @@ abstract class GalleryDatabase : RoomDatabase() {
          * columns, capturedAt). The table is a recomputable pipeline cache, so drop/recreate is
          * safe — a targeted migration avoids the destructive fallback wiping user data
          * (favorites, tags, media metadata) that lives in the same database.
+         *
+         * Also the start of the chain: the coverage test walks [MIGRATIONS] forward from here and
+         * expects to arrive at [SchemaVersion].
          */
         private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -135,6 +147,51 @@ abstract class GalleryDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v8 → v9: adds embedding_source, the per-photo record of what its stored CLIP embedding was
+         * encoded from. The table starts empty and every existing embedding is signed from its current
+         * MediaItem on the next pass — backfill, not re-encode, so updating the app doesn't put the
+         * whole library back through the encoder.
+         */
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `embedding_source` (
+                        `uri` TEXT NOT NULL,
+                        `dateModifiedMs` INTEGER NOT NULL,
+                        `sizeBytes` INTEGER NOT NULL,
+                        `width` INTEGER NOT NULL,
+                        `height` INTEGER NOT NULL,
+                        `recordedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`uri`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
+        /**
+         * The whole migration graph in one list: [getInstance] installs it and the coverage test walks
+         * it. Declaring a new `version` without adding its edge here fails the build, which is the
+         * point — the alternative used to be a blanket destructive fallback that took favorites,
+         * tags and metadata with it.
+         */
+        internal val MIGRATIONS: List<Migration> = listOf(
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+            MIGRATION_6_7,
+            MIGRATION_7_8,
+            MIGRATION_8_9
+        )
+
+        /**
+         * Versions allowed to fall back to drop-and-recreate. Both predate any release, so no install
+         * on a device can hold their data; every version above them must migrate.
+         */
+        internal val DestructiveFallbackFrom: IntArray = intArrayOf(1, 2)
+
         @Volatile
         private var instance: GalleryDatabase? = null
 
@@ -145,8 +202,8 @@ abstract class GalleryDatabase : RoomDatabase() {
                     GalleryDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
-                    .fallbackToDestructiveMigration()
+                    .addMigrations(*MIGRATIONS.toTypedArray())
+                    .fallbackToDestructiveMigrationFrom(*DestructiveFallbackFrom)
                     .build()
                     .also { instance = it }
             }
