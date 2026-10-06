@@ -1058,6 +1058,14 @@ class GalleryRepository(
     }
 
     private fun loadIndex(): LinkedHashMap<String, FloatArray> {
+        val stagedFile = File(indexFile.parentFile, "$IndexFileName.tmp")
+        // A checkpoint killed between its staged write and the rename leaves the whole library under a
+        // `.tmp` name. It is the newest complete snapshot there is, so it becomes the base before the
+        // journal folds on top of it.
+        if (IndexCheckpoint.promotable(indexFile, stagedFile)) {
+            val staged = readIndexFile(stagedFile, journal = false)
+            if (staged != null && staged.isNotEmpty()) stagedFile.renameTo(indexFile) else stagedFile.delete()
+        }
         if (!indexFile.exists() && !indexJournalFile.exists()) return LinkedHashMap()
 
         val baseExists = indexFile.exists()
@@ -1072,10 +1080,15 @@ class GalleryRepository(
         return loaded
     }
 
-    /** Reads one record file, or null when it is missing or unreadable. */
-    private fun readIndexFile(file: File): LinkedHashMap<String, FloatArray>? {
+    /**
+     * Reads one record file, or null when it is missing or unreadable. [journal] selects the framing:
+     * an append log runs to EOF, a base or staged checkpoint is count-prefixed and must hold that many
+     * records. A file read as a base and found unreadable is deleted, since nothing can salvage a tail
+     * of it.
+     */
+    private fun readIndexFile(file: File, journal: Boolean = file == indexJournalFile): LinkedHashMap<String, FloatArray>? {
         if (!file.exists()) return null
-        val isJournal = file != indexFile
+        val isJournal = journal
         val loaded = LinkedHashMap<String, FloatArray>()
         var recordsRead = 0
 
@@ -1178,37 +1191,52 @@ class GalleryRepository(
     private fun saveIndex(index: Map<String, FloatArray>) {
         val tmpFile = File(indexFile.parentFile, "$IndexFileName.tmp")
         synchronized(indexWriteLock) {
-            runCatching {
-                DataOutputStream(BufferedOutputStream(tmpFile.outputStream())).use { output ->
-                    output.writeInt(IndexMagic)
-                    output.writeInt(IndexVersion)
-                    output.writeInt(index.size)
-                    for ((uri, embedding) in index) {
-                        writeIndexRecord(output, uri, embedding)
-                    }
+            val checkpoint = IndexCheckpoint.write(indexFile, tmpFile) { output ->
+                output.writeInt(IndexMagic)
+                output.writeInt(IndexVersion)
+                output.writeInt(index.size)
+                for ((uri, embedding) in index) {
+                    writeIndexRecord(output, uri, embedding)
                 }
-                if (indexFile.exists()) {
-                    indexFile.delete()
-                }
-                if (tmpFile.renameTo(indexFile)) {
-                    // The base now carries every record, so the journal is redundant. Its contents are
-                    // already inside `index`, which came from the in-memory map that merged them.
-                    indexJournalFile.delete()
-                    synchronized(indexLock) { pendingJournalKeys.clear() }
-                    indexStamp = currentIndexStamp()
-                }
-            }.onFailure { error ->
-                Log.w(Tag, "Failed to save embedding index.", error)
-                tmpFile.delete()
             }
+            checkpoint.error?.let { error ->
+                Log.w(
+                    Tag,
+                    if (checkpoint.replaced) {
+                        "Embedding index checkpoint landed but its bytes were not confirmed on the flash."
+                    } else {
+                        "Embedding index checkpoint not applied; journal and staged copy retained."
+                    },
+                    error
+                )
+            }
+            if (!checkpoint.replaced) return
+            // The base now carries every record, so the journal is redundant. Its contents are
+            // already inside `index`, which came from the in-memory map that merged them.
+            indexJournalFile.delete()
+            synchronized(indexLock) { pendingJournalKeys.clear() }
+            indexStamp = currentIndexStamp()
         }
     }
 
     private fun loadMetadataIndex(): LinkedHashMap<String, MetadataSearch.Document> {
+        val stagedFile = File(metadataIndexFile.parentFile, "$MetadataIndexFileName.tmp")
+        // Same recovery as the embedding index: a killed checkpoint leaves the newest snapshot orphaned
+        // under `.tmp`, and it is strictly better than nothing.
+        if (IndexCheckpoint.promotable(metadataIndexFile, stagedFile) &&
+            readMetadataIndexFile(stagedFile) != null
+        ) {
+            stagedFile.renameTo(metadataIndexFile)
+        }
         if (!metadataIndexFile.exists()) return LinkedHashMap()
+        return readMetadataIndexFile(metadataIndexFile) ?: LinkedHashMap()
+    }
 
+    /** Reads a count-prefixed metadata index, or null when it is missing or unreadable. */
+    private fun readMetadataIndexFile(file: File): LinkedHashMap<String, MetadataSearch.Document>? {
+        if (!file.exists()) return null
         return runCatching {
-            DataInputStream(BufferedInputStream(metadataIndexFile.inputStream())).use { input ->
+            DataInputStream(BufferedInputStream(file.inputStream())).use { input ->
                 val magic = input.readInt()
                 val version = input.readInt()
                 if (magic != MetadataIndexMagic || version != MetadataIndexVersion) {
@@ -1242,47 +1270,52 @@ class GalleryRepository(
                 }
                 loaded
             }
-        }.onFailure { error ->
+        }.getOrElse { error ->
             Log.w(Tag, "Ignoring corrupt metadata index.", error)
-            metadataIndexFile.delete()
-        }.getOrDefault(LinkedHashMap())
+            file.delete()
+            null
+        }
     }
 
     private fun saveMetadataIndex(index: Map<String, MetadataSearch.Document>) {
         val tmpFile = File(metadataIndexFile.parentFile, "$MetadataIndexFileName.tmp")
-        runCatching {
-            DataOutputStream(BufferedOutputStream(tmpFile.outputStream())).use { output ->
-                output.writeInt(MetadataIndexMagic)
-                output.writeInt(MetadataIndexVersion)
-                output.writeInt(index.size)
-                for (document in index.values) {
-                    writeIndexString(output, document.uri)
-                    output.writeLong(document.dateMillis)
-                    output.writeInt(document.width)
-                    output.writeInt(document.height)
-                    writeIndexString(output, document.displayName)
-                    writeIndexString(output, document.displayNameWithoutExt)
-                    writeIndexString(output, document.bucketName)
-                    writeIndexString(output, document.mimeType)
-                    writeIndexString(output, document.mimeSubtype)
-                    writeIndexString(output, document.extension)
-                    writeIndexString(output, document.orientation)
-                    output.writeInt(document.year)
-                    output.writeInt(document.month)
-                    output.writeInt(document.day)
-                    writeIndexString(output, document.monthName)
-                    writeIndexString(output, document.dayName)
-                    writeIndexString(output, document.id)
-                    writeIndexString(output, document.searchableText)
-                }
+        val checkpoint = IndexCheckpoint.write(metadataIndexFile, tmpFile) { output ->
+            output.writeInt(MetadataIndexMagic)
+            output.writeInt(MetadataIndexVersion)
+            output.writeInt(index.size)
+            for (document in index.values) {
+                writeIndexString(output, document.uri)
+                output.writeLong(document.dateMillis)
+                output.writeInt(document.width)
+                output.writeInt(document.height)
+                writeIndexString(output, document.displayName)
+                writeIndexString(output, document.displayNameWithoutExt)
+                writeIndexString(output, document.bucketName)
+                writeIndexString(output, document.mimeType)
+                writeIndexString(output, document.mimeSubtype)
+                writeIndexString(output, document.extension)
+                writeIndexString(output, document.orientation)
+                output.writeInt(document.year)
+                output.writeInt(document.month)
+                output.writeInt(document.day)
+                writeIndexString(output, document.monthName)
+                writeIndexString(output, document.dayName)
+                writeIndexString(output, document.id)
+                writeIndexString(output, document.searchableText)
             }
-            if (metadataIndexFile.exists()) {
-                metadataIndexFile.delete()
-            }
-            tmpFile.renameTo(metadataIndexFile)
-        }.onFailure { error ->
-            Log.w(Tag, "Failed to save metadata index.", error)
-            tmpFile.delete()
+        }
+        checkpoint.error?.let { error ->
+            // Searchable text is rebuilt from the database on the next pass, so this only costs a
+            // slower metadata search until then.
+            Log.w(
+                Tag,
+                if (checkpoint.replaced) {
+                    "Metadata index checkpoint landed but its bytes were not confirmed on the flash."
+                } else {
+                    "Metadata index checkpoint not applied; a staged copy is retained."
+                },
+                error
+            )
         }
     }
 
