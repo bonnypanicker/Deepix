@@ -9,6 +9,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 /**
  * What happens to a photo when the process dies at each step of a bin move.
@@ -265,5 +266,25 @@ class BinLedgerTest {
         File(occupied, "child").writeText("x")
 
         assertFalse(BinLedger.discard(root, id))
+    }
+
+    /**
+     * The purge window the Bin screen promises out loud ("kept here for 30 days"). [BinManager] reads
+     * this constant on every cold start, so a factor missing from it silently turns the recycle bin into
+     * a twelve-hour bin — photos gone before the user came back for them, and nothing in the ledger
+     * saying otherwise. Compared against [TimeUnit] rather than the same multiplication, which would
+     * have passed either way.
+     */
+    @Test
+    fun theBinKeepsPhotosForTheThirtyDaysTheScreenPromises() {
+        assertEquals(
+            "the bin's retention window is not the 30 days the UI claims",
+            TimeUnit.DAYS.toMillis(30),
+            BinManager.RETENTION_MS
+        )
+        assertTrue(
+            "a photo binned this morning must still be here tonight",
+            BinManager.RETENTION_MS > TimeUnit.HOURS.toMillis(12)
+        )
     }
 }

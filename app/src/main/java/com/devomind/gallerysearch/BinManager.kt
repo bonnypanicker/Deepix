@@ -31,7 +31,7 @@ import java.io.File
 object BinManager {
 
     private const val TAG = "BinManager"
-    const val RETENTION_MS = 30L * 24 * 60 * 1000
+    const val RETENTION_MS = 30L * 24 * 60 * 60 * 1000
 
     private val lock = Any()
 

@@ -204,6 +204,7 @@ CleanupResultStore  (JSON file: filesDir/cleanup_results.json)
 | `BinLedger` layout (`bin/data`, `bin/entries`, `.binmeta`) | Existing bins on a device are read by `reconcile()`/`list()`; a rename strands photos that are already in the bin — `adoptLegacyIndex` is the precedent for converting, not dropping |
 | `BinLedger.copyComplete` / quota margin | `BinManager.moveToBin` ordering (copy → verify → delete original) and `hasRoomFor`; loosening either re-opens the lost-photo path |
 | `SafeWorkGuard` duty semantics | `SafeManager.guarded`/`lock`/`applyLock` and `onStop` — `end()` returning true means a worker owes the lock; a second implementation of "busy" would let an import race the lock again |
+| `BinManager.RETENTION_MS` | `bin_retention_note` (string resources promise the same length) and `purgeExpired()` which runs on every cold start — shortening it deletes photos people are still expecting to find, and no test can recover them |
 | `GalleryRepository.computeBatchSize()` (2/4/6 + override) | Memory pressure on low-RAM devices; `buildIndex()` chunking; OOM override persisted via `IndexPreferences.saveIndexBatchSizeOverride` (IndexWorker OOM path) |
 | `MainActivity.BROWSE_PAGE_SIZE/MAX` (120/320) | Browse timeline page size; grid is paged (no hard item cap) |
 | `DesignTokens.SEARCH_METADATA_HARD_CAP` (80) | Search pagination cap in `MainActivity` |
