@@ -131,8 +131,13 @@ class IndexWorker(
             val mediaByUri = items.associateBy { it.uri.toString() }
             val faceCandidateQueue = FaceCandidateQueue(applicationContext)
             var encodedAnyThisPass = false
+            // The database half of the pass: what each stored embedding was encoded from, and where the
+            // signatures for this pass's embeddings go. GalleryRepository holds no database reference,
+            // so the worker carries both directions.
+            val dbRepository = DbRepository(applicationContext)
+            val signatures = dbRepository.embeddingSignatures()
 
-            repository.buildIndex(items, onProgress = { current, _ ->
+            repository.buildIndex(items, signatures = signatures, onProgress = { current, _ ->
                 if (IndexPreferences.isIndexPaused(applicationContext)) {
                     throw IndexPausedException()
                 }
@@ -159,9 +164,14 @@ class IndexWorker(
                 )
             }, onEmbeddingsStored = { indexed ->
                 if (indexed.isNotEmpty()) encodedAnyThisPass = true
+                // Signed in the same breath as stored: the record is what tells a later pass that this
+                // embedding belongs to the file as it stands right now.
+                dbRepository.recordEmbeddingSources(indexed.mapNotNull { mediaByUri[it.uri.toString()] })
                 if (faceCandidateQueue.enqueueCandidates(indexed, mediaByUri) > 0) {
                     FaceIndexWorker.enqueueCandidates(applicationContext)
                 }
+            }, onUnsignedEmbeddings = { unsigned ->
+                dbRepository.recordEmbeddingSources(unsigned)
             })
             if (IndexPreferences.isIndexPaused(applicationContext)) {
                 throw IndexPausedException()
@@ -170,7 +180,6 @@ class IndexWorker(
             val allImages = repository.getImageItemsForAlbumIds(emptySet())
             repository.rebuildMetadataIndex(allImages)
 
-            val dbRepository = DbRepository(applicationContext)
             dbRepository.upsertMedia(allImages)
 
             // Chain the Phase 2 face-index worker: it runs battery-gated on the same photos CLIP

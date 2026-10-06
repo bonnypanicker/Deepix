@@ -97,7 +97,10 @@ class GalleryRepository(
         val orientationDegrees: Int = 0,
         /** File's last-modified time. [dateMillis] is the capture date; these differ after an edit. */
         val dateModifiedMillis: Long = 0L
-    ) : Parcelable
+    ) : Parcelable {
+        /** What an embedding encoded from this item right now would be describing. See [EmbeddingFreshness]. */
+        fun embeddingSignature(): MediaSignature = MediaSignature(dateModifiedMillis, sizeBytes, width, height)
+    }
 
     data class Album(
         val id: String,
@@ -489,11 +492,18 @@ class GalleryRepository(
      * so it fully overlaps with inference on multi-core devices. Batch composition doesn't affect
      * correctness (embeddings are stored in a URI-keyed map), so workers don't need to preserve
      * input order.
+     *
+     * [signatures] is the caller's record of what each stored embedding was encoded from (URI -> file
+     * state); a photo whose current state differs is re-encoded even though its embedding exists, and
+     * embeddings with no record are handed to [onUnsignedEmbeddings] to be recorded without being
+     * re-encoded. The repository stays database-free, so both come in and go out as callbacks.
      */
     suspend fun buildIndex(
         items: List<MediaItem>,
+        signatures: Map<String, MediaSignature> = emptyMap(),
         onProgress: (current: Int, total: Int) -> Unit,
-        onEmbeddingsStored: suspend (List<IndexedEmbedding>) -> Unit = {}
+        onEmbeddingsStored: suspend (List<IndexedEmbedding>) -> Unit = {},
+        onUnsignedEmbeddings: suspend (List<MediaItem>) -> Unit = {}
     ) {
         val uriSet = items.mapTo(HashSet()) { it.uri.toString() }
         // Reconcile against the requested set: keep in-scope embeddings, drop everything else
@@ -510,8 +520,23 @@ class GalleryRepository(
         val total = items.size
         onProgress(0, total)
 
-        // Collect items that actually need encoding
-        val unindexed = items.filter { !containsEmbedding(it.uri.toString()) }
+        // Collect items that actually need encoding: no embedding at all, or an embedding made from a
+        // different file state than the photo is in now. An in-place edit keeps its URI, so the map key
+        // alone used to make an edited photo look indexed forever. See [EmbeddingFreshness].
+        val unindexed = ArrayList<MediaItem>()
+        val unsigned = ArrayList<MediaItem>()
+        for (item in items) {
+            val key = item.uri.toString()
+            when (EmbeddingFreshness.decide(containsEmbedding(key), signatures[key], item.embeddingSignature())) {
+                EmbeddingFreshness.Decision.Encode -> unindexed.add(item)
+                EmbeddingFreshness.Decision.Backfill -> unsigned.add(item)
+                EmbeddingFreshness.Decision.Current -> Unit
+            }
+        }
+        // Photos embedded before any signature was recorded are signed from the current item instead of
+        // being re-encoded: the vector still describes the same file, and the alternative is putting the
+        // whole library back through the encoder after an app update.
+        if (unsigned.isNotEmpty()) onUnsignedEmbeddings(unsigned)
 
         if (unindexed.isEmpty()) {
             // Nothing new to encode, but persist any pruning so removed folders don't reappear.
@@ -521,7 +546,7 @@ class GalleryRepository(
             return
         }
 
-        Log.d(Tag, "Indexing ${unindexed.size} new images (${loaded.size} already cached)")
+        Log.d(Tag, "Indexing ${unindexed.size} new or changed images (${loaded.size} already cached)")
 
         val alreadyDone = total - unindexed.size
         var processedNew = 0

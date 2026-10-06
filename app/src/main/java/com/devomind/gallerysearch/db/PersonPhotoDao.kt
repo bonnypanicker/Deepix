@@ -92,6 +92,17 @@ interface PersonPhotoDao {
     )
     suspend fun resetForEmbeddingModel()
 
+    /**
+     * [resetForEmbeddingModel] for one photo, which is what an edit calls for: the file has new pixels,
+     * so the stored dHash and everything derived from it are now describing a different picture. The
+     * row itself stays — the burst and timestamp fields still describe the same photo.
+     */
+    @Query(
+        "UPDATE person_photos SET status = 'unprocessed', dhash = 0, faceCount = 0, " +
+            "exemplarQuality = 0, exemplarPhotoUri = NULL, lastAnalyzedAt = 0 WHERE uri = :uri"
+    )
+    suspend fun invalidateForReanalysis(uri: String)
+
     @Query("SELECT COUNT(*) FROM person_photos")
     suspend fun countAll(): Int
 

@@ -64,6 +64,9 @@ interface FaceDao {
     @Query("SELECT COUNT(*) FROM faces WHERE personId IS NULL")
     suspend fun countUnassigned(): Int
 
+    @Query("SELECT faceId FROM faces WHERE photoUri = :uri")
+    suspend fun idsForPhoto(uri: String): List<Long>
+
     @Query("DELETE FROM faces WHERE photoUri = :uri")
     suspend fun deleteByPhoto(uri: String)
 

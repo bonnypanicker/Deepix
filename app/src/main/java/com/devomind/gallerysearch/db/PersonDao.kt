@@ -41,4 +41,17 @@ interface PersonDao {
         """
     )
     suspend fun setExemplarFace(id: Long, faceId: Long, now: Long = System.currentTimeMillis())
+
+    /**
+     * Drops the cover pointer for every person whose exemplar face is about to disappear, back to the
+     * 0 = "not chosen yet" state a new person starts in. Run before the faces are deleted so the
+     * person pages never resolve a missing row.
+     */
+    @Query(
+        """
+        UPDATE persons SET exemplarFaceId = 0, updatedAt = :now
+        WHERE exemplarFaceId IN (:faceIds)
+        """
+    )
+    suspend fun clearExemplarFaces(faceIds: List<Long>, now: Long = System.currentTimeMillis())
 }

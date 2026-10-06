@@ -13,6 +13,7 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.SeekBar
 import android.widget.Toast
@@ -477,6 +478,12 @@ class PhotoEditorActivity : AppCompatActivity() {
             result.onSuccess {
                 pendingSaveBitmap = null
                 bmp.recycle()
+                // The bytes behind this URI are different now, and the embedding search answered with
+                // describes the old ones. Mark it stale so the next indexing pass re-encodes it, and drop
+                // the face rows those pixels produced. Failing here only postpones the refresh — the
+                // edit itself is already on disk, so it must not surface as a save error.
+                runCatching { DbRepository(applicationContext).invalidatePhotoForReanalysis(sourceUri.toString()) }
+                    .onFailure { Log.w(Tag, "Stale-index invalidation failed for $sourceUri", it) }
                 finishSaved()
             }.onFailure { error ->
                 val recoverable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
@@ -593,6 +600,7 @@ class PhotoEditorActivity : AppCompatActivity() {
         const val ExtraUri = "editor_uri"
         const val ExtraName = "editor_name"
         const val ExtraEdited = "editor_edited"
+        private const val Tag = "PhotoEditor"
         private const val EDIT_MAX_DIM = 2560
     }
 }

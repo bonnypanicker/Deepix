@@ -1,6 +1,7 @@
 package com.devomind.gallerysearch
 
 import android.content.Context
+import com.devomind.gallerysearch.db.EmbeddingSourceEntity
 import com.devomind.gallerysearch.db.ExifMetadataEntity
 import com.devomind.gallerysearch.db.FaceEntity
 import com.devomind.gallerysearch.db.FavoriteEntity
@@ -28,7 +29,9 @@ class DbRepository(context: Context) {
     private val tagDao = database.tagDao()
     private val faceDao = database.faceDao()
     private val personDao = database.personDao()
+    private val personPhotoDao = database.personPhotoDao()
     private val recentSearchDao = database.recentSearchDao()
+    private val embeddingSourceDao = database.embeddingSourceDao()
 
     suspend fun upsertMedia(items: List<GalleryRepository.MediaItem>) {
         withContext(Dispatchers.IO) {
@@ -232,6 +235,71 @@ class DbRepository(context: Context) {
         withContext(Dispatchers.IO) {
             recentSearchDao.clearAll()
         }
+    }
+
+    /**
+     * What each stored CLIP embedding was encoded from, keyed by URI. Read once per indexing pass —
+     * one small row per indexed photo, and the pass needs all of them to spot the changed few.
+     */
+    suspend fun embeddingSignatures(): Map<String, MediaSignature> = withContext(Dispatchers.IO) {
+        embeddingSourceDao.getAll().associate { it.uri to it.toSignature() }
+    }
+
+    /** Records the file state behind freshly encoded embeddings, so a later edit of these files is detectable. */
+    suspend fun recordEmbeddingSources(items: List<GalleryRepository.MediaItem>) {
+        if (items.isEmpty()) return
+        withContext(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            embeddingSourceDao.upsert(items.map { it.toEmbeddingSourceEntity(now) })
+        }
+    }
+
+    /**
+     * Everything the app must forget when an editor replaces a photo's bytes under its original URI.
+     *
+     * The CLIP side is a marker rather than a deletion: the stored vector still describes the same
+     * scene, and removing it would make the photo unfindable until a pass re-encodes it — which is
+     * exactly what the marker schedules. The face side is a real deletion, because re-detection inserts
+     * new rows and the pre-edit face would otherwise sit in the cluster beside the new one.
+     */
+    suspend fun invalidatePhotoForReanalysis(uri: String) {
+        withContext(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            val stale = EmbeddingFreshness.StaleSignature
+            embeddingSourceDao.upsert(
+                EmbeddingSourceEntity(
+                    uri = uri,
+                    dateModifiedMs = stale.dateModifiedMillis,
+                    sizeBytes = stale.sizeBytes,
+                    width = stale.width,
+                    height = stale.height,
+                    recordedAt = now
+                )
+            )
+            personPhotoDao.invalidateForReanalysis(uri)
+            val removedFaceIds = faceDao.idsForPhoto(uri)
+            if (removedFaceIds.isNotEmpty()) {
+                faceDao.deleteByPhoto(uri)
+                // A person whose cover was one of these faces falls back to exemplarFaceId = 0 — the
+                // state a freshly created person already starts in — until re-analysis replaces them.
+                personDao.clearExemplarFaces(removedFaceIds, now)
+            }
+        }
+    }
+
+    private fun EmbeddingSourceEntity.toSignature(): MediaSignature =
+        MediaSignature(dateModifiedMs, sizeBytes, width, height)
+
+    private fun GalleryRepository.MediaItem.toEmbeddingSourceEntity(recordedAt: Long): EmbeddingSourceEntity {
+        val signature = embeddingSignature()
+        return EmbeddingSourceEntity(
+            uri = uri.toString(),
+            dateModifiedMs = signature.dateModifiedMillis,
+            sizeBytes = signature.sizeBytes,
+            width = signature.width,
+            height = signature.height,
+            recordedAt = recordedAt
+        )
     }
 
     private fun GalleryRepository.MediaItem.toEntity(): MediaMetadataEntity {
