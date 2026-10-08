@@ -766,13 +766,11 @@ class ViewerActivity : AppCompatActivity() {
             text = name
             textSize = 12f
             setTextColor(color)
-            setPadding(dp(10), dp(6), dp(10), dp(6))
-            background = android.content.res.ColorStateList.valueOf(color).let { _ ->
-                android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = dp(2).toFloat()
-                    setStroke(dp(1), color)
-                    setColor(androidx.core.content.ContextCompat.getColor(this@ViewerActivity, R.color.metroBgSecondary))
-                }
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(2).toFloat()
+                setStroke(dp(1), color)
+                setColor(androidx.core.content.ContextCompat.getColor(this@ViewerActivity, R.color.metroBgSecondary))
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
