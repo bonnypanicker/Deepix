@@ -162,9 +162,10 @@ fun onboardingPanels(): List<OnboardingPanel> = listOf(
 /**
  * Turns the reference mock's units into this screen's pixels. [factor] is the ratio the tour is
  * drawn at (see FirstRunActivity), so a wider phone gets a proportionally wider tour and a short
- * or landscape screen gets a proportionally smaller one instead of a clipped layout.
+ * or landscape screen gets a proportionally smaller one instead of a clipped layout. It is redrawn
+ * when the window changes shape, which is why it is a var and not a constructor-time constant.
  */
-class OnboardingMetrics(val factor: Float, val density: Float) {
+class OnboardingMetrics(var factor: Float, val density: Float) {
 
     /** A mock-space length (its dp value at 360dp wide) as real pixels. */
     fun units(mockDp: Float): Int = (mockDp * factor * density).roundToInt()
@@ -188,17 +189,41 @@ class OnboardingPanelAdapter(
         permissionsPage?.let { notifyItemChanged(it) }
     }
 
+    /**
+     * Redraws the pages on screen after the tour's scale changed. A page's units are baked in at bind
+     * time, so the ones being looked at need re-binding; the rest bind against the new scale the next
+     * time they attach. A whole-adapter notify is deliberately not used — on ViewPager2 it can leave
+     * the pager displaying a stale page, and only these few views carry stale pixels.
+     */
+    fun rescaleVisiblePages() {
+        val pager = pager ?: return
+        panels.indices.forEach { position ->
+            (pager.findViewHolderForAdapterPosition(position) as? PanelVH)?.rebind()
+        }
+    }
+
+    /** ViewPager2 hands out pages from its inner RecyclerView, which is the only way to reach it. */
+    private var pager: RecyclerView? = null
+
     private val permissionsPage: Int?
         get() = panels.indexOfFirst { it.permissions.isNotEmpty() }.takeIf { it >= 0 }
 
     override fun getItemCount(): Int = panels.size
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PanelVH =
-        PanelVH(ItemOnboardingPanelBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PanelVH {
+        pager = parent as? RecyclerView
+        return PanelVH(ItemOnboardingPanelBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+    }
 
     override fun onBindViewHolder(holder: PanelVH, position: Int) = holder.bind(panels[position])
 
     inner class PanelVH(private val b: ItemOnboardingPanelBinding) : RecyclerView.ViewHolder(b.root) {
+
+        /** Binds this page again with the metrics the adapter now carries. */
+        fun rebind() {
+            val position = bindingAdapterPosition
+            if (position in panels.indices) bind(panels[position])
+        }
 
         fun bind(panel: OnboardingPanel) {
             val context = b.root.context

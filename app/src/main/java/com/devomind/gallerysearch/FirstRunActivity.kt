@@ -113,6 +113,15 @@ class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
         if (::panelAdapter.isInitialized) refreshPermissions()
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // The tour handles a rotation in place (see the manifest's configChanges), so nothing is
+        // recreated and the scale drawn for the old window shape stays. Posted because the new size is
+        // only known after the measure pass.
+        binding.root.post { rescaleForWindow() }
+    }
+
+
     private fun goTo(position: Int) {
         binding.panels.setCurrentItem(position.coerceIn(0, pageCount - 1), true)
     }
@@ -299,12 +308,32 @@ class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
      * or landscape one — the ~150 units of brand row plus footer come off first, because those are
      * scaled by the same factor. Clamped so a tablet reads as a generous tour rather than a blown-up
      * phone, and a small phone never clips a page.
+     *
+     * Once the window has been measured its own size is the number used, because a rotation handled in
+     * place must not be scaled by whatever `displayMetrics` held when the tour opened. The inset padding
+     * is added back: the root is edge-to-edge and shrinks by the bars, while the chrome allowance above
+     * is counted against the whole window.
      */
     private fun scaleFactor(): Float {
         val density = resources.displayMetrics.density
-        val widthDp = resources.displayMetrics.widthPixels / density
-        val panelHeightDp = resources.displayMetrics.heightPixels / density - 150f
-        return min(widthDp / 360f, panelHeightDp / 600f).coerceIn(0.72f, 1.3f)
+        val root = binding.root
+        val widthPx = if (root.width > 0) root.width + root.paddingLeft + root.paddingRight
+        else resources.displayMetrics.widthPixels
+        val heightPx = if (root.height > 0) root.height + root.paddingTop + root.paddingBottom
+        else resources.displayMetrics.heightPixels
+        val panelHeightDp = heightPx / density - 150f
+        return min(widthPx / density / 360f, panelHeightDp / 600f).coerceIn(0.72f, 1.3f)
+    }
+
+    /** Redraws the chrome and the pages on screen at the window's current shape. */
+    private fun rescaleForWindow() {
+        val factor = scaleFactor()
+        if (factor == metrics.factor) return
+        metrics.factor = factor
+        applyChromeScale()
+        buildProgressTrack(pageCount)
+        syncChrome(binding.panels.currentItem)
+        panelAdapter.rescaleVisiblePages()
     }
 
     private fun applyInsets() {
