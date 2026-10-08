@@ -43,7 +43,9 @@ object MetroDialog {
         v.body.visibility = View.VISIBLE
         v.body.text = message
         if (scrollableMessage) {
-            v.body.maxHeight = dp(context, 360)
+            // 360dp is what a portrait window has to spend; held sideways there is not even that, and
+            // a body taller than the screen cannot be scrolled by a dialog that is already full.
+            v.body.maxHeight = Responsive.bodyHeightPx(context, dp(context, 360))
             v.body.movementMethod = ScrollingMovementMethod()
             v.body.typeface = Typeface.MONOSPACE
             v.body.textSize = 11f
@@ -149,7 +151,7 @@ object MetroDialog {
         onSelect: (Int) -> Unit
     ): AlertDialog {
         val v = inflate(context, title, iconRes = null)
-        v.content.visibility = View.VISIBLE
+        v.showList(context, options.size * dp(context, 52))
         v.footer.visibility = View.GONE
         if (title == null) v.root.setPadding(0, dp(context, 8), 0, dp(context, 8))
         val dialog = create(context, v.root, cancelable = true)
@@ -180,7 +182,7 @@ object MetroDialog {
         onSelect: (Int) -> Unit
     ): AlertDialog {
         val v = inflate(context, title, iconRes = null)
-        v.content.visibility = View.VISIBLE
+        v.showList(context, options.size * dp(context, 52))
         val dialog = create(context, v.root, cancelable = true)
         val accent = DesignTokens.accent(context)
         options.forEachIndexed { index, option ->
@@ -235,10 +237,24 @@ object MetroDialog {
         val body: TextView = root.findViewById(R.id.metroDialogBody)
         val inputLabel: TextView = root.findViewById(R.id.metroDialogInputLabel)
         val input: EditText = root.findViewById(R.id.metroDialogInput)
+        val scroll: View = root.findViewById(R.id.metroDialogScroll)
         val content: LinearLayout = root.findViewById(R.id.metroDialogContent)
         val footer: View = root.findViewById(R.id.metroDialogFooter)
         val negative: TextView = root.findViewById(R.id.metroDialogNegative)
         val positive: TextView = root.findViewById(R.id.metroDialogPositive)
+
+        /**
+         * Reveals the list section at a height the window can spare. A list is the one part of a dialog
+         * whose length nobody fixed in advance — the accent picker has as many rows as there are
+         * accents — and a dialog taller than a sideways phone's 360dp does not scroll on its own: the
+         * rows past the bottom edge are unreachable rather than merely out of view.
+         */
+        fun showList(context: Context, naturalHeightPx: Int) {
+            scroll.visibility = View.VISIBLE
+            scroll.layoutParams = scroll.layoutParams.apply {
+                height = Responsive.bodyHeightPx(context, naturalHeightPx)
+            }
+        }
     }
 
     private fun inflate(context: Context, title: String?, @DrawableRes iconRes: Int?): Views {

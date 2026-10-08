@@ -79,13 +79,24 @@
         android:textSize="16sp"
         android:visibility="gone" />
 
-    <LinearLayout
-        android:id="@+id/metroDialogContent"
+    <!-- The list section (items / single-choice) scrolls: sideways the window is barely 360dp tall,
+         and a tenth accent swatch or sort option is otherwise past its bottom edge rather than
+         merely out of view. MetroDialog caps its height to what the window can spare. -->
+    <ScrollView
+        android:id="@+id/metroDialogScroll"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:orientation="vertical"
-        android:visibility="gone" />
+        android:overScrollMode="never"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/metroDialogContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
 
     <LinearLayout
         android:id="@+id/metroDialogFooter"
