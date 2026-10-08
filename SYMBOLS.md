@@ -45,6 +45,7 @@ OnnxOutput                OnnxOutput.kt            flattenFloatArray(value: Any)
 OnnxSessionOptions        OnnxSessionOptions.kt    DefaultThreadCount=4 (public); create(tag,threadCount=DefaultThreadCount): OrtSession.SessionOptions — NNAPI disabled
 DesignTokens              DesignTokens.kt          (see CONTEXT.md for key values)
 StickyHeaderDecoration    StickyHeaderDecoration.kt  RecyclerView.ItemDecoration
+MetroDropdownMenu         MetroDropdownMenu.kt      object; show(anchor, items) — one flat PopupWindow, rows built in code; Item(label, selected, danger, children, onClick). A row with children is a header: its children open as a second column to the menu's left, inside the same window (a second PopupWindow gets no touches — the modal parent eats them), top-aligned with the header row, width clamped against the app window, pulled up when it would pass the menu's bottom
 ThumbnailScaleGestureListener  ThumbnailScaleGestureListener.kt  pinch-to-resize; emits onZoom(zoomIn) step (grid columns OR collage scale)
 ImageAdapter              ImageAdapter.kt          RecyclerView.Adapter; useCollageLayout; gridColumnCount; spanSizeAt(); replaceCells(); ctor cb onCreateSmartAlbum; selection: setSelection/toggle/selectAll/clearSelection/selectedUris; bindSelectionVisual() = accent frame + squared vector tick (highlight-selected-only, animate only on real toggle)
   GalleryCell             ImageAdapter.kt          sealed: Header|Photo(collageSpan,collageHeightPx)|Collage|AlbumCell|FolderCell|PinnedAlbumsHeader|SmartAlbumOnboarding|Empty

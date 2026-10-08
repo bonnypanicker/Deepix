@@ -271,6 +271,7 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | a manifest `android:name` | `ManifestClassTest` parses `src/main` (+ `src/debug`) against those source sets. A component whose class lives in `src/debug` must be declared in `src/debug/AndroidManifest.xml`, or release builds carry a ghost that crashes on the tap that reaches it |
 | `MediaFileOps.copyToFile` | `BinManager.moveToBin`'s copy → verify → **fsync** → ledger → delete ordering — the `flush()` must stay before `fd.sync()`, and the sync before `close()`; move either and a crash can leave a ledger entry pointing at a zero-length copy |
 | the backup rule XMLs | Both `backup_rules.xml` (API ≤30) and `data_extraction_rules.xml`, and inside the latter **every** section (`cloud-backup` *and* `device-transfer`): a `domain="database"` exclude listed in one only restores the DB through the other door |
+| a `MetroDropdownMenu.Item` with `children` | The flyout is a **column of the same PopupWindow**, never a second popup: the menu's window is modal, so it would swallow the child's touches. Group menus therefore open the window `MATCH_PARENT` wide, and the empty slack beside a closed flyout has to dismiss on tap or it becomes dead space that behaves like neither inside nor outside |
 
 ---
 
