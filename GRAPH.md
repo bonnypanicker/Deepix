@@ -300,7 +300,7 @@ item_pinned_album_chip.xml  → ImageAdapter (pinned album chip)
 item_pinned_albums_header.xml → ImageAdapter (pinned section header)
 item_viewer_page.xml    → MediaPagerAdapter (photoView, playerView, videoControls scrubber: scrubber_thumb/scrubber_progress)
 viewer_bottom_gradient.xml → activity_viewer.xml (bottomGradient)
-info_drag_handle.xml    → activity_viewer.xml (info panel handle)
+info_sheet_bg.xml       → activity_viewer.xml (info sheet surface: metroBgSecondary fill + 1dp metroBgSurface top hairline)
 scrubber_thumb.xml / scrubber_progress.xml → item_viewer_page.xml (video SeekBar)
 dialog_tag_picker.xml   → TagPickerDialog
 dialog_smart_album.xml  → MainActivity (smart album create dialog, Metro Theme.GallerySearch.Dialog)

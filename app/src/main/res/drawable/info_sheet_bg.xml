@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-    <solid android:color="#141414" />
-</shape>
+<!-- The sheet is a Metro surface, not a Material bottom sheet: the app's documented surface token
+     (#0A0A0A, never lighter than the #111111 elevated tier) with the same 1dp hairline on its top
+     edge that bottom_nav_bg and dialog_metro_bg use. Without that line a near-black sheet is
+     indistinguishable from the pure-black viewer behind it. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:height="1dp" android:gravity="top">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/metroBgSurface" />
+        </shape>
+    </item>
+    <item android:top="1dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/metroBgSecondary" />
+        </shape>
+    </item>
+</layer-list>
