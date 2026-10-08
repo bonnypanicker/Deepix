@@ -94,6 +94,14 @@ class CleanupWorker(
                         }
                     } ?: false)
             }
+            // dHash for the duplicate check, decoded once per photo and remembered: a photo can sit in
+            // a duplicate group and a similar group, and only members of the two are ever measured.
+            val dhashCache = HashMap<String, Long?>()
+            val dhashOf: (Uri) -> Long? = { uri ->
+                val key = uri.toString()
+                if (!dhashCache.containsKey(key)) dhashCache[key] = decodeDhash(uri)
+                dhashCache[key]
+            }
             val finalReport = CleanupAnalyzer.analyze(
                 items = images,
                 embeddings = embeddings,
@@ -101,6 +109,7 @@ class CleanupWorker(
                 encodeText = { runCatching { repo.encodeText(it) }.getOrNull() },
                 nsfwMargin = { embedding -> nsfwClassifier?.marginScore(embedding) },
                 imageStats = { computeImageStats(it) },
+                dhashOf = dhashOf,
                 hasFace = hasFace,
                 onProgress = { done, total ->
                     lastDone = done
@@ -175,6 +184,8 @@ class CleanupWorker(
                 scannedUris = scannedUris,
                 done = done,
                 total = total,
+                dedupAnalyzed = report.dedupAnalyzed,
+                dedupEligible = report.dedupEligible,
                 complete = complete,
                 updatedAt = now
             )
@@ -211,6 +222,29 @@ class CleanupWorker(
             }
         }.onFailure { Log.w(Tag, "Unable to read image sizes.", it) }
         return map
+    }
+
+    /**
+     * The photo's dHash, decoded small: [PhashUtils.hash] resamples to 9×8 whatever it is handed, so
+     * a thumbnail edge is more detail than the comparison can use.
+     */
+    private fun decodeDhash(uri: Uri): Long? {
+        return runCatching {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            applicationContext.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            val srcW = bounds.outWidth
+            val srcH = bounds.outHeight
+            if (srcW <= 0 || srcH <= 0) return null
+            var sample = 1
+            while (srcW / (sample * 2) >= DhashEdgePx && srcH / (sample * 2) >= DhashEdgePx) sample *= 2
+            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+            val bmp = applicationContext.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, opts)
+            } ?: return null
+            val hash = PhashUtils.hash(bmp)
+            bmp.recycle()
+            hash
+        }.getOrNull()
     }
 
     private fun computeImageStats(uri: Uri): CleanupAnalyzer.ImageStats? {
@@ -306,6 +340,7 @@ class CleanupWorker(
         private const val NotificationId = 1003
         private const val WRITE_THROTTLE_MS = 1500L
         private const val FOREGROUND_THROTTLE_MS = 1000L
+        private const val DhashEdgePx = 128
 
         /**
          * Single source of truth for the scan request. Linear (not default exponential) backoff

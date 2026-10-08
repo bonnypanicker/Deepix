@@ -10,6 +10,8 @@ import kotlinx.coroutines.yield
  *  - cheap filename / folder heuristics (screenshots, stickers)
  *  - one downscaled-bitmap pass for blur / brightness (supplied by the caller as [ImageStats])
  *  - plain metadata (low resolution, capture time for burst clustering)
+ *  - [DuplicateVerifier]'s dHash comparison, which is the only signal that promotes a member of a
+ *    duplicate group from "listed" to "pre-selected for deletion"
  *
  * No bitmaps are decoded here and no ONNX is touched directly; the host passes small callbacks so
  * this stays pure/testable. Everything produced is a *suggestion* — the UI reviews and confirms.
@@ -23,22 +25,36 @@ object CleanupAnalyzer {
         COMPRESSIBLE
     }
 
+    /**
+     * Tiles whose members are candidates rather than findings. For these, an empty suggestion set
+     * means *nothing is offered* — accepting the tile deletes what was verified, not the whole list —
+     * while every other tile's empty set means the tile itself is the offer.
+     *
+     * The distinction exists because the three grouped-by-similarity tiles are the ones where the
+     * signal is a resemblance score: a category whose items are all "probably the same moment" must
+     * not turn a missing measurement into a blanket delete.
+     */
+    val SuggestionGated = setOf(Category.DUPLICATES, Category.SIMILAR, Category.BURSTS)
+
     /** Per-image pixel statistics from a single downscaled decode. */
     data class ImageStats(val variance: Float, val meanLuma: Float, val fractionNearWhite: Float)
 
     data class Report(
         val categoryItems: Map<Category, List<GalleryRepository.MediaItem>>,
         val suggestedDeleteUris: Map<Category, Set<Uri>>,
-        val sizeByUri: Map<String, Long>
+        val sizeByUri: Map<String, Long>,
+        /** Photos the pairwise pass compared, and the photos it was capped away from. */
+        val dedupAnalyzed: Int = 0,
+        val dedupEligible: Int = 0
     ) {
         fun count(category: Category): Int = categoryItems[category]?.size ?: 0
 
         fun isEmpty(): Boolean = Category.entries.all { count(it) == 0 }
 
-        /** The set we'd delete in a category if the user accepts suggestions (falls back to all items). */
+        /** The set we'd delete in a category if the user accepts suggestions (ungated tiles fall back to all). */
         private fun deletableUris(category: Category): Set<Uri> {
             val suggested = suggestedDeleteUris[category].orEmpty()
-            if (suggested.isNotEmpty()) return suggested
+            if (suggested.isNotEmpty() || category in SuggestionGated) return suggested
             return categoryItems[category].orEmpty().mapTo(LinkedHashSet()) { it.uri }
         }
 
@@ -116,6 +132,9 @@ object CleanupAnalyzer {
         sizeByUri: Map<String, Long>,
         encodeText: (String) -> FloatArray?,
         imageStats: (Uri) -> ImageStats?,
+        // dHash for one photo, when the caller can supply one: the only evidence that promotes a
+        // CLIP look-alike to a duplicate worth pre-selecting for deletion.
+        dhashOf: (Uri) -> Long? = { null },
         onProgress: (done: Int, total: Int) -> Unit,
         onPartial: (Report) -> Unit = {},
         resumeQuality: Map<Category, Set<String>> = emptyMap(),
@@ -135,10 +154,14 @@ object CleanupAnalyzer {
         // Emitted after every phase below — not only once before the pixel pass — so the overview
         // tiles stream in as each pass lands instead of the first tile waiting for the heaviest
         // passes (pairwise dedup) to finish.
+        var dedupAnalyzed = 0
+        var dedupEligible = 0
         fun snapshot() = Report(
             categoryItems = categoryItems.mapValues { it.value.toList() },
             suggestedDeleteUris = suggested.mapValues { it.value.toSet() },
-            sizeByUri = sizeByUri
+            sizeByUri = sizeByUri,
+            dedupAnalyzed = dedupAnalyzed,
+            dedupEligible = dedupEligible
         )
 
         // 0) Compression candidates: large JPEG/PNG/WebP/BMP stills that HEIC shrinks a lot.
@@ -174,36 +197,44 @@ object CleanupAnalyzer {
             for (item in group) {
                 if (item.uri == keep.uri) continue
                 categoryItems[Category.BURSTS]!!.add(item)
-                suggested[Category.BURSTS]!!.add(item.uri)
             }
+            // Nothing is pre-selected: a burst's frames are the same moment held a few times, and
+            // which one to keep — blink, half-pressed shutter, the frame after the dog turned — is a
+            // human call. The largest is listed first as the suggested keeper.
         }
         onPartial(snapshot())
 
         // 2) Duplicates (>=0.97) and Similar (>=0.93) over the non-burst remainder, in one pairwise
         //    pass. Cross-time near-identical copies (edited copies, re-downloads, reposts) land
         //    here; same-moment sequences are Bursts' job now.
-        val dedupItems = embeddedItems
-            .filter { it.uri.toString() !in burstUris }
-            .take(MAX_DEDUP_ITEMS)
+        val dedupPool = embeddedItems.filter { it.uri.toString() !in burstUris }
+        val dedupItems = dedupPool.take(MAX_DEDUP_ITEMS)
+        dedupAnalyzed = dedupItems.size
+        dedupEligible = dedupPool.size
         val (dupGroups, simGroups) = groupBySimilarity(dedupItems, embeddings)
         val duplicateUris = HashSet<String>()
         for (group in dupGroups) {
-            val keep = group.maxByOrNull { sizeByUri[it.uri.toString()] ?: 0L } ?: continue
+            val verdict = DuplicateVerifier.verify(
+                group,
+                sizeOf = { sizeByUri[it.uri.toString()] ?: 0L },
+                dhashOf = { dhashOf(it.uri) }
+            )
+            val confirmedUris = verdict.confirmed.mapTo(HashSet()) { it.uri }
             for (item in group) {
                 duplicateUris.add(item.uri.toString())
                 categoryItems[Category.DUPLICATES]!!.add(item)
-                if (item.uri != keep.uri) suggested[Category.DUPLICATES]!!.add(item.uri)
+                // The tile lists the whole CLIP group; only a member measured as a copy of the file
+                // that stays is pre-selected, and the rest wait for a human to judge them.
+                if (item.uri in confirmedUris) suggested[Category.DUPLICATES]!!.add(item.uri)
             }
         }
         for (group in simGroups) {
             // Drop members that are already exact duplicates; keep genuine "similar but not identical".
             val remaining = group.filter { it.uri.toString() !in duplicateUris }
             if (remaining.size < 2) continue
-            val keep = remaining.maxByOrNull { sizeByUri[it.uri.toString()] ?: 0L } ?: continue
-            for (item in remaining) {
-                categoryItems[Category.SIMILAR]!!.add(item)
-                if (item.uri != keep.uri) suggested[Category.SIMILAR]!!.add(item.uri)
-            }
+            // Pre-selecting nothing: 0.93 cosine is "the same scene again", which is a reason to look,
+            // not a reason to delete.
+            for (item in remaining) categoryItems[Category.SIMILAR]!!.add(item)
         }
         onPartial(snapshot())
 

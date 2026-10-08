@@ -43,6 +43,9 @@ class SmartCleanupActivity : AppCompatActivity() {
     private val categoryItems = linkedMapOf<CleanupAnalyzer.Category, MutableList<GalleryRepository.MediaItem>>()
     private val suggested = linkedMapOf<CleanupAnalyzer.Category, MutableSet<Uri>>()
     private var sizeByUri: Map<String, Long> = emptyMap()
+    /** How far the duplicate pass reached, from the last stored scan; 0 until a scan reports it. */
+    private var dedupAnalyzed = 0
+    private var dedupEligible = 0
 
     private var currentCategory: CleanupAnalyzer.Category? = null
     private var pendingDeleteUris: List<Uri> = emptyList()
@@ -476,6 +479,8 @@ class SmartCleanupActivity : AppCompatActivity() {
     }
 
     private fun applyStored(result: CleanupResultStore.Result) {
+        dedupAnalyzed = result.dedupAnalyzed
+        dedupEligible = result.dedupEligible
         for (category in CleanupAnalyzer.Category.entries) {
             categoryItems[category]!!.apply {
                 clear()
@@ -530,6 +535,8 @@ class SmartCleanupActivity : AppCompatActivity() {
                 scannedUris = prior?.scannedUris ?: emptyList(),
                 done = prior?.done ?: 0,
                 total = prior?.total ?: 0,
+                dedupAnalyzed = prior?.dedupAnalyzed ?: 0,
+                dedupEligible = prior?.dedupEligible ?: 0,
                 complete = prior?.complete ?: true,
                 updatedAt = System.currentTimeMillis()
             )
@@ -586,7 +593,9 @@ class SmartCleanupActivity : AppCompatActivity() {
     /** Items we'd delete in a category if suggestions are accepted (else all of them). */
     private fun categoryDeletable(category: CleanupAnalyzer.Category): Set<Uri> {
         val s = suggested[category]!!
-        if (s.isNotEmpty()) return s
+        // A gated tile with nothing verified offers nothing: its members are candidates the analysis
+        // merely grouped by resemblance, so "the user accepted the suggestion" cannot mean "all of them".
+        if (s.isNotEmpty() || category in CleanupAnalyzer.SuggestionGated) return s
         return categoryItems[category]!!.mapTo(LinkedHashSet()) { it.uri }
     }
 
@@ -628,8 +637,9 @@ class SmartCleanupActivity : AppCompatActivity() {
         // The compression page has no hint line; that row holds the sort control instead.
         binding.detailHint.visibility = if (isCompressible) View.GONE else View.VISIBLE
         binding.detailHint.text = when (category) {
-            CleanupAnalyzer.Category.DUPLICATES -> "Best copy kept; extra copies pre-selected"
-            CleanupAnalyzer.Category.SIMILAR -> "Best shot kept; near-identical ones pre-selected"
+            CleanupAnalyzer.Category.DUPLICATES ->
+                "Copies measured identical to the kept file are pre-selected" + dedupCoverageSuffix()
+            CleanupAnalyzer.Category.SIMILAR -> "Same scene, another shot — tap the ones to remove"
             CleanupAnalyzer.Category.LIKELY_CLUTTER -> "Stickers, emoji & memes pre-selected"
             CleanupAnalyzer.Category.BLURRY -> "Blurry shots pre-selected"
             CleanupAnalyzer.Category.SCREENSHOTS -> "Tap to select the ones to remove"
@@ -637,7 +647,7 @@ class SmartCleanupActivity : AppCompatActivity() {
             CleanupAnalyzer.Category.RECEIPTS -> "Receipts — review before deleting"
             CleanupAnalyzer.Category.QR_CODES -> "QR codes & barcodes — tap to select"
             CleanupAnalyzer.Category.NSFW -> "Possibly sensitive photos — review, delete, or move to Safe"
-            CleanupAnalyzer.Category.BURSTS -> "Sequences shot seconds apart — best shot kept, extras pre-selected"
+            CleanupAnalyzer.Category.BURSTS -> "Sequences shot seconds apart — biggest frame first, tap the ones to remove"
             CleanupAnalyzer.Category.DARK -> "Very dark photos — tap to select"
             CleanupAnalyzer.Category.BRIGHT -> "Overexposed photos — tap to select"
             CleanupAnalyzer.Category.LOW_RESOLUTION -> "Low-resolution images — tap to select"
@@ -658,6 +668,13 @@ class SmartCleanupActivity : AppCompatActivity() {
         binding.cleanupGrid.scrollToPosition(0)
         adapter.setSelection(suggested[category]!!.toList())
     }
+
+    /**
+     * The duplicate pass compares a bounded slice of the library, so an empty tile could read as
+     * "nothing here is duplicated". Say how far it actually looked.
+     */
+    private fun dedupCoverageSuffix(): String =
+        if (dedupAnalyzed in 1 until dedupEligible) " · checked $dedupAnalyzed of $dedupEligible" else ""
 
     /** Photos shown in the COMPRESSIBLE detail: recommendations, or every compressible photo. */
     private fun compressibleDetailItems(): List<GalleryRepository.MediaItem> {

@@ -23,6 +23,9 @@ class CleanupResultStore(context: Context) {
         val scannedUris: List<String>,
         val done: Int,
         val total: Int,
+        /** How far the pairwise duplicate pass reached, against how far it would have gone. */
+        val dedupAnalyzed: Int = 0,
+        val dedupEligible: Int = 0,
         val complete: Boolean,
         val updatedAt: Long
     )
@@ -33,6 +36,8 @@ class CleanupResultStore(context: Context) {
             root.put("updatedAt", result.updatedAt)
             root.put("done", result.done)
             root.put("total", result.total)
+            root.put("dedupAnalyzed", result.dedupAnalyzed)
+            root.put("dedupEligible", result.dedupEligible)
             root.put("complete", result.complete)
             root.put("scanned", JSONArray(result.scannedUris))
 
@@ -72,6 +77,8 @@ class CleanupResultStore(context: Context) {
                 scannedUris = root.optJSONArray("scanned").toStringList(),
                 done = root.optInt("done", 0),
                 total = root.optInt("total", 0),
+                dedupAnalyzed = root.optInt("dedupAnalyzed", 0),
+                dedupEligible = root.optInt("dedupEligible", 0),
                 complete = root.optBoolean("complete", false),
                 updatedAt = root.optLong("updatedAt", 0L)
             )
