@@ -51,6 +51,7 @@
                     android:paddingBottom="32dp">
 
                     <TextView
+                        android:id="@+id/screenTitle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="sans-serif-light"

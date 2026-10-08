@@ -30,6 +30,7 @@ class BinActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityBinBinding
     private lateinit var adapter: BinAdapter
+    private lateinit var gridLayoutManager: GridLayoutManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AccentPalette.apply(this)
@@ -42,14 +43,43 @@ class BinActivity : AppCompatActivity() {
         applyInsets()
 
         adapter = BinAdapter { entry -> showOptions(entry) }
-        binding.binGrid.layoutManager = GridLayoutManager(this, 3)
+        gridLayoutManager = GridLayoutManager(this, gridColumns())
+        binding.binGrid.layoutManager = gridLayoutManager
         binding.binGrid.adapter = adapter
         binding.binGrid.setHasFixedSize(true)
+        // The bin is not recreated when the window changes shape, so the grid's new width — not the
+        // configuration callback, which runs before that width is measured — is what re-lays it.
+        binding.binGrid.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            val width = right - left
+            if (width > 0 && width != oldRight - oldLeft) {
+                gridLayoutManager.spanCount = gridColumns()
+                adapter.notifyItemRangeChanged(0, adapter.itemCount)
+            }
+        }
+        applyResponsiveChrome()
 
         binding.backBtn.setOnClickListener { finish() }
         binding.emptyBinBtn.setOnClickListener { confirmEmpty() }
 
         refresh()
+    }
+
+    /**
+     * These tiles are square, so a wider window gets more of them instead of wider ones — the same
+     * rule the gallery grid follows, at this screen's own density.
+     */
+    private fun gridColumns(): Int = Responsive.gridColumns(this, GRID_COLUMNS)
+
+    private fun tileSizePx(): Int =
+        Responsive.tileSizePx(Responsive.widthOf(binding.binGrid), gridColumns())
+
+    private fun applyResponsiveChrome() {
+        Responsive.applyTitleText(binding.screenTitle, this, HERO_TITLE_SP)
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyResponsiveChrome()
     }
 
     private fun applyInsets() {
@@ -147,6 +177,9 @@ class BinActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: VH, position: Int) {
             val entry = items[position]
+            // The item's XML height is the portrait tile; the column count is not, so the side is
+            // set from the grid here and a sideways window gets more squares, not taller ones.
+            holder.image.layoutParams = holder.image.layoutParams.apply { height = tileSizePx() }
             Glide.with(holder.image)
                 .load(BinManager.storedFile(this@BinActivity, entry))
                 .centerCrop()
@@ -157,5 +190,11 @@ class BinActivity : AppCompatActivity() {
         override fun getItemCount(): Int = items.size
 
         inner class VH(view: View, val image: ImageView) : RecyclerView.ViewHolder(view)
+    }
+
+    private companion object {
+        // Portrait density of this screen, and the title size its layout declares.
+        const val GRID_COLUMNS = 3
+        const val HERO_TITLE_SP = 40f
     }
 }

@@ -88,7 +88,7 @@ class PersonDetailActivity : AppCompatActivity() {
             onAlbumClick = {},
             onAlbumLongClick = { _, _ -> }
         )
-        adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
+        adapter.gridColumnCount = Responsive.gridColumns(this, IndexPreferences.getGridColumnCount(this))
 
         gridLayoutManager = GridLayoutManager(this, adapter.gridColumnCount)
         gridLayoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
@@ -97,6 +97,24 @@ class PersonDetailActivity : AppCompatActivity() {
         }
         binding.facesGrid.layoutManager = gridLayoutManager
         binding.facesGrid.adapter = adapter
+        // Held sideways, this grid has room for more faces of the same size; the width it lays out
+        // into is what says how many, and it is only known after a layout pass.
+        binding.facesGrid.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            val width = right - left
+            if (width > 0 && width != oldRight - oldLeft) {
+                val firstMeasure = adapter.gridWidthPx == 0
+                adapter.gridWidthPx = width
+                adapter.gridColumnCount = Responsive.gridColumns(
+                    this,
+                    IndexPreferences.getGridColumnCount(this)
+                )
+                gridLayoutManager.spanCount = adapter.gridColumnCount
+                // The first measure only records the width; nothing was drawn against an older one.
+                if (firstMeasure) return@addOnLayoutChangeListener
+                gridLayoutManager.spanSizeLookup.invalidateSpanIndexCache()
+                adapter.notifyItemRangeChanged(0, adapter.itemCount, "grid_change")
+            }
+        }
         binding.facesGrid.setHasFixedSize(true)
         binding.facesGrid.setItemViewCacheSize(12)
         binding.facesGrid.recycledViewPool.setMaxRecycledViews(ImageAdapter.ViewTypePhoto, 24)

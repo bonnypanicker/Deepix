@@ -68,8 +68,18 @@ class PersonAlbumsActivity : AppCompatActivity() {
                 PersonIdentityEditor.show(this, person.person) { loadPeople() }
             }
         )
-        binding.peopleGrid.layoutManager = GridLayoutManager(this, SPAN_COUNT)
+        binding.peopleGrid.layoutManager = GridLayoutManager(this, peopleColumns())
         binding.peopleGrid.adapter = adapter
+        // A face card is a 92dp cover with a label, so its row count comes from what fits rather
+        // than from a ratio — and the width it has to fit into only exists once the grid is measured.
+        binding.peopleGrid.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            val width = right - left
+            val manager = binding.peopleGrid.layoutManager as? GridLayoutManager ?: return@addOnLayoutChangeListener
+            if (width > 0 && width != oldRight - oldLeft) {
+                val columns = peopleColumns()
+                if (manager.spanCount != columns) manager.spanCount = columns
+            }
+        }
 
         loadPeople()
     }
@@ -356,8 +366,21 @@ class PersonAlbumsActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * A person card is a 92dp cover plus a label, so a row holds as many as genuinely fit the width
+     * the grid was measured at — capped, because a desktop window is no licence to draw a face at a
+     * few pixels.
+     */
+    private fun peopleColumns(): Int = Responsive.cardsFitting(
+        Responsive.widthOf(binding.peopleGrid),
+        (PeopleCardMinWidthDp * resources.displayMetrics.density).toInt(),
+        MaxPeopleColumns
+    )
+
     companion object {
-        private const val SPAN_COUNT = 3
+        // The card's own minimum: a 92dp cover, its padding, and room for a name under it.
+        private const val PeopleCardMinWidthDp = 112f
+        private const val MaxPeopleColumns = 6
         // Display-only quality; this does not change the detector or MobileFaceNet input.
         private const val CoverDecodePx = 512
         private const val CoverSourceEdge = 768

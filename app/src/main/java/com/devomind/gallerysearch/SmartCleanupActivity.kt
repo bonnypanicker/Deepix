@@ -178,6 +178,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         binding = ActivitySmartCleanupBinding.inflate(layoutInflater)
         setContentView(binding.root)
         applyInsets()
+        applyResponsiveChrome()
 
         items = CleanupHandoff.items
         indexedCount = CleanupHandoff.indexedCount
@@ -201,14 +202,28 @@ class SmartCleanupActivity : AppCompatActivity() {
             onAlbumLongClick = { _, _ -> }
         )
         adapter.useCollageLayout = false
-        val spanCount = IndexPreferences.getGridColumnCount(this).coerceIn(3, 6)
-        adapter.gridColumnCount = spanCount
-        val layoutManager = GridLayoutManager(this, spanCount)
+        val layoutManager = GridLayoutManager(this, cleanupColumns())
         layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-            override fun getSpanSize(position: Int): Int = adapter.spanSizeAt(position, spanCount)
+            override fun getSpanSize(position: Int): Int =
+                adapter.spanSizeAt(position, layoutManager.spanCount)
         }
+        adapter.gridColumnCount = cleanupColumns()
         binding.cleanupGrid.layoutManager = layoutManager
         binding.cleanupGrid.adapter = adapter
+        // Sideways, there is room for more candidates at the same tile size; that count comes from
+        // the width the grid actually has, which only exists after a layout pass.
+        binding.cleanupGrid.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            val width = right - left
+            if (width > 0 && width != oldRight - oldLeft) {
+                val firstMeasure = adapter.gridWidthPx == 0
+                adapter.gridWidthPx = width
+                adapter.gridColumnCount = cleanupColumns()
+                layoutManager.spanCount = adapter.gridColumnCount
+                if (firstMeasure) return@addOnLayoutChangeListener
+                layoutManager.spanSizeLookup.invalidateSpanIndexCache()
+                adapter.notifyItemRangeChanged(0, adapter.itemCount, "grid_change")
+            }
+        }
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         binding.selectAllBtn.setOnClickListener { toggleSelectAll() }
@@ -1131,11 +1146,29 @@ class SmartCleanupActivity : AppCompatActivity() {
         }
     }
 
+    /** Keeps the user's grid density and adds columns when the window is wider than that choice. */
+    private fun cleanupColumns(): Int =
+        Responsive.gridColumns(this, IndexPreferences.getGridColumnCount(this).coerceIn(3, 6))
+
+    /**
+     * The hero title carries its full size in XML, and a rotation handled in place (see the manifest's
+     * configChanges) never re-inflates the layout — so the size is re-decided here, on the way in and on
+     * every window shape change.
+     */
+    private fun applyResponsiveChrome() =
+        Responsive.applyTitleText(binding.screenTitle, this, HERO_TITLE_SP)
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyResponsiveChrome()
+    }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     companion object {
         private const val TAG = "SmartCleanup"
         const val ExtraContentChanged = "content_changed"
         private const val COMPRESSIBLE_SORT_SCOPE = "cleanup_compressible"
+        private const val HERO_TITLE_SP = 40f
     }
 }

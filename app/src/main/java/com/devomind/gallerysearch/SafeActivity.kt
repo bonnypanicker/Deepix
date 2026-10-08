@@ -53,6 +53,7 @@ class SafeActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivitySafeBinding
     private lateinit var adapter: SafeItemAdapter
+    private lateinit var gridLayoutManager: GridLayoutManager
 
     private val thumbCache = object : LruCache<String, Bitmap>(
         (Runtime.getRuntime().maxMemory() / 8).toInt().coerceAtLeast(4 * 1024 * 1024)
@@ -115,9 +116,21 @@ class SafeActivity : AppCompatActivity() {
             bindThumb = ::bindThumb,
             onSelectionChanged = ::updateSelectionUi
         )
-        binding.safeGrid.layoutManager = GridLayoutManager(this, 3)
+        gridLayoutManager = GridLayoutManager(this, gridColumns())
+        binding.safeGrid.layoutManager = gridLayoutManager
         binding.safeGrid.adapter = adapter
         binding.safeGrid.setHasFixedSize(true)
+        adapter.cellHeightPx = tileSizePx()
+        // The vault is not recreated when the window changes shape, so the grid's new measured width
+        // — not the configuration callback, which runs before that width exists — re-lays it.
+        binding.safeGrid.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            val width = right - left
+            if (width > 0 && width != oldRight - oldLeft) {
+                gridLayoutManager.spanCount = gridColumns()
+                adapter.cellHeightPx = tileSizePx()
+            }
+        }
+        applyResponsiveChrome()
 
         binding.backBtn.setOnClickListener { handleBack() }
         binding.overflowBtn.setOnClickListener { showOverflow() }
@@ -178,6 +191,24 @@ class SafeActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         suppressRelock = false
+    }
+
+    /**
+     * Vault tiles are square, so a wider window gets more of them rather than wider ones; the side
+     * comes from the grid's own measured width, which is the panel's only until the first layout.
+     */
+    private fun gridColumns(): Int = Responsive.gridColumns(this, GRID_COLUMNS)
+
+    private fun tileSizePx(): Int =
+        Responsive.tileSizePx(Responsive.widthOf(binding.safeGrid), gridColumns())
+
+    private fun applyResponsiveChrome() {
+        Responsive.applyTitleText(binding.screenTitle, this, HERO_TITLE_SP)
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyResponsiveChrome()
     }
 
     private fun applyInsets() {
@@ -818,5 +849,8 @@ class SafeActivity : AppCompatActivity() {
     companion object {
         const val ExtraImportUris = "safe_import_uris"
         const val ExtraImportedUris = "safe_imported_uris"
+        // Portrait density of the vault grid, and the title size its layout declares.
+        private const val GRID_COLUMNS = 3
+        private const val HERO_TITLE_SP = 40f
     }
 }

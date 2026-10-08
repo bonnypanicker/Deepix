@@ -45,6 +45,7 @@
         </FrameLayout>
 
         <TextView
+            android:id="@+id/screenTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="20dp"
@@ -266,132 +267,140 @@
     </LinearLayout>
 
     <!-- ===================== Lock screen ===================== -->
-    <LinearLayout
+    <!-- Lock content scrolls: a sideways window is ~360dp tall, and this panel is taller than
+         that, so without a scroll container the password row and the buttons fall off it. -->
+    <ScrollView
         android:id="@+id/lockOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@color/metroBgPrimary"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:paddingStart="36dp"
-        android:paddingEnd="36dp">
-
-        <ImageView
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:contentDescription="@null"
-            android:src="@drawable/ic_fluent_lock_closed_24_regular"
-            android:tint="?attr/accentColor" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:fontFamily="sans-serif-light"
-            android:includeFontPadding="false"
-            android:letterSpacing="0.04"
-            android:text="@string/safe_title"
-            android:textColor="@color/metroTextPrimary"
-            android:textSize="26sp" />
-
-        <TextView
-            android:id="@+id/lockSubtitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:includeFontPadding="false"
-            android:text="@string/locked"
-            android:textAllCaps="true"
-            android:textColor="@color/metroTextSecondary"
-            android:textSize="12sp"
-            android:letterSpacing="0.08" />
+        android:fillViewport="true">
 
         <LinearLayout
-            android:id="@+id/fingerprintBtn"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="34dp"
-            android:background="@drawable/metro_row_pressed"
-            android:clickable="true"
-            android:focusable="true"
             android:gravity="center"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:paddingStart="36dp"
+            android:paddingEnd="36dp">
 
             <ImageView
-                android:layout_width="56dp"
-                android:layout_height="56dp"
-                android:contentDescription="@string/unlock_with_fingerprint"
-                android:src="@drawable/ic_fluent_fingerprint_24_regular"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_fluent_lock_closed_24_regular"
                 android:tint="?attr/accentColor" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="18dp"
+                android:fontFamily="sans-serif-light"
                 android:includeFontPadding="false"
-                android:text="@string/tap_to_unlock_fingerprint"
+                android:letterSpacing="0.04"
+                android:text="@string/safe_title"
+                android:textColor="@color/metroTextPrimary"
+                android:textSize="26sp" />
+
+            <TextView
+                android:id="@+id/lockSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:includeFontPadding="false"
+                android:text="@string/locked"
+                android:textAllCaps="true"
                 android:textColor="@color/metroTextSecondary"
-                android:textSize="13sp" />
+                android:textSize="12sp"
+                android:letterSpacing="0.08" />
+
+            <LinearLayout
+                android:id="@+id/fingerprintBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="34dp"
+                android:background="@drawable/metro_row_pressed"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <ImageView
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:contentDescription="@string/unlock_with_fingerprint"
+                    android:src="@drawable/ic_fluent_fingerprint_24_regular"
+                    android:tint="?attr/accentColor" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:includeFontPadding="false"
+                    android:text="@string/tap_to_unlock_fingerprint"
+                    android:textColor="@color/metroTextSecondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <View
+                android:id="@+id/lockDivider"
+                android:layout_width="120dp"
+                android:layout_height="1dp"
+                android:layout_marginTop="28dp"
+                android:background="@color/metroBgSurface" />
+
+            <EditText
+                android:id="@+id/lockPasswordInput"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="24dp"
+                android:autofillHints="password"
+                android:background="@drawable/search_bg"
+                android:hint="@string/enter_password_hint"
+                android:imeOptions="actionDone"
+                android:inputType="textPassword"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:singleLine="true"
+                android:textColor="@color/metroTextPrimary"
+                android:textColorHint="@color/metroTextDisabled"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/unlockBtn"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/onboarding_button_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:letterSpacing="0.06"
+                android:text="@string/unlock_caps"
+                android:textColor="@color/metroTextPrimary"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/forgotPasswordBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/metro_row_pressed"
+                android:clickable="true"
+                android:focusable="true"
+                android:includeFontPadding="false"
+                android:paddingStart="12dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="6dp"
+                android:text="@string/forgot_password"
+                android:textColor="@color/metroTextSecondary"
+                android:textSize="13sp"
+                android:visibility="gone" />
         </LinearLayout>
-
-        <View
-            android:id="@+id/lockDivider"
-            android:layout_width="120dp"
-            android:layout_height="1dp"
-            android:layout_marginTop="28dp"
-            android:background="@color/metroBgSurface" />
-
-        <EditText
-            android:id="@+id/lockPasswordInput"
-            android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:layout_marginTop="24dp"
-            android:autofillHints="password"
-            android:background="@drawable/search_bg"
-            android:hint="@string/enter_password_hint"
-            android:imeOptions="actionDone"
-            android:inputType="textPassword"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:singleLine="true"
-            android:textColor="@color/metroTextPrimary"
-            android:textColorHint="@color/metroTextDisabled"
-            android:textSize="16sp" />
-
-        <TextView
-            android:id="@+id/unlockBtn"
-            android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/onboarding_button_bg"
-            android:clickable="true"
-            android:focusable="true"
-            android:fontFamily="sans-serif-medium"
-            android:gravity="center"
-            android:letterSpacing="0.06"
-            android:text="@string/unlock_caps"
-            android:textColor="@color/metroTextPrimary"
-            android:textSize="14sp" />
-
-        <TextView
-            android:id="@+id/forgotPasswordBtn"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:background="@drawable/metro_row_pressed"
-            android:clickable="true"
-            android:focusable="true"
-            android:includeFontPadding="false"
-            android:paddingStart="12dp"
-            android:paddingTop="6dp"
-            android:paddingEnd="12dp"
-            android:paddingBottom="6dp"
-            android:text="@string/forgot_password"
-            android:textColor="@color/metroTextSecondary"
-            android:textSize="13sp"
-            android:visibility="gone" />
-    </LinearLayout>
+    </ScrollView>
 
     <!-- ===================== Full-screen viewer =====================
          In-activity overlay (not a separate activity): keeps FLAG_SECURE, and never trips the

@@ -27,6 +27,18 @@ class SafeItemAdapter(
     private val selected = LinkedHashSet<String>()
     private var selectionMode = false
 
+    /**
+     * The tile's side, handed in by the host: the grid's measured width divided by its column count.
+     * Zero keeps the layout's own height, which is the size a portrait window asked for.
+     */
+    var cellHeightPx: Int = 0
+        set(value) {
+            if (field != value) {
+                field = value
+                notifyItemRangeChanged(0, items.size)
+            }
+        }
+
     fun submit(list: List<SafeManager.VaultItem>) {
         items.clear()
         items.addAll(list)
@@ -85,6 +97,13 @@ class SafeItemAdapter(
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val item = items[position]
+        // The item's XML height is the portrait tile; the host's column count is not, so a sideways
+        // window gets more squares of the same side rather than taller strips.
+        if (cellHeightPx > 0) {
+            holder.binding.thumbnail.layoutParams = holder.binding.thumbnail.layoutParams.apply {
+                height = cellHeightPx
+            }
+        }
         holder.binding.thumbnail.setImageDrawable(null)
         holder.binding.thumbnail.tag = item.entryName
         bindThumb(item, holder.binding.thumbnail)
