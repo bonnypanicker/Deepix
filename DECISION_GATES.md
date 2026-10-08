@@ -1,7 +1,7 @@
 # Decision gates
 
-Two P0-tier items that are decisions rather than code. Recorded 2026-10-06 with what the primary
-sources say, so the choice is made on facts and not re-litigated later.
+P0-tier items that are decisions rather than code. Recorded 2026-10-06 (A, B) and 2026-10-08 (C) with
+what the primary sources say, so the choice is made on facts and not re-litigated later.
 
 ---
 
@@ -97,3 +97,38 @@ Next steps, in order:
 
 [t]: https://developer.android.com/develop/background-work/services/fgs/timeout
 [b]: https://developer.android.com/about/versions/15/behavior-changes-15
+
+---
+
+## Gate C — The Room database in Android Auto Backup
+
+**Status: decided 2026-10-08 — excluded. Reopening it means building an export format, not removing an
+exclude line.**
+
+What was decided: `gallery_metadata.db` (plus its `-wal`/`-shm` siblings) is excluded from both cloud
+backup and device-to-device transfer — `backup_rules.xml` for API 30 and below, and *both* sections of
+`data_extraction_rules.xml` for 31+. A `domain="database"` exclude written in only one of those
+sections restores the database through the other door, which is the mistake this gate exists to prevent.
+
+Why it was excluded rather than kept:
+
+- The `faces` table holds feature vectors as JSON (`embeddingJson`) in the same rows as user-typed
+  person names and relationships. Backed up, that is biometric material sitting in a Google data centre
+  for an app whose entire promise is that nothing leaves the phone. The vault verifier and the CLIP and
+  face vector index files were already excluded on the same argument; the database was the hole.
+- Restored, it is worse than useless. Every table is keyed on a MediaStore content uri
+  (`content://media/external/images/media/1234`), and those ids are per-device — a new phone assigns
+  different ones to the same photo. So a restored database either keys onto nothing or, worse, onto the
+  wrong photo, and the face pass then has to be told the truth: `EmbeddingFreshness` compares
+  date-modified/size/width/height, and a foreign row that mismatches marks a good photo for re-encode,
+  while a foreign row that coincidentally matches is trusted forever.
+
+The cost, said plainly: **favorites, tags, person names and relationships do not arrive on a new
+phone** — those are hand-made labels and have to be made again. The metadata cache and the embeddings
+refill by indexing. No photo lives in the database, so nothing in this decision can lose an image, and
+it doesn't touch the bin's copy → verify → fsync → delete ordering.
+
+What would justify reopening it: a deliberate, human-readable export (favorites + tags + labels, no
+vectors, keyed by display path or content-hash rather than by uri) that a restore can re-bind to the
+new device's MediaStore rows. That's a feature with a UI, not a rule-file edit, and building it is what
+would make cross-device label sync safe.

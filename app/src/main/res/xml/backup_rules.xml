@@ -6,10 +6,15 @@
   The vault archive itself sits in public storage (Pictures/Deepix Safe) and is outside app data, so
   it is never part of a backup. What is left behind here is everything that would let an outsider
   reach it or read the library's derived data: the password verifier and biometric blob, the map of
-  where each vault photo came from, and the search/face indices — which are embeddings, not
-  preferences, and are rebuilt by indexing again.
+  where each vault photo came from, the search/face indices, and the Room database.
 
-  Paths are relative to their domain root: shared_prefs/, files/.
+  The database is excluded because it stores face feature vectors as JSON (faces.embeddingJson) next
+  to person names and relationships — biometric material, whatever else it is bundled with. The cost
+  is stated plainly: favorites, tags, person names and the metadata cache are NOT restored onto a new
+  phone. Photos are not stored in it, so no image is lost and nothing here touches the bin's
+  copy-then-delete ordering; the cache refills by indexing, the labels must be re-made by hand.
+
+  Paths are relative to their domain root: shared_prefs/, files/, databases/.
 -->
 <full-backup-content>
     <!-- Password verifier, salt and the Keystore-encrypted password blob. -->
@@ -29,4 +34,11 @@
 
     <!-- Face feature vectors. -->
     <exclude domain="file" path="face_vector_index.bin" />
+
+    <!-- The Room database: faces.embeddingJson holds the same feature vectors in table form, and the
+         schema is a metadata cache plus hand-made labels, none of which belong in a cloud copy.
+         -wal/-shm are WAL siblings of the same file and must not survive as a partial database. -->
+    <exclude domain="database" path="gallery_metadata.db" />
+    <exclude domain="database" path="gallery_metadata.db-wal" />
+    <exclude domain="database" path="gallery_metadata.db-shm" />
 </full-backup-content>

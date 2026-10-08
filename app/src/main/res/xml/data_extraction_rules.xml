@@ -3,9 +3,13 @@
   Android 12+ backup rules; backup_rules.xml is the same list for API 30 and below.
 
   The Safe's vault is a public-storage zip and was never app data, so it can't be backed up by
-  accident. These exclusions keep the things that unlock or describe it — and the embedding indices,
-  which are derived data any reinstall can recompute — out of both the cloud copy and a device-to-
+  accident. These exclusions keep the things that unlock or describe it — the embedding indices,
+  which are derived data any reinstall can recompute, and the Room database, whose faces table holds
+  face feature vectors as JSON beside person names — out of both the cloud copy and a device-to-
   device transfer.
+
+  Excluding the database costs favorites, tags and person-name labels on a restore onto a new phone;
+  no photo lives in it, so nothing a user took with the camera is lost with it.
 -->
 <data-extraction-rules>
     <cloud-backup>
@@ -21,6 +25,10 @@
         <exclude domain="file" path="metadata_index.bin.tmp" />
 
         <exclude domain="file" path="face_vector_index.bin" />
+
+        <exclude domain="database" path="gallery_metadata.db" />
+        <exclude domain="database" path="gallery_metadata.db-wal" />
+        <exclude domain="database" path="gallery_metadata.db-shm" />
     </cloud-backup>
 
     <device-transfer>
@@ -36,5 +44,9 @@
         <exclude domain="file" path="metadata_index.bin.tmp" />
 
         <exclude domain="file" path="face_vector_index.bin" />
+
+        <exclude domain="database" path="gallery_metadata.db" />
+        <exclude domain="database" path="gallery_metadata.db-wal" />
+        <exclude domain="database" path="gallery_metadata.db-shm" />
     </device-transfer>
 </data-extraction-rules>
