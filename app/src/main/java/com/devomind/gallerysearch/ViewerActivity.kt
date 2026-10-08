@@ -83,7 +83,6 @@ class ViewerActivity : AppCompatActivity() {
     private var findSimilarUri: String? = null
     private var findSimilarCrop: FloatArray? = null
     private var cropMode = false
-    private var searchActionsVisible = false
     private var enterTransitionStarted = false
 
     private enum class GestureDirection {
@@ -136,7 +135,6 @@ class ViewerActivity : AppCompatActivity() {
             }
             previousPosition = position
             currentPosition = position
-            hideSearchActions(animate = false)
             bindPage(position)
             adapter.setPrimaryPosition(position)
         }
@@ -444,8 +442,6 @@ class ViewerActivity : AppCompatActivity() {
         }
         binding.cropCancel.setOnClickListener { exitCropMode() }
         binding.cropSearch.setOnClickListener { confirmCropSearch() }
-        binding.searchWholeBtn.setOnClickListener { searchWholeImage() }
-        binding.searchPartBtn.setOnClickListener { enterCropMode() }
         binding.infoCloseBtn.setOnClickListener { if (infoVisible) toggleInfoPanel() }
         binding.infoScrim.setOnClickListener { if (infoVisible) toggleInfoPanel() }
         binding.moreBtn.setOnClickListener { showOverflowMenu(it) }
@@ -453,7 +449,6 @@ class ViewerActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this) {
             when {
                 cropMode -> exitCropMode()
-                searchActionsVisible -> hideSearchActions()
                 infoVisible -> toggleInfoPanel()
                 else -> {
                     isEnabled = false
@@ -461,28 +456,6 @@ class ViewerActivity : AppCompatActivity() {
                 }
             }
         }
-    }
-
-    /** App-bar style reveal of the image-search scopes, docked to the bottom bar's sides. */
-    private fun showSearchActions() {
-        if (searchActionsVisible || cropMode) return
-        searchActionsVisible = true
-        binding.searchActionsBar.alpha = 0f
-        binding.searchActionsBar.visibility = View.VISIBLE
-        binding.searchActionsBar.animate().alpha(1f).setDuration(220).start()
-    }
-
-    private fun hideSearchActions(animate: Boolean = true) {
-        if (!searchActionsVisible) return
-        searchActionsVisible = false
-        if (!animate) {
-            binding.searchActionsBar.animate().cancel()
-            binding.searchActionsBar.visibility = View.GONE
-            return
-        }
-        binding.searchActionsBar.animate().alpha(0f).setDuration(220)
-            .withEndAction { binding.searchActionsBar.visibility = View.GONE }
-            .start()
     }
 
     private fun searchWholeImage() {
@@ -494,7 +467,6 @@ class ViewerActivity : AppCompatActivity() {
     /** Enters region-select mode: resets transforms, hides chrome, and shows the crop overlay. */
     private fun enterCropMode() {
         if (cropMode) return
-        hideSearchActions(animate = false)
         val holder = getCurrentPageViewHolder() ?: return
         val photoView = holder.binding.photoView
         if (photoView.visibility != View.VISIBLE) return
@@ -554,8 +526,16 @@ class ViewerActivity : AppCompatActivity() {
         val options = mutableListOf<MetroDropdownMenu.Item>()
         options += MetroDropdownMenu.Item("Add tags") { openTagPicker(item) }
         if (item.mediaType != GalleryRepository.MediaType.Video) {
-            // Image-to-image search: one item; the two scopes dock into the bottom selection bar.
-            options += MetroDropdownMenu.Item("Search image") { showSearchActions() }
+            // Image-to-image search: the two scopes fly out beside the menu, since choosing a scope
+            // is a continuation of this menu rather than a new mode over the photo.
+            options += MetroDropdownMenu.Item(
+                "Search image",
+                children = listOf(
+                    MetroDropdownMenu.Item("Whole image") { searchWholeImage() },
+                    MetroDropdownMenu.Item("Part of image") { enterCropMode() }
+                ),
+                onClick = {}
+            )
             options += MetroDropdownMenu.Item("Open in Google Lens") { openInGoogleLens(item) }
             if (!albumId.isNullOrBlank()) {
                 options += MetroDropdownMenu.Item("Set as album cover") { setAsAlbumCover(item) }
@@ -841,7 +821,6 @@ class ViewerActivity : AppCompatActivity() {
             scheduleAutoHide()
         } else {
             autoHideHandler.removeCallbacks(autoHideRunnable)
-            hideSearchActions()
         }
     }
 
