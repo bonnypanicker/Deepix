@@ -11,6 +11,10 @@ import androidx.appcompat.app.AppCompatActivity
  * Exported ACTION_EDIT entry point. Android's resolver displays this activity as "Edit with Pixa AI Gallery"
  * for photo and video MIME inputs; it immediately forwards the granted content Uri to the matching
  * in-app editor and returns that editor's result to the source application.
+ *
+ * It answers ACTION_EDIT alone. ACTION_VIEW is a request to *look* at a photo, and an app that also
+ * registered it used to land anyone tapping a thumbnail from another gallery into the editor, where
+ * saving overwrites the original.
  */
 class EditDispatchActivity : AppCompatActivity() {
 
@@ -42,7 +46,7 @@ class EditDispatchActivity : AppCompatActivity() {
         if (savedInstanceState?.getBoolean(StateEditorLaunched) == true) return
 
         val uri = intent.data ?: intent.getParcelableExtraCompat(Intent.EXTRA_STREAM)
-        if (intent.action !in setOf(Intent.ACTION_EDIT, Intent.ACTION_VIEW) || uri == null) {
+        if (intent.action != Intent.ACTION_EDIT || uri == null) {
             finish()
             return
         }
