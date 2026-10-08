@@ -48,6 +48,7 @@ class SettingsActivity : AppCompatActivity() {
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
         applyInsets()
+        applyResponsiveChrome()
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
 
@@ -451,8 +452,22 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    /**
+     * The hero title carries its full size in XML. A rotation is handled in place (see the manifest's
+     * configChanges), so the layout is never re-inflated and the size has to be re-decided here — on the
+     * way in and again whenever the window changes shape.
+     */
+    private fun applyResponsiveChrome() =
+        Responsive.applyTitleText(binding.screenTitle, this, HERO_TITLE_SP)
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyResponsiveChrome()
+    }
+
     companion object {
         const val ExtraAccentChanged = "extra_accent_changed"
         private const val StateAccentChanged = "state_accent_changed"
+        private const val HERO_TITLE_SP = 40f
     }
 }

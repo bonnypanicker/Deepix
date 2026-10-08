@@ -41,6 +41,7 @@ class IndexedFoldersActivity : AppCompatActivity() {
         binding = ActivityIndexedFoldersBinding.inflate(layoutInflater)
         setContentView(binding.root)
         applyInsets()
+        applyResponsiveChrome()
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
 
@@ -134,4 +135,21 @@ class IndexedFoldersActivity : AppCompatActivity() {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    /**
+     * The hero title carries its full size in XML, and a rotation handled in place (see the manifest's
+     * configChanges) never re-inflates the layout — so the size is re-decided here, on the way in and on
+     * every window shape change.
+     */
+    private fun applyResponsiveChrome() =
+        Responsive.applyTitleText(binding.screenTitle, this, HERO_TITLE_SP)
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyResponsiveChrome()
+    }
+
+    companion object {
+        private const val HERO_TITLE_SP = 34f
+    }
 }
