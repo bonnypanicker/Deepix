@@ -11,6 +11,10 @@ Deepix is an Android gallery app for local, offline semantic image search. The c
 - MediaStore image discovery.
 - Persisted image embedding index with corrupt-cache recovery.
 - Search over L2-normalized embeddings with thresholded fallback results.
+- Sideways and resized windows handled in place — activities declare `configChanges`, and the sizes a
+  window decides (grid columns, tile and card widths, hero title, dialog and sheet heights) come from
+  `Responsive.kt` and are re-applied when the measured width changes. See `SYMBOLS.md` → *Landscape pass
+  additions*. `VideoEditorActivity` is the deliberate exception: still portrait-locked.
 
 ## Model Assets
 

@@ -167,6 +167,42 @@ FaceDao.idsForPhoto(uri) / PersonDao.clearExemplarFaces(faceIds)   drop a photo'
 
 ---
 
+## Landscape pass additions
+
+Rotations are handled **in place**: every activity but `VideoEditorActivity` (still portrait-locked)
+declares `configChanges="orientation|screenSize|screenLayout|smallestScreenSize"`, so nothing is
+recreated and no `-land` layout variant is ever re-inflated. Every size a window decides is therefore
+applied from code, and the trigger for a width-driven one is a layout listener, not the config
+callback — `onConfigurationChanged` runs before the measure pass, where a view still reports the old
+width.
+
+```
+Responsive                    Responsive.kt                    object; the whole window-shape seam. sideways/widthDp/heightDp/cramped(CRAMPED_HEIGHT_DP=480) · gridColumns(For) · albumCardSpan · collageExtentWidthPx(For) · referenceWidthPx · widthPx · bodyHeightPx(For) · cardSpan · titleTextSp(For)/applyTitleText · tileSizePx · cardsFitting · widthOf · MAX_GRID_COLUMNS=12
+ResponsiveTest                (test)                           10 cases over the pure *For forms — a boundary that is wrong by one dp is a screen of oversized tiles on a phone and invisible in a preview
+ImageAdapter.gridColumnCount                                    now the *resolved* canvas width (preference × window), not the raw preference
+ImageAdapter.gridWidthPx / albumCardSpanBase                     measured grid width / card span chosen at the preference; both re-set on a width change
+ImageAdapter.widthOr(fallbackPx)                                 the measured width, or the window's while pre-layout
+ImageAdapter.albumCardWidthPx(gridWidthPx)                       px side a card's cover gets from its span
+ImageAdapter.stateRowHeightPx(context)                           item_empty / item_search_loading rows capped to the window (they were a hard 360dp)
+bind(cell…, gridWidth)/bind(cell, selected, gridWidth)/bind(album, showFolderSize, cardWidthPx)   PhotoViewHolder/CollageViewHolder/AlbumViewHolder take width as an argument — the holders are nested, so they have no adapter instance to read
+payload "grid_change"                                            falls through onBindViewHolder(payloads) to a full bind: how a tile is re-sized
+MainActivity.onGridWidthChanged(widthPx)                         the rotation entry point: record width → re-resolve columns/card span → trim chrome → set spanCount → rebuild the displayed slice → re-anchor
+MainActivity.applyDensityPreferences/applySpanCountForLayout/spanCountForLayout/currentGridAnchor/relayoutCurrentListing/scrollGridTo  in-memory relayout that keeps the viewport (Search re-paginates via applySortAndShow(preserveViewport=true); a paged timeline rebuilds 0…pagedDisplayedCount with pagedSortLabel)
+MainActivity.pagedSortLabel                                      the affordance label the current slice was rendered with, so a rebuild matches instead of inventing
+MainActivity.applyChromeForHeight()                              bottom bar 64→56dp and grid bottom padding 84→68dp when the window is cramped
+binding.imageGrid.addOnLayoutChangeListener { width != oldWidth }  the rotation trigger used by Main/PersonDetail/SmartCleanup/Bin/Safe/PersonAlbums grids
+MediaPagerAdapter.decodeOverridePx()/reloadImageForSizeChange()  Glide decodes at the page's measured size, not the window's; ViewerActivity.onConfigurationChanged calls it (video pages are skipped)
+ViewerActivity.clampInfoScrollHeight()                           info sheet capped to the window, floor 140dp
+MetroDialog body.maxHeight / Views.showList(context, naturalPx)  dialog body and option lists capped via Responsive.bodyHeightPx; dialog_metro_generic's metroDialogContent now sits in metroDialogScroll
+dialog_tag_picker / dialog_safe_setup / dialog_smart_album / dialog_bottom_bar_order  roots are ScrollViews — their stacks exceed a 360dp-tall sideways window and used to clip the footer buttons
+FirstRunActivity.scaleFactor()                                   reads the measured root (+inset padding) once laid out; rescaleForWindow() re-applies chrome, progress track and the visible pages on rotation
+OnboardingMetrics(var factor) / OnboardingPanelAdapter.rescaleVisiblePages()  the tour bakes units in at bind time, so a shape change rebinds the live pages (no notifyDataSetChanged — on ViewPager2 it can leave a stale page)
+BinActivity/SafeActivity.gridColumns()/tileSizePx()/applyResponsiveChrome()  fixed 3-column squares: side = measured width ÷ columns, so sideways widens the tile with the row instead of overflowing it
+PersonAlbumsActivity.peopleColumns()                             Responsive.cardsFitting(92dp cover + label, max 6) — a face card is counted by what fits, not by a ratio
+```
+
+---
+
 ## DB Entities & DAOs
 
 ```

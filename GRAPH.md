@@ -169,6 +169,28 @@ MainActivity
   └── FolderNode (folder tree construction)
 ```
 
+### Window shape (landscape)
+```
+Responsive  (pure decisions; the *For forms are host-tested in ResponsiveTest)
+  ├── gridColumns(preference × width/smallestScreenWidthDp)  → ImageAdapter.gridColumnCount, GridLayoutManager.spanCount
+  ├── albumCardSpan(preference)                             → ImageAdapter.albumCardSpanBase → AlbumViewHolder cover size
+  ├── collageExtentWidthPx(rowWidth, referenceWidth)        → MainActivity.appendJustifiedRows (baked spans: collage must be rebuilt, not just rebound)
+  ├── tileSizePx / cardsFitting                             → Bin/Safe squares, PersonAlbums people cards
+  ├── bodyHeightPx                                          → MetroDialog body + option list, ViewerActivity info sheet, ImageAdapter empty/loading rows
+  ├── titleTextSp / applyTitleText                          → Settings, Indexing, IndexedFolders, SmartCleanup, Bin, Safe hero titles
+  └── cramped                                               → MainActivity bottom bar 64→56dp, grid bottom padding 84→68dp
+
+Trigger: view.addOnLayoutChangeListener keyed on width (onConfigurationChanged runs before measure,
+so widths read there are stale). Activities declare configChanges and are never recreated — except
+VideoEditorActivity, which stays portrait-locked.
+
+MainActivity.onGridWidthChanged → applyDensityPreferences → applyChromeForHeight →
+  applySpanCountForLayout → relayoutCurrentListing (displayed slice only) → currentGridAnchor →
+  scrollGridTo  → updateFastScrollVisibility
+MediaPagerAdapter.reloadImageForSizeChange ← ViewerActivity.onConfigurationChanged
+FirstRunActivity.rescaleForWindow → OnboardingPanelAdapter.rescaleVisiblePages
+```
+
 ### Persistence Layer
 ```
 DbRepository
@@ -229,6 +251,10 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | `SafeStore` SharedPrefs keys / `SafeKeystore` KeyAlias | Stored on device — renaming breaks existing Safe config + biometric unlock |
 | `SafeCrypto` zip params (AES-256 / STORE) | Interop contract — the vault must stay a standard AES zip openable by external tools |
 | `GestureDirection` enum values | Update `handleViewerTouch()` classification logic and `onMediaTap` callback |
+| `Responsive.CRAMPED_HEIGHT_DP` / `MAX_GRID_COLUMNS` | Every screen that trims chrome or counts columns: `MainActivity.applyChromeForHeight`, hero titles through `applyTitleText`, and `gridColumns` — the span canvas is shared with card rows, so a cap re-sizes album cards too. `ResponsiveTest` holds the boundaries |
+| An activity's `configChanges` declaration | Dropping it makes that screen recreate on rotation: the layout re-inflates, but in-memory state goes with it (search results, selection, `FirstRunActivity`'s asked-before flags). Keeping it means every XML size is only ever the size the window started with, so a `-land` variant cannot help — the number has to be re-applied from code |
+| `ImageAdapter.gridColumnCount` semantics | It is the **resolved** canvas (preference × window ratio), not the user's preference. Read by `spanSizeAt`, the `GridLayoutManager` constructions in PersonDetail/SmartCleanup, `albumCardSpanBase`, and each `addOnLayoutChangeListener` that re-resolves it |
+| A dialog layout's root | `AlertDialog.setView` never re-inflates and clips whatever passes a sideways phone's ~360dp. The tall panels (`dialog_tag_picker`, `dialog_safe_setup`, `dialog_smart_album`, `dialog_bottom_bar_order`, `metroDialogScroll`) scroll instead; a new fixed stack will clip its own buttons |
 
 ---
 
