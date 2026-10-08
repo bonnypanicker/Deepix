@@ -308,8 +308,7 @@
                         android:layout_height="wrap_content"
                         android:includeFontPadding="false"
                         android:text="@string/tags"
-                        android:textColor="@color/metroTextSecondary"
-                        android:textSize="15sp" />
+                        android:textAppearance="@style/TextAppearance.Metro.SectionLabel" />
 
                     <HorizontalScrollView
                         android:layout_width="match_parent"
@@ -338,9 +337,8 @@
             android:paddingTop="20dp"
             android:paddingBottom="20dp"
             android:text="@string/close_caps"
-            android:textColor="?attr/accentColor"
-            android:textSize="14sp"
-            android:fontFamily="sans-serif-medium" />
+            android:textAppearance="@style/TextAppearance.Metro.ButtonLabel"
+            android:textColor="?attr/accentColor" />
     </LinearLayout>
 
     <!-- Region-search crop overlay (drag corner-to-corner). Hidden until crop mode. -->

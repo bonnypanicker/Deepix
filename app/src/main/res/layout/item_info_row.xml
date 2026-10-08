@@ -12,13 +12,14 @@
         android:paddingTop="15dp"
         android:paddingBottom="15dp">
 
+        <!-- One named ramp role for both halves: the sheet is small-body metadata, and the pairing
+             carries its hierarchy in colour rather than in two off-ramp text sizes. -->
         <TextView
             android:id="@+id/label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:includeFontPadding="false"
-            android:textColor="@color/metroTextSecondary"
-            android:textSize="15sp" />
+            android:textAppearance="@style/TextAppearance.Metro.BodySecondary" />
 
         <TextView
             android:id="@+id/value"
@@ -28,8 +29,8 @@
             android:layout_weight="1"
             android:gravity="end"
             android:includeFontPadding="false"
-            android:textColor="@color/metroTextPrimary"
-            android:textSize="15sp" />
+            android:textAppearance="@style/TextAppearance.Metro.BodySecondary"
+            android:textColor="@color/metroTextPrimary" />
     </LinearLayout>
 
     <View
