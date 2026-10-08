@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.MediaStore
 import android.util.Log
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Direct-filesystem helpers used by the Recycle Bin and Safe once the app holds All-files access.
@@ -60,12 +61,25 @@ object MediaFileOps {
         }.onFailure { Log.w(TAG, "rescan failed", it) }
     }
 
-    /** Copies a source uri's bytes into [dest] (creating parents). Returns true on success. */
+    /**
+     * Copies a source uri's bytes into [dest] (creating parents) and forces them out before
+     * returning, because the caller's next step is deleting the original. A copy that only reached
+     * the page cache is not a copy when the power goes, and by then there is nothing left to copy
+     * from. A refused `sync` is logged, not fatal — same posture as [IndexCheckpoint], where losing
+     * the guarantee is better than failing to bin a photo at all.
+     */
     fun copyToFile(context: Context, source: Uri, dest: File): Boolean {
         return runCatching {
             dest.parentFile?.mkdirs()
             context.contentResolver.openInputStream(source)?.use { input ->
-                dest.outputStream().use { input.copyTo(it) }
+                FileOutputStream(dest).use { output ->
+                    input.copyTo(output)
+                    // Both halves of the ordering matter: the buffered bytes have to reach the
+                    // descriptor before it is forced, and the force has to happen before close().
+                    output.flush()
+                    runCatching { output.fd.sync() }
+                        .onFailure { Log.w(TAG, "Sync of $dest refused; the copy stands unforced", it) }
+                }
             } ?: return false
             true
         }.getOrDefault(false)
