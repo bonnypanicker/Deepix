@@ -85,6 +85,7 @@ class MediaPagerAdapter(
     inner class PageViewHolder(val binding: ItemViewerPageBinding) : RecyclerView.ViewHolder(binding.root) {
         var player: ExoPlayer? = null
         private var boundUri: Uri? = null
+        private var boundItem: GalleryRepository.MediaItem? = null
         private var boundPosition: Int = -1
         private var userScrubbing = false
 
@@ -116,6 +117,7 @@ class MediaPagerAdapter(
 
             cleanup()
             boundUri = item.uri
+            boundItem = item
             boundPosition = position
 
             binding.photoView.setOnClickListener { onMediaTap() }
@@ -136,6 +138,31 @@ class MediaPagerAdapter(
             }
         }
 
+        /**
+         * Re-issue the image load after the page changed size underneath it. The viewer handles a
+         * rotation in place, so nothing recreates this holder and its bitmap stays at the decode
+         * size the old window asked for. Videos are left alone: restarting playback to re-scale a
+         * poster frame is a worse trade than one soft frame.
+         */
+        fun reloadImageForSizeChange() {
+            val item = boundItem ?: return
+            if (item.mediaType == GalleryRepository.MediaType.Video) return
+            bindImage(item, transitionName = null, isInitialSharedElement = false)
+        }
+
+        /**
+         * Decode for the space this page actually has rather than for the display: the two stop being
+         * the same number as soon as the window is sideways or split, and a rotation handled in place
+         * does not recreate the page. An override bigger than the view wastes the decode, a smaller
+         * one asks the user to look at a soft image.
+         */
+        private fun decodeOverridePx(): Pair<Int, Int> {
+            val metrics = binding.photoView.resources.displayMetrics
+            val width = binding.photoView.width.takeIf { it > 0 } ?: metrics.widthPixels
+            val height = binding.photoView.height.takeIf { it > 0 } ?: metrics.heightPixels
+            return width to height
+        }
+
         private fun bindImage(
             item: GalleryRepository.MediaItem,
             transitionName: String?,
@@ -152,15 +179,13 @@ class MediaPagerAdapter(
                 ViewCompat.setTransitionName(binding.photoView, transitionName)
             }
 
+            val (overrideWidth, overrideHeight) = decodeOverridePx()
             Glide.with(binding.photoView)
                 .load(item.uri)
                 .format(DecodeFormat.PREFER_ARGB_8888)
                 .error(R.drawable.ic_fluent_image_24_regular)
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
-                .override(
-                    binding.photoView.resources.displayMetrics.widthPixels,
-                    binding.photoView.resources.displayMetrics.heightPixels
-                )
+                .override(overrideWidth, overrideHeight)
                 .fitCenter()
                 .listener(object : RequestListener<Drawable> {
                     override fun onLoadFailed(
@@ -219,15 +244,13 @@ class MediaPagerAdapter(
                 ViewCompat.setTransitionName(binding.photoView, transitionName)
             }
 
+            val (overrideWidth, overrideHeight) = decodeOverridePx()
             Glide.with(binding.photoView)
                 .load(item.uri)
                 .apply(RequestOptions.frameOf(0L))
                 .format(DecodeFormat.PREFER_ARGB_8888)
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
-                .override(
-                    binding.photoView.resources.displayMetrics.widthPixels,
-                    binding.photoView.resources.displayMetrics.heightPixels
-                )
+                .override(overrideWidth, overrideHeight)
                 .fitCenter()
                 .dontAnimate()
                 .listener(object : RequestListener<Drawable> {

@@ -344,6 +344,20 @@ class ViewerActivity : AppCompatActivity() {
         window.attributes = params
     }
 
+    /**
+     * A rotation does not recreate this activity (the manifest keeps it standing so playback
+     * survives), which means nothing re-measures the page either: the visible image is still the
+     * bitmap decoded for the window that came before. The new size is only known after the measure
+     * pass, so the work is posted rather than done in the callback.
+     */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        binding.viewPager.post {
+            getCurrentPageViewHolder()?.reloadImageForSizeChange()
+            if (infoVisible) clampInfoScrollHeight()
+        }
+    }
+
     private fun hideStatusBar() {
         WindowCompat.getInsetsController(window, binding.root)?.apply {
             hide(WindowInsetsCompat.Type.statusBars())
@@ -880,7 +894,11 @@ class ViewerActivity : AppCompatActivity() {
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
         )
         val natural = content.measuredHeight
-        val maxScroll = (rootH * 0.82f).toInt() - binding.infoHandleArea.height - binding.infoCloseBtn.height
+        // The floor matters on a short window: 82% of a sideways phone minus the handle and the close
+        // row can round down to nothing, and an uncapped sheet then runs off both edges with no way
+        // to scroll back. Only a window that small ever uses it.
+        val maxScroll = ((rootH * 0.82f).toInt() - binding.infoHandleArea.height - binding.infoCloseBtn.height)
+            .coerceAtLeast(dp(140))
         val lp = binding.infoScroll.layoutParams
         lp.height = if (maxScroll in 1 until natural) maxScroll else android.view.ViewGroup.LayoutParams.WRAP_CONTENT
         binding.infoScroll.layoutParams = lp
