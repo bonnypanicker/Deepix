@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only components. The face-recognition harness's class lives in this source set, so its
+  declaration has to as well: a manifest entry whose class ships only in another source set is the
+  ghost that used to sit in the main manifest, and AGP merges this file into debug variants only.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Phase 1 face-recognition verification harness; never reachable from the launcher. -->
+        <activity
+            android:name=".FaceValidationActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:exported="false"
+            android:theme="@style/Theme.GallerySearch" />
+    </application>
+</manifest>

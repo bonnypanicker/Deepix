@@ -70,12 +70,7 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false" />
 
-        <!-- Phase 1 face-recognition verification harness; debug only, kept out of the launcher. -->
-        <activity
-            android:name=".FaceValidationActivity"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
-            android:exported="false"
-            android:theme="@style/Theme.GallerySearch" />
+        <!-- Phase 1 face-recognition verification harness; declared in src/debug, where its class lives. -->
 
         <activity
             android:name=".IndexedFoldersActivity"
@@ -127,14 +122,6 @@
              blocked at runtime via FLAG_SECURE inside the activity. -->
         <activity
             android:name=".SafeActivity"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:theme="@style/Theme.GallerySearch" />
-
-        <!-- Full-screen swipeable viewer for decrypted Safe photos. FLAG_SECURE at runtime. -->
-        <activity
-            android:name=".SafeViewerActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:excludeFromRecents="true"
             android:exported="false"
