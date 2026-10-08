@@ -91,11 +91,14 @@ MainActivity drawer "smart cleanup" → CleanupHandoff → SmartCleanupActivity
 
 CleanupWorker (foreground, parallel to IndexWorker)
   ├── GalleryRepository.getImageItemsForAlbumIds(emptySet()) + allEmbeddings() + encodeText()
-  ├── CleanupAnalyzer.analyze(... onPartial, resumeQuality, scannedUris)
+  ├── decodeDhash(uri) → memoized dhashOf callback (one ≤128px decode per duplicate candidate)
+  ├── CleanupAnalyzer.analyze(... dhashOf, onPartial, resumeQuality, scannedUris)
   │     ├── EmbeddingUtils.cosineSimilarity  (duplicates ≥0.97 / similar ≥0.93)
+  │     ├── DuplicateVerifier.verify(group, sizeOf, dhashOf)  → confirmed deletables
+  │     │     └── PhashUtils.distance (dHash, threshold 8) — resemblance lists, measurement pre-selects
   │     ├── zero-shot prompt vectors → Likely clutter / Screenshots / Documents / Receipts / QR
   │     └── ImageStats (decode) → Blurry / Dark / Bright ; metadata → Low-res
-  ├── CleanupResultStore.save()  (incremental, throttled)
+  ├── CleanupResultStore.save()  (incremental, throttled; carries dedupAnalyzed/dedupEligible)
   └── IndexPreferences.isCleanupPaused()  (pause/resume/stop)
 ```
 
@@ -193,6 +196,10 @@ FirstRunActivity.rescaleForWindow → OnboardingPanelAdapter.rescaleVisiblePages
 
 ### Persistence Layer
 ```
+RoomBatching  (db/RoomBatching.kt)
+  ├── reads  MediaMetadataEntity/EmbeddingSourceEntity/FaceEntity .BindVariables
+  └── used by DbRepository + FaceIndexWorker + FaceAnalyzer (workers hold DAO handles, not a repository)
+
 DbRepository
   └── GalleryDatabase (Room singleton; SchemaVersion, MIGRATIONS, DestructiveFallbackFrom = 1,2)
         ├── MediaMetadataDao → MediaMetadataEntity
@@ -204,7 +211,9 @@ DbRepository
         └── EmbeddingSourceDao → EmbeddingSourceEntity  (what each stored CLIP embedding was encoded from)
 
 BinManager → BinLedger  (bin/data + bin/entries + *.binmeta; reconcile() at app start and before every move)
+BinManager → MediaFileOps.copyToFile  (flush → fd.sync() → close(): the copy is on the platter before the original is deleted)
 SafeManager → SafeWorkGuard  (import/encrypt vs lock; end() returns the lock duty to the last worker out)
+res/xml/backup_rules.xml + data_extraction_rules.xml  (gallery_metadata.db/-wal/-shm excluded from cloud backup and device transfer — see DECISION_GATES Gate C)
 
 AlbumPinStore  (SharedPreferences / JSONArray)
 SmartAlbumStore  (SharedPreferences / JSONArray)
@@ -255,6 +264,13 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | An activity's `configChanges` declaration | Dropping it makes that screen recreate on rotation: the layout re-inflates, but in-memory state goes with it (search results, selection, `FirstRunActivity`'s asked-before flags). Keeping it means every XML size is only ever the size the window started with, so a `-land` variant cannot help — the number has to be re-applied from code |
 | `ImageAdapter.gridColumnCount` semantics | It is the **resolved** canvas (preference × window ratio), not the user's preference. Read by `spanSizeAt`, the `GridLayoutManager` constructions in PersonDetail/SmartCleanup, `albumCardSpanBase`, and each `addOnLayoutChangeListener` that re-resolves it |
 | A dialog layout's root | `AlertDialog.setView` never re-inflates and clips whatever passes a sideways phone's ~360dp. The tall panels (`dialog_tag_picker`, `dialog_safe_setup`, `dialog_smart_album`, `dialog_bottom_bar_order`, `metroDialogScroll`) scroll instead; a new fixed stack will clip its own buttons |
+| An entity's column list | Its `BindVariables` companion — `RoomBatchingTest` reflects over the declared fields and fails the build when the two drift. Room binds one variable per column per row, so a 13-column bulk insert was already past Android 8–10's SQLite ceiling at 77 rows |
+| `RoomBatching.MaxBoundVariables` (900) | `DbRepository.upsertMedia`/`recordEmbeddingSources`/the chunked `IN (:list)` reads, and the chunking in `FaceIndexWorker`/`FaceAnalyzer` — the margin under 999 is what a query's own scalar arguments get |
+| a `CleanupAnalyzer` category's suggestion set | `SuggestionGated` — read by both `Report.deletableUris` and `SmartCleanupActivity.categoryDeletable`. A new similarity tile outside that set inherits "the empty suggestion list *is* the offer", so accepting it deletes everything listed |
+| whether a duplicate is pre-selected | `DuplicateVerifier.verify` + `CleanupWorker.decodeDhash`/`dhashCache` (fail closed: an unmeasurable photo is listed, never offered) and `DuplicateVerifierTest` — the chain case (A–B=2, B–C=8, A–C=10) is what stops transitive grouping from condemning the middle of a chain |
+| a manifest `android:name` | `ManifestClassTest` parses `src/main` (+ `src/debug`) against those source sets. A component whose class lives in `src/debug` must be declared in `src/debug/AndroidManifest.xml`, or release builds carry a ghost that crashes on the tap that reaches it |
+| `MediaFileOps.copyToFile` | `BinManager.moveToBin`'s copy → verify → **fsync** → ledger → delete ordering — the `flush()` must stay before `fd.sync()`, and the sync before `close()`; move either and a crash can leave a ledger entry pointing at a zero-length copy |
+| the backup rule XMLs | Both `backup_rules.xml` (API ≤30) and `data_extraction_rules.xml`, and inside the latter **every** section (`cloud-backup` *and* `device-transfer`): a `domain="database"` exclude listed in one only restores the DB through the other door |
 
 ---
 

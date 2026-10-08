@@ -58,12 +58,14 @@ ExifExtractor             ExifExtractor.kt         extract(context, uri): ExifDa
 TagPickerDialog           TagPickerDialog.kt       AlertDialog subclass for tag assignment
 ThreadBenchmark           ThreadBenchmark.kt       getOrBenchmark(context): Int — one-time ORT intra-op tuning (1/2/4/6, synthetic input, mutex-guarded), cached in IndexPreferences; called from MainActivity.ensureEncodersLoaded + IndexWorker.doWork before encoder construction; benchmarks ImageEncoder.resolveVisionModelAssetName's asset
 SmartCleanupActivity      SmartCleanupActivity.kt   dedicated cleanup screen; reads CleanupResultStore, observes CleanupWorker; tiles + selectable grid; pause/resume/stop
-CleanupAnalyzer           CleanupAnalyzer.kt        object; analyze(items,embeddings,sizeByUri,encodeText,imageStats,onProgress,onPartial,resumeQuality,scannedUris): Report
-  Category                CleanupAnalyzer.kt        DUPLICATES|SIMILAR|LIKELY_CLUTTER|SCREENSHOTS|DOCUMENTS|RECEIPTS|QR_CODES|BLURRY|DARK|BRIGHT|LOW_RESOLUTION
+CleanupAnalyzer           CleanupAnalyzer.kt        object; analyze(items,embeddings,sizeByUri,encodeText,imageStats,dhashOf,onProgress,onPartial,resumeQuality,scannedUris): Report
+  Category                CleanupAnalyzer.kt        DUPLICATES|SIMILAR|BURSTS|LIKELY_CLUTTER|SCREENSHOTS|DOCUMENTS|RECEIPTS|QR_CODES|NSFW|BLURRY|DARK|BRIGHT|LOW_RESOLUTION|COMPRESSIBLE
+  SuggestionGated         CleanupAnalyzer.kt        DUPLICATES|SIMILAR|BURSTS — tiles where an empty suggestion set means *nothing offered*; read by Report.deletableUris and SmartCleanupActivity.categoryDeletable
   ImageStats              CleanupAnalyzer.kt        data class: variance, meanLuma, fractionNearWhite
-  Report                  CleanupAnalyzer.kt        categoryItems, suggestedDeleteUris, sizeByUri; count(); reclaimableBytes(); totalReclaimableBytes()
+  Report                  CleanupAnalyzer.kt        categoryItems, suggestedDeleteUris, sizeByUri, dedupAnalyzed, dedupEligible; count(); reclaimableBytes(); totalReclaimableBytes()
+DuplicateVerifier         DuplicateVerifier.kt      object; verify(group, sizeOf, dhashOf, threshold): Verdict(keep, confirmed) — generic over the item type so it is host-testable; the only gate from "looks similar" to "pre-selected for deletion"
 CleanupWorker             CleanupWorker.kt          CoroutineWorker; WorkName="gallery_smart_cleanup"; foreground; full scan → CleanupResultStore; resumable; ProgressCurrent/TotalKey
-CleanupResultStore        CleanupResultStore.kt     save()/load()/clear(); Result(categoryUris,suggestedUris,scannedUris,done,total,complete,updatedAt) → cleanup_results.json
+CleanupResultStore        CleanupResultStore.kt     save()/load()/clear(); Result(categoryUris,suggestedUris,scannedUris,done,total,dedupAnalyzed,dedupEligible,complete,updatedAt) → cleanup_results.json (absent dedup counters load as 0)
 CleanupHandoff            CleanupHandoff.kt         object; items, indexedCount, release() — hand-off to SmartCleanupActivity
 SettingsActivity          SettingsActivity.kt       prefs screen: collage/grid columns/pinned/charging-only/clear cleanup/about + SAFE section (storage location Pictures|Documents → moveVault; file-path subtitle); writes IndexPreferences
 SafeActivity              SafeActivity.kt           encrypted photo locker; biometric-first lock → decrypted thumb grid → overflow (show password/add/fingerprint/lock/remove); lock-screen "Forgot password?" → offerResetOrphanedVault; FLAG_SECURE; ExtraImportUris/ExtraImportedUris
@@ -203,17 +205,50 @@ PersonAlbumsActivity.peopleColumns()                             Responsive.card
 
 ---
 
+## P0 leftovers + P1 batch 1 additions
+
+Round against the pasted fix plan, with its constraint honoured: **completely offline app, no model
+swaps**. Two of its items (bin retention, fsync ordering) were already fixed and already test-guarded.
+
+```
+RoomBatching              db/RoomBatching.kt        object; MaxBoundVariables=900 · chunkSizeFor(variablesPerItem) · chunks(items, variablesPerItem=1) — SQLite's 999-variable ceiling (Android 8–10) expressed per table instead of per query
+MediaMetadataEntity.BindVariables = 13 · EmbeddingSourceEntity = 6 · FaceEntity = 14   db/*.kt  variables Room binds per row; FaceEntity skips its autoGenerate PK. RoomBatchingTest reflects over the declared fields so a new column cannot drift away from the constant
+DbRepository.upsertMedia / recordEmbeddingSources   DbRepository.kt  chunked by their entity's BindVariables — a bulk INSERT binds one variable per column per row, so the end-of-pass library write broke at 77 photos
+DbRepository.getExifForUris                        DbRepository.kt  chunked batch read through ExifMetadataDao.getByUris (was one query per uri — the EXIF N+1)
+DbRepository.existingExifUris / photoUrisWithLocation / recognizedPeopleForPhotoUris   chunked IN (:list) reads; each element binds one variable
+DbRepository.invalidatePhotoForReanalysis           chunked personDao.clearExemplarFaces
+ExifMetadataDao.getByUris(uris)                     db/ExifMetadataDao.kt  SELECT * FROM exif_metadata WHERE uri IN (:uris)
+FaceIndexWorker / FaceAnalyzer                      RoomBatching.chunks(...) at the call sites (setBurstExemplar ×2, faceDao.insertAll) — workers hold DAO handles, not a DbRepository, so they chunk themselves instead of gaining repository wrappers
+RoomBatchingTest              (test)                ceiling math per table, chunk coverage at 1/899/900/901/5000, and the reflection guard tying each BindVariables to its entity
+MediaFileOps.copyToFile                             MediaFileOps.kt  flush() → fd.sync() → close(); only caller BinManager.kt — the bin copy is durable before the original is deleted
+backup_rules.xml / data_extraction_rules.xml        res/xml  gallery_metadata.db + -wal + -shm excluded from cloud backup and device transfer (DECISION_GATES Gate C)
+DuplicateVerifier                                   DuplicateVerifier.kt  verify(group, sizeOf, dhashOf, threshold=NearDuplicateHammingThreshold): Verdict(keep, confirmed) — generic over the item type, takes callbacks instead of Uris, so it runs on the host
+CleanupAnalyzer.SuggestionGated                     DUPLICATES|SIMILAR|BURSTS — for these an empty suggestion set means nothing is offered; every other tile's empty set means the tile itself is the offer
+CleanupAnalyzer.analyze(…, dhashOf)                 dhashOf: (Uri) -> Long? = { null }  — duplicate groups go through DuplicateVerifier; SIMILAR pre-selects nothing; BURSTS lists, never pre-selects
+CleanupAnalyzer.MAX_DEDUP_ITEMS = 2000              cap on the pairwise pass; overflow is reported, not hidden
+Report.dedupAnalyzed / dedupEligible                how many photos the pairwise pass compared, and how many it was capped away from
+CleanupWorker.decodeDhash(uri): Long?               one bounds-sampled ≤DhashEdgePx(128) decode → PhashUtils.hash, memoized in dhashCache and handed to analyze() as dhashOf; runCatching → null, which fails closed
+CleanupResultStore.Result.dedupAnalyzed / dedupEligible   persisted as "dedupAnalyzed"/"dedupEligible"; absent in an old file → 0
+SmartCleanupActivity.dedupCoverageSuffix()          " · checked N of M" on the duplicates hint when the pass was capped; the counters ride through saveCurrentToStore so a resume keeps them
+DuplicateVerifierTest           (test)               6 cases: largest kept · A–B=2/B–C=8/A–C=10 confirms only B · 8 bits in, 20 bits out · hashless member never offered · hashless pivot confirms nothing · singleton group
+EditDispatchActivity                                AndroidManifest.xml  answers ACTION_EDIT only — both ACTION_VIEW filters deleted (a VIEW registration dropped a thumbnail tap from another gallery into the editor, where Save overwrites the original)
+FaceValidationActivity                              src/debug/java/... + src/debug/res/layout/... + src/debug/AndroidManifest.xml  debug-only; its in-app launcher had no callers
+ManifestClassTest            (test)                 reads every android:name in main (and main+debug for the debug manifest) and requires the class file on that source path. Deliberately not lint MissingClass: CI never runs lint and a lint-only severity change is unverifiable offline
+```
+
+---
+
 ## DB Entities & DAOs
 
 ```
-MediaMetadataEntity   db/MediaMetadataEntity.kt  table: media_metadata; PK: uri
+MediaMetadataEntity   db/MediaMetadataEntity.kt  table: media_metadata; PK: uri; BindVariables = 13
 ExifMetadataEntity    db/ExifMetadataEntity.kt   table: exif_metadata; PK: uri
 FavoriteEntity        db/FavoriteEntity.kt        table: favorites; PK: uri
 TagEntity             db/TagEntity.kt             table: tags; PK: id (autoGen); unique: name
 MediaTagCrossRef      db/MediaTagCrossRef.kt      table: media_tag_cross_ref; PK: (mediaUri, tagId)
 GalleryDatabase       db/GalleryDatabase.kt       singleton; DB name: gallery_metadata.db; v9 (SchemaVersion const); schemas/ committed, no blanket destructive fallback (DestructiveFallbackFrom = 1,2)
 MediaMetadataDao      db/MediaMetadataDao.kt      upsert(List<MediaMetadataEntity>)
-ExifMetadataDao       db/ExifMetadataDao.kt       upsert(ExifMetadataEntity); getByUri(uri)
+ExifMetadataDao       db/ExifMetadataDao.kt       upsert(ExifMetadataEntity); getByUri(uri); getByUris(uris) [chunked by the caller]
 FavoriteDao           db/FavoriteDao.kt           getAllUris(); isFavorite(uri); insert(); delete()
 TagDao                db/TagDao.kt                getAll(); getTagsForMedia(uri); getMediaUrisForTag(tagId); clearTagsForMedia(); addMediaTagCrossRef()
 ```
@@ -300,6 +335,11 @@ SEARCH_INPUT_DEBOUNCE_MS = 180L
 INDEX_BACKOFF_SECONDS = 10L
 INDEX_LIVE_REFRESH_STEP = 20
 SCREEN_TITLE_SIZE = 40f
+
+// Room batching & cleanup verification
+RoomBatching.MaxBoundVariables = 900   // under SQLite's 999 on Android 8–10, with slack for a query's own scalars
+CleanupWorker.DhashEdgePx = 128        // the decode size the duplicate check's dHash is measured at
+CleanupAnalyzer.MAX_DEDUP_ITEMS = 2000 // pairwise cap; the remainder is reported as dedupEligible - dedupAnalyzed
 ```
 
 ---

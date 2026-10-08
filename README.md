@@ -32,7 +32,21 @@ The `.onnx` assets are tracked with Git LFS. The root-level `.onnx` files are ig
 Every bundled model and library is listed with its licence in `THIRD_PARTY_NOTICES.md`. Two of the
 weights are research-only, which gates a commercial release; the decision record is in
 `DECISION_GATES.md`, along with the Android 15 `dataSync` foreground-service limit that bounds a
-first-time full-library indexing pass.
+first-time full-library indexing pass, and the decision to keep the Room database out of Android Auto
+Backup (`faces.embeddingJson` holds face feature vectors beside the person names typed next to them,
+and the rows are keyed on per-device MediaStore uris — favorites, tags and labels therefore do not
+arrive on a new phone).
+
+## Data boundaries
+
+Nothing in the app talks to a network. Two derived-data rules are worth knowing before changing code:
+
+- Smart Cleanup only pre-selects a duplicate that `DuplicateVerifier` has measured (dHash against the
+  kept file). A photo it cannot measure is listed but never offered, because accepting a tile deletes
+  what was offered.
+- Every Room write and `IN (:list)` read is chunked through `RoomBatching` against the entity's own
+  `BindVariables`, because Android 8–10 ship SQLite at 999 variables and a bulk insert binds one per
+  column per row.
 
 ## Build Notes
 
