@@ -193,6 +193,12 @@ class MediaPagerAdapter(
                 .error(R.drawable.ic_fluent_image_24_regular)
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                 .override(overrideWidth, overrideHeight)
+                // The full-size decode is the slow part, and a page can arrive before it finishes —
+                // the user then sees this view's black background. A tenth-scale decode costs almost
+                // nothing and is small enough to survive the memory-cache pressure the full pages
+                // cause, so the page always has something legible to show first.
+                .thumbnail(0.1f)
+                .dontAnimate()
                 .fitCenter()
                 .listener(object : RequestListener<Drawable> {
                     override fun onLoadFailed(
