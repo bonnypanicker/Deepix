@@ -45,38 +45,46 @@
 
         <activity
             android:name=".SmartCleanupActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false" />
 
         <activity
             android:name=".CompressionActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false" />
 
         <!-- Full-screen original-vs-compressed comparison; immersive dark chrome. -->
         <activity
             android:name=".CompareFullscreenActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:theme="@style/Theme.GallerySearch.Viewer" />
 
         <activity
             android:name=".SettingsActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false" />
 
         <activity
             android:name=".IndexingActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false" />
 
         <!-- Phase 1 face-recognition verification harness; debug only, kept out of the launcher. -->
         <activity
             android:name=".FaceValidationActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:theme="@style/Theme.GallerySearch" />
 
         <activity
             android:name=".IndexedFoldersActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false" />
 
         <activity
             android:name=".PhotoEditorActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:theme="@style/Theme.GallerySearch" />
 
@@ -89,6 +97,7 @@
         <!-- Android resolver entry for photo/video ACTION_EDIT. -->
         <activity
             android:name=".EditDispatchActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="true"
             android:label="@string/edit_with_pixa"
             android:theme="@style/Theme.GallerySearch">
@@ -118,6 +127,7 @@
              blocked at runtime via FLAG_SECURE inside the activity. -->
         <activity
             android:name=".SafeActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:excludeFromRecents="true"
             android:exported="false"
             android:theme="@style/Theme.GallerySearch" />
@@ -125,6 +135,7 @@
         <!-- Full-screen swipeable viewer for decrypted Safe photos. FLAG_SECURE at runtime. -->
         <activity
             android:name=".SafeViewerActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:excludeFromRecents="true"
             android:exported="false"
             android:theme="@style/Theme.GallerySearch" />
@@ -132,23 +143,28 @@
         <!-- Recycle bin (deleted photos, 30-day retention). -->
         <activity
             android:name=".BinActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:theme="@style/Theme.GallerySearch" />
 
         <!-- Phase 4 People surface -->
         <activity
             android:name=".PersonAlbumsActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false" />
         <activity
             android:name=".PersonDetailActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false" />
         <activity
             android:name=".FirstRunActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:showForAllUsers="false" />
 
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="true"
             android:label="@string/launcher_name"
             android:theme="@style/Theme.GallerySearch.Splash"

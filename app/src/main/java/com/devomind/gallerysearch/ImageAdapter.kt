@@ -226,6 +226,22 @@ class ImageAdapter(
     var gridColumnCount: Int = DesignTokens.GRID_DEFAULT_COLUMNS
     var useCollageLayout: Boolean = false
 
+    /**
+     * The width the grid actually lays out into, in px. Cell sizes divide this rather than
+     * `displayMetrics.widthPixels`, which is the *panel*: a drawer over the content, a split-screen
+     * half and a sideways phone all make the two differ, and a tile measured against the panel
+     * overflows the grid it is standing in. Zero until the host has measured it, which is only ever
+     * before anything is on screen.
+     */
+    var gridWidthPx: Int = 0
+
+    /**
+     * How many tile spans one album card occupies, taken from the user's density setting instead of
+     * from the live canvas — which is what lets a wider window put more cards in the row rather than
+     * drawing the same few cards twice as big.
+     */
+    var albumCardSpanBase: Int = 1
+
     // Set once from the host (and on settings change) so album binds never touch SharedPreferences.
     var showAlbumFolderSize: Boolean = false
 
@@ -361,6 +377,7 @@ class ImageAdapter(
     }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        val gridWidth = widthOr(holder.itemView.resources.displayMetrics.widthPixels)
         when (val cell = cells[position]) {
             is GalleryCell.Header -> (holder as HeaderViewHolder).bind(cell)
             is GalleryCell.SortRow -> (holder as SortRowViewHolder).bind(cell)
@@ -369,10 +386,15 @@ class ImageAdapter(
                 selected.isNotEmpty(),
                 cell.item.uri in selected,
                 gridColumnCount,
-                useCollageLayout
+                useCollageLayout,
+                gridWidth
             )
-            is GalleryCell.Collage -> (holder as CollageViewHolder).bind(cell, selected)
-            is GalleryCell.AlbumCell -> (holder as AlbumViewHolder).bind(cell.album, showAlbumFolderSize)
+            is GalleryCell.Collage -> (holder as CollageViewHolder).bind(cell, selected, gridWidth)
+            is GalleryCell.AlbumCell -> (holder as AlbumViewHolder).bind(
+                cell.album,
+                showAlbumFolderSize,
+                albumCardWidthPx(gridWidth)
+            )
             is GalleryCell.FolderCell -> (holder as FolderViewHolder).bind(cell.node, showAlbumFolderSize)
             is GalleryCell.PinnedAlbumsHeader -> (holder as PinnedAlbumsHeaderViewHolder).bind(cell)
             is GalleryCell.SearchSection -> (holder as SearchSectionViewHolder).bind(cell)
@@ -392,7 +414,11 @@ class ImageAdapter(
         if (payloads.any { it == PayloadSelection }) {
             when (val cell = cells[position]) {
                 is GalleryCell.Photo -> (holder as PhotoViewHolder).bindSelection(cell, selected.isNotEmpty(), cell.item.uri in selected, animate = true)
-                is GalleryCell.Collage -> (holder as CollageViewHolder).bindSelection(cell, selected)
+                is GalleryCell.Collage -> (holder as CollageViewHolder).bindSelection(
+                    cell,
+                    selected,
+                    widthOr(holder.itemView.resources.displayMetrics.widthPixels)
+                )
                 else -> onBindViewHolder(holder, position)
             }
             return
@@ -401,6 +427,29 @@ class ImageAdapter(
     }
 
     override fun getItemCount(): Int = cells.size
+
+    /** The grid's measured width, falling back to the panel only before the host has measured it. */
+    internal fun widthOr(panelWidthPx: Int): Int = gridWidthPx.takeIf { it > 0 } ?: panelWidthPx
+
+    /**
+     * Album cards are sized in tile spans at the user's density, so the row count follows the canvas:
+     * a wider window fits more cards at the same width rather than the same cards drawn wider.
+     */
+    private fun cardSpanFor(totalSpanCount: Int): Int {
+        val cardsPerRow = (gridColumnCount / albumCardSpanBase.coerceAtLeast(1)).coerceAtLeast(1)
+        return Responsive.cardSpan(totalSpanCount, cardsPerRow)
+    }
+
+    /**
+     * The width one album card really gets, from the same span arithmetic the layout uses. The card's
+     * cover sets its own height from this, so guessing it from half the screen left covers a
+     * different size than the card was — most visibly the moment the window got wider than the phone.
+     */
+    internal fun albumCardWidthPx(gridWidthPx: Int): Int {
+        val canvas = if (useCollageLayout) DesignTokens.COLLAGE_SPAN_COUNT else gridColumnCount
+        val spans = cardSpanFor(canvas)
+        return (gridWidthPx.toFloat() * spans / canvas).toInt().coerceAtLeast(160)
+    }
 
     fun spanSizeAt(position: Int, totalSpanCount: Int): Int {
         return when (val cell = cells.getOrNull(position)) {
@@ -418,16 +467,7 @@ class ImageAdapter(
             is GalleryCell.TimeFilters,
             is GalleryCell.ContentShortcuts,
             is GalleryCell.RecentSearches -> totalSpanCount
-            is GalleryCell.AlbumCell -> {
-                if (useCollageLayout) {
-                    // Collage lays photos out on a wide span canvas; keep album cards at the width
-                    // grid mode gives them (gridColumnCount/2 of the columns) so switching layouts
-                    // doesn't resize every card on the albums page.
-                    (totalSpanCount * (gridColumnCount / 2) / gridColumnCount).coerceAtLeast(1)
-                } else {
-                    totalSpanCount / 2
-                }
-            }
+            is GalleryCell.AlbumCell -> cardSpanFor(totalSpanCount)
             is GalleryCell.FolderCell -> totalSpanCount
             is GalleryCell.Photo -> {
                 if (useCollageLayout) {
@@ -760,7 +800,19 @@ class ImageAdapter(
             request.into(imageView)
         }
 
-        fun bind(cell: GalleryCell.Photo, selectionMode: Boolean, isSelected: Boolean, gridColumnCount: Int, useCollageLayout: Boolean) {
+        /**
+         * [gridWidth] is the width the grid lays out into, handed in by the adapter: this holder is a
+         * nested class with no enclosing instance, and `displayMetrics.widthPixels` is the panel, not
+         * this listing.
+         */
+        fun bind(
+            cell: GalleryCell.Photo,
+            selectionMode: Boolean,
+            isSelected: Boolean,
+            gridColumnCount: Int,
+            useCollageLayout: Boolean,
+            gridWidth: Int
+        ) {
             val metrics = binding.root.resources.displayMetrics
             val gutter = (DesignTokens.GRID_GUTTER * metrics.density).toInt()
             val blurred = isBlurred(cell.item)
@@ -769,7 +821,7 @@ class ImageAdapter(
 
             if (!useCollageLayout) {
                 val gridGutterSpacing = (DesignTokens.GRID_THUMBNAIL_SPACING_DP * metrics.density).toInt()
-                val cellSize = ((metrics.widthPixels - gridGutterSpacing * (gridColumnCount - 1)) / gridColumnCount).coerceAtLeast(1)
+                val cellSize = ((gridWidth - gridGutterSpacing * (gridColumnCount - 1)) / gridColumnCount).coerceAtLeast(1)
 
                 val pad = (2 * metrics.density).toInt()
                 binding.root.setPadding(pad, pad, pad, pad)
@@ -789,11 +841,11 @@ class ImageAdapter(
                 val rowHeight = if (cell.collageHeightPx > 0) {
                     cell.collageHeightPx
                 } else {
-                    ((metrics.widthPixels - gutter * 6) / 3).coerceAtLeast(96)
+                    ((gridWidth - gutter * 6) / 3).coerceAtLeast(96)
                 }
                 val imageHeight = (rowHeight - pad * 2).coerceAtLeast(1)
                 val span = cell.collageSpan.coerceIn(1, DesignTokens.COLLAGE_SPAN_COUNT)
-                val approxWidth = (metrics.widthPixels * span / DesignTokens.COLLAGE_SPAN_COUNT - pad * 2).coerceAtLeast(1)
+                val approxWidth = (gridWidth * span / DesignTokens.COLLAGE_SPAN_COUNT - pad * 2).coerceAtLeast(1)
                 binding.root.setPadding(pad, pad, pad, pad)
                 binding.root.setBackgroundColor(Color.TRANSPARENT)
                 binding.thumbnail.setBackgroundColor(Color.TRANSPARENT)
@@ -869,10 +921,10 @@ class ImageAdapter(
         private val onSelectionGestureStart: (Uri) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(cell: GalleryCell.Collage, selected: Set<Uri>) {
+        fun bind(cell: GalleryCell.Collage, selected: Set<Uri>, gridWidth: Int) {
             val metrics = binding.root.resources.displayMetrics
             val gutter = (DesignTokens.GRID_GUTTER * metrics.density).toInt()
-            val regularSize = ((metrics.widthPixels - gutter * 6) / 3).coerceAtLeast(96)
+            val regularSize = ((gridWidth - gutter * 6) / 3).coerceAtLeast(96)
             val leadSize = regularSize * 2 + gutter
             binding.collageRoot.layoutParams = binding.collageRoot.layoutParams.apply {
                 height = regularSize * 2 + gutter
@@ -928,10 +980,10 @@ class ImageAdapter(
             )
         }
 
-        fun bindSelection(cell: GalleryCell.Collage, selected: Set<Uri>) {
+        fun bindSelection(cell: GalleryCell.Collage, selected: Set<Uri>, gridWidth: Int) {
             val metrics = binding.root.resources.displayMetrics
             val gutter = (DesignTokens.GRID_GUTTER * metrics.density).toInt()
-            val regularSize = ((metrics.widthPixels - gutter * 6) / 3).coerceAtLeast(96)
+            val regularSize = ((gridWidth - gutter * 6) / 3).coerceAtLeast(96)
             val leadSize = regularSize * 2 + gutter
             bindTile(
                 container = binding.leadTile,
@@ -1061,9 +1113,8 @@ class ImageAdapter(
         private val onAlbumClick: (GalleryRepository.Album) -> Unit,
         private val onAlbumLongClick: (GalleryRepository.Album, View) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(album: GalleryRepository.Album, showFolderSize: Boolean) {
-            val metrics = binding.root.resources.displayMetrics
-            val coverWidth = (metrics.widthPixels / 2).coerceAtLeast(160)
+        fun bind(album: GalleryRepository.Album, showFolderSize: Boolean, cardWidthPx: Int) {
+            val coverWidth = cardWidthPx.coerceAtLeast(160)
             val coverHeight = (coverWidth * 3) / 4
             binding.albumCoverContainer.layoutParams = binding.albumCoverContainer.layoutParams.apply {
                 height = coverHeight
@@ -1215,6 +1266,9 @@ class ImageAdapter(
 
     class EmptyViewHolder(private val binding: ItemEmptyBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(cell: GalleryCell.Empty) {
+            binding.root.layoutParams = binding.root.layoutParams.apply {
+                height = ImageAdapter.stateRowHeightPx(binding.root.context)
+            }
             binding.emptyText.text = cell.text
             binding.emptyIcon.setImageResource(cell.iconRes ?: R.drawable.ic_fluent_image_24_regular)
             binding.emptyHint.visibility = if (cell.hint != null) View.VISIBLE else View.GONE
@@ -1228,6 +1282,9 @@ class ImageAdapter(
 
     class LoadingViewHolder(private val binding: ItemSearchLoadingBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(cell: GalleryCell.Loading) {
+            binding.root.layoutParams = binding.root.layoutParams.apply {
+                height = ImageAdapter.stateRowHeightPx(binding.root.context)
+            }
             binding.loadingText.text = cell.text
         }
     }
@@ -1600,6 +1657,18 @@ class ImageAdapter(
         private const val FOLDER_INDENT_DP = 20
         private const val MAX_VISIBLE_FOLDER_DEPTH = 4
         private const val PayloadSelection = "payload_selection"
+        private const val StateRowDp = 360f
+
+        /**
+         * The height a full-span state row (empty, loading) may take. Its layout measures 360dp, which
+         * is a sideways phone's entire window, and a row taller than the grid leaves the screen
+         * scrollable in order to show nothing.
+         */
+        internal fun stateRowHeightPx(context: android.content.Context): Int = Responsive.bodyHeightPx(
+            context,
+            (StateRowDp * context.resources.displayMetrics.density).toInt()
+        )
+
         const val ViewTypeHeader = 1
         const val ViewTypePhoto = 2
         const val ViewTypeCollage = 3

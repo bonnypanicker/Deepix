@@ -270,6 +270,10 @@ class MainActivity : AppCompatActivity() {
     // justified-rows builder doesn't hit SharedPreferences per day-row.
     private var collageScaleLevel = DesignTokens.COLLAGE_SCALE_DEFAULT
 
+    // The sort chip label the current paged listing was rendered with, kept so a width change can
+    // rebuild the listing's already-displayed slice with the same affordance instead of a fresh one.
+    private var pagedSortLabel = ""
+
     private val monthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
         .withZone(ZoneId.systemDefault())
     private val dayFormatter = DateTimeFormatter.ofPattern("EEEE d", Locale.getDefault())
@@ -458,11 +462,11 @@ class MainActivity : AppCompatActivity() {
             onSortClick = { anchor -> onHeaderSortClick(anchor) }
         )
         adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
-        adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
+        applyDensityPreferences()
         adapter.showAlbumFolderSize = IndexPreferences.isShowAlbumFolderSize(this)
         collageScaleLevel = IndexPreferences.getCollageScale(this)
 
-        val initialSpanCount = if (adapter.useCollageLayout) DesignTokens.COLLAGE_SPAN_COUNT else adapter.gridColumnCount
+        val initialSpanCount = spanCountForLayout()
         val layoutManager = GridLayoutManager(this, initialSpanCount)
         layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
             override fun getSpanSize(position: Int): Int = adapter.spanSizeAt(position, layoutManager.spanCount)
@@ -500,6 +504,13 @@ class MainActivity : AppCompatActivity() {
         binding.imageGrid.adapter = adapter
         binding.imageGrid.setHasFixedSize(true)
         binding.imageGrid.setItemViewCacheSize(12)
+        // A rotation is handled in place (see the manifest's configChanges), so nothing is recreated
+        // and the grid's new measured width is the first number that is certainly the new one —
+        // onConfigurationChanged runs before the measure pass, where it would still read the old.
+        binding.imageGrid.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            val width = right - left
+            if (width > 0 && width != oldRight - oldLeft) onGridWidthChanged(width)
+        }
         // Photo/collage rows dominate fling churn; a deeper recycle pool avoids re-inflation
         // (the default pool keeps only 5 per view type).
         binding.imageGrid.recycledViewPool.setMaxRecycledViews(ImageAdapter.ViewTypePhoto, 24)
@@ -2357,7 +2368,7 @@ class MainActivity : AppCompatActivity() {
         useCollageLayout: Boolean,
         dateOrdered: Boolean
     ): Pair<List<GalleryCell>, String?> {
-        val rowWidthPx = resources.displayMetrics.widthPixels
+        val rowWidthPx = adapter.widthOr(resources.displayMetrics.widthPixels)
         if (!dateOrdered) {
             val cells = ArrayList<GalleryCell>(to - from)
             appendDayCells(cells, items.subList(from, to), useCollageLayout, rowWidthPx)
@@ -2451,6 +2462,7 @@ class MainActivity : AppCompatActivity() {
         val scrollRevisionAtRenderStart = gridScrollRevision
         val sortOption = SortManager.optionFor(this, scopeKey)
         val contextKey = "$scopeKey|${sortOption.key}"
+        pagedSortLabel = sortOption.label
         pagedItems = emptyList()
         pagedDisplayedCount = 0
         pagedLastDay = null
@@ -2557,8 +2569,13 @@ class MainActivity : AppCompatActivity() {
         val padPx = (DesignTokens.COLLAGE_TILE_PADDING_DP * resources.displayMetrics.density).toDouble()
         val hPad = padPx * 2  // horizontal gap consumed per tile (left + right padding)
         val vPad = padPx * 2  // vertical gap consumed per row (top + bottom padding)
-        // Average tile width for the chosen scale — used as the minimum row height.
-        val targetExtent = (width / DesignTokens.collageRowsPerWidth(collageScaleLevel)).toDouble()
+        // Average tile width for the chosen scale — used as the minimum row height. Measured against
+        // the reference (portrait) width rather than the row's own, so a wider window packs more
+        // tiles into a row of the same height instead of drawing the same few tiles larger; the row
+        // still fills the real width, which is what `width` below is for.
+        val targetExtent = (
+            Responsive.collageExtentWidthPx(this, width) / DesignTokens.collageRowsPerWidth(collageScaleLevel)
+            ).toDouble()
         val heightMax = targetExtent * DesignTokens.COLLAGE_MAX_INCOMPLETE_ROW_HEIGHT_RATIO.toDouble()
         // A tile narrower than this splits the row early. Must sit comfortably BELOW the average
         // tile width so an ordinary portrait+landscape mix stays in one row (Aves's extent is the
@@ -3121,7 +3138,7 @@ class MainActivity : AppCompatActivity() {
         }
         val cells = ArrayList<GalleryCell>(results.size)
         val sources = results.associate { it.item.uri to it.sources }
-        appendJustifiedRows(cells, results.map { it.item }, resources.displayMetrics.widthPixels) {
+        appendJustifiedRows(cells, results.map { it.item }, adapter.widthOr(resources.displayMetrics.widthPixels)) {
             sources[it.uri] ?: SearchSources()
         }
         return cells
@@ -3130,7 +3147,7 @@ class MainActivity : AppCompatActivity() {
     /** Groups ranked results under day headers while preserving the AI/text source badges. */
     private fun buildSearchTimelineCells(results: List<PhotoSearchResult>): List<GalleryCell> {
         val cells = ArrayList<GalleryCell>(results.size + 8)
-        val rowWidthPx = resources.displayMetrics.widthPixels
+        val rowWidthPx = adapter.widthOr(resources.displayMetrics.widthPixels)
         val sources = results.associate { it.item.uri to it.sources }
         var lastDay: String? = null
         var dayItems = ArrayList<GalleryRepository.MediaItem>()
@@ -4926,15 +4943,110 @@ class MainActivity : AppCompatActivity() {
         updateIndexingRow()
     }
 
+    /**
+     * The user's density choice, widened to the window they are actually looking at: a sideways phone
+     * gets more tiles of the same size instead of the portrait tiles drawn larger. Album cards are
+     * derived from the same preference so their row count grows with the window too.
+     */
+    private fun applyDensityPreferences() {
+        val preferred = IndexPreferences.getGridColumnCount(this)
+        adapter.gridColumnCount = Responsive.gridColumns(this, preferred)
+        adapter.albumCardSpanBase = Responsive.albumCardSpan(preferred)
+    }
+
+    /** The span canvas the current layout mode paints into. */
+    private fun spanCountForLayout(): Int =
+        if (adapter.useCollageLayout) DesignTokens.COLLAGE_SPAN_COUNT else adapter.gridColumnCount
+
+    /**
+     * Re-lays the listing at the grid's new width. The viewport is anchored to the item it was
+     * showing and restored afterwards: a rotation changes every row's height, so the same pixel
+     * offset would otherwise land on an unrelated part of the list.
+     */
+    private fun onGridWidthChanged(widthPx: Int) {
+        val firstMeasure = adapter.gridWidthPx == 0
+        adapter.gridWidthPx = widthPx
+        applyDensityPreferences()
+        applyChromeForHeight()
+        applySpanCountForLayout()
+        // The first measure only records the width — nothing has been drawn against an older one,
+        // and the listing the activity is already building will read this value.
+        if (firstMeasure) return
+        val anchor = currentGridAnchor()
+        relayoutCurrentListing()
+        if (anchor != null) scrollGridTo(anchor.first, anchor.second)
+        updateFastScrollVisibility()
+    }
+
+    /** The topmost item the grid is showing, with its offset below the header — or null if unseen. */
+    private fun currentGridAnchor(): Pair<Int, Int>? {
+        val manager = binding.imageGrid.layoutManager as? GridLayoutManager ?: return null
+        val position = manager.findFirstVisibleItemPosition()
+        if (position < 0) return null
+        val offset = (manager.findViewByPosition(position)?.top ?: 0) - binding.imageGrid.paddingTop
+        return position to offset
+    }
+
+    /**
+     * Rebuilds what is on screen at the new geometry, without restarting the listing: the paged
+     * browse paths re-lay the slice already displayed (a fresh first page would discard everything
+     * past it), a search re-sorts its own loaded results in place, and the card listings — whose
+     * tiles size themselves at bind time — just rebind.
+     */
+    private fun relayoutCurrentListing() {
+        val contextKey = pagedContext
+        if (currentMode == Mode.Search) {
+            applySortAndShow(
+                preserveViewport = true,
+                previouslyDisplayed = currentDisplayedSearchResultCount
+            )
+            return
+        }
+        val items = pagedItems
+        if (contextKey != null && items.isNotEmpty()) {
+            val to = pagedDisplayedCount.coerceIn(1, items.size)
+            val (cells, _) = buildTimelinePage(items, 0, to, null, adapter.useCollageLayout, pagedDateOrdered)
+            adapter.replaceCells(adapter.cells.take(pagedPrefixCount) + withSortAffordance(cells, pagedSortLabel))
+            return
+        }
+        adapter.notifyItemRangeChanged(0, adapter.itemCount, "grid_change")
+    }
+
+    /**
+     * A short window spends its height on content rather than on the gap below the last row: that
+     * gap exists so the action bar never covers a thumbnail, and on a sideways phone it is a visible
+     * slice of the viewport. The bars themselves already give way to scrolling.
+     */
+    private fun applyChromeForHeight() {
+        val cramped = Responsive.cramped(this)
+        val bottomPaddingPx = dp(if (cramped) GRID_BOTTOM_PADDING_CRAMPED_DP else GRID_BOTTOM_PADDING_DP)
+        if (binding.imageGrid.paddingBottom != bottomPaddingPx) {
+            binding.imageGrid.setPadding(
+                binding.imageGrid.paddingLeft,
+                binding.imageGrid.paddingTop,
+                binding.imageGrid.paddingRight,
+                bottomPaddingPx
+            )
+        }
+        // The bar's own height is the other half of the budget: on a 360dp-tall screen every dp it
+        // spends on itself is a dp of photo it does not have.
+        val barHeightPx = dp(if (cramped) BOTTOM_BAR_HEIGHT_CRAMPED_DP else BOTTOM_BAR_HEIGHT_DP)
+        val bar = binding.bottomPanel
+        if (bar.layoutParams.height != barHeightPx) {
+            bar.layoutParams = bar.layoutParams.apply { height = barHeightPx }
+            bar.requestLayout()
+        }
+    }
+
     /** Pinch step in grid mode: fewer columns on zoom-in (bigger), more on zoom-out (smaller). */
     private fun adjustGridColumns(zoomIn: Boolean, layoutManager: GridLayoutManager) {
-        val current = adapter.gridColumnCount
-        val next = (if (zoomIn) current - 1 else current + 1)
+        val preferred = IndexPreferences.getGridColumnCount(this)
+        val next = (if (zoomIn) preferred - 1 else preferred + 1)
             .coerceIn(DesignTokens.GRID_MIN_COLUMNS, DesignTokens.GRID_MAX_COLUMNS)
-        if (next == current) return
-        adapter.gridColumnCount = next
+        if (next == preferred) return
         IndexPreferences.setGridColumnCount(this, next)
-        layoutManager.spanCount = next
+        applyDensityPreferences()
+        layoutManager.spanCount = spanCountForLayout()
         layoutManager.spanSizeLookup.invalidateSpanIndexCache()
         adapter.notifyItemRangeChanged(0, adapter.itemCount, "grid_change")
     }
@@ -4955,26 +5067,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Rebuilds the current view's cells from already-loaded item lists so a display change (collage
-     * scale) takes effect immediately. Mirrors [refreshVisibleItems]'s dispatch without the IO reload.
+     * Makes the current view reflect a display change (collage scale, layout mode, density) without
+     * reloading the library: [relayoutCurrentListing] re-lays what is already on screen, and the
+     * viewport is put back where the user had it.
      */
     private fun rerenderForDisplayChange() {
-        when {
-            currentMode == Mode.Search -> submitSearch()
-            currentMode == Mode.AlbumDetail -> currentAlbum?.let(::renderAlbumDetail) ?: renderCurrentSection()
-            currentMode == Mode.FolderDetail -> currentFolder?.let(::renderFolderDetail) ?: renderCurrentSection()
-            currentMode == Mode.SmartAlbumDetail -> currentSmartAlbum?.let(::renderSmartAlbumDetail) ?: renderCurrentSection()
-            else -> renderCurrentSection()
-        }
+        val anchor = currentGridAnchor()
+        applySpanCountForLayout()
+        relayoutCurrentListing()
+        if (anchor != null) scrollGridTo(anchor.first, anchor.second)
+    }
+
+    /** Points the layout manager's canvas at whatever the current mode paints into. */
+    private fun applySpanCountForLayout() {
+        val layoutManager = binding.imageGrid.layoutManager as? GridLayoutManager ?: return
+        val spanCount = spanCountForLayout()
+        if (layoutManager.spanCount != spanCount) layoutManager.spanCount = spanCount
     }
 
     private fun applyDisplaySettings() {
         adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
-        adapter.gridColumnCount = IndexPreferences.getGridColumnCount(this)
+        applyDensityPreferences()
         adapter.showAlbumFolderSize = IndexPreferences.isShowAlbumFolderSize(this)
         collageScaleLevel = IndexPreferences.getCollageScale(this)
         val layoutManager = binding.imageGrid.layoutManager as GridLayoutManager
-        layoutManager.spanCount = if (adapter.useCollageLayout) DesignTokens.COLLAGE_SPAN_COUNT else adapter.gridColumnCount
+        layoutManager.spanCount = spanCountForLayout()
         layoutManager.spanSizeLookup.invalidateSpanIndexCache()
         // Rebuild the current view's cells synchronously so display-only toggles (e.g. the albums
         // folder-size subtitle, which only changes on rebind) take effect immediately instead of
@@ -5171,6 +5288,13 @@ class MainActivity : AppCompatActivity() {
         private const val ENCODER_WARMUP_DELAY_MS = 1200L
         // Show the fast-scroll bar once content exceeds ~1.5 viewports.
         private const val FAST_SCROLL_MIN_RATIO = 1.5f
+        // The gap under the last row (so the bar never covers a thumbnail) and the bar's own height,
+        // at full and at trimmed. A sideways phone has ~360dp of height, and chrome it spends on
+        // itself is photo it does not show.
+        private const val GRID_BOTTOM_PADDING_DP = 84
+        private const val GRID_BOTTOM_PADDING_CRAMPED_DP = 68
+        private const val BOTTOM_BAR_HEIGHT_DP = 64
+        private const val BOTTOM_BAR_HEIGHT_CRAMPED_DP = 56
         private const val SEARCH_PAGE_SIZE = 30
         private const val SEARCH_DISPLAY_CAP = 1500
         private const val SIMILAR_IMAGE_FLOOR = 0.55f
