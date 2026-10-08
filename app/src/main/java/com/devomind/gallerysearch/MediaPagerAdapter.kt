@@ -85,6 +85,7 @@ class MediaPagerAdapter(
     inner class PageViewHolder(val binding: ItemViewerPageBinding) : RecyclerView.ViewHolder(binding.root) {
         var player: ExoPlayer? = null
         private var boundUri: Uri? = null
+        private var boundTransitionName: String? = null
         private var boundItem: GalleryRepository.MediaItem? = null
         private var boundPosition: Int = -1
         private var userScrubbing = false
@@ -114,9 +115,15 @@ class MediaPagerAdapter(
             // Guard against RecyclerView/ViewPager2 double-binding the same video into this holder
             // during prefetch — recreating the player would orphan the previous one.
             if (isVideo && player != null && boundUri == item.uri) return
+            // The same holds for an image, and the cost of ignoring it is visible: cleanup() clears
+            // the loaded drawable, so re-binding the page already on screen paints the black page
+            // background until a full-display-size decode lands. A different transition name means a
+            // different shared-element contract, so that rebind still runs.
+            if (!isVideo && boundUri == item.uri && boundTransitionName == transitionName) return
 
             cleanup()
             boundUri = item.uri
+            boundTransitionName = transitionName
             boundItem = item
             boundPosition = position
 
@@ -469,6 +476,7 @@ class MediaPagerAdapter(
             if (boundPosition >= 0) activePlayers.remove(boundPosition)
             player = null
             boundUri = null
+            boundTransitionName = null
             binding.playerView.player = null
             binding.videoControls.visibility = View.GONE
             binding.playPauseButton.visibility = View.GONE
