@@ -7,6 +7,7 @@ import android.net.Uri
 import android.util.Log
 import com.devomind.gallerysearch.db.FaceEntity
 import com.devomind.gallerysearch.db.GalleryDatabase
+import com.devomind.gallerysearch.db.RoomBatching
 import org.json.JSONArray
 import kotlin.math.abs
 import kotlin.math.max
@@ -293,7 +294,8 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
         resolved.forEach { it.ownedSource?.recycle() }
 
         if (persist && entities.isNotEmpty()) {
-            database.faceDao().insertAll(entities)
+            RoomBatching.chunks(entities, FaceEntity.BindVariables)
+                .forEach { database.faceDao().insertAll(it) }
         }
 
         return PhotoResult(

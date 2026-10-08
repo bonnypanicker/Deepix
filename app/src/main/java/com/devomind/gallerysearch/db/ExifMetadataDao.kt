@@ -17,6 +17,10 @@ interface ExifMetadataDao {
     @Query("SELECT * FROM exif_metadata WHERE uri = :uri")
     suspend fun getByUri(uri: String): ExifMetadataEntity?
 
+    /** Rows for a page of uris in one statement — the batched form of [getByUri]. */
+    @Query("SELECT * FROM exif_metadata WHERE uri IN (:uris)")
+    suspend fun getByUris(uris: List<String>): List<ExifMetadataEntity>
+
     @Query("SELECT uri FROM exif_metadata WHERE uri IN (:uris) AND gpsLatitude IS NOT NULL AND gpsLongitude IS NOT NULL")
     suspend fun photoUrisWithLocation(uris: List<String>): List<String>
 

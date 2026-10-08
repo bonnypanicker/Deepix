@@ -67,4 +67,12 @@ data class FaceEntity(
     val isExemplar: Boolean = false,
     val personId: Long? = null,
     val createdAt: Long = System.currentTimeMillis()
-)
+) {
+    /**
+     * Variables one row binds in a bulk `@Insert`: every column but `faceId`, which Room lets SQLite
+     * assign.
+     */
+    companion object {
+        const val BindVariables = 14
+    }
+}

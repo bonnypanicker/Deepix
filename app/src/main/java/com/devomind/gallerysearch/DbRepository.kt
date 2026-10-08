@@ -11,6 +11,7 @@ import com.devomind.gallerysearch.db.MediaMetadataEntity
 import com.devomind.gallerysearch.db.MediaTagCrossRef
 import com.devomind.gallerysearch.db.PersonEntity
 import com.devomind.gallerysearch.db.RecentSearchEntity
+import com.devomind.gallerysearch.db.RoomBatching
 import com.devomind.gallerysearch.db.TagEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -36,7 +37,9 @@ class DbRepository(context: Context) {
     suspend fun upsertMedia(items: List<GalleryRepository.MediaItem>) {
         withContext(Dispatchers.IO) {
             val entities = items.map { it.toEntity() }
-            mediaDao.upsert(entities)
+            // A pass ends by writing the whole library, which is far past what one INSERT can bind.
+            RoomBatching.chunks(entities, MediaMetadataEntity.BindVariables)
+                .forEach { mediaDao.upsert(it) }
         }
     }
 
@@ -106,18 +109,23 @@ class DbRepository(context: Context) {
         }
     }
 
+    /**
+     * EXIF rows for a set of uris. The callers hand over the whole search pool, so this reads in
+     * statements of 900 uris rather than one query per photo.
+     */
     suspend fun getExifForUris(uris: List<String>): Map<String, ExifData> {
+        if (uris.isEmpty()) return emptyMap()
         return withContext(Dispatchers.IO) {
-            uris.mapNotNull { uri ->
-                exifDao.getByUri(uri)?.toData()?.let { uri to it }
-            }.toMap()
+            RoomBatching.chunks(uris.distinct())
+                .flatMap { exifDao.getByUris(it) }
+                .associate { it.uri to it.toData() }
         }
     }
 
     suspend fun recognizedPeopleForPhotoUris(uris: List<String>): SearchPeopleMatch {
         if (uris.isEmpty()) return SearchPeopleMatch(emptySet(), emptySet())
         return withContext(Dispatchers.IO) {
-            uris.distinct().chunked(RoomQueryChunkSize).fold(SearchPeopleMatch(emptySet(), emptySet())) { match, chunk ->
+            RoomBatching.chunks(uris.distinct()).fold(SearchPeopleMatch(emptySet(), emptySet())) { match, chunk ->
                 SearchPeopleMatch(
                     personIds = match.personIds + faceDao.distinctPersonIdsForPhotos(chunk),
                     photoUris = match.photoUris + faceDao.recognizedPhotoUris(chunk)
@@ -129,7 +137,7 @@ class DbRepository(context: Context) {
     suspend fun photoUrisWithLocation(uris: List<String>): Set<String> {
         if (uris.isEmpty()) return emptySet()
         return withContext(Dispatchers.IO) {
-            uris.distinct().chunked(RoomQueryChunkSize)
+            RoomBatching.chunks(uris.distinct())
                 .flatMapTo(LinkedHashSet()) { exifDao.photoUrisWithLocation(it) }
         }
     }
@@ -138,7 +146,7 @@ class DbRepository(context: Context) {
     suspend fun existingExifUris(uris: List<String>): Set<String> {
         if (uris.isEmpty()) return emptySet()
         return withContext(Dispatchers.IO) {
-            uris.distinct().chunked(RoomQueryChunkSize)
+            RoomBatching.chunks(uris.distinct())
                 .flatMapTo(HashSet()) { exifDao.existingUris(it) }
         }
     }
@@ -250,7 +258,9 @@ class DbRepository(context: Context) {
         if (items.isEmpty()) return
         withContext(Dispatchers.IO) {
             val now = System.currentTimeMillis()
-            embeddingSourceDao.upsert(items.map { it.toEmbeddingSourceEntity(now) })
+            // The v8→v9 backfill signs the whole library in one callback, six columns at a time.
+            RoomBatching.chunks(items.map { it.toEmbeddingSourceEntity(now) }, EmbeddingSourceEntity.BindVariables)
+                .forEach { embeddingSourceDao.upsert(it) }
         }
     }
 
@@ -282,7 +292,8 @@ class DbRepository(context: Context) {
                 faceDao.deleteByPhoto(uri)
                 // A person whose cover was one of these faces falls back to exemplarFaceId = 0 — the
                 // state a freshly created person already starts in — until re-analysis replaces them.
-                personDao.clearExemplarFaces(removedFaceIds, now)
+                RoomBatching.chunks(removedFaceIds)
+                    .forEach { personDao.clearExemplarFaces(it, now) }
             }
         }
     }
@@ -344,7 +355,6 @@ class DbRepository(context: Context) {
     }
 
     private companion object {
-        const val RoomQueryChunkSize = 900
         const val MaxRecentSearches = 25
     }
 }

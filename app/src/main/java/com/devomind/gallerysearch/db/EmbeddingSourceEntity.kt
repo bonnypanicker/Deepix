@@ -26,4 +26,9 @@ data class EmbeddingSourceEntity(
     val width: Int,
     val height: Int,
     val recordedAt: Long
-)
+) {
+    /** Variables one row binds in a bulk `@Insert`: every column, since the primary key is the uri. */
+    companion object {
+        const val BindVariables = 6
+    }
+}

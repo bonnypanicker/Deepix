@@ -16,6 +16,7 @@ import androidx.work.workDataOf
 import com.devomind.gallerysearch.db.FaceEntity
 import com.devomind.gallerysearch.db.GalleryDatabase
 import com.devomind.gallerysearch.db.PersonPhotoEntity
+import com.devomind.gallerysearch.db.RoomBatching
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -372,7 +373,8 @@ class FaceIndexWorker(
                         exemplarPhotoUri = exemplarUri
                     )
                 )
-                photoDao.setBurstExemplar(duplicate.burstMemberUris + uriStr, exemplarUri)
+                RoomBatching.chunks(duplicate.burstMemberUris + uriStr)
+                    .forEach { photoDao.setBurstExemplar(it, exemplarUri) }
                 updateStats(stats) { duplicateRectsSkipped++ }
                 reportProgress(stats, total)
                 return
@@ -400,7 +402,8 @@ class FaceIndexWorker(
             }
             // PersonMatcher persists matched faces itself. Persist rejected / failed-embedding
             // detections here so face counts and diagnostic overlays remain complete.
-            faceDao.insertAll(faceEntities.filter { it.embeddingJson == null })
+            RoomBatching.chunks(faceEntities.filter { it.embeddingJson == null }, FaceEntity.BindVariables)
+                .forEach { faceDao.insertAll(it) }
             val matchOutcomes = faceEntities.mapNotNull { face ->
                 if (face.isLowQuality || face.embeddingJson == null) return@mapNotNull null
                 personMatcher.match(face)
@@ -423,7 +426,8 @@ class FaceIndexWorker(
             )
             if (replacesBurstExemplar) {
                 val burst = duplicate as DuplicateGuard.Outcome.DuplicateOf
-                photoDao.setBurstExemplar(burst.burstMemberUris + uriStr, uriStr)
+                RoomBatching.chunks(burst.burstMemberUris + uriStr)
+                    .forEach { photoDao.setBurstExemplar(it, uriStr) }
                 updateStats(stats) { exemplarReplacements++ }
             }
             if (visitedCount(stats) % ProgressEvery == 0) {

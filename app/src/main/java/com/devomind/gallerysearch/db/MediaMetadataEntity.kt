@@ -19,4 +19,9 @@ data class MediaMetadataEntity(
     val sizeBytes: Long,
     val orientation: String?,
     val lastIndexedAt: Long
-)
+) {
+    /** Variables one row binds in a bulk `@Insert`: every column, since the primary key is the uri. */
+    companion object {
+        const val BindVariables = 13
+    }
+}

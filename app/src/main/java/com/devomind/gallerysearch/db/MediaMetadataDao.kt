@@ -22,7 +22,4 @@ interface MediaMetadataDao {
 
     @Query("SELECT * FROM media_metadata WHERE bucketId = :bucketId")
     suspend fun getByBucket(bucketId: String): List<MediaMetadataEntity>
-
-    @Query("DELETE FROM media_metadata WHERE uri NOT IN (:uris)")
-    suspend fun deleteNotIn(uris: List<String>)
 }
