@@ -18,6 +18,7 @@
     <string name="share">Share</string>
     <string name="edit">Edit</string>
     <string name="edit_with_pixa">Edit with Pixa AI Gallery</string>
+    <string name="open_with_pixa">Open with Pixa AI Gallery</string>
     <string name="delete">Delete</string>
     <string name="rotate">Rotate</string>
     <string name="undo">Undo</string>

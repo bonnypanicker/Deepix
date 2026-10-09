@@ -108,6 +108,22 @@
             </intent-filter>
         </activity>
 
+        <!-- Android resolver entry for photo ACTION_VIEW. A separate activity from the edit one
+             because a resolver names an entry after the activity that answers it: one activity with
+             both filters could only ever be labelled "Edit with Pixa". -->
+        <activity
+            android:name=".OpenDispatchActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:exported="true"
+            android:label="@string/open_with_pixa"
+            android:theme="@style/Theme.GallerySearch">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity>
+
         <!-- Encrypted photo locker. excludeFromRecents + no launch icon; screenshots
              blocked at runtime via FLAG_SECURE inside the activity. -->
         <activity
