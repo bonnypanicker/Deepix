@@ -1265,19 +1265,25 @@ class ViewerActivity : AppCompatActivity() {
             MediaStore.Images.Media.SIZE,
             MediaStore.Images.Media.MIME_TYPE
         )
-        contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val dateTaken = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN))
-                val dateAdded = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)) * 1000L
-                return PhotoMetadata(
-                    displayName = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)),
-                    dateMillis = if (dateTaken > 0L) dateTaken else dateAdded,
-                    width = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)),
-                    height = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)),
-                    sizeBytes = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)),
-                    mimeType = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)),
-                    locationName = resolveLocationName(uri)
-                )
+        // A Uri the MediaStore knows nothing about — a FileProvider handover from another app — still
+        // queries, but answers with that provider's own columns and no DATE_TAKEN, and
+        // getColumnIndexOrThrow turns the missing column into a crash. The cursor shape is the input's,
+        // not ours to control, so a foreign one falls through to the id query below and then to blanks.
+        runCatching {
+            contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val dateTaken = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN))
+                    val dateAdded = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)) * 1000L
+                    return PhotoMetadata(
+                        displayName = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)),
+                        dateMillis = if (dateTaken > 0L) dateTaken else dateAdded,
+                        width = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)),
+                        height = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)),
+                        sizeBytes = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)),
+                        mimeType = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)),
+                        locationName = resolveLocationName(uri)
+                    )
+                }
             }
         }
 
