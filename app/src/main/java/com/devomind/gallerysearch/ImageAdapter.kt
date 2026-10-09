@@ -1166,10 +1166,15 @@ class ImageAdapter(
         private val onAlbumClick: (GalleryRepository.Album) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
         private val chipAdapter = PinnedAlbumAdapter(onAlbumClick)
+        private val chipsLayout = LinearLayoutManager(
+            binding.root.context,
+            LinearLayoutManager.HORIZONTAL,
+            false
+        )
+        private var boundFirstAlbumId: String? = null
 
         init {
-            binding.pinnedAlbumsList.layoutManager =
-                LinearLayoutManager(binding.root.context, LinearLayoutManager.HORIZONTAL, false)
+            binding.pinnedAlbumsList.layoutManager = chipsLayout
             binding.pinnedAlbumsList.adapter = chipAdapter
             binding.pinnedAlbumsList.setHasFixedSize(true)
             binding.pinnedAlbumsList.itemAnimator = null
@@ -1178,7 +1183,19 @@ class ImageAdapter(
         fun bind(cell: GalleryCell.PinnedAlbumsHeader) {
             // A detached snapshot avoids mutating the nested RecyclerView's backing list while
             // its parent is calculating timeline layout.
-            chipAdapter.submitList(cell.albums.toList())
+            val albums = cell.albums.toList()
+            // A chip joining the front of a horizontal list does not shove the visible chips aside:
+            // the nested list anchors on the child already at the start edge, so the newcomer lands
+            // to the left of it and reads as an empty strip until scrolled. People arrives exactly
+            // this way — the first frame draws the strip, the resolved library prepends People — so
+            // bring it into view when the strip was resting at its start. A strip the user has
+            // scrolled into keeps its viewport.
+            val frontIsNew = albums.firstOrNull()?.id != boundFirstAlbumId
+            val atStart = !binding.pinnedAlbumsList.canScrollHorizontally(-1)
+            boundFirstAlbumId = albums.firstOrNull()?.id
+            chipAdapter.submitList(albums) {
+                if (frontIsNew && atStart) chipsLayout.scrollToPositionWithOffset(0, 0)
+            }
         }
     }
 
