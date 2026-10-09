@@ -370,9 +370,10 @@ class ViewerActivity : AppCompatActivity() {
         val uri = item.uri
         val isVideo = item.mediaType == GalleryRepository.MediaType.Video
 
-        // Date is bound from metadata below; clear stale text from the previous page immediately.
-        binding.mediaDate.visibility = View.GONE
-        binding.mediaTime.visibility = View.GONE
+        // The page's own item already carries the date its timeline row was ordered by, so the label
+        // can be right the moment the page arrives. Hiding it here and waiting on a content-provider
+        // query for the text was what made the date blank out and come back on every swipe.
+        if (item.dateMillis > 0L) showTopDate(item.dateMillis) else hideTopDate()
         renderFavoriteState(favoritesStore.isFavorite(uri))
 
         setEditAction(isVideo = isVideo, playing = false)
@@ -663,17 +664,27 @@ class ViewerActivity : AppCompatActivity() {
         return getCurrentPageViewHolder()?.isZoomed() == true
     }
 
+    private fun showTopDate(dateMillis: Long) {
+        val date = Date(dateMillis)
+        binding.mediaDate.visibility = View.VISIBLE
+        binding.mediaDate.text = topDateFormat.format(date)
+        binding.mediaTime.visibility = View.VISIBLE
+        binding.mediaTime.text = topTimeFormat.format(date)
+    }
+
+    private fun hideTopDate() {
+        binding.mediaDate.visibility = View.GONE
+        binding.mediaTime.visibility = View.GONE
+    }
+
     private fun bindMetadata(metadata: PhotoMetadata, exif: ExifData?, tags: List<com.devomind.gallerysearch.db.TagEntity>) {
         val name = metadata.displayName ?: "Photo"
-        if (metadata.dateMillis > 0L) {
-            val date = Date(metadata.dateMillis)
-            binding.mediaDate.visibility = View.VISIBLE
-            binding.mediaDate.text = topDateFormat.format(date)
-            binding.mediaTime.visibility = View.VISIBLE
-            binding.mediaTime.text = topTimeFormat.format(date)
-        } else {
-            binding.mediaDate.visibility = View.GONE
-            binding.mediaTime.visibility = View.GONE
+        // Only fills a date the page's item could not supply — a Uri the index has no row for. Every
+        // indexed photo already showed its own at bindPage, and rewriting it here would flash a
+        // different clock for the same moment (the index sanitises an out-of-range DATE_TAKEN, this
+        // query does not).
+        if (metadata.dateMillis > 0L && binding.mediaDate.visibility != View.VISIBLE) {
+            showTopDate(metadata.dateMillis)
         }
 
         setInfoRow(binding.rowFilename, "Filename", name)

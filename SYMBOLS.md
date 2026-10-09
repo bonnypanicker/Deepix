@@ -131,6 +131,7 @@ MainActivity: updateSearchTrailingIcon()                           // search box
 MainActivity: dismissLoadingOverlay()                              // one-shot fade of launch loading overlay
 ViewerActivity.ExtraFindSimilarUri                                  // returned to launch image-to-image search
 ViewerActivity.ExtraFindSimilarCrop                                // FloatArray [l,t,r,b] normalized crop for region search
+ViewerActivity.showTopDate()/hideTopDate()                         // the top bar's date+time is bound from MediaItem.dateMillis in bindPage, NOT from the metadata query — bindMetadata only fills it while it is still hidden (a Uri the index has no row for). Hiding it per page and waiting on IO made the date blank and return on every swipe
 CropOverlayView.setImageBounds(RectF)/normalizedSelection()        // interactive crop rect (draw/resize/move); region image-search
 RotatablePhotoView.resetRotation()                                 // PhotoView subclass: two-finger twist rotates photo, snaps to nearest 90° (View.rotation, about centre); reset on bind
 RotationGestureDetector(Listener)                                  // two-finger twist detector → onRotationBegin/onRotation(deltaDeg)/onRotationEnd
