@@ -64,9 +64,7 @@
     <string name="indexing_duration_note">Processing time depends on the size of your photo collection and may take from a few minutes to several hours.</string>
     <string name="section_power">POWER</string>
     <string name="charging_only_title">Index only while charging</string>
-    <string name="charging_only_subtitle">Pause AI indexing until the device is plugged in</string>
     <string name="overnight_only_title">Overnight only</string>
-    <string name="overnight_only_subtitle">Only index between 10 PM and 7 AM while plugged in</string>
     <string name="select_all_folders">Select all folders</string>
     <string name="collections_title">collections</string>
     <string name="add_smart_album">Add smart album</string>

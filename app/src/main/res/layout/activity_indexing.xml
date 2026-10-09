@@ -198,10 +198,6 @@
                     <LinearLayout style="@style/SettingsRowText">
 
                         <TextView style="@style/SettingsRowTitle" android:text="@string/charging_only_title" />
-
-                        <TextView
-                            style="@style/SettingsRowSubtitle"
-                            android:text="@string/charging_only_subtitle" />
                     </LinearLayout>
 
                     <androidx.appcompat.widget.SwitchCompat
@@ -221,10 +217,6 @@
                     <LinearLayout style="@style/SettingsRowText">
 
                         <TextView style="@style/SettingsRowTitle" android:text="@string/overnight_only_title" />
-
-                        <TextView
-                            style="@style/SettingsRowSubtitle"
-                            android:text="@string/overnight_only_subtitle" />
                     </LinearLayout>
 
                     <androidx.appcompat.widget.SwitchCompat
@@ -240,14 +232,6 @@
                     style="@style/SettingsSectionHeader"
                     android:text="@string/section_folders" />
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:paddingBottom="8dp"
-                    android:text="@string/indexed_folders_intro"
-                    android:textColor="@color/metroTextSecondary"
-                    android:textSize="13sp" />
-
                 <LinearLayout
                     android:id="@+id/rowSelectAll"
                     style="@style/SettingsRow">
@@ -255,10 +239,6 @@
                     <LinearLayout style="@style/SettingsRowText">
 
                         <TextView style="@style/SettingsRowTitle" android:text="@string/select_all_folders" />
-
-                        <TextView
-                            style="@style/SettingsRowSubtitle"
-                            android:text="@string/index_every_folder_subtitle" />
                     </LinearLayout>
 
                     <CheckBox
