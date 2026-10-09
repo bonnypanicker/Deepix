@@ -55,6 +55,7 @@ class PersonAlbumsActivity : AppCompatActivity() {
         binding = ActivityPersonAlbumsBinding.inflate(layoutInflater)
         setContentView(binding.root)
         applyInsets()
+        applyResponsiveChrome()
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         binding.emptyAction.setOnClickListener {
@@ -82,6 +83,17 @@ class PersonAlbumsActivity : AppCompatActivity() {
         }
 
         loadPeople()
+    }
+
+    /** The hero title's size is a function of the window's height, and a declared configChanges
+     *  means the layout is never re-inflated when that height changes. */
+    private fun applyResponsiveChrome() {
+        Responsive.applyTitleText(binding.screenTitle, this, HeroTitleSp)
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyResponsiveChrome()
     }
 
     override fun onResume() {
@@ -378,6 +390,7 @@ class PersonAlbumsActivity : AppCompatActivity() {
     )
 
     companion object {
+        private const val HeroTitleSp = 40f
         // The card's own minimum: a 92dp cover, its padding, and room for a name under it.
         private const val PeopleCardMinWidthDp = 112f
         private const val MaxPeopleColumns = 6

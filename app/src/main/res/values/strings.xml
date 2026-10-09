@@ -245,6 +245,8 @@
     <!-- People Phase 4 -->
     <string name="people_title">People</string>
     <string name="people_title_lower">people</string>
+    <string name="person_identity_add">Add name</string>
+    <string name="person_identity_edit">Edit name</string>
     <string name="people_empty">No people yet</string>
     <string name="people_empty_hint">Faces from your photos will cluster here as indexing runs.</string>
 

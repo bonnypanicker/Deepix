@@ -25,6 +25,19 @@
             android:tint="@color/metroTextPrimary" />
     </FrameLayout>
 
+    <!-- The hero title every other secondary screen opens with (bin, indexing, settings). It sits
+         below topBar, which carries the status-bar inset, so it needs no inset handling of its own. -->
+    <TextView
+        android:id="@+id/screenTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:fontFamily="sans-serif-light"
+        android:includeFontPadding="false"
+        android:text="@string/people_title_lower"
+        android:textColor="@color/metroTextPrimary"
+        android:textSize="40sp" />
+
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent">

@@ -202,7 +202,7 @@ dialog_tag_picker / dialog_safe_setup / dialog_smart_album / dialog_bottom_bar_o
 FirstRunActivity.scaleFactor()                                   reads the measured root (+inset padding) once laid out; rescaleForWindow() re-applies chrome, progress track and the visible pages on rotation
 OnboardingMetrics(var factor) / OnboardingPanelAdapter.rescaleVisiblePages()  the tour bakes units in at bind time, so a shape change rebinds the live pages (no notifyDataSetChanged — on ViewPager2 it can leave a stale page)
 BinActivity/SafeActivity.gridColumns()/tileSizePx()/applyResponsiveChrome()  fixed 3-column squares: side = measured width ÷ columns, so sideways widens the tile with the row instead of overflowing it
-PersonAlbumsActivity.peopleColumns()                             Responsive.cardsFitting(92dp cover + label, max 6) — a face card is counted by what fits, not by a ratio
+PersonAlbumsActivity.peopleColumns()/applyResponsiveChrome()     Responsive.cardsFitting(92dp cover + label, max 6) — a face card is counted by what fits, not by a ratio; applyResponsiveChrome sizes the hero screenTitle and onConfigurationChanged re-runs it
 ```
 
 ---
@@ -245,6 +245,15 @@ ManifestClassTest            (test)                 reads every android:name in 
 ```
 OpenDispatchActivity       AndroidManifest.xml + OpenDispatchActivity.kt  answers ACTION_VIEW for image/* only: resolves the incoming Uri through GalleryRepository.getImageItemsForUris, then opens ViewerActivity on that one photo — the same ExtraMarker + ViewerItemsHolder contract MainActivity.openMedia uses for a photo with no on-screen list. ExtraAlbumId/Name come from the resolved row, so "Set as album cover" still works; the album's other photos are deliberately not enumerated, because that query walks the whole library. A Uri MediaStore has no row for — a FileProvider handover — still opens: it is shown as a stand-in item with no date, dimensions or album, and the viewer reads what metadata it can from the granted Uri itself
 ExternalMediaEntryTest   (test)                 the edit dispatcher must never answer ACTION_VIEW, and the open dispatcher must answer VIEW + DEFAULT + image/* under @string/open_with_pixa. The resolver names an entry after the activity answering it, so one activity cannot be both "Open with" and "Edit with" — the merged pair once sent a view request to the editor, whose Save overwrites the original
+```
+
+---
+
+## People identity chrome pass additions
+
+```
+PersonAlbumsActivity screenTitle     activity_person_albums.xml  the hero title (@string/people_title_lower, 40sp sans-serif-light) every other secondary screen opens with — this page went from the back arrow straight into the grid
+PersonDetailActivity identityAction  activity_person_detail.xml  the visible way into PersonIdentityEditor (name field + single-select relationship chips, one popup). The editor was reachable only by tapping the title, which gives no sign of being tappable. Label is state-driven — "Add name" while PersonIdentity.displayName() is null, "Edit name" once there is something to change, GONE when the person row no longer exists. The title tap is kept; writes still go through PersonDao.updateIdentity
 ```
 
 ---

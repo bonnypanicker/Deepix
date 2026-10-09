@@ -180,7 +180,7 @@ Responsive  (pure decisions; the *For forms are host-tested in ResponsiveTest)
   ├── collageExtentWidthPx(rowWidth, referenceWidth)        → MainActivity.appendJustifiedRows (baked spans: collage must be rebuilt, not just rebound)
   ├── tileSizePx / cardsFitting                             → Bin/Safe squares, PersonAlbums people cards
   ├── bodyHeightPx                                          → MetroDialog body + option list, ViewerActivity info sheet, ImageAdapter empty/loading rows
-  ├── titleTextSp / applyTitleText                          → Settings, Indexing, IndexedFolders, SmartCleanup, Bin, Safe hero titles
+  ├── titleTextSp / applyTitleText                          → Settings, Indexing, IndexedFolders, SmartCleanup, Bin, Safe, PersonAlbums hero titles
   └── cramped                                               → MainActivity bottom bar 64→56dp, grid bottom padding 84→68dp
 
 Trigger: view.addOnLayoutChangeListener keyed on width (onConfigurationChanged runs before measure,

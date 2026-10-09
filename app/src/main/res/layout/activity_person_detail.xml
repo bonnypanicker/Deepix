@@ -52,6 +52,20 @@
                 android:textColor="@color/metroTextSecondary"
                 android:textSize="13sp" />
         </LinearLayout>
+
+        <!-- Tapping the title also opens the identity editor, but a title gives no sign of that;
+             this is the visible way in. CompactAction is the app's accent interactive-label role. -->
+        <TextView
+            android:id="@+id/identityAction"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/metro_row_pressed"
+            android:clickable="true"
+            android:focusable="true"
+            android:padding="8dp"
+            android:text="@string/person_identity_add"
+            android:textAppearance="@style/TextAppearance.Metro.CompactAction" />
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView

@@ -75,6 +75,9 @@ class PersonDetailActivity : AppCompatActivity() {
         binding.personNameLabel.setOnClickListener {
             currentPerson?.let { showIdentityEditor(it) }
         }
+        binding.identityAction.setOnClickListener {
+            currentPerson?.let { showIdentityEditor(it) }
+        }
 
         personId = intent.getLongExtra(ExtraPersonId, -1L)
         if (personId <= 0) {
@@ -152,12 +155,20 @@ class PersonDetailActivity : AppCompatActivity() {
             if (person == null) {
                 binding.personNameLabel.text = getString(R.string.people_title)
                 binding.personCountLabel.text = ""
+                binding.identityAction.visibility = View.GONE
                 adapter.replaceCells(
                     listOf(GalleryCell.Empty("No photos", "This person no longer exists."))
                 )
                 return@launch
             }
             currentPerson = person
+            // The way in is the same editor either way; the label says whether there is already a
+            // name to change, so an unnamed person never offers "Edit name" for nothing.
+            binding.identityAction.visibility = View.VISIBLE
+            binding.identityAction.setText(
+                if (PersonIdentity.displayName(person) != null) R.string.person_identity_edit
+                else R.string.person_identity_add
+            )
             // Named people and relationship-labelled people get their identity as the title;
             // anonymous people keep the generic screen title (no "Person #id" placeholders).
             binding.personNameLabel.text = PersonIdentity.displayName(person)
