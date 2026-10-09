@@ -232,9 +232,18 @@ CleanupWorker.decodeDhash(uri): Long?               one bounds-sampled ≤DhashE
 CleanupResultStore.Result.dedupAnalyzed / dedupEligible   persisted as "dedupAnalyzed"/"dedupEligible"; absent in an old file → 0
 SmartCleanupActivity.dedupCoverageSuffix()          " · checked N of M" on the duplicates hint when the pass was capped; the counters ride through saveCurrentToStore so a resume keeps them
 DuplicateVerifierTest           (test)               6 cases: largest kept · A–B=2/B–C=8/A–C=10 confirms only B · 8 bits in, 20 bits out · hashless member never offered · hashless pivot confirms nothing · singleton group
-EditDispatchActivity                                AndroidManifest.xml  answers ACTION_EDIT only — both ACTION_VIEW filters deleted (a VIEW registration dropped a thumbnail tap from another gallery into the editor, where Save overwrites the original)
+EditDispatchActivity                                AndroidManifest.xml  answers ACTION_EDIT only — both ACTION_VIEW filters deleted (a VIEW registration dropped a thumbnail tap from another gallery into the editor, where Save overwrites the original); VIEW is answered by OpenDispatchActivity now
 FaceValidationActivity                              src/debug/java/... + src/debug/res/layout/... + src/debug/AndroidManifest.xml  debug-only; its in-app launcher had no callers
 ManifestClassTest            (test)                 reads every android:name in main (and main+debug for the debug manifest) and requires the class file on that source path. Deliberately not lint MissingClass: CI never runs lint and a lint-only severity change is unverifiable offline
+```
+
+---
+
+## "Open with" entry point pass additions
+
+```
+OpenDispatchActivity       AndroidManifest.xml + OpenDispatchActivity.kt  answers ACTION_VIEW for image/* only: resolves the incoming Uri through GalleryRepository.getImageItemsForUris, then opens ViewerActivity on that one photo — the same ExtraMarker + ViewerItemsHolder contract MainActivity.openMedia uses for a photo with no on-screen list. ExtraAlbumId/Name come from the resolved row, so "Set as album cover" still works; the album's other photos are deliberately not enumerated, because that query walks the whole library. A Uri MediaStore has no row for — a FileProvider handover — still opens: it is shown as a stand-in item with no date, dimensions or album, and the viewer reads what metadata it can from the granted Uri itself
+ExternalMediaEntryTest   (test)                 the edit dispatcher must never answer ACTION_VIEW, and the open dispatcher must answer VIEW + DEFAULT + image/* under @string/open_with_pixa. The resolver names an entry after the activity answering it, so one activity cannot be both "Open with" and "Edit with" — the merged pair once sent a view request to the editor, whose Save overwrites the original
 ```
 
 ---
