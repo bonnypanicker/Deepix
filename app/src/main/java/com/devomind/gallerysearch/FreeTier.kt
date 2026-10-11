@@ -29,15 +29,21 @@ object FreeTier {
     const val FreeSmartAlbums = 5
 
     /**
-     * Cleanup categories that need the unlock: the three that do work beyond a metadata scan (compression
-     * runs an encoder, bursts is the O(n²) grouping pass, sensitive runs the classifier). Duplicates,
-     * similar, clutter, screenshots and the rest stay free.
+     * Cleanup categories that need the unlock: the two whose lists only exist because the scan did work
+     * past metadata (bursts is the O(n²) grouping pass, sensitive runs the classifier). Duplicates,
+     * similar, clutter, screenshots, the quality buckets and compression stay free.
      */
     val PaidCleanupCategories = setOf(
-        CleanupAnalyzer.Category.COMPRESSIBLE,
         CleanupAnalyzer.Category.BURSTS,
         CleanupAnalyzer.Category.NSFW
     )
+
+    /**
+     * Photos one free compression run may take. Compression is metered rather than locked: the encoder
+     * is the slow part, but a single photo is a complete, useful job, so the free app does it and the
+     * purchase is the batch — not the feature.
+     */
+    const val FreeCompressionPhotos = 1
 
     fun accentLocked(choice: AccentPalette.Choice, unlocked: Boolean): Boolean =
         !unlocked && AccentPalette.choices.indexOf(choice) >= FreeAccents
@@ -45,6 +51,10 @@ object FreeTier {
     /** Slots left in the Safe. [unlocked] gets the whole list it asked for, so a 500-photo move stays one batch. */
     fun safeRoom(inVault: Int, unlocked: Boolean): Int =
         if (unlocked) Int.MAX_VALUE else (FreeSafePhotos - inVault).coerceAtLeast(0)
+
+    /** How much of an N-photo compression pick may go into this run — one for free, all of it once bought. */
+    fun compressionRoom(requested: Int, unlocked: Boolean): Int =
+        if (unlocked) requested else requested.coerceAtMost(FreeCompressionPhotos)
 
     /** True once a free user is at the album cap, so the create dialog should not open at all. */
     fun smartAlbumsBlocked(existing: Int, unlocked: Boolean): Boolean =

@@ -57,15 +57,27 @@ class FreeTierTest {
     }
 
     @Test
-    fun onlyTheThreeWorkDoingCleanupCategoriesAreLocked() {
+    fun onlyTheTwoWorkDoingCleanupCategoriesAreLocked() {
         listOf(
-            CleanupAnalyzer.Category.COMPRESSIBLE,
             CleanupAnalyzer.Category.BURSTS,
             CleanupAnalyzer.Category.NSFW
         ).forEach { assertTrue("$it is paid", FreeTier.cleanupLocked(it, false)) }
+        // Compression is metered rather than locked, so its tile has to open for a free user, who then
+        // meets the batch cap inside it instead of at the door.
+        assertFalse(FreeTier.cleanupLocked(CleanupAnalyzer.Category.COMPRESSIBLE, false))
         CleanupAnalyzer.Category.entries.filterNot { it in FreeTier.PaidCleanupCategories }.forEach {
             assertFalse("$it stays free", FreeTier.cleanupLocked(it, false))
         }
         CleanupAnalyzer.Category.entries.forEach { assertFalse(FreeTier.cleanupLocked(it, true)) }
+    }
+
+    @Test
+    fun aFreeCompressionRunTakesOnePhotoAndNoMore() {
+        assertEquals(FreeTier.FreeCompressionPhotos, FreeTier.compressionRoom(40, false))
+        assertEquals(1, FreeTier.compressionRoom(1, false))
+        assertEquals(0, FreeTier.compressionRoom(0, false))
+        // Bought: the whole pick is one run, however large — the list handed to the worker is never
+        // truncated, so a 500-photo selection stays a 500-photo batch.
+        assertEquals(40, FreeTier.compressionRoom(40, true))
     }
 }

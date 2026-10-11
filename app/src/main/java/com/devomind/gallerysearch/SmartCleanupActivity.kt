@@ -59,6 +59,9 @@ class SmartCleanupActivity : AppCompatActivity() {
      *  screen: first run defaults to Largest regardless of the global sort default. */
     private var compressibleSort: SortOption = SortOption.LargestFirst
 
+    /** How many picks the last compression run left behind because the free tier caps its batch. */
+    private var compressionHeldBack = 0
+
     /** Album filter inside "Choose other photos" mode; null = "All" (no filter). */
     private var selectedAlbumId: String? = null
 
@@ -84,12 +87,19 @@ class SmartCleanupActivity : AppCompatActivity() {
     private val compressionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        val heldBack = compressionHeldBack
+        compressionHeldBack = 0
         if (result.resultCode != RESULT_OK) return@registerForActivityResult
         val replaced = result.data?.getStringArrayListExtra(CompressionActivity.ExtraReplacedUris)
             .orEmpty().map { Uri.parse(it) }
         val compressed = result.data?.getStringArrayListExtra(CompressionActivity.ExtraCompressedUris)
             .orEmpty().map { Uri.parse(it) }
         if (replaced.isNotEmpty() || compressed.isNotEmpty()) onCompressed(replaced, compressed)
+        // The run is reported before the offer: the photo they chose is already smaller, and the
+        // sentence after it is about the ones still selected on the grid behind.
+        if (heldBack > 0) {
+            ProPaywall.show(this, getString(R.string.gate_compression, FreeTier.FreeCompressionPhotos))
+        }
     }
 
     private val safeResultLauncher = registerForActivityResult(
@@ -799,11 +809,24 @@ class SmartCleanupActivity : AppCompatActivity() {
         customAlbumLabels?.forEach { (bucketId, name) -> chip(name, bucketId) }
     }
 
+    /**
+     * The only place a fresh compression batch is formed — [CompressionActivity] either adopts a batch
+     * already running or the list handed over here — so the free tier's batch size is decided on this
+     * line and nowhere else.
+     *
+     * It clamps instead of refusing because one smaller photo is a finished job rather than a wasted
+     * selection, and the encoder's crash-safe commit means the picks left behind are in no danger: they
+     * stay selected on this grid, so buying runs exactly the batch the user already chose.
+     */
     private fun launchCompressionReview() {
         val selected = adapter.selectedUris()
         if (selected.isEmpty()) return
+        val batch = selected.take(
+            FreeTier.compressionRoom(selected.size, Entitlements.isUnlocked(this))
+        )
+        compressionHeldBack = selected.size - batch.size
         CompressionHandoff.items = items
-        CompressionHandoff.selectedUris = selected
+        CompressionHandoff.selectedUris = batch
         compressionLauncher.launch(Intent(this, CompressionActivity::class.java))
     }
 

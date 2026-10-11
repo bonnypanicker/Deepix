@@ -102,6 +102,10 @@
     <string name="folder_expand">Expand %1$s</string>
     <string name="folder_collapse">Collapse %1$s</string>
     <string name="settings_lower">settings</string>
+    <!-- The drawer's one promotional row. It says what is still to be had, so it reads differently
+         once the purchase is held — and both halves stay in the list's own lowercase voice. -->
+    <string name="drawer_pro">unlock pro</string>
+    <string name="drawer_pro_owned">pixa pro</string>
     <string name="drawer_background_header">BACKGROUND</string>
     <string name="drawer_task_indexing">indexing</string>
     <string name="drawer_task_cleanup">smart cleanup</string>
@@ -161,6 +165,7 @@
     <string name="gate_people">Naming people is part of Pixa Pro.</string>
     <string name="gate_safe">The free Safe holds %1$d photos. Pixa Pro removes that limit.</string>
     <string name="gate_cleanup">Unlock %1$s with Pixa Pro.</string>
+    <string name="gate_compression">The free app compresses %1$d photo at a time. Pixa Pro runs the whole selection in one go.</string>
     <string name="gate_smart_albums">The free app saves %1$d smart albums. Pixa Pro adds as many as you like.</string>
     <string name="section_display">DISPLAY</string>
     <string name="collage_layout">Collage layout</string>
@@ -301,6 +306,19 @@
     <string name="onboarding_safe_eyebrow">Safe</string>
     <string name="onboarding_safe_title">Encrypted storage for private photos</string>
     <string name="onboarding_safe_body">Files moved to Safe are stored in a standard AES-256 encrypted ZIP, openable with any file manager or zip utility and your password — so your photos survive even if Pixa is uninstalled.</string>
+
+    <!-- The Pro page states the free tier honestly rather than as a trial: what stays free is said
+         first, because that is the promise the rest of the tour rests on. Limits are the ones in
+         FreeTier — keep the two in step when a number changes. -->
+    <string name="onboarding_pro_eyebrow">Pixa Pro</string>
+    <string name="onboarding_pro_title">One purchase, kept forever</string>
+    <string name="onboarding_pro_body">The free app is not a trial: search, face grouping, cleanup and the Safe all keep working, with room to grow. Pro lifts those limits and never expires — no subscription, and nothing is uploaded to buy it or to use it.</string>
+    <string name="onboarding_pro_benefit_people">Name people and label relationships</string>
+    <string name="onboarding_pro_benefit_accents">Every accent color, including your device\'s own</string>
+    <string name="onboarding_pro_benefit_safe">Unlimited photos in the Safe</string>
+    <string name="onboarding_pro_benefit_cleanup">Burst and sensitive-content review</string>
+    <string name="onboarding_pro_benefit_compression">Compress a whole batch at once</string>
+    <string name="onboarding_pro_benefit_albums">Unlimited smart albums</string>
 
     <string name="onboarding_perm_eyebrow">Before you start</string>
     <string name="onboarding_perm_title">Permissions Pixa requests</string>
