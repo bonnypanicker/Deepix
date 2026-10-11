@@ -1116,7 +1116,7 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     private fun requestDelete(uri: Uri) {
-        if (!DeleteCoordinator.canDeleteDirectly(this)) {
+        if (DeleteCoordinator.shouldAskForStorageAccess(this)) {
             pendingAllFilesDeleteUri = uri
             runCatching { allFilesAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
                 .onFailure {

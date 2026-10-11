@@ -575,6 +575,10 @@ class CompressionActivity : AppCompatActivity() {
     private fun onReplaceClicked() {
         pendingCommitMode = CompressionBatchStore.CommitMode.REPLACE
         if (!StoragePermissions.hasAllFilesAccess(this)) {
+            if (!StoragePermissions.allFilesAccessRequestable()) {
+                MetroBanner.show(this, "Replacing originals needs Android 11 or newer")
+                return
+            }
             runCatching { allFilesLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
                 .onFailure { MetroBanner.show(this, "Couldn't open storage access settings") }
             return
@@ -587,6 +591,10 @@ class CompressionActivity : AppCompatActivity() {
     private fun onKeepBothClicked() {
         pendingCommitMode = CompressionBatchStore.CommitMode.COPY
         if (!StoragePermissions.hasAllFilesAccess(this)) {
+            if (!StoragePermissions.allFilesAccessRequestable()) {
+                MetroBanner.show(this, "Saving copies needs Android 11 or newer")
+                return
+            }
             runCatching { allFilesLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
                 .onFailure { MetroBanner.show(this, "Couldn't open storage access settings") }
             return
