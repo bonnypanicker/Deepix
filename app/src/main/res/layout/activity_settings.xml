@@ -329,6 +329,33 @@
                         android:tint="@color/metroTextTertiary" />
                 </LinearLayout>
 
+                <!-- ===================== ALBUMS ===================== -->
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="@string/section_albums" />
+
+                <LinearLayout
+                    android:id="@+id/rowAlbumLocation"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/album_folder_location" />
+
+                        <TextView
+                            android:id="@+id/albumLocationSubtitle"
+                            style="@style/SettingsRowSubtitle"
+                            android:text="@string/pictures" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_fluent_chevron_right_24_regular"
+                        android:tint="@color/metroTextTertiary" />
+                </LinearLayout>
+
                 <!-- ===================== STORAGE ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"

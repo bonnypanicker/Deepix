@@ -2,13 +2,15 @@ package com.devomind.gallerysearch
 
 import com.devomind.gallerysearch.db.TagEntity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The two rules a folder or tag album is built on, held apart from the screen that applies them:
- * which folders the chooser offers, and which photos an album of tags actually collects.
+ * The rules a folder or tag album is built on, held apart from the screen that applies them: where an
+ * album's own folder may be made, which folder an album reads back out of the tree, and which photos a
+ * set of tags collects.
  */
 class AlbumRulesTest {
 
@@ -32,23 +34,60 @@ class AlbumRulesTest {
     )
 
     @Test
-    fun theFolderChooserOffersEveryDepthBiggestFirst() {
-        val roots = listOf(
-            node("DCIM", itemCount = 900, children = listOf(node("DCIM/Camera", itemCount = 800))),
-            node("Download", itemCount = 12)
+    fun anAlbumFolderSitsUnderTheChosenRootAndItsParent() {
+        assertEquals(
+            "Pictures/Deepix Albums/Weekend trips",
+            AlbumRules.albumFolderPath("Pictures", AlbumRules.AlbumFolderParent, "Weekend trips")
         )
-        val choices = AlbumRules.folderChoices(roots)
-        assertEquals(listOf("DCIM", "DCIM/Camera", "Download"), choices.map { it.path })
-        assertEquals(800, choices[1].itemCount)
-        // A nested folder is offered beside its parent: that is the reach the Albums page's flat
-        // bucket list does not have.
-        assertTrue(choices.any { it.path.contains('/') })
+        assertEquals(
+            "Documents/Deepix Albums/Weekend trips",
+            AlbumRules.albumFolderPath("Documents", AlbumRules.AlbumFolderParent, "Weekend trips")
+        )
+        // Whatever the app names a folder, the album that made it recognises it — otherwise a brand-new
+        // album reports its own folder as one that went away.
+        assertTrue(
+            AlbumRules.isAlbumFolderPath(
+                AlbumRules.albumFolderPath("Pictures", AlbumRules.AlbumFolderParent, "Trips")!!
+            )
+        )
     }
 
     @Test
-    fun equallyFullFoldersComeUpByNameNotByTreeOrder() {
-        val choices = AlbumRules.folderChoices(listOf(node("Zebra", itemCount = 5), node("Apple", itemCount = 5)))
-        assertEquals(listOf("Apple", "Zebra"), choices.map { it.name })
+    fun aFolderNameCannotEscapeTheParentItWasMadeUnder() {
+        // Separators and control characters are the only way out of a relative path, so they become
+        // spaces rather than structure: the album still gets a folder, just not one it shouldn't have.
+        listOf("../../etc", "a/b", "..\\..\\windows", "C:/Windows", "one\u0000two").forEach { typed ->
+            val path = AlbumRules.albumFolderPath("Pictures", "Deepix Albums", typed)
+            assertTrue("expected a path for \"$typed\"", path != null)
+            assertEquals(
+                "\"$typed\" reached past the album parent",
+                2,
+                path!!.count { it == '/' }
+            )
+        }
+        // Nothing usable is left, so no folder is named and no album is made.
+        assertNull(AlbumRules.albumFolderPath("Pictures", "Deepix Albums", "   "))
+        assertNull(AlbumRules.albumFolderPath("Pictures", "Deepix Albums", "..."))
+        assertNull(AlbumRules.albumFolderPath("Pictures", "Deepix Albums", ".."))
+        assertNull(AlbumRules.albumFolderPath("Pictures", "Deepix Albums", "/"))
+    }
+
+    @Test
+    fun aLongNameIsCappedNotTruncatedMidPath() {
+        val path = AlbumRules.albumFolderPath("Pictures", "Deepix Albums", "x".repeat(300))!!
+        assertTrue(path.length < "Pictures/Deepix Albums/".length + 61)
+        assertEquals("Pictures/Deepix Albums/" + "x".repeat(60), path)
+    }
+
+    @Test
+    fun anAlbumsOwnFolderIsToldApartFromOneItWasPointedAt() {
+        assertTrue(AlbumRules.isAlbumFolderPath("Pictures/Deepix Albums/Weekend trips"))
+        assertTrue(AlbumRules.isAlbumFolderPath("Documents/Deepix Albums/Receipts"))
+        // Mirrored folders, however deep or similarly named, sit somewhere the app did not make.
+        assertFalse(AlbumRules.isAlbumFolderPath("DCIM/Camera"))
+        assertFalse(AlbumRules.isAlbumFolderPath("Pictures/Screenshots"))
+        assertFalse(AlbumRules.isAlbumFolderPath("Pictures/Holiday/Deepix Albums"))
+        assertFalse(AlbumRules.isAlbumFolderPath(""))
     }
 
     @Test

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The gate's sentence, marked by a 2dp accent rule down its left edge. A sibling View given
+     match_parent height measures as zero inside a ScrollView — the scroll parent hands its children an
+     unspecified height — so the rule is part of the text's own background and always spans exactly the
+     lines it marks. Same item-gravity idiom as info_sheet_bg's top hairline. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:gravity="start|fill_vertical"
+        android:width="2dp">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/accentColor" />
+        </shape>
+    </item>
+</layer-list>

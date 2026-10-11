@@ -67,6 +67,7 @@ class SettingsActivity : AppCompatActivity() {
         bindBottomBar()
         bindStorage()
         bindSafe()
+        bindAlbums()
         bindIndexing()
         bindAbout()
     }
@@ -166,7 +167,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun bindPro() {
         updateProSubtitle()
-        binding.rowPro.setOnClickListener { ProPaywall.show(this) }
+        binding.rowPro.setOnClickListener { ProPaywall.open(this) }
     }
 
     /**
@@ -302,7 +303,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun applyAccent(choice: AccentPalette.Choice) {
         if (FreeTier.accentLocked(choice, Entitlements.isUnlocked(this))) {
-            ProPaywall.show(this, getString(R.string.gate_accent))
+            ProPaywall.open(this, getString(R.string.gate_accent))
             return
         }
         IndexPreferences.setAccentColor(this, choice.key)
@@ -444,6 +445,49 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun rootLabel(root: String): String =
         if (root == IndexPreferences.SAFE_ROOT_DOCUMENTS) "Documents" else "Pictures"
+
+    // ------------------------------------------------------------------
+    // Album folders: which public folder a new album's own folder is made under
+    // ------------------------------------------------------------------
+
+    private fun bindAlbums() {
+        updateAlbumLocationSubtitle()
+        binding.rowAlbumLocation.setOnClickListener { showAlbumLocationDialog() }
+    }
+
+    /**
+     * Pictures or Documents rather than the Safe's free folder picker. An album's folder is a MediaStore
+     * one, and keeping it inside a public collection is what lets a photo be copied in and later deleted
+     * on any device, with or without all-files access.
+     *
+     * The choice applies to albums made after it. Following it for albums that already exist would mean
+     * moving the user's photos, which is not what a setting is for.
+     */
+    private fun showAlbumLocationDialog() {
+        val options = listOf(
+            getString(R.string.pictures),
+            getString(R.string.album_location_documents)
+        )
+        val current = if (IndexPreferences.getAlbumFolderRoot(this) == IndexPreferences.SAFE_ROOT_DOCUMENTS) 1 else 0
+        MetroDialog.singleChoice(
+            this,
+            title = getString(R.string.album_location_dialog_title),
+            options = options,
+            checkedIndex = current
+        ) { which ->
+            if (which == current) return@singleChoice
+            IndexPreferences.setAlbumFolderRoot(
+                this,
+                if (which == 1) IndexPreferences.SAFE_ROOT_DOCUMENTS else IndexPreferences.SAFE_ROOT_PICTURES
+            )
+            updateAlbumLocationSubtitle()
+            MetroBanner.show(this, getString(R.string.album_location_changed, options[which]))
+        }
+    }
+
+    private fun updateAlbumLocationSubtitle() {
+        binding.albumLocationSubtitle.text = rootLabel(IndexPreferences.getAlbumFolderRoot(this))
+    }
 
     private fun updateIndexedFoldersSubtitle() {
         // Indexing status now lives on the dedicated Indexing page; show a one-line summary here.

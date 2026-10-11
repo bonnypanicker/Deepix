@@ -640,7 +640,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         // Gated at the door, not inside: a locked category's photos are still counted on the tile, but the
         // user never lands in a detail view whose select-all, delete and Safe bars they cannot use.
         if (FreeTier.cleanupLocked(category, Entitlements.isUnlocked(this))) {
-            ProPaywall.show(this, getString(R.string.gate_cleanup, categoryTitle(category)))
+            ProPaywall.open(this, getString(R.string.gate_cleanup, categoryTitle(category)))
             return
         }
         currentCategory = category
@@ -812,7 +812,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         val selected = adapter.selectedUris()
         if (selected.isEmpty()) return
         if (FreeTier.compressionBlocked(selected.size, Entitlements.isUnlocked(this))) {
-            ProPaywall.show(this, getString(R.string.gate_compression, FreeTier.FreeCompressionPhotos))
+            ProPaywall.open(this, getString(R.string.gate_compression, FreeTier.FreeCompressionPhotos))
             return
         }
         CompressionHandoff.items = items
@@ -944,7 +944,7 @@ class SmartCleanupActivity : AppCompatActivity() {
     private fun confirmDeleteSelected() {
         val selected = adapter.selectedUris()
         if (selected.isEmpty()) return
-        if (!DeleteCoordinator.canDeleteDirectly(this)) {
+        if (DeleteCoordinator.shouldAskForStorageAccess(this)) {
             pendingAllFilesDeleteUris = selected
             runCatching { allFilesAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
                 .onFailure {
@@ -954,7 +954,7 @@ class SmartCleanupActivity : AppCompatActivity() {
             return
         }
         // Cleanup batches are large — always confirm, and be explicit about permanence when the
-        // Recycle Bin is off. The system consent dialog path confirms itself.
+        // Recycle Bin is off. On Android 10 the consent path asks a second time in the system dialog.
         val toBin = DeleteCoordinator.usesBin(this)
         val noun = if (selected.size == 1) "1 photo" else "${selected.size} photos"
         MetroDialog.confirm(

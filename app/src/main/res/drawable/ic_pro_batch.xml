@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A batch: one card with a second riding behind it up and to the right. The rear card is drawn as
+     only the two edges that peek out, so no stroke crosses the front card and the pair stays legible
+     at 24dp. Used for the compression benefit, where the paid workflow is a whole selection at once. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M8.5,3.5h12v12"
+        android:strokeAlpha="0.55"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.3" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M4.5,8.5h11v11h-11z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5" />
+</vector>

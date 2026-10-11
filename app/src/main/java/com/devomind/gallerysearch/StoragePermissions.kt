@@ -16,8 +16,11 @@ import androidx.core.content.ContextCompat
  * setting both depend on it. This is a small facade over the runtime check + the settings intents,
  * plus the media-read checks [MainActivity] and the first-run tour both need.
  *
- * On pre-R devices the legacy `WRITE_EXTERNAL_STORAGE` grant already allows direct file deletes, so
- * [hasAllFilesAccess] short-circuits to true there (the manifest requests it up to API 29).
+ * Android 8-9 hold the legacy `WRITE_EXTERNAL_STORAGE` grant (the manifest requests it up to API 29),
+ * which is enough for direct file deletes, so [hasAllFilesAccess] short-circuits to true there.
+ * Android 10 does not: it enforces scoped storage on a targetSdk-30+ app whatever it declares, and it
+ * has no All-files switch, so [allFilesAccessRequestable] is what tells the caller that sending the
+ * user to Settings there can't help.
  */
 object StoragePermissions {
 
@@ -49,10 +52,21 @@ object StoragePermissions {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             Environment.isExternalStorageManager()
         } else {
-            // maxSdk 29 WRITE_EXTERNAL_STORAGE covers direct deletes on legacy devices.
-            true
+            // Legacy storage covers direct file deletes on Android 8-9 only. On Android 10 a
+            // targetSdk-35 app is in scoped storage whether or not the write permission was granted,
+            // so claiming access there sends every direct path (delete, bin, vault) into a failure it
+            // reports as its own.
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
         }
     }
+
+    /**
+     * Whether this device has an All-files switch the user can turn on. False on Android 10, where the
+     * setting does not exist: a caller that needs direct file access must either fall back to the
+     * per-item system consent dialog or say the feature needs Android 11, instead of opening a
+     * Settings screen with nothing in it.
+     */
+    fun allFilesAccessRequestable(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
 
     /** Intent that opens the system "Allow access to manage all files" screen for this app. */
     fun manageAllFilesIntent(context: Context): Intent {

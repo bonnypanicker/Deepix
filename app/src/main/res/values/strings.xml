@@ -151,13 +151,41 @@
     <string name="pro_not_purchased">Not purchased</string>
     <string name="pro_owned_subtitle">Unlocked on this device</string>
     <string name="pro_title">Pixa Pro</string>
-    <string name="pro_body">One purchase, kept forever. Nothing is uploaded to buy it or to use it — every photo is still processed on this phone.</string>
+    <string name="pro_body">Nothing is uploaded to buy it or to use it — every photo is still processed on this phone. Pro lifts the limits on the features that do the most work, and takes nothing away.</string>
     <string name="pro_price_line">%1$s, one-time</string>
     <string name="pro_price_unknown">Price unavailable</string>
     <string name="pro_buy">Buy</string>
     <string name="pro_buy_price">Buy %1$s</string>
     <string name="pro_restore">Restore</string>
     <string name="pro_owned_body">Unlocked on this device. Purchases belong to the Google Play account that paid for them, so a new phone restores them at no cost.</string>
+    <!-- The Pro page. Section by section: the offer, the free half of it, and the money.
+         Every number here that describes a limit is a format argument filled in ProActivity from
+         FreeTier, because a page that types "50" is a page that will still say "50" after the
+         Safe moves to 80. -->
+    <string name="pro_hero_description">Eight flat tiles: four greyed, which are the features that stay free, and four in the accent color, which are the ones Pixa Pro adds.</string>
+    <string name="pro_section_adds">What Pro adds</string>
+    <string name="pro_section_free">What stays free</string>
+    <string name="pro_section_how">How the purchase works</string>
+    <string name="pro_add_people_detail">Free: the face clusters, unnamed</string>
+    <string name="pro_add_accents_detail">Free: %1$d accent colors</string>
+    <string name="pro_add_safe_detail">Free: %1$d photos in the Safe</string>
+    <string name="pro_add_cleanup_detail">Free: every category but these two</string>
+    <string name="pro_add_compression_detail">Free: %1$d photo per run</string>
+    <string name="pro_add_albums_detail">Free: %1$d smart albums</string>
+    <string name="pro_free_gallery">Every photo and video on this phone, browsed and sorted</string>
+    <string name="pro_free_search">Semantic search by description, date, place, person or picture</string>
+    <string name="pro_free_cleanup">Duplicates, similar shots, clutter, screenshots, quality</string>
+    <string name="pro_free_compression">Compress %1$d photo at a time</string>
+    <string name="pro_free_editor">Crop, rotate, flip, filter, mark and share</string>
+    <string name="pro_free_albums">Folder and tag albums, as many as you like</string>
+    <string name="pro_how_once">One payment</string>
+    <string name="pro_how_once_body">Pixa Pro is not a subscription. There is no renewal, nothing to cancel, and no date the unlock expires.</string>
+    <string name="pro_how_play">Google Play charges you</string>
+    <string name="pro_how_play_body">Play sets the price in your currency and takes its own cut. The app only ever receives the answer — purchased, or not.</string>
+    <string name="pro_how_restore">Restored on a new phone</string>
+    <string name="pro_how_restore_body">The purchase belongs to the Play account that paid for it. Install Pixa and press RESTORE and the features come back at no cost.</string>
+    <string name="pro_how_refund">Reversible</string>
+    <string name="pro_how_refund_body">Refund or cancel the purchase in Google Play and the extra features lock again. Everything that was always free keeps working.</string>
     <!-- What the user reached for, said back to them inside the offer. Each gate passes its own limit from
          FreeTier rather than hard-coding the number here, so the sentence and the rule cannot drift apart. -->
     <string name="gate_accent">More accent colors are part of Pixa Pro.</string>
@@ -189,6 +217,11 @@
     <string name="blur_sensitive">Blur sensitive content · Beta</string>
     <string name="section_safe">SAFE</string>
     <string name="safe_storage_location">Safe storage location</string>
+    <string name="section_albums">ALBUMS</string>
+    <string name="album_folder_location">Album folder location</string>
+    <string name="album_location_dialog_title">Where new album folders are made</string>
+    <string name="album_location_documents">Documents</string>
+    <string name="album_location_changed">New albums will be created in %1$s</string>
     <string name="section_storage">STORAGE</string>
     <string name="recycle_bin_label">Recycle bin</string>
     <string name="section_about">ABOUT</string>
@@ -211,7 +244,7 @@
     <string name="confirm_password_hint">Confirm password</string>
     <string name="password_unrecoverable">This password cannot be recovered.</string>
     <string name="new_smart_album">New Smart Album</string>
-    <string name="smart_album_intro">Describe what you want to collect. Your phone finds the matching photos for you.</string>
+    <string name="smart_album_intro">Describe what you want to collect. Pixa\'s on-device AI finds the matching photos.</string>
     <string name="label_name">NAME</string>
     <string name="smart_album_name_hint">e.g. Beach days</string>
     <string name="label_what_to_find">WHAT TO FIND</string>
@@ -225,7 +258,7 @@
     <string name="tap_to_view">Tap to view</string>
     <string name="pinned_albums">Pinned Albums</string>
     <string name="create_smart_album">Create a smart album</string>
-    <string name="smart_album_onboarding_body">Group photos automatically by describing them — like “beach sunsets”, “my dog”, or “birthday parties”. Your phone finds the matches for you, right on the device.</string>
+    <string name="smart_album_onboarding_body">Group photos automatically by describing them — like “beach sunsets”, “my dog”, or “birthday parties”. Pixa\'s on-device AI finds the matches, and your photos never leave the device.</string>
     <string name="create_smart_album_caps">CREATE SMART ALBUM</string>
 
     <!-- Album kinds (the "+" on the Albums page) -->
@@ -233,15 +266,13 @@
     <string name="album_kind_smart">Smart album</string>
     <string name="album_kind_folder">Folder album</string>
     <string name="album_kind_tags">Tag collection</string>
-    <string name="folder_picker_title">Choose a folder</string>
-    <string name="folder_picker_intro">Pick a folder on this device. Its album follows it, so photos you add to the folder join the album by themselves.</string>
-    <string name="folder_picker_hint">Search folders</string>
-    <string name="folder_picker_none">No folder matches that</string>
-    <string name="picker_more">%1$d more — keep typing to narrow</string>
-    <string name="folder_album_none">No folder holds photos yet</string>
     <string name="folder_album_name_title">Name the album</string>
-    <string name="folder_album_name_hint">e.g. Camera roll</string>
-    <string name="folder_album_exists">“%1$s” already mirrors that folder</string>
+    <string name="folder_album_name_hint">e.g. Weekend trips</string>
+    <string name="folder_album_bad_name">That name cannot be a folder — it needs a letter or a digit</string>
+    <string name="folder_album_exists">An album called “%1$s” already uses that name</string>
+    <string name="folder_album_made">Album folder created in %1$s</string>
+    <string name="folder_album_empty">“%1$s” has no photos yet</string>
+    <string name="folder_album_empty_hint">Add photos from this album\'s menu, or put them in its folder yourself — either way they show up here by themselves.</string>
     <string name="folder_album_gone">“%1$s” has no photos any more</string>
     <string name="folder_album_gone_hint">Anything you put back in that folder joins the album by itself.</string>
     <string name="delete_album_title">Delete %1$s?</string>
@@ -254,6 +285,28 @@
     <string name="tag_album_empty_tags">Pick at least one tag</string>
     <string name="collection_album_empty_tags">Nothing tagged yet</string>
     <string name="collection_album_empty_tags_hint">Tag the photos you want here — from any photo\'s info sheet — and this album fills itself.</string>
+
+    <!-- Putting photos into a folder album -->
+    <string name="album_add_photos">Add photos</string>
+    <string name="album_options">Album options</string>
+    <string name="album_add_photos_intro">Tap the photos to pick them. Copy leaves the originals where they are. Move writes the copy into the album\'s folder, reads it back to check it came out whole, and only then removes the original.</string>
+    <string name="album_pick_none">Nothing selected</string>
+    <string name="album_pick_count">%1$d selected</string>
+    <string name="album_copy_here">Copy here</string>
+    <string name="album_move_here">Move here</string>
+    <string name="album_copy_progress">Copying %1$d of %2$d…</string>
+    <string name="album_move_progress">Moving %1$d of %2$d…</string>
+    <string name="album_nothing_to_add">Every photo is already in this album</string>
+    <string name="album_copy_failed">%1$d couldn\'t be copied</string>
+    <string name="album_copy_none">Nothing was copied — every photo is still where it was</string>
+    <plurals name="album_photos_copied">
+        <item quantity="one">%1$d photo copied into the album</item>
+        <item quantity="other">%1$d photos copied into the album</item>
+    </plurals>
+    <plurals name="album_photos_moved">
+        <item quantity="one">%1$d photo moved into the album</item>
+        <item quantity="other">%1$d photos moved into the album</item>
+    </plurals>
 
     <!-- Counts (programmatic) -->
     <string name="no_results">No results</string>
@@ -374,6 +427,7 @@
     <string name="onboarding_perm_state_open_settings">Open settings</string>
     <string name="onboarding_perm_state_not_needed">Not needed</string>
     <string name="onboarding_perm_state_blocked">Blocked</string>
+    <string name="onboarding_perm_state_not_available">Not available</string>
     <string name="faces_section">FACES</string>
 
     <!-- Search page: pre-query empty state -->

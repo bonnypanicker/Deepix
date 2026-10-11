@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The accent picker, drawn as the row of dots it really is (MetroDialog.singleChoice prefixes each
+     row with a 16dp circle): three swatches, the middle one picked — so the filled dot is the one the
+     user is standing on. Same 24-unit line art as the tour glyphs, white so it is tinted at the usage
+     site. Pitch and radius are set so the strokes never touch: 7.4 units between centres, 2.7 radius. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9,12a3,3 0 1 0 6,0a3,3 0 1 0 -6,0z" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M1.9,12a2.7,2.7 0 1 0 5.4,0a2.7,2.7 0 1 0 -5.4,0z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.4" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M16.7,12a2.7,2.7 0 1 0 5.4,0a2.7,2.7 0 1 0 -5.4,0z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.4" />
+</vector>

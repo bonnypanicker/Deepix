@@ -11,27 +11,35 @@ import com.devomind.gallerysearch.db.TagEntity
  */
 object AlbumRules {
 
-    /** One pickable entry in the folder chooser: a real folder on the device and what it holds. */
-    data class FolderChoice(val path: String, val name: String, val itemCount: Int)
+    /** Every album folder the app itself makes lives inside this one. */
+    const val AlbumFolderParent: String = "Deepix Albums"
 
     /**
-     * Every folder in the tree, at any depth, biggest first.
+     * The folder a new album owns: `<storage root>/<parent>/<name>`.
      *
-     * A folder album is worth making for a folder that has photos in it, and the tree is built from
-     * the library, so an empty folder cannot appear here — which is also the reason no album has to
-     * be prepared for one.
+     * The name is what the user typed and becomes a real directory, so it is cleaned rather than
+     * trusted: separators and control characters go, `.` and `..` cannot name a folder, a name that is
+     * only punctuation yields null, and the result cannot climb out of [parent] no matter what was
+     * typed. Length is capped because a MediaStore `RELATIVE_PATH` is a column, not a bottomless one.
      */
-    fun folderChoices(roots: List<FolderNode>): List<FolderChoice> {
-        val choices = mutableListOf<FolderChoice>()
-        fun walk(node: FolderNode) {
-            choices += FolderChoice(node.path, node.name, node.itemCount)
-            node.children.forEach(::walk)
-        }
-        roots.forEach(::walk)
-        return choices.sortedWith(
-            compareByDescending<FolderChoice> { it.itemCount }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }
-        )
+    fun albumFolderPath(root: String, parent: String, name: String): String? {
+        val leaf = name.map { if (it == '/' || it == '\\' || it == ':' || it < ' ') ' ' else it }
+            .joinToString("")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .trim('.')
+            .trim()
+        if (leaf.isEmpty()) return null
+        return "$root/$parent/${leaf.take(MaxAlbumFolderNameChars)}"
     }
+
+    /**
+     * Whether [path] is a folder an album of the app's own made, as opposed to one on the device that an
+     * older album was pointed at. It is the difference between an empty album waiting to be filled and
+     * a folder whose photos have all gone away — the first is what the user expects, the second is news.
+     */
+    fun isAlbumFolderPath(path: String): Boolean =
+        path.substringBeforeLast('/', "").substringAfterLast('/') == AlbumFolderParent
 
     /**
      * The node for [path], or null when the library holds no such folder any more — which is what an
@@ -67,4 +75,6 @@ object AlbumRules {
         val ids = tags.asSequence().filter { it.name in wanted }.map { it.id }
         return HashSet<String>().apply { ids.forEach { addAll(urisByTag[it].orEmpty()) } }
     }
+
+    private const val MaxAlbumFolderNameChars = 60
 }

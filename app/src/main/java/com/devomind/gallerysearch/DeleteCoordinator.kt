@@ -41,6 +41,14 @@ object DeleteCoordinator {
     fun usesBin(context: Context): Boolean =
         IndexPreferences.isRecycleBinEnabled(context) && StoragePermissions.hasAllFilesAccess(context)
 
+    /**
+     * Whether a delete should be parked while the user goes to turn on All-files access. Android 10
+     * has no such switch, so there it is false and the delete continues into [Outcome.NeedsSystemDelete]
+     * — the per-item consent dialog can delete a photo on Q even though the bin never can.
+     */
+    fun shouldAskForStorageAccess(context: Context): Boolean =
+        !canDeleteDirectly(context) && StoragePermissions.allFilesAccessRequestable()
+
     /** Blocking; call from a background dispatcher. */
     fun delete(context: Context, uris: List<Uri>): Outcome {
         if (uris.isEmpty()) return Outcome.Done(0, 0, usesBin(context))

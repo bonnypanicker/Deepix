@@ -105,16 +105,20 @@ CleanupWorker (foreground, parallel to IndexWorker)
 ### Saved collections (the three album kinds)
 ```
 MainActivity.addAlbumBtn → showCreateAlbumMenu()  [MetroDropdownMenu, three rows]
-  ├── "Smart album"  → FreeTier.smartAlbumsBlocked(count of kind==Smart) → ProPaywall | showCreateSmartAlbumDialog()
+  ├── "Smart album"  → FreeTier.smartAlbumsBlocked(count of kind==Smart) → ProPaywall.open | showCreateSmartAlbumDialog()
   │     └── createSmartAlbum(name, prompt)
   │           ├── runSearchPipeline(query, mode, candidateItems)
   │           │     ├── GalleryRepository.search()  + MetadataSearch
   │           │     └── buildMergedPhotoSearchResults()
   │           └── saveCollectionAlbum(album, pin = true)
-  ├── "Folder album" → showFolderAlbumPicker()
-  │     ├── AlbumRules.folderChoices(albumFolderRoots())                 [every depth, biggest first]
-  │     ├── MetroDialog.searchableList(...) → askFolderAlbumName(choice)   [folderIdFor() already taken → message]
-  │     └── createFolderAlbum(folderPath, name) → saveCollectionAlbum(album, pin = true)
+  ├── "Folder album" → askFolderAlbumName()
+  │     ├── MetroDialog.input(title,label,positive=Create,hint=folder_album_name_hint) → name
+  │     ├── AlbumRules.albumFolderPath(albumFolderRootSegment(), AlbumFolderParent, name)
+  │     │     ├── albumFolderRootSegment() ← IndexPreferences.getAlbumFolderRoot  ["Pictures"|"Documents"]
+  │     │     └── null (name cleaned to nothing) → folder_album_bad_name message
+  │     ├── collectionAlbums.find { id == folderIdFor(path) } → folder_album_exists message   [one folder, one album]
+  │     └── createFolderAlbum(name) → saveCollectionAlbum(album, pin = true)
+  │           └── MetroBanner folder_album_made(<path>)   [the folder is not on disk yet — see #39]
   └── "Tag collection" → showTagAlbumDialog(null) → refreshTagCache() first
         └── openTagAlbumDialog(existing)  [dialog_tag_album.xml, chips via createSearchPillView]
               └── saveTagAlbum(existing, name, chosen) → saveCollectionAlbum(album, pin = true)
@@ -142,6 +146,30 @@ Album-detail (any kind): Mode.CollectionAlbumDetail
   collectionAlbumScopeKey: "smart:<id>" for Smart, plain id otherwise   [keeps sort preference per album]
 
 Refresh (Smart only — the live kinds have nothing stale to refresh)
+
+Putting photos into a Folder album  [the one kind that can be written; the other two are rules, not files]
+  folderOptionsBtn on Mode.CollectionAlbumDetail (nothing selected) → showCollectionAlbumMenu(record, anchor)
+  └── "Add photos" → showAlbumAddPhotosDialog(album)
+        ├── alreadyInAlbum = collectionAlbumItems(album) uris → candidates = imageItems - those
+        │     └── candidates empty → MetroDialog.message(album_nothing_to_add)
+        └── openAlbumAddPhotosDialog(album, candidates)          [dialog_album_add_photos.xml]
+              ├── ImageAdapter: tap toggles selection; columns from Responsive.gridColumns,
+              │     width from addOnLayoutChangeListener            [same wiring as SmartCleanupActivity]
+              └── Copy here | Move here → AlbumFolderOps.copyInto(context, picked, album.folderPath)  [IO]
+                    ├── BinLedger.hasRoomFor(usableSpace, Σ sizeOf) — the whole batch refused before a byte
+                    └── copyOne() per photo: MediaStore insert (Q+: RELATIVE_PATH + IS_PENDING;
+                          pre-Q: absolute DATA via publicDirFor + uniqueIn) → stream copy →
+                          forceToDisk (MediaFileOps.resolvePath, only with StoragePermissions
+                          .hasAllFilesAccess) → countBytes read-back → AlbumFolderOps.copyVerified
+                          (written == expected && expected > 0) → publish IS_PENDING = 0
+                          [any step that fails → discard() the row and count the photo as failed]
+              → applyAlbumAddPhotos(result, move)
+                    ├── result.copied empty → album_copy_none banner, nothing deleted
+                    ├── move → refreshVisibleItems()?.join()   [album fills while originals still exist]
+                    │           → performManagedDelete(result.copiedSources, outcomeLabel)
+                    │             [ordinary policy: Recycle Bin → direct → createDeleteRequest consent]
+                    ├── copy → banner + refreshVisibleItems()
+                    └── maybeStartBackgroundIndexing()          [the copies are new files, so unindexed]
 ```
 
 ### Safe (encrypted photo locker) Pipeline
@@ -277,6 +305,7 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | `ImageEncoder.resolveVisionModelAssetName` | Also used by `ThreadBenchmark` — priority order must match the shipped assets |
 | `ViewerActivity` gesture logic | Test all 6 gesture scenarios: diagonal swipes, info panel tap-close, fast swiping captions, panel drag smoothness, paging disabled while panel open |
 | `SafeManager` MasterName (`DeepixSafe.zip`) / VaultFolderName | Vault archive name/folder; root dir is `IndexPreferences.getSafeStorageRoot` (pictures\|documents). Changing the root via Settings **moves** the existing vault (`moveVault`); `purgeVault` wipes it across all roots |
+| `AlbumRules.AlbumFolderParent` (`Deepix Albums`) | Every album folder the app makes lives under this one segment, inside `IndexPreferences.getAlbumFolderRoot` (pictures\|documents, Settings › ALBUMS). Unlike the Safe the root is **not** followed for albums that already exist — their `folderPath` is stored, so changing the setting moves no photos. `isAlbumFolderPath(path)` reads the parent segment back, which is how an empty album knows whether it is unfilled or abandoned |
 | `IndexPreferences` safe_storage_root (`pictures`\|`documents`) | Stored in `index_prefs` (survives `SafeStore.reset`); drives `SafeManager.vaultDir`/`masterZip`/`archiveExists`/`vaultLocationLabel` |
 | `SafeStore` SharedPrefs keys / `SafeKeystore` KeyAlias | Stored on device — renaming breaks existing Safe config + biometric unlock |
 | `SafeCrypto` zip params (AES-256 / STORE) | Interop contract — the vault must stay a standard AES zip openable by external tools |
@@ -292,17 +321,19 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | a manifest `android:name` | `ManifestClassTest` parses `src/main` (+ `src/debug`) against those source sets. A component whose class lives in `src/debug` must be declared in `src/debug/AndroidManifest.xml`, or release builds carry a ghost that crashes on the tap that reaches it |
 | an exported filter's action | `ExternalMediaEntryTest` — the resolver names an entry after the activity answering it, so `ACTION_VIEW` (`.OpenDispatchActivity`) and `ACTION_EDIT` (`.EditDispatchActivity`) cannot share one activity. Merging them reintroduces the bug the split fixed: a view request landing in the editor, whose Save overwrites the original |
 | `MediaFileOps.copyToFile` | `BinManager.moveToBin`'s copy → verify → **fsync** → ledger → delete ordering — the `flush()` must stay before `fd.sync()`, and the sync before `close()`; move either and a crash can leave a ledger entry pointing at a zero-length copy |
+| `StoragePermissions.hasAllFilesAccess`'s API floor | Every direct-file path reads it: `DeleteCoordinator.shouldAskForStorageAccess` (the three delete entry points), `usesBin`, `BinManager.moveToBin`/restore, `SafeManager.hasAccess`/`isConfigured`, `CompressionActivity`'s commit gates, `AlbumFolderOps.forceToDisk`, the tour's All-files row. Answering `true` where the OS will not honor it makes a failing operation look like the app's own bug (that was Android 10); answering `false` where no setting exists strands the user in Settings, which is why `allFilesAccessRequestable` is the second half of the rule — delete falls back to per-item consent there, the Safe and compression say "needs Android 11" |
 | the backup rule XMLs | Both `backup_rules.xml` (API ≤30) and `data_extraction_rules.xml`, and inside the latter **every** section (`cloud-backup` *and* `device-transfer`): a `domain="database"` exclude listed in one only restores the DB through the other door |
 | `AccentPalette.Choice` | the picker (`SettingsActivity.showAccentColorDialog` via `choicesFor`), every activity's `AccentPalette.apply(this)`, the Canvas-paint callers of `solid()`/`light()` — and `Accent.System`, which exists twice: `values/themes.xml` (Azure, so pre-31 resolves) and `values-v31/themes.xml` (framework tones). A new choice needs both halves, or the overlay style is missing where the OS cannot supply one. **Declaration order is also pricing**: `FreeTier.accentLocked` counts from the front of `choices`, so inserting a swatch before the fourth silently makes a paid color free (or a free one paid) for everyone already looking at the picker |
 | `BillingGateway.ProProductId` | the product must exist in Play Console as a one-time INAPP with exactly this id, or every catalogue query answers OK with an empty list (the gateway reports it as `Play does not know the product …`). Renaming strands purchases already made against the old id — nothing here can migrate them |
 | The `Entitlements.next` verdict rule | `PurchaseRulesTest` pins both halves: a successful query overwrites (so a refund on another device eventually re-locks), an unreachable one leaves the stored verdict alone (so no-Play/no-network cannot read as a refund). Loosening either either loses paid access or hands a gated feature to someone who did not pay |
-| Any new gated feature | call `Entitlements.guard(activity, reason) { … }`, or the read-only `Entitlements.isUnlocked` when the gate has to shape a batch or a list rather than refuse an action — never `BillingGateway` directly, and never `IndexPreferences.getProEntitlement`. `guard` is the only place the locked path shows `ProPaywall`, so a feature that reads the verdict itself silently diverges from the rest when the paywall changes |
+| Any new gated feature | call `Entitlements.guard(activity, reason) { … }`, or the read-only `Entitlements.isUnlocked` when the gate has to shape a batch or a list rather than refuse an action — never `BillingGateway` directly, and never `IndexPreferences.getProEntitlement`. `guard` is the only place the locked path opens `ProPaywall`, so a feature that reads the verdict itself silently diverges from the rest when the offer changes |
 | `FreeTier`'s numbers (`FreeAccents`, `FreeSafePhotos`, `FreeSmartAlbums`, `FreeCompressionPhotos`, `PaidCleanupCategories`) | the accent picker's locked rows, `AccentPalette.current`'s demotion of a paid stored key, `SafeActivity.runImport`'s clamp, `SmartCleanupActivity.renderTiles`/`openCategory`/`launchCompressionReview`, `MainActivity.showCreateSmartAlbumDialog`, `PersonIdentityEditor.show`, and the `gate_*` strings, which take the limit as an argument so the sentence cannot drift from the rule. A limit restated on a screen is a limit that can disagree with the cap that enforces it — `FreeTierTest` holds each boundary |
 | whether compression is *locked* or *metered* | `FreeTier.PaidCleanupCategories` deliberately excludes COMPRESSIBLE, so a free user opens the tile and hits `compressionRoom` on the batch instead; the encoder's crash-safe commit makes one smaller photo a finished job, which is what distinguishes it from the two tiles that are closed at the door. Moving COMPRESSIBLE back into the locked set would leave `launchCompressionReview`'s clamp unreachable; removing the clamp would hand the free tier whole-library batches |
 | where the Safe cap is applied | `SafeActivity.runImport` clamps the list **before** `SafeManager.importPhotos` writes anything, because only `ImportResult.importedSources` is handed back for deleting originals. Move the check inside the import loop — or let a partial move proceed and delete the whole pick — and a free user's over-cap photo is destroyed without ever reaching the vault, breaking the crash-safety invariant for a pricing rule |
 | the first-run tour's page order | `FirstRunActivity` treats the **last** page as the permissions one: the CTA relabels there and the dismiss X jumps to it via `goTo(pageCount - 1)`. A new panel inserted after it silently loses the asks — the Pro benefits page therefore sits before it, and `permissionRows` is found by content, not position. The CTA is never held shut: on the last page it asks the **first outstanding required** permission (`requestFirstOutstandingRequired`) and only `complete()`s once none are left, so one system dialog appears at a time instead of a dead button that says "Get started" |
-| `drawerPro`'s label and glyph | `MainActivity.updateDrawerState` (which the drawer's `onDrawerOpened` re-runs) reads `Entitlements.isUnlocked`, so the row is the verdict's public face in the nav list. The glyph must be re-tinted in code — `setCompoundDrawablesRelative*` replaces the drawable and with it the XML `drawableTint` — and `drawer_pro` / `drawer_pro_owned` are the two states, not a hidden row: an owned user tapping it hears "unlocked on this device" from `ProPaywall` rather than finding the row gone |
-| `MetroDialog` button callbacks | every helper dismisses on any button press before invoking the callback, so a caller that wants to keep the dialog open on failure (as `ProPaywall` does when `BillingGateway.purchase` returns false) must rebuild it — a `show()` inside the callback is the established pattern, not a bug |
+| `drawerPro`'s label and glyph | `MainActivity.updateDrawerState` (which the drawer's `onDrawerOpened` re-runs) reads `Entitlements.isUnlocked`, so the row is the verdict's public face in the nav list. The glyph must be re-tinted in code — `setCompoundDrawablesRelative*` replaces the drawable and with it the XML `drawableTint` — and `drawer_pro` / `drawer_pro_owned` are the two states, not a hidden row: an owned user tapping it is still taken to `ProActivity`, which reports the unlock in its footer instead of offering the purchase again |
+| `MetroDialog` button callbacks | every helper dismisses on any button press before invoking the callback, so a caller cannot keep a dialog open from inside its own callback — rebuilding it there is the only way, and it reads as a flash. That is one reason the purchase left the dialog: on `ProActivity` a `purchase()` that returns false simply leaves the footer standing while `refresh()` runs |
+| the Pro page's free-tier numbers | `ProActivity.renderLimits` formats them out of `FreeTier` at runtime (`pro_add_accents_detail`, `pro_add_safe_detail`, `pro_add_compression_detail`, `pro_add_albums_detail`, `pro_free_compression`), and those five rows carry the string as `tools:text` only — design-time, so no raw `%1$d` can reach a screen and code is the only writer. A cap typed into the offer is a cap that can disagree with the cap that enforces it, and the paywall is where that disagreement costs the user a purchase |
 | a `MetroDropdownMenu.Item` with `children` | The flyout is a **column of the same PopupWindow**, never a second popup: the menu's window is modal, so it would swallow the child's touches. Group menus therefore open the window `MATCH_PARENT` wide, and the empty slack beside a closed flyout has to dismiss on tap or it becomes dead space that behaves like neither inside nor outside |
 | who dismisses a `MetroDropdownMenu` popup | `MetroDropdownMenu` itself, always: it holds the one live popup (`openPopup`, so a second open replaces the first) and dismisses on the anchor activity's `ON_DESTROY`. A caller that keeps its own popup reference — or a menu that dismisses only on tap — leaves a window holding a dead activity token, which is the `WindowLeaked` the "+" button produced twice in one logcat |
 | a large asset read into memory | one array, sized from `available()`, filled in place (`AssetUtils.readAssetBytes`). A `ByteArrayOutputStream` + `toByteArray()` pair holds ~2× a 60 MB ONNX model at the same instant — at the exact moment a first search loads it, on a heap already holding the grid, which is what turns a search into a 40-second GC storm |
@@ -339,25 +370,30 @@ scrubber_thumb.xml / scrubber_progress.xml → item_viewer_page.xml (video SeekB
 dialog_tag_picker.xml   → TagPickerDialog
 dialog_smart_album.xml  → MainActivity (smart album create dialog, Metro Theme.GallerySearch.Dialog)
 dialog_tag_album.xml    → MainActivity (tag collection create/edit dialog — name plus the tag chip row; Metro Theme.GallerySearch.Dialog)
+dialog_album_add_photos.xml → MainActivity (folder album "Add photos": ImageAdapter grid + Copy here / Move here footer; Metro Theme.GallerySearch.Dialog)
 item_smart_album_onboarding.xml → ImageAdapter (albums onboarding card; onCreateSmartAlbum)
 item_empty.xml          → ImageAdapter (empty state)
 activity_smart_cleanup.xml → SmartCleanupActivity (overview tiles + progress + detail grid)
 item_cleanup_tile.xml   → SmartCleanupActivity (Metro category tile)
 sheet_search_filter.xml → MainActivity (Sort & filter bottom sheet; 20dp inset)
 item_info_row.xml       → ViewerActivity (Info sheet key-value row, via <include>)
-activity_settings.xml   → SettingsActivity (Metro preferences screen; incl. SAFE section: storage location + file-path)
+activity_settings.xml   → SettingsActivity (Metro preferences screen; incl. SAFE section: storage location + file-path, ALBUMS section: new-album folder location)
 activity_safe.xml       → SafeActivity (lock overlay + forgotPasswordBtn + decrypted thumbnail grid + add-photos bar)
 item_safe_photo.xml     → SafeItemAdapter (decrypted vault thumbnail cell)
 dialog_safe_setup.xml   → SafeActivity (password create + confirm + warning + resolved storage path)
 dialog_safe_password.xml → SafeActivity ("Show password" reveal + copy)
+activity_pro.xml        → ProActivity (full-page Pro offer: hero illustration, WHAT PRO ADDS / WHAT STAYS FREE / HOW THE PURCHASE WORKS, purchase footer; rows styled by ProRow/ProRowGlyph)
 ```
 
 ## Selected Drawables
 ```
 search_filter_chip_bg.xml / search_filter_chip_active_bg.xml → search/quick/onboarding pills (6dp rounded-square; active = solid accent)
-onboarding_card_bg.xml / onboarding_button_bg.xml → albums onboarding card + smart-album dialog Create button
+onboarding_card_bg.xml / onboarding_button_bg.xml → albums onboarding card + smart-album dialog Create button; the Pro page's Buy pill reuses onboarding_button_bg
 dialog_metro_bg.xml     → Metro dialog window background (smart album dialog)
 selection_badge_bg.xml  → multi-select tick chip (3dp rounded-square accent + black hairline; holds vector checkmark) → item_image.xml / item_collage.xml
 selection_frame.xml     → 3dp accent frame over a selected thumbnail (item_image.xml / item_collage.xml)
 pill_bg.xml             → rounded pill; now used only by activity_settings.xml (no longer the selection bar)
+illustration_pro_hero.xml → activity_pro.xml hero: the mosaic — four recessed metroBgTertiary tiles (free) beside four solid-accent tiles (Pro), each carrying a tour glyph at scale 1.25
+ic_pro_accents.xml / ic_pro_batch.xml → ProActivity benefit rows: the accent picker drawn as the row of *dots* MetroDialog.singleChoice really shows, and two overlapping cards for the batch limit
+pro_reason_bg.xml       → activity_pro.xml reason line: a 2dp accent rule as a layer-list background on the text itself, because a sibling View at match_parent height inside a ScrollView measures to 0 and disappears
 ```

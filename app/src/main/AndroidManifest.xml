@@ -66,6 +66,11 @@
             android:exported="false" />
 
         <activity
+            android:name=".ProActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:exported="false" />
+
+        <activity
             android:name=".IndexingActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false" />

@@ -334,6 +334,27 @@
         <item name="android:background">@color/metroDivider</item>
     </style>
 
+    <!-- Pixa Pro page. The rows explain the offer, so they borrow the settings row's metrics and drop
+         its press state and its clickability: nothing in the three sections is a control. The glyph is
+         a 24dp line icon in the text color, never an accent tint — accent appears on this page only
+         where it means something (the paid half of the hero, the CTA, the section labels). -->
+    <style name="ProRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingTop">14dp</item>
+        <item name="android:paddingBottom">14dp</item>
+    </style>
+
+    <style name="ProRowGlyph">
+        <item name="android:layout_width">24dp</item>
+        <item name="android:layout_height">24dp</item>
+        <item name="android:layout_marginEnd">16dp</item>
+        <item name="android:tint">@color/metroTextPrimary</item>
+        <item name="android:contentDescription">@null</item>
+    </style>
+
     <style name="Theme.GallerySearch.Dialog" parent="Theme.AppCompat.Dialog">
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowNoTitle">true</item>

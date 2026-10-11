@@ -1,0 +1,506 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pixa Pro, the whole offer on one page. Chrome and metrics are the settings page's: a 48dp back
+     button in a bare top bar, a 40sp light screen title, 20dp side gutters, hairline rules instead of
+     cards, and a pinned footer carrying the action.
+     The hero mosaic states the deal without a sentence: the app's tiles, half of them yours and half of
+     them accent. Everything below it is a rule or a fact — what Pro adds (with the free number next to
+     each one), what stays free, and how the money is actually taken. The numbers are filled in code from
+     FreeTier, so this page cannot disagree with the limits the features enforce — and the rows that carry
+     one hold it as tools:text, which is design-time only, so a raw "%1$d" can never reach a screen. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/proRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/metroBgPrimary">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:id="@+id/topBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp">
+
+            <ImageButton
+                android:id="@+id/backBtn"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="start|center_vertical"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/metro_row_pressed"
+                android:contentDescription="@string/back"
+                android:padding="12dp"
+                android:src="@drawable/ic_fluent_back_24_regular"
+                android:tint="@color/metroTextPrimary" />
+        </FrameLayout>
+
+        <ScrollView
+            android:id="@+id/proScroll"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="20dp"
+                android:paddingEnd="20dp"
+                android:paddingBottom="28dp">
+
+                <ImageView
+                    android:id="@+id/heroIllustration"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="start"
+                    android:layout_marginTop="8dp"
+                    android:adjustViewBounds="true"
+                    android:contentDescription="@string/pro_hero_description"
+                    android:src="@drawable/illustration_pro_hero" />
+
+                <TextView
+                    android:id="@+id/proEyebrow"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="22dp"
+                    android:layout_marginBottom="10dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:includeFontPadding="false"
+                    android:letterSpacing="0.09"
+                    android:text="@string/pro_title"
+                    android:textAllCaps="true"
+                    android:textColor="?attr/accentColor"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/proTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-light"
+                    android:includeFontPadding="false"
+                    android:letterSpacing="-0.02"
+                    android:lineSpacingMultiplier="1.02"
+                    android:text="@string/onboarding_pro_title"
+                    android:textColor="@color/metroTextPrimary"
+                    android:textSize="40sp" />
+
+                <TextView
+                    android:id="@+id/proBody"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:lineSpacingMultiplier="1.35"
+                    android:text="@string/pro_body"
+                    android:textColor="@color/metroTextSecondary"
+                    android:textSize="14sp" />
+
+                <!-- The gate that opened this page, kept where it can be answered rather than dismissed:
+                     an accent rule down the left edge plus the same sentence the feature showed. -->
+                <TextView
+                    android:id="@+id/reasonText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="22dp"
+                    android:background="@drawable/pro_reason_bg"
+                    android:lineSpacingMultiplier="1.3"
+                    android:paddingStart="12dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="4dp"
+                    android:paddingBottom="8dp"
+                    android:textColor="@color/metroTextPrimary"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+
+                <!-- ===================== WHAT PRO ADDS ===================== -->
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="@string/pro_section_adds" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <ImageView
+                        style="@style/ProRowGlyph"
+                        android:src="@drawable/ic_onboarding_people" />
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView
+                            style="@style/SettingsRowTitle"
+                            android:text="@string/onboarding_pro_benefit_people" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="@string/pro_add_people_detail" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <ImageView
+                        style="@style/ProRowGlyph"
+                        android:src="@drawable/ic_pro_accents" />
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView
+                            style="@style/SettingsRowTitle"
+                            android:text="@string/onboarding_pro_benefit_accents" />
+
+                        <TextView
+                            android:id="@+id/proDetailAccents"
+                            style="@style/SettingsRowSubtitle"
+                            tools:text="@string/pro_add_accents_detail" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <ImageView
+                        style="@style/ProRowGlyph"
+                        android:src="@drawable/ic_onboarding_safe" />
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView
+                            style="@style/SettingsRowTitle"
+                            android:text="@string/onboarding_pro_benefit_safe" />
+
+                        <TextView
+                            android:id="@+id/proDetailSafe"
+                            style="@style/SettingsRowSubtitle"
+                            tools:text="@string/pro_add_safe_detail" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <ImageView
+                        style="@style/ProRowGlyph"
+                        android:src="@drawable/ic_onboarding_cleanup" />
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView
+                            style="@style/SettingsRowTitle"
+                            android:text="@string/onboarding_pro_benefit_cleanup" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="@string/pro_add_cleanup_detail" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <ImageView
+                        style="@style/ProRowGlyph"
+                        android:src="@drawable/ic_pro_batch" />
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView
+                            style="@style/SettingsRowTitle"
+                            android:text="@string/onboarding_pro_benefit_compression" />
+
+                        <TextView
+                            android:id="@+id/proDetailCompression"
+                            style="@style/SettingsRowSubtitle"
+                            tools:text="@string/pro_add_compression_detail" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <ImageView
+                        style="@style/ProRowGlyph"
+                        android:src="@drawable/ic_onboarding_smart_album" />
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView
+                            style="@style/SettingsRowTitle"
+                            android:text="@string/onboarding_pro_benefit_albums" />
+
+                        <TextView
+                            android:id="@+id/proDetailAlbums"
+                            style="@style/SettingsRowSubtitle"
+                            tools:text="@string/pro_add_albums_detail" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- ===================== WHAT STAYS FREE =====================
+                     Same rows at half weight, because the free app is not a crippled one: the glyphs are
+                     the four recessed tiles of the hero, and two more the paid list never touches. -->
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="@string/pro_section_free" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <ImageView
+                        style="@style/ProRowGlyph"
+                        android:alpha="0.55"
+                        android:src="@drawable/ic_fluent_image_24_regular" />
+
+                    <TextView
+                        style="@style/SettingsRowTitle"
+                        android:text="@string/pro_free_gallery" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <ImageView
+                        style="@style/ProRowGlyph"
+                        android:alpha="0.55"
+                        android:src="@drawable/ic_onboarding_search" />
+
+                    <TextView
+                        style="@style/SettingsRowTitle"
+                        android:text="@string/pro_free_search" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <ImageView
+                        style="@style/ProRowGlyph"
+                        android:alpha="0.55"
+                        android:src="@drawable/ic_onboarding_cleanup" />
+
+                    <TextView
+                        style="@style/SettingsRowTitle"
+                        android:text="@string/pro_free_cleanup" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <ImageView
+                        style="@style/ProRowGlyph"
+                        android:alpha="0.55"
+                        android:src="@drawable/ic_pro_batch" />
+
+                    <TextView
+                        android:id="@+id/proFreeCompression"
+                        style="@style/SettingsRowTitle"
+                        tools:text="@string/pro_free_compression" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <ImageView
+                        style="@style/ProRowGlyph"
+                        android:alpha="0.55"
+                        android:src="@drawable/ic_onboarding_edit" />
+
+                    <TextView
+                        style="@style/SettingsRowTitle"
+                        android:text="@string/pro_free_editor" />
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <ImageView
+                        style="@style/ProRowGlyph"
+                        android:alpha="0.55"
+                        android:src="@drawable/ic_fluent_album_24_regular" />
+
+                    <TextView
+                        style="@style/SettingsRowTitle"
+                        android:text="@string/pro_free_albums" />
+                </LinearLayout>
+
+                <!-- ===================== HOW THE PURCHASE WORKS =====================
+                     No glyph: these are terms, not features, and the page has already spent its art. -->
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="@string/pro_section_how" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView
+                            style="@style/SettingsRowTitle"
+                            android:text="@string/pro_how_once" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="@string/pro_how_once_body" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView
+                            style="@style/SettingsRowTitle"
+                            android:text="@string/pro_how_play" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="@string/pro_how_play_body" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView
+                            style="@style/SettingsRowTitle"
+                            android:text="@string/pro_how_restore" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="@string/pro_how_restore_body" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout style="@style/ProRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView
+                            style="@style/SettingsRowTitle"
+                            android:text="@string/pro_how_refund" />
+
+                        <TextView
+                            style="@style/SettingsRowSubtitle"
+                            android:text="@string/pro_how_refund_body" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- ===================== footer =====================
+             The Safe's unlock button is the app's idiom for the one action a screen exists for, so the
+             price sits above a full-width accent pill and Restore sits under it as a quiet text action. -->
+        <LinearLayout
+            android:id="@+id/proFooter"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="20dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="16dp">
+
+            <LinearLayout
+                android:id="@+id/purchaseBar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/priceCaption"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text="@string/pro_checking"
+                    android:textColor="@color/metroTextSecondary"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/buyBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/onboarding_button_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:fontFamily="sans-serif-medium"
+                    android:gravity="center"
+                    android:letterSpacing="0.06"
+                    android:text="@string/pro_buy"
+                    android:textColor="@color/metroTextPrimary"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/restoreBtn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/metro_row_pressed"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:includeFontPadding="false"
+                    android:paddingStart="12dp"
+                    android:paddingTop="6dp"
+                    android:paddingEnd="12dp"
+                    android:paddingBottom="6dp"
+                    android:text="@string/pro_restore"
+                    android:textColor="@color/metroTextSecondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/ownedBar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <ImageView
+                    style="@style/ProRowGlyph"
+                    android:layout_marginEnd="12dp"
+                    android:src="@drawable/ic_fluent_checkmark_24_regular"
+                    android:tint="?attr/accentColor" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:lineSpacingMultiplier="1.3"
+                    android:text="@string/pro_owned_body"
+                    android:textColor="@color/metroTextSecondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/statusCaption"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:textColor="@color/metroTextTertiary"
+                android:textSize="11sp"
+                android:visibility="gone" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

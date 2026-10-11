@@ -678,12 +678,12 @@ class MainActivity : AppCompatActivity() {
             settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
         }
 
-        // The offer, not a screen: the row is the way in from anywhere in the gallery, and ProPaywall
-        // already says "unlocked on this device" when the verdict is held, so an owned user who taps it
-        // hears the truth rather than a dead row.
+        // The way back to a purchase from anywhere in the gallery. It is not a dead row once the verdict
+        // is held either: the Pro page states the unlock and carries Restore, which is exactly what a new
+        // phone or a refund needs.
         binding.drawerPro.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
-            ProPaywall.show(this)
+            ProPaywall.open(this)
         }
 
         // The row's label is a fact about the verdict, and the verdict can move while the drawer is shut
@@ -3818,7 +3818,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showAlbumPinMenu(album: GalleryRepository.Album, anchor: View) {
         if (album.kind != AlbumKind.Device) {
-            showCollectionAlbumMenu(album, anchor)
+            collectionAlbums.find { it.id == album.id }?.let { showCollectionAlbumMenu(it, anchor) }
             return
         }
         val isPinned = albumPinStore.isPinned(album.id)
@@ -3835,12 +3835,19 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun showCollectionAlbumMenu(album: GalleryRepository.Album, anchor: View) {
-        val record = collectionAlbums.find { it.id == album.id } ?: return
+    private fun showCollectionAlbumMenu(record: CollectionAlbum, anchor: View) {
         val isSmart = record.kind == AlbumKind.Smart
         MetroDropdownMenu.show(
             anchor,
             buildList {
+                // A folder album owns its folder, so putting photos in it is the one thing worth offering
+                // from inside. The other kinds are read out of the library or a search, so nothing the user
+                // adds by hand would survive the next render.
+                if (record.kind == AlbumKind.Folder) {
+                    add(MetroDropdownMenu.Item(getString(R.string.album_add_photos)) {
+                        showAlbumAddPhotosDialog(record)
+                    })
+                }
                 // Only a smart album has something to rebuild: the other kinds hold a rule the library
                 // is read through on every render, so they are never stale.
                 if (isSmart) add(MetroDropdownMenu.Item("Refresh") { handleSmartAlbumRefresh(record) })
@@ -3961,11 +3968,20 @@ class MainActivity : AppCompatActivity() {
 
     /** Why the album is empty says what to do about it, and only a smart album can be refreshed. */
     private fun collectionAlbumEmptyCell(album: CollectionAlbum): GalleryCell.Empty = when (album.kind) {
-        AlbumKind.Folder -> GalleryCell.Empty(
-            text = getString(R.string.folder_album_gone, album.name),
-            hint = getString(R.string.folder_album_gone_hint),
-            iconRes = R.drawable.ic_fluent_folder_24_regular
-        )
+        AlbumKind.Folder -> if (AlbumRules.isAlbumFolderPath(album.folderPath)) {
+            // The album made this folder, so an empty one is simply not filled yet.
+            GalleryCell.Empty(
+                text = getString(R.string.folder_album_empty, album.name),
+                hint = getString(R.string.folder_album_empty_hint),
+                iconRes = R.drawable.ic_fluent_folder_24_regular
+            )
+        } else {
+            GalleryCell.Empty(
+                text = getString(R.string.folder_album_gone, album.name),
+                hint = getString(R.string.folder_album_gone_hint),
+                iconRes = R.drawable.ic_fluent_folder_24_regular
+            )
+        }
         AlbumKind.Tags -> GalleryCell.Empty(
             text = getString(R.string.collection_album_empty_tags),
             hint = getString(R.string.collection_album_empty_tags_hint),
@@ -3983,7 +3999,7 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * The Albums page's "+". Three kinds, in the order a person is likeliest to reach for them: an
-     * album the phone fills from a description, an album that mirrors a folder already on the device,
+     * album the phone fills from a description, an album of a folder the app makes and keeps,
      * and an album of the photos they tagged themselves.
      */
     private fun showCreateAlbumMenu() {
@@ -3991,45 +4007,46 @@ class MainActivity : AppCompatActivity() {
             binding.addAlbumBtn,
             listOf(
                 MetroDropdownMenu.Item(getString(R.string.album_kind_smart)) { showCreateSmartAlbumDialog() },
-                MetroDropdownMenu.Item(getString(R.string.album_kind_folder)) { showFolderAlbumPicker() },
+                MetroDropdownMenu.Item(getString(R.string.album_kind_folder)) { askFolderAlbumName() },
                 MetroDropdownMenu.Item(getString(R.string.album_kind_tags)) { showTagAlbumDialog(null) }
             )
         )
     }
 
+    private fun askFolderAlbumName() {
+        MetroDialog.input(
+            this,
+            title = getString(R.string.folder_album_name_title),
+            label = getString(R.string.label_name),
+            positive = getString(R.string.create),
+            hint = getString(R.string.folder_album_name_hint),
+            iconRes = R.drawable.ic_fluent_folder_24_regular
+        ) { name -> createFolderAlbum(name) }
+    }
+
     /**
-     * Every folder holding a photo, at whatever depth. Built from the live library rather than from
-     * [folderTreeRoots]: the Albums page has no reason to have visited the Folders page, and the tree
-     * the picker shows is the same one the album later reads its photos out of.
+     * Makes an album of a folder of the app's own, named after the album. The alternative — browsing the
+     * device for a folder to mirror — asked which of dozens of directories the user was about to want as
+     * an album, and picked one that already had other things in it. Here the folder is empty and the
+     * album decides what goes in it.
      */
-    private fun showFolderAlbumPicker() {
-        val choices = AlbumRules.folderChoices(albumFolderRoots())
-        if (choices.isEmpty()) {
+    private fun createFolderAlbum(name: String) {
+        val folderPath = AlbumRules.albumFolderPath(
+            albumFolderRootSegment(),
+            AlbumRules.AlbumFolderParent,
+            name
+        )
+        if (folderPath == null) {
             MetroDialog.message(
                 this,
                 title = getString(R.string.album_kind_folder),
-                message = getString(R.string.folder_album_none),
+                message = getString(R.string.folder_album_bad_name),
                 iconRes = R.drawable.ic_fluent_folder_24_regular
             )
             return
         }
-        MetroDialog.searchableList(
-            this,
-            title = getString(R.string.folder_picker_title),
-            intro = getString(R.string.folder_picker_intro),
-            hint = getString(R.string.folder_picker_hint),
-            items = choices,
-            // The path rather than the folder's own name: two folders called "Camera" are one tap
-            // apart here only if the row says which is which.
-            label = { it.path },
-            iconRes = R.drawable.ic_fluent_folder_24_regular,
-            emptyLabel = getString(R.string.folder_picker_none)
-        ) { choice -> askFolderAlbumName(choice) }
-    }
-
-    private fun askFolderAlbumName(choice: AlbumRules.FolderChoice) {
-        // A folder album's id is the folder it mirrors, so one folder cannot yield two albums.
-        val existing = collectionAlbums.find { it.id == CollectionAlbumStore.folderIdFor(choice.path) }
+        // The album's id is its folder, so a repeated name is the same album rather than a second one.
+        val existing = collectionAlbums.find { it.id == CollectionAlbumStore.folderIdFor(folderPath) }
         if (existing != null) {
             MetroDialog.message(
                 this,
@@ -4039,23 +4056,13 @@ class MainActivity : AppCompatActivity() {
             )
             return
         }
-        MetroDialog.input(
-            this,
-            title = getString(R.string.folder_album_name_title),
-            label = getString(R.string.label_name),
-            positive = getString(R.string.create),
-            initial = choice.name,
-            hint = getString(R.string.folder_album_name_hint),
-            iconRes = R.drawable.ic_fluent_folder_24_regular
-        ) { name -> createFolderAlbum(choice.path, name) }
-    }
-
-    private fun createFolderAlbum(folderPath: String, name: String) {
         val now = System.currentTimeMillis()
         saveCollectionAlbum(
             CollectionAlbum(
                 id = CollectionAlbumStore.folderIdFor(folderPath),
-                name = name,
+                // The cleaned leaf rather than what was typed: the tile and the folder on disk say the
+                // same thing, even when the name arrived with something the path cannot hold.
+                name = folderPath.substringAfterLast('/'),
                 prompt = "",
                 searchMode = searchMode.name,
                 memberUris = emptyList(),
@@ -4067,7 +4074,18 @@ class MainActivity : AppCompatActivity() {
             ),
             pin = true
         )
+        // Said out loud because the folder does not exist on disk yet — MediaStore makes it the moment
+        // the first photo is put in, and the user needs to know where to look for it.
+        MetroBanner.show(this, getString(R.string.folder_album_made, folderPath))
     }
+
+    /** The public folder new album folders are made under, as the path segment MediaStore writes. */
+    private fun albumFolderRootSegment(): String =
+        if (IndexPreferences.getAlbumFolderRoot(this) == IndexPreferences.SAFE_ROOT_DOCUMENTS) {
+            "Documents"
+        } else {
+            "Pictures"
+        }
 
     /**
      * Opens the tag album dialog — a new one, or [existing] to edit it. Tags come from the same cache
@@ -4138,6 +4156,158 @@ class MainActivity : AppCompatActivity() {
             saveTagAlbum(existing, name, chosen)
         }
         dialog.show()
+    }
+
+    /**
+     * Adds photos to a folder album by picking them out of the rest of the library. An album reads its
+     * folder on every render, so this writes files rather than editing a list: whatever lands in that
+     * folder is in the album.
+     */
+    private fun showAlbumAddPhotosDialog(album: CollectionAlbum) {
+        val alreadyInAlbum = collectionAlbumItems(album).mapTo(HashSet()) { it.uri }
+        val candidates = imageItems.filterNot { it.uri in alreadyInAlbum }
+        if (candidates.isEmpty()) {
+            MetroDialog.message(
+                this,
+                title = getString(R.string.album_add_photos),
+                message = getString(R.string.album_nothing_to_add),
+                iconRes = R.drawable.ic_fluent_folder_24_regular
+            )
+            return
+        }
+        openAlbumAddPhotosDialog(album, candidates)
+    }
+
+    private fun openAlbumAddPhotosDialog(
+        album: CollectionAlbum,
+        candidates: List<GalleryRepository.MediaItem>
+    ) {
+        val view = layoutInflater.inflate(R.layout.dialog_album_add_photos, null)
+        val grid = view.findViewById<RecyclerView>(R.id.albumPickGrid)
+        val status = view.findViewById<TextView>(R.id.albumPickStatus)
+        val cancelBtn = view.findViewById<TextView>(R.id.albumPickCancel)
+        val copyBtn = view.findViewById<TextView>(R.id.albumPickCopy)
+        val moveBtn = view.findViewById<TextView>(R.id.albumPickMove)
+        val dialog = AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
+            .setView(view)
+            .create()
+
+        // Held in a variable the click lambda reads at tap time: a tile tap has to ask the adapter which
+        // one it belongs to, and the adapter is what the tap lands on.
+        var picker: ImageAdapter? = null
+        var running = false
+        val adapter = ImageAdapter(
+            // A tap selects here rather than opening the viewer — this grid exists to pick, not to browse.
+            onPhotoClick = { item, _ -> picker?.toggle(item.uri) },
+            onSelectionChanged = { count ->
+                if (!running) {
+                    status.text = if (count == 0) getString(R.string.album_pick_none)
+                    else getString(R.string.album_pick_count, count)
+                }
+            },
+            onAlbumClick = {},
+            onAlbumLongClick = { _, _ -> }
+        )
+        picker = adapter
+        val columns = { Responsive.gridColumns(this, IndexPreferences.getGridColumnCount(this).coerceIn(3, 6)) }
+        val layoutManager = GridLayoutManager(this, columns())
+        layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+            override fun getSpanSize(position: Int): Int = adapter.spanSizeAt(position, layoutManager.spanCount)
+        }
+        adapter.gridColumnCount = columns()
+        grid.layoutManager = layoutManager
+        grid.adapter = adapter
+        grid.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            val width = right - left
+            if (width > 0 && width != oldRight - oldLeft) {
+                val firstMeasure = adapter.gridWidthPx == 0
+                adapter.gridWidthPx = width
+                adapter.gridColumnCount = columns()
+                layoutManager.spanCount = adapter.gridColumnCount
+                if (firstMeasure) return@addOnLayoutChangeListener
+                layoutManager.spanSizeLookup.invalidateSpanIndexCache()
+                adapter.notifyItemRangeChanged(0, adapter.itemCount, "grid_change")
+            }
+        }
+        adapter.replaceCells(candidates.map { GalleryCell.Photo(it) })
+
+        fun setButtonsEnabled(enabled: Boolean) {
+            cancelBtn.isClickable = enabled
+            copyBtn.isClickable = enabled
+            moveBtn.isClickable = enabled
+            val alpha = if (enabled) 1f else 0.4f
+            copyBtn.alpha = alpha
+            moveBtn.alpha = alpha
+        }
+
+        fun start(move: Boolean) {
+            if (running) return
+            val chosen = adapter.selectedUris().toSet()
+            val picked = candidates.filter { it.uri in chosen }
+            if (picked.isEmpty()) {
+                MetroBanner.show(this, getString(R.string.album_pick_none))
+                return
+            }
+            running = true
+            setButtonsEnabled(false)
+            val progressLabel =
+                if (move) R.string.album_move_progress else R.string.album_copy_progress
+            lifecycleScope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    AlbumFolderOps.copyInto(
+                        context = this@MainActivity,
+                        sources = picked,
+                        relativePath = album.folderPath,
+                        onProgress = { done, total ->
+                            runOnUiThread {
+                                if (running) status.text = getString(progressLabel, done, total)
+                            }
+                        }
+                    )
+                }
+                running = false
+                dialog.dismiss()
+                applyAlbumAddPhotos(result, move)
+            }
+        }
+
+        cancelBtn.setOnClickListener { if (!running) dialog.dismiss() }
+        copyBtn.setOnClickListener { start(move = false) }
+        moveBtn.setOnClickListener { start(move = true) }
+        dialog.show()
+    }
+
+    /**
+     * What a finished copy run does. The album is filled *before* anything is deleted, and the originals
+     * that leave go through the app's ordinary delete policy — Recycle Bin when it is on, so a move that
+     * surprised someone stays undoable for its usual 30 days.
+     */
+    private fun applyAlbumAddPhotos(result: AlbumFolderOps.Result, move: Boolean) {
+        if (result.copied.isEmpty()) {
+            // Nothing was verified, so nothing was deleted either.
+            MetroBanner.show(this, getString(R.string.album_copy_none))
+            return
+        }
+        val count = result.copied.size
+        val base = resources.getQuantityString(
+            if (move) R.plurals.album_photos_moved else R.plurals.album_photos_copied,
+            count,
+            count
+        )
+        val message = if (result.failed.isEmpty()) base
+        else "$base · ${getString(R.string.album_copy_failed, result.failed.size)}"
+        if (move) {
+            // The copies are put on screen while their originals still exist, so an album fills up before
+            // anything leaves — and only the originals whose copy read back whole are handed to the delete.
+            lifecycleScope.launch {
+                refreshVisibleItems()?.join()
+                performManagedDelete(result.copiedSources, outcomeLabel = message)
+            }
+        } else {
+            MetroBanner.show(this, message)
+            refreshVisibleItems()
+        }
+        lifecycleScope.launch { maybeStartBackgroundIndexing() }
     }
 
     private fun saveTagAlbum(existing: CollectionAlbum?, name: String, tagNames: List<String>) {
@@ -4285,7 +4455,7 @@ class MainActivity : AppCompatActivity() {
                 Entitlements.isUnlocked(this)
             )
         ) {
-            ProPaywall.show(this, getString(R.string.gate_smart_albums, FreeTier.FreeSmartAlbums))
+            ProPaywall.open(this, getString(R.string.gate_smart_albums, FreeTier.FreeSmartAlbums))
             return
         }
         val dialogView = layoutInflater.inflate(R.layout.dialog_smart_album, null)
@@ -4700,7 +4870,7 @@ class MainActivity : AppCompatActivity() {
     /** Requests storage access on the first delete, then routes through the selected delete policy. */
     private fun requestDelete(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        if (!DeleteCoordinator.canDeleteDirectly(this)) {
+        if (DeleteCoordinator.shouldAskForStorageAccess(this)) {
             pendingAllFilesDeleteUris = uris
             runCatching { allFilesAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
                 .onFailure {
@@ -4710,8 +4880,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
         // Every delete confirms first. Bin moves are undoable for 30 days; direct deletes are
-        // permanent — the copy makes the difference explicit. The system consent dialog path
-        // (no all-files access) confirms itself.
+        // permanent — the copy makes the difference explicit. On Android 10 the consent path asks a
+        // second time in the system dialog, which is the price of deleting there at all.
         val toBin = DeleteCoordinator.usesBin(this)
         val noun = if (uris.size == 1) "this photo" else "${uris.size} photos"
         MetroDialog.confirm(
@@ -4773,7 +4943,13 @@ class MainActivity : AppCompatActivity() {
         if (currentMode == Mode.Search && !searchLandingVisible) updateSearchResultCount()
     }
 
-    private fun performManagedDelete(uris: List<Uri>) {
+    /**
+     * Deletes through the app's policy: Recycle Bin when it is on, direct or system consent when not.
+     * [outcomeLabel] replaces the "n photos moved to Bin" wording when the caller is doing more than
+     * deleting — a move into an album's folder reports the album, because "3 photos deleted" describes
+     * half of what happened and reads like a loss.
+     */
+    private fun performManagedDelete(uris: List<Uri>, outcomeLabel: String? = null) {
         hideDeletingUris(uris)
         lifecycleScope.launch {
             val outcome = withContext(Dispatchers.IO) { DeleteCoordinator.delete(this@MainActivity, uris) }
@@ -4791,14 +4967,13 @@ class MainActivity : AppCompatActivity() {
                     // already reflected in the grid, so only backing state is reconciled.
                     refreshVisibleItems(reRender = failed.isNotEmpty())
                     adapter.clearSelection()
+                    val base = outcomeLabel ?: resources.getQuantityString(
+                        if (outcome.toBin) R.plurals.photos_moved_to_bin else R.plurals.photos_deleted,
+                        outcome.succeeded,
+                        outcome.succeeded
+                    )
                     val msg = buildString {
-                        append(
-                            resources.getQuantityString(
-                                if (outcome.toBin) R.plurals.photos_moved_to_bin else R.plurals.photos_deleted,
-                                outcome.succeeded,
-                                outcome.succeeded
-                            )
-                        )
+                        append(base)
                         if (outcome.failed > 0) append(" · ${outcome.failed} failed")
                     }
                     if (outcome.toBin && outcome.binnedIds.isNotEmpty()) {
@@ -5217,8 +5392,23 @@ class MainActivity : AppCompatActivity() {
         val isFoldersSection = activeSection == Section.Folders &&
             currentMode == Mode.Browse &&
             adapter.selectionCount == 0
-        binding.folderOptionsBtn.visibility = if (isFoldersSection) View.VISIBLE else View.GONE
-        binding.folderOptionsBtn.setOnClickListener(::showFolderOptions)
+        // Inside a saved collection the "more" button is that album's own menu — the way in for adding
+        // photos to the album being looked at, rather than going back out to the grid to long-press it.
+        val albumDetailRecord = if (
+            currentMode == Mode.CollectionAlbumDetail && adapter.selectionCount == 0
+        ) {
+            currentCollectionAlbum
+        } else {
+            null
+        }
+        binding.folderOptionsBtn.visibility =
+            if (isFoldersSection || albumDetailRecord != null) View.VISIBLE else View.GONE
+        binding.folderOptionsBtn.contentDescription =
+            getString(if (albumDetailRecord != null) R.string.album_options else R.string.folder_options)
+        binding.folderOptionsBtn.setOnClickListener { anchor ->
+            val record = albumDetailRecord
+            if (record != null) showCollectionAlbumMenu(record, anchor) else showFolderOptions(anchor)
+        }
     }
 
     private enum class FolderSort { Name, Newest, MostItems }

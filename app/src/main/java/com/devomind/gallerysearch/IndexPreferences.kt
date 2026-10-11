@@ -433,6 +433,27 @@ object IndexPreferences {
             .apply()
     }
 
+    private const val KeyAlbumFolderRoot = "album_folder_root"
+
+    /**
+     * Which public folder a *new* album's own folder is created under (see [SAFE_ROOT_*]).
+     *
+     * Unlike the Safe — which is one zip and can be moved wholesale — this only ever applies to albums
+     * made after the change. Existing albums keep the folder they were created in, because following the
+     * setting would mean relocating the user's photos behind their back.
+     */
+    fun getAlbumFolderRoot(context: Context): String {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getString(KeyAlbumFolderRoot, SAFE_ROOT_PICTURES)!!
+    }
+
+    fun setAlbumFolderRoot(context: Context, root: String) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KeyAlbumFolderRoot, root)
+            .apply()
+    }
+
     private const val KeySafeVaultDir = "safe_vault_dir"
 
     /**

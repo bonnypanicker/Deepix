@@ -254,6 +254,23 @@ class SafeActivity : AppCompatActivity() {
     }
 
     private fun promptStorageAccess() {
+        if (!StoragePermissions.allFilesAccessRequestable()) {
+            // Android 10: the vault is a real file in a public folder, which scoped storage forbids a
+            // targetSdk-35 app to create, and there is no All-files switch to turn on. Say so instead
+            // of opening a Settings screen with nothing in it.
+            MetroDialog.message(
+                context = this,
+                title = "Safe needs Android 11 or newer",
+                message = "Safe keeps your photos in one encrypted file in its own folder on disk. " +
+                    "Android 10 doesn't let apps create that folder, and it has no All-files access " +
+                    "switch to turn on.",
+                iconRes = R.drawable.ic_fluent_lock_closed_24_regular,
+                positive = "Close",
+                cancelable = false,
+                onPositive = { finish() }
+            )
+            return
+        }
         MetroDialog.confirm(
             this,
             title = "Storage access needed",
@@ -355,8 +372,9 @@ class SafeActivity : AppCompatActivity() {
     }
 
     private fun createOrAdoptVault(password: String, adoptMode: Boolean) {
+        // beginSetupFlow re-checks access and shows the matching dialog, so a denial here doesn't need
+        // its own wording — on Android 10 it would promise a switch that device doesn't have.
         if (!StoragePermissions.hasAllFilesAccess(this)) {
-            MetroBanner.show(this, "All-files access is required for Safe")
             beginSetupFlow()
             return
         }
@@ -579,7 +597,7 @@ class SafeActivity : AppCompatActivity() {
             }
             if (allowed.isEmpty()) {
                 // Nothing to write, so nothing to lose: say why the door is shut and stop.
-                ProPaywall.show(
+                ProPaywall.open(
                     this@SafeActivity,
                     getString(R.string.gate_safe, FreeTier.FreeSafePhotos)
                 )
@@ -608,7 +626,7 @@ class SafeActivity : AppCompatActivity() {
             // Only when some of the pick was left out — a Safe that took everything hears nothing about
             // pricing. The offer comes after the work is reported, never on top of it.
             if (allowed.size < uris.size) {
-                ProPaywall.show(
+                ProPaywall.open(
                     this@SafeActivity,
                     getString(R.string.gate_safe, FreeTier.FreeSafePhotos)
                 )
