@@ -41,9 +41,13 @@ class SettingsActivity : AppCompatActivity() {
      *  would leave one observer behind for every pause/resume cycle. */
     private val billingListener: () -> Unit = { updateProSubtitle() }
 
+    /** The accent this instance actually applied in [onCreate], for noticing a verdict change while open. */
+    private var appliedAccent: AccentPalette.Choice? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         AccentPalette.apply(this)
         super.onCreate(savedInstanceState)
+        appliedAccent = AccentPalette.current(this)
         accentChanged = savedInstanceState?.getBoolean(StateAccentChanged, false) ?: false
         updateAccentResult()
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -69,12 +73,20 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // A purchase made from this screen's own paywall is what unlocks an accent the user had already
+        // picked before the gate existed — their stored choice is theirs, and the theme should say so
+        // without making them reopen the picker. recreate() re-runs onCreate, which re-reads the accent,
+        // so this can only fire once per verdict change.
+        if (appliedAccent != null && appliedAccent != AccentPalette.current(this)) {
+            recreate()
+            return
+        }
         binding.accentColorSubtitle.text = AccentPalette.current(this).displayName
         updateIndexedFoldersSubtitle()
         updateSafeSubtitles()
         BillingGateway.observe(billingListener)
         updateProSubtitle()
-        // Play's sheet backgrounds this activity, so coming back here is also how a finished purchase is
+        // Play's sheet backgrounds the app, so coming back here is also how a finished purchase is
         // noticed. The query answers from the Google app's own cache, so it costs no network most times.
         BillingGateway.refresh()
     }
@@ -262,8 +274,14 @@ class SettingsActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    /**
+     * The whole palette is listed, paid swatches included, because a picker that shows three colors reads
+     * as a three-color app. [AccentPalette.current] has already demoted an unowned stored choice, so the
+     * check mark can never sit on a row the user cannot tap.
+     */
     private fun showAccentColorDialog() {
         val choices = AccentPalette.choicesFor(this)
+        val unlocked = Entitlements.isUnlocked(this)
         val labels = choices.map { it.displayName }.toTypedArray()
         val current = AccentPalette.current(this)
         val checked = choices.indexOfFirst { it == current }.coerceAtLeast(0)
@@ -272,9 +290,18 @@ class SettingsActivity : AppCompatActivity() {
             title = "Accent color",
             options = labels.toList(),
             checkedIndex = checked,
-            swatches = choices.map { AccentPalette.swatchColor(this, it) }
+            swatches = choices.map { AccentPalette.swatchColor(this, it) },
+            locked = choices.withIndex()
+                .filter { FreeTier.accentLocked(it.value, unlocked) }
+                .map { it.index }
+                .toSet()
         ) { which ->
-            val choice = choices[which]
+            applyAccent(choices[which])
+        }
+    }
+
+    private fun applyAccent(choice: AccentPalette.Choice) {
+        Entitlements.guard(this, getString(R.string.gate_accent)) {
             IndexPreferences.setAccentColor(this, choice.key)
             accentChanged = true
             binding.accentColorSubtitle.text = choice.displayName

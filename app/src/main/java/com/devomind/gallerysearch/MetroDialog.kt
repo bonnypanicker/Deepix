@@ -172,6 +172,11 @@ object MetroDialog {
      * Flat single-choice list (replaces AlertDialog.setSingleChoiceItems). The selected row is
      * accent-colored with a trailing checkmark; picking a row dismisses and reports it.
      * [swatches] optionally prefixes each row with a color dot (accent picker).
+     *
+     * [locked] indexes are still listed, but tinted back and marked with a lock instead of left out.
+     * Hiding them would read as a short palette rather than a bought one, and the tap still reports
+     * through [onSelect] so the caller decides what a locked pick means — the widget does not know about
+     * entitlements.
      */
     fun singleChoice(
         context: Context,
@@ -179,14 +184,17 @@ object MetroDialog {
         options: List<String>,
         checkedIndex: Int,
         swatches: List<Int>? = null,
+        locked: Set<Int> = emptySet(),
         onSelect: (Int) -> Unit
     ): AlertDialog {
         val v = inflate(context, title, iconRes = null)
         v.showList(context, options.size * dp(context, 52))
         val dialog = create(context, v.root, cancelable = true)
         val accent = DesignTokens.accent(context)
+        val tertiary = ContextCompat.getColor(context, R.color.metroTextTertiary)
         options.forEachIndexed { index, option ->
             val selected = index == checkedIndex
+            val isLocked = index in locked && !selected
             val rowLayout = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -203,18 +211,28 @@ object MetroDialog {
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
                         setColor(color)
+                        // A paid swatch keeps its color — the dot is the reason to want it.
+                        setAlpha(if (isLocked) 110 else 255)
                     }
                 })
             }
             rowLayout.addView(row(context, option, padded = false).apply {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                if (selected) setTextColor(accent)
+                when {
+                    selected -> setTextColor(accent)
+                    isLocked -> setTextColor(tertiary)
+                }
             })
-            if (selected) {
+            if (selected || isLocked) {
                 rowLayout.addView(ImageView(context).apply {
                     layoutParams = LinearLayout.LayoutParams(dp(context, 20), dp(context, 20))
-                    setImageResource(R.drawable.ic_fluent_checkmark_24_regular)
-                    imageTintList = android.content.res.ColorStateList.valueOf(accent)
+                    setImageResource(
+                        if (isLocked) R.drawable.ic_fluent_lock_closed_24_regular
+                        else R.drawable.ic_fluent_checkmark_24_regular
+                    )
+                    imageTintList = android.content.res.ColorStateList.valueOf(
+                        if (isLocked) tertiary else accent
+                    )
                 })
             }
             rowLayout.setOnClickListener {

@@ -91,9 +91,17 @@ object AccentPalette {
     @ColorInt fun swatchColor(context: Context, choice: Choice): Int =
         if (choice == Choice.SYSTEM) readDynamicAccent(context) ?: choice.solid else choice.solid
 
-    /** The currently selected accent, with [Choice.SYSTEM] dropped when this device cannot keep it. */
-    fun current(activity: Activity): Choice =
-        resolveChoice(IndexPreferences.getAccentColor(activity), isSystemAccentAvailable(activity))
+    /**
+     * The accent in force, with [Choice.SYSTEM] dropped when this device cannot keep it and a paid choice
+     * dropped when the unlock is not held. The paid half is resolved here rather than only in the picker
+     * because this is what [apply] reads on every activity's way in: a stored Rose arriving through Auto
+     * Backup, or bought and then refunded, must not paint the app in a color the user no longer owns.
+     * The stored key itself is left alone, so buying unlocks it again without a re-pick.
+     */
+    fun current(activity: Activity): Choice {
+        val stored = resolveChoice(IndexPreferences.getAccentColor(activity), isSystemAccentAvailable(activity))
+        return if (FreeTier.accentLocked(stored, Entitlements.isUnlocked(activity))) Choice.AZURE else stored
+    }
 
     /**
      * [Choice.fromKey] plus the availability veto. The stored key is checked rather than trusted: a
