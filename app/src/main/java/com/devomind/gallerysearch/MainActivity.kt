@@ -44,6 +44,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.core.widget.doAfterTextChanged
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -670,6 +671,21 @@ class MainActivity : AppCompatActivity() {
             settingsLaunchAccent = AccentPalette.current(this)
             settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
         }
+
+        // The offer, not a screen: the row is the way in from anywhere in the gallery, and ProPaywall
+        // already says "unlocked on this device" when the verdict is held, so an owned user who taps it
+        // hears the truth rather than a dead row.
+        binding.drawerPro.setOnClickListener {
+            binding.drawerLayout.closeDrawer(GravityCompat.START)
+            ProPaywall.show(this)
+        }
+
+        // The row's label is a fact about the verdict, and the verdict can move while the drawer is shut
+        // (a purchase through Play's sheet, a purchase offered from another screen, a refund). Re-reading
+        // it as the drawer settles is the one moment that has to be right.
+        binding.drawerLayout.addDrawerListener(object : DrawerLayout.SimpleDrawerListener() {
+            override fun onDrawerOpened(drawerView: View) = updateDrawerState()
+        })
 
         binding.bottomCollections.setOnClickListener { navigateToSection(Section.Collection) }
         binding.bottomAlbums.setOnClickListener { navigateToSection(Section.Albums) }
@@ -4947,6 +4963,19 @@ class MainActivity : AppCompatActivity() {
         binding.drawerFolders.setBackgroundColor(
             if (currentMode != Mode.Search && activeSection == Section.Folders) active else inactive
         )
+        // The promotional row is the drawer's only row that reports a fact rather than a place, so it
+        // says what is still to be had: "unlock pro" with a lock, "pixa pro" with a check once owned.
+        // The glyph is re-tinted here because replacing a compound drawable drops the XML's tint, and
+        // an accent-adaptive row that turns white on one device is a bug report waiting to happen.
+        val unlocked = Entitlements.isUnlocked(this)
+        binding.drawerPro.setText(if (unlocked) R.string.drawer_pro_owned else R.string.drawer_pro)
+        ContextCompat.getDrawable(
+            this,
+            if (unlocked) R.drawable.ic_fluent_checkmark_24_regular else R.drawable.ic_fluent_lock_closed_24_regular
+        )?.let { glyph ->
+            glyph.setTint(DesignTokens.accent(this))
+            binding.drawerPro.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, glyph, null)
+        }
         updateIndexingRow()
     }
 

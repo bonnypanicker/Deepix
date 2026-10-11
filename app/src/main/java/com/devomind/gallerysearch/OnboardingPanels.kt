@@ -9,14 +9,16 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
+import com.devomind.gallerysearch.databinding.ItemOnboardingBenefitRowBinding
 import com.devomind.gallerysearch.databinding.ItemOnboardingPanelBinding
 import com.devomind.gallerysearch.databinding.ItemOnboardingPermRowBinding
 import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
- * One page of the first-run tour: a glyph over eyebrow / headline / body copy, or — for the last
- * page — that same header with [permissions] listed under it instead of a glyph.
+ * One page of the first-run tour: a glyph over eyebrow / headline / body copy, or — for the pages that
+ * carry a list instead of a glyph alone — that same header with [benefits] or [permissions] ruled
+ * beneath it.
  *
  * Every size here is stated in the reference mock's own units (it is 360dp wide), never in dp, and
  * [OnboardingMetrics] turns them into real pixels for the screen in hand.
@@ -27,8 +29,12 @@ class OnboardingPanel(
     @StringRes val eyebrow: Int,
     @StringRes val title: Int,
     @StringRes val body: Int,
-    val permissions: List<OnboardingPermission> = emptyList()
+    val permissions: List<OnboardingPermission> = emptyList(),
+    val benefits: List<OnboardingBenefit> = emptyList()
 )
+
+/** One line of the Pro page's list: the thing the purchase adds, said once. */
+class OnboardingBenefit(@StringRes val label: Int)
 
 /** Which runtime grant a row stands for, and therefore how the tour asks for it. */
 enum class OnboardingPermissionKind { Media, AllFiles, Notifications }
@@ -72,10 +78,14 @@ interface OnboardingPermissionHost {
 }
 
 /**
- * The tour's contents: what Pixa does, then what it needs. The permissions page lists what this
- * build actually requests — media access gates every feature, all-files access is what lets Safe
- * and the recycle bin move or delete originals, and notifications are the optional one. Fingerprint
- * is not listed: it has no runtime request and is enrolled inside Safe.
+ * The tour's contents: what Pixa does, what costs extra, then what it needs. The permissions page stays
+ * last because the tour's own chrome treats the final page specially — "Get started" and the blocked
+ * finish both hang on it, and the dismiss button jumps to it. The Pro page therefore sits before it,
+ * and lists the limits [FreeTier] actually enforces rather than a general idea of premium.
+ *
+ * The permissions page lists what this build actually requests — media access gates every feature,
+ * all-files access is what lets Safe and the recycle bin move or delete originals, and notifications
+ * are the optional one. Fingerprint is not listed: it has no runtime request and is enrolled inside Safe.
  */
 fun onboardingPanels(): List<OnboardingPanel> = listOf(
     OnboardingPanel(
@@ -126,6 +136,21 @@ fun onboardingPanels(): List<OnboardingPanel> = listOf(
         eyebrow = R.string.onboarding_safe_eyebrow,
         title = R.string.onboarding_safe_title,
         body = R.string.onboarding_safe_body
+    ),
+    OnboardingPanel(
+        iconRes = R.drawable.ic_onboarding_pro,
+        iconSize = 84f,
+        eyebrow = R.string.onboarding_pro_eyebrow,
+        title = R.string.onboarding_pro_title,
+        body = R.string.onboarding_pro_body,
+        benefits = listOf(
+            OnboardingBenefit(R.string.onboarding_pro_benefit_people),
+            OnboardingBenefit(R.string.onboarding_pro_benefit_accents),
+            OnboardingBenefit(R.string.onboarding_pro_benefit_safe),
+            OnboardingBenefit(R.string.onboarding_pro_benefit_cleanup),
+            OnboardingBenefit(R.string.onboarding_pro_benefit_compression),
+            OnboardingBenefit(R.string.onboarding_pro_benefit_albums)
+        )
     ),
     OnboardingPanel(
         iconRes = 0,
@@ -240,7 +265,9 @@ class OnboardingPanelAdapter(
             b.panelTitle.text = context.getString(panel.title)
             b.panelBody.text = context.getString(panel.body)
 
-            if (panel.permissions.isEmpty()) bindFeaturePage(panel) else bindPermissionsPage(panel)
+            if (panel.permissions.isNotEmpty()) bindPermissionsPage(panel)
+            else if (panel.benefits.isNotEmpty()) bindBenefitsPage(panel)
+            else bindFeaturePage(panel)
         }
 
         /** Glyph in the larger share of the spare height, copy settled above a gap below it. */
@@ -248,6 +275,14 @@ class OnboardingPanelAdapter(
             b.panelIconArea.visibility = View.VISIBLE
             b.panelIcon.visibility = View.VISIBLE
             b.panelIcon.setImageResource(panel.iconRes)
+            // Every glyph property is set here rather than "reset" here, because ViewPager2 hands a
+            // recycled holder to whichever page needs one next: the Pro page paints its glyph on an
+            // accent tile in white, and a search icon must not inherit that.
+            b.panelIcon.background = null
+            b.panelIcon.setPadding(0, 0, 0, 0)
+            b.panelIcon.imageTintList = android.content.res.ColorStateList.valueOf(
+                DesignTokens.accent(b.root.context)
+            )
             b.panelIcon.layoutParams = (b.panelIcon.layoutParams as FrameLayout.LayoutParams).apply {
                 width = metrics.units(panel.iconSize)
                 height = metrics.units(panel.iconSize)
@@ -265,6 +300,69 @@ class OnboardingPanelAdapter(
             b.permTopDivider.visibility = View.GONE
             b.permList.visibility = View.GONE
             b.permList.removeAllViews()
+        }
+
+        /**
+         * The Pro page keeps its glyph but stops treating the page as a poster: the tile is given its
+         * own fixed height and the ruled list takes the slack below the copy, the way the permissions
+         * page does. Weighting both would have the glyph and the list compete for the same leftover,
+         * and on a short screen the list is the part that must not be clipped.
+         *
+         * The glyph is drawn *on* the accent rather than in it — a flat tile is this app's one
+         * promotional gesture, and white on accent is the pairing the CTA already uses.
+         */
+        private fun bindBenefitsPage(panel: OnboardingPanel) {
+            val tile = metrics.units(panel.iconSize)
+            val glyphPadding = metrics.units(panel.iconSize * 0.26f)
+            b.panelIcon.visibility = View.VISIBLE
+            b.panelIcon.setImageResource(panel.iconRes)
+            b.panelIcon.setBackgroundResource(R.drawable.onboarding_pro_tile_bg)
+            b.panelIcon.setPadding(glyphPadding, glyphPadding, glyphPadding, glyphPadding)
+            b.panelIcon.imageTintList = android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(b.root.context, R.color.metroTextPrimary)
+            )
+            b.panelIcon.layoutParams = (b.panelIcon.layoutParams as FrameLayout.LayoutParams).apply {
+                width = tile
+                height = tile
+            }
+            b.panelIconArea.layoutParams =
+                (b.panelIconArea.layoutParams as LinearLayout.LayoutParams).apply {
+                    height = tile + metrics.units(8f)
+                    weight = 0f
+                }
+            b.panelBottomSpacer.layoutParams =
+                (b.panelBottomSpacer.layoutParams as LinearLayout.LayoutParams).apply {
+                    height = 0
+                    weight = 0f
+                }
+            b.permTopDivider.visibility = View.VISIBLE
+            b.permTopDivider.layoutParams =
+                (b.permTopDivider.layoutParams as LinearLayout.LayoutParams).apply {
+                    topMargin = metrics.units(10f)
+                    height = metrics.hairline()
+                }
+            b.permList.visibility = View.VISIBLE
+            b.permList.removeAllViews()
+            panel.benefits.forEach { b.permList.addView(benefitRowView(it)) }
+        }
+
+        /** One included thing: an accent check, the label, and the hairline that rules the list. */
+        private fun benefitRowView(benefit: OnboardingBenefit): View {
+            val context = b.root.context
+            val r = ItemOnboardingBenefitRowBinding.inflate(LayoutInflater.from(context), b.permList, false)
+            r.benefitRowIcon.layoutParams = (r.benefitRowIcon.layoutParams as LinearLayout.LayoutParams).apply {
+                width = metrics.units(18f)
+                height = metrics.units(18f)
+            }
+            r.benefitRowLabel.setTextSize(metrics.textSp(13f))
+            r.benefitRowLabel.text = context.getString(benefit.label)
+            r.benefitRowDivider.layoutParams = (r.benefitRowDivider.layoutParams as LinearLayout.LayoutParams).apply {
+                height = metrics.hairline()
+            }
+            val rowPad = metrics.units(11f)
+            r.benefitRowContent.setPadding(0, rowPad, 0, rowPad)
+            r.benefitRowLabel.margin { marginStart = metrics.units(16f) }
+            return r.root
         }
 
         /** The flexible area collapses to the reference's header gap and the ruled list takes it. */

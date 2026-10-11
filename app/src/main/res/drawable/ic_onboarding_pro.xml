@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Onboarding: Pixa Pro — a brilliant-cut gem: a flat crown edge, a girdle line, and two facet
+     lines running from the crown corners to the point. Same 24-unit line-art language as the other
+     tour glyphs (1.5 stroke, transparent fill), filled white and tinted at the usage site — here it
+     sits inside an accent tile, so it is drawn on the tile's own color instead. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M7.5,5.3L16.5,5.3L20,9.6L12,20.6L4,9.6Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.5" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M4,9.6h16"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M7.5,5.3l2.1,4.3L12,20.6"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.1" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M16.5,5.3l-2.1,4.3L12,20.6"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.1" />
+</vector>

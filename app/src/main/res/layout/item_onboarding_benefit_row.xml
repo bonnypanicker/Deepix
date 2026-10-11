@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One row of the Pro page: an accent checkmark, the thing the purchase adds, and the hairline under
+     it. Deliberately narrower than the permissions row — those carry a summary and a live state word,
+     while this one only has to say "included". The page above contributes the matching top hairline, so
+     the rows read as one ruled list. Not clickable: the tour informs, the drawer sells. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/benefitRowRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:id="@+id/benefitRowContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingTop="11dp"
+        android:paddingBottom="11dp">
+
+        <ImageView
+            android:id="@+id/benefitRowIcon"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_fluent_checkmark_24_regular"
+            android:tint="?attr/accentColor" />
+
+        <TextView
+            android:id="@+id/benefitRowLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_weight="1"
+            android:lineSpacingMultiplier="1.15"
+            android:textColor="@color/metroTextPrimary"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/benefitRowDivider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/metroBgSurface" />
+</LinearLayout>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The tour's Pro mark: a flat accent tile, the Windows-Phone gesture this app's whole language is
+     built on. Same 2dp corner and same ?attr/accentColor fill as the CTA, minus the ripple — nothing
+     here is tappable, the glyph is a badge, not a button. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/accentColor" />
+    <corners android:radius="2dp" />
+</shape>
