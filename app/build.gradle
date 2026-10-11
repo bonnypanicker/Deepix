@@ -93,6 +93,9 @@ dependencies {
     implementation "androidx.room:room-ktx:2.6.1"
     implementation "androidx.viewpager2:viewpager2:1.1.0"
     implementation "androidx.work:work-runtime-ktx:2.9.1"
+    // Play Billing. Communicates with com.android.vending over IPC, which is why the app still needs
+    // no INTERNET permission: the network work is Play's, not ours, and only while paying.
+    implementation "com.android.billingclient:billing-ktx:7.1.1"
     implementation "com.github.bumptech.glide:glide:4.16.0"
     // AVIF decode on API < 31 (31+ decodes natively). Registered by its @GlideModule, which the
     // kapt compiler picks up even though manifest parsing is disabled in GalleryGlideModule.

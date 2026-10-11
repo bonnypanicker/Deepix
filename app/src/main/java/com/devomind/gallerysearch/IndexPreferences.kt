@@ -31,6 +31,8 @@ object IndexPreferences {
     private const val KeySkipDeleteConfirm = "skip_delete_confirm"
     private const val KeySafeStorageRoot = "safe_storage_root"
     private const val KeyAccentColor = "accent_color"
+    /** Last entitlement verdict Play could prove, by [Entitlement] name. */
+    private const val KeyProEntitlement = "pro_entitlement"
     /** Set once the user takes the FirstRun onboarding path. */
     private const val KeyFirstRunDone = "first_run_done"
 
@@ -475,6 +477,25 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putString(KeyAccentColor, key)
+            .apply()
+    }
+
+    /**
+     * The last entitlement verdict Play was able to prove, by [Entitlement] name. Persisted because a
+     * one-time purchase is owned for good and the app still has to know that on a plane: Play answers
+     * from the Google app's own cache most of the time, and when it cannot, this is the record.
+     */
+    fun getProEntitlement(context: Context): Entitlement {
+        val stored = context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getString(KeyProEntitlement, null)
+        return Entitlement.entries.firstOrNull { it.name.equals(stored, ignoreCase = true) }
+            ?: Entitlement.Unknown
+    }
+
+    fun setProEntitlement(context: Context, entitlement: Entitlement) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KeyProEntitlement, entitlement.name)
             .apply()
     }
 }

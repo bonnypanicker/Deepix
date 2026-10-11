@@ -21,6 +21,10 @@ class GallerySearchApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Play's binder is asked for on the main thread because the billing library delivers its
+        // callbacks wherever startConnection ran. The bind itself is asynchronous and costs no
+        // network; ownership verdicts are read from SharedPreferences by the features that gate.
+        BillingGateway.connect(this)
         if (BuildConfig.DEBUG) {
             // Surface main-thread disk/network and leaked closables during development only.
             StrictMode.setThreadPolicy(
