@@ -514,7 +514,8 @@ ThreadCandidates  = [1, 2, 4, 6]   WarmUpRuns = 3   MeasureRuns = 5
 // Safe (encrypted photo locker)
 SafeStore.PbkdfIterations = 120_000   SafeStore.SaltBytes = 16
 SafeCrypto.ThumbMaxPx = 320   SafeCrypto.VaultExtension = ".zip"   // AES-256, STORE
-SafeManager.MasterName = "DeepixSafe.zip"   // single vault archive at Pictures|Documents /Deepix Safe/ (root via IndexPreferences.getSafeStorageRoot; All-files access)
+SafeManager.MasterName = "PixaSafe.zip"   // single vault archive at Pictures|Documents /Pixa Safe/ (root via IndexPreferences.getSafeStorageRoot; All-files access)
+SafeManager.LegacyMasterName = "DeepixSafe.zip"   LegacyVaultFolderName = "Deepix Safe"   // every vault predating the rename; zipNames/vaultDirs resolve the first archive that exists, and purgeVault erases both names
 SafeKeystore.KeyAlias = "photo_safe_biometric_key"   // AES/GCM, user-auth-required
 
 // WordNetExpansionDictionary.kt

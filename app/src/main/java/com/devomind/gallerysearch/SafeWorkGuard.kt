@@ -5,7 +5,7 @@ package com.devomind.gallerysearch
  *
  * Locking wipes the Safe's plaintext staging directories, and an import writes the photo through one
  * of those directories into the archive. A wipe between the copy and the archive append used to leave
- * a half-written entry in `DeepixSafe.zip` — which is the only copy of every photo already imported.
+ * a half-written entry in `PixaSafe.zip` — which is the only copy of every photo already imported.
  * So a lock requested while work is running is remembered, and the last worker to finish performs it.
  *
  * Kept separate from [SafeManager] (and free of Android) so the deferral itself is unit-testable.

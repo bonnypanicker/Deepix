@@ -181,7 +181,8 @@ MainActivity drawer "safe" / multi-select "safe" → SafeActivity (safeLauncher,
   │     │              thumbnail decode straight from encrypted entry stream)
   │     ├── SafeKeystore (biometric-gated Keystore key → wraps password)
   │     ├── IndexPreferences.getSafeStorageRoot (pictures|documents) → vaultDir/masterZip path
-  │     └── java.io.File  (DeepixSafe.zip at Pictures|Documents /Deepix Safe/ via All-files access)
+  │     └── java.io.File  (PixaSafe.zip at Pictures|Documents /Pixa Safe/ via All-files access —
+  │          masterZip resolves the first name that exists, legacy Deepix Safe/DeepixSafe.zip included)
   ├── WRONG_PASSWORD (orphaned zip / forgotten pw) → offerResetOrphanedVault → SafeManager.purgeVault
   │     (deletes zip across all roots + SafeStore.reset + thumbs) → fresh CREATED setup
   ├── Settings › Safe storage location → SafeManager.moveVault (relocate existing vault on root change)
@@ -304,7 +305,7 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | `OnnxSessionOptions.DefaultThreadCount` (4) | Fallback only — `SharedEncoders` prefers the cached `ThreadBenchmark` result; benchmark trigger points are `MainActivity.ensureEncodersLoaded` + `IndexWorker.doWork` |
 | `ImageEncoder.resolveVisionModelAssetName` | Also used by `ThreadBenchmark` — priority order must match the shipped assets |
 | `ViewerActivity` gesture logic | Test all 6 gesture scenarios: diagonal swipes, info panel tap-close, fast swiping captions, panel drag smoothness, paging disabled while panel open |
-| `SafeManager` MasterName (`DeepixSafe.zip`) / VaultFolderName | Vault archive name/folder; root dir is `IndexPreferences.getSafeStorageRoot` (pictures\|documents). Changing the root via Settings **moves** the existing vault (`moveVault`); `purgeVault` wipes it across all roots |
+| `SafeManager` MasterName (`PixaSafe.zip`) / VaultFolderName (`Pixa Safe`) | The archive's name and folder; root dir is `IndexPreferences.getSafeStorageRoot` (pictures\|documents). Changing the root via Settings **moves** the existing vault (`moveVault`); `purgeVault` wipes it across all roots. Renaming either constant is survivable **only while the old pair stays in `zipNames`/`vaultDirs`** — `masterZip` resolves the first name that exists, and dropping that lookup re-orphans every vault created before the rename, which is the only copy of the photos already removed from the gallery. Add a name to both lists, or `purgeVault` leaves a locked archive that `archiveExists` will offer again |
 | `AlbumRules.AlbumFolderParent` (`Deepix Albums`) | Every album folder the app makes lives under this one segment, inside `IndexPreferences.getAlbumFolderRoot` (pictures\|documents, Settings › ALBUMS). Unlike the Safe the root is **not** followed for albums that already exist — their `folderPath` is stored, so changing the setting moves no photos. `isAlbumFolderPath(path)` reads the parent segment back, which is how an empty album knows whether it is unfilled or abandoned |
 | `IndexPreferences` safe_storage_root (`pictures`\|`documents`) | Stored in `index_prefs` (survives `SafeStore.reset`); drives `SafeManager.vaultDir`/`masterZip`/`archiveExists`/`vaultLocationLabel` |
 | `SafeStore` SharedPrefs keys / `SafeKeystore` KeyAlias | Stored on device — renaming breaks existing Safe config + biometric unlock |

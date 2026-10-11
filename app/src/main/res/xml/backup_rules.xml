@@ -3,7 +3,8 @@
   What must never leave the device in a Google/Android backup (API 30 and below; the Android 12+
   counterpart is data_extraction_rules.xml).
 
-  The vault archive itself sits in public storage (Pictures/Deepix Safe) and is outside app data, so
+  The vault archive itself sits in public storage (Pictures/Pixa Safe, or Pictures/Deepix Safe for a
+  vault made before the rename) and is outside app data, so
   it is never part of a backup. What is left behind here is everything that would let an outsider
   reach it or read the library's derived data: the password verifier and biometric blob, the map of
   where each vault photo came from, the search/face indices, and the Room database.

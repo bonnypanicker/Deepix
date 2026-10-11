@@ -17,9 +17,14 @@ import javax.crypto.SecretKey
  * Session + storage orchestration for the encrypted photo locker.
  *
  * All safe photos live inside ONE standard AES-256 zip — the encrypted "folder" — stored at a fixed
- * public path (`Pictures/Deepix Safe/DeepixSafe.zip`). With All-files access the app reads/writes
+ * public path (`Pictures/Pixa Safe/PixaSafe.zip`). With All-files access the app reads/writes
  * that file directly (zip4j needs a real path), so there is no folder picker and no session mirror:
  * the archive *is* the storage. It survives uninstall and opens in any zip tool with the password.
+ *
+ * The path is resolved, not assumed: [masterZip] takes the first archive that actually exists among
+ * the current names and the `Deepix Safe`/`DeepixSafe.zip` ones every vault predating the rename was
+ * written under. A vault the app fails to find is not an empty Safe — it is the only copy of the
+ * photos already removed from the gallery, so discovery, not a rename, is what carries them over.
  *
  * Sub-folders are modelled as path prefixes inside the archive (`Trip/beach.jpg`); an empty folder
  * keeps a `.dpixkeep` marker entry so it still lists. Extracted plaintext previews go to cache temp
@@ -43,8 +48,15 @@ object SafeManager {
 
     enum class SetupOutcome { CREATED, ADOPTED, WRONG_PASSWORD, NO_ACCESS }
 
-    private const val MasterName = "DeepixSafe.zip"
-    private const val VaultFolderName = "Deepix Safe"
+    private const val MasterName = "PixaSafe.zip"
+    private const val VaultFolderName = "Pixa Safe"
+
+    /** What every vault created before the app was Pixa is named. Nothing is created under them, but
+     *  an archive already sitting there is opened and appended to — it is the only copy those photos
+     *  have. Settings › SAFE location is the one path that renames it. */
+    private const val LegacyMasterName = "DeepixSafe.zip"
+    private const val LegacyVaultFolderName = "Deepix Safe"
+    private val zipNames = listOf(MasterName, LegacyMasterName)
     private const val FolderMarker = ".dpixkeep"
 
     @Volatile private var sessionPassword: String? = null
@@ -146,22 +158,45 @@ object SafeManager {
     /** Roots the vault can live under; the folder survives uninstall and opens in any zip tool. */
     private val knownRoots = listOf(IndexPreferences.SAFE_ROOT_PICTURES, IndexPreferences.SAFE_ROOT_DOCUMENTS)
 
-    private fun baseDir(root: String): File =
+    private fun baseDir(root: String, folderName: String = VaultFolderName): File =
         File(
             Environment.getExternalStoragePublicDirectory(
                 if (root == IndexPreferences.SAFE_ROOT_DOCUMENTS) Environment.DIRECTORY_DOCUMENTS
                 else Environment.DIRECTORY_PICTURES
             ),
-            VaultFolderName
+            folderName
         )
 
-    private fun vaultDir(context: Context): File {
+    /**
+     * The folders the vault could live in, current name first. Both names are then searched *inside*
+     * each one, because the folder the user picked is theirs: a `DeepixSafe.zip` that sits in a custom
+     * directory is still the vault, and inventing an empty `PixaSafe.zip` beside it would make the app
+     * forget every photo it already holds.
+     */
+    private fun vaultDirs(context: Context): List<File> {
         val custom = IndexPreferences.getSafeVaultDir(context)
-        if (!custom.isNullOrBlank()) return File(custom)
-        return baseDir(IndexPreferences.getSafeStorageRoot(context))
+        if (!custom.isNullOrBlank()) return listOf(File(custom))
+        val root = IndexPreferences.getSafeStorageRoot(context)
+        return listOf(baseDir(root), baseDir(root, LegacyVaultFolderName))
     }
 
-    private fun masterZip(context: Context): File = File(vaultDir(context), MasterName)
+    /** The folder a *new* vault is created in — the current name, never the legacy one. */
+    private fun newVaultDir(context: Context): File = vaultDirs(context).first()
+
+    /**
+     * The archive itself: the first candidate [vaultDirs] offers that exists, so a vault written under
+     * the old names keeps opening. When nothing exists this is the creation path — the current names,
+     * in the current folder or the custom one the user chose.
+     */
+    private fun masterZip(context: Context): File {
+        for (dir in vaultDirs(context)) {
+            for (name in zipNames) {
+                val candidate = File(dir, name)
+                if (candidate.exists()) return candidate
+            }
+        }
+        return File(newVaultDir(context), MasterName)
+    }
 
     /** Public root the vault falls back to when no custom folder is set (the default). */
     fun defaultVaultDir(context: Context): File = baseDir(IndexPreferences.SAFE_ROOT_PICTURES)
@@ -202,20 +237,21 @@ object SafeManager {
     }
 
     /**
-     * Hard reset: deletes the encrypted vault everywhere it could live — every known root plus the
-     * custom folder — along with app config and the thumbnail cache. Use only when the password is
-     * lost — everything inside the vault is erased.
+     * Hard reset: deletes the encrypted vault everywhere it could live — every known root, under both
+     * the current and the legacy names, plus the custom folder — along with app config and the
+     * thumbnail cache. Use only when the password is lost — everything inside the vault is erased.
      */
     fun purgeVault(context: Context) {
-        for (root in knownRoots) {
-            runCatching { File(baseDir(root), MasterName).delete() }
-            runCatching { baseDir(root).delete() } // removes the now-empty folder
-        }
-        IndexPreferences.getSafeVaultDir(context)?.let { custom ->
-            runCatching { File(custom, MasterName).delete() }
-            // Remove the custom folder only if our vault was its sole content; never wipes a
-            // shared folder (File.delete() on a non-empty dir would fail anyway).
-            runCatching { File(custom).takeIf { it.list()?.isEmpty() == true }?.delete() }
+        // The old names are erased as thoroughly as the new ones: this is the forgotten-password
+        // escape, and a DeepixSafe.zip left on disk would be found again by archiveExists, offering
+        // the same locked vault the user just chose to wipe.
+        val dirs = knownRoots.flatMap { listOf(baseDir(it), baseDir(it, LegacyVaultFolderName)) } +
+            IndexPreferences.getSafeVaultDir(context)?.let { listOf(File(it)) }.orEmpty()
+        dirs.distinct().forEach { dir ->
+            zipNames.forEach { name -> runCatching { File(dir, name).delete() } }
+            // Remove the folder only if our vault was its sole content; never wipes a shared
+            // folder (File.delete() on a non-empty dir would fail anyway).
+            runCatching { dir.takeIf { it.list()?.isEmpty() == true }?.delete() }
         }
         IndexPreferences.setSafeVaultDir(context, null)
         runCatching { File(context.filesDir, OriginalPathsFile).delete() }
@@ -245,8 +281,7 @@ object SafeManager {
      */
     fun setUpVault(context: Context, password: String): SetupOutcome {
         if (!hasAccess(context)) return SetupOutcome.NO_ACCESS
-        vaultDir(context).mkdirs()
-        val zip = masterZip(context)
+        val zip = masterZip(context).also { it.parentFile?.mkdirs() }
         val hasExisting = zip.exists() && SafeCrypto.listEntryNames(zip).isNotEmpty()
         if (hasExisting && !SafeCrypto.verifyPassword(zip, password.toCharArray())) {
             return SetupOutcome.WRONG_PASSWORD
@@ -346,8 +381,7 @@ object SafeManager {
         password: String,
         onProgress: ((done: Int, total: Int) -> Unit)?
     ): ImportResult {
-        vaultDir(context).mkdirs()
-        val zip = masterZip(context)
+        val zip = masterZip(context).also { it.parentFile?.mkdirs() }
         val existing = SafeCrypto.listEntryNames(zip).toMutableSet()
         val originalDirs = originalPaths(context)
         val work = File(context.cacheDir, "safe_work").apply { mkdirs() }
