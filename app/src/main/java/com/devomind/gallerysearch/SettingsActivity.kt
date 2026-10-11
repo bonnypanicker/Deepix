@@ -230,7 +230,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun showAccentColorDialog() {
-        val choices = AccentPalette.choices
+        val choices = AccentPalette.choicesFor(this)
         val labels = choices.map { it.displayName }.toTypedArray()
         val current = AccentPalette.current(this)
         val checked = choices.indexOfFirst { it == current }.coerceAtLeast(0)
@@ -239,7 +239,7 @@ class SettingsActivity : AppCompatActivity() {
             title = "Accent color",
             options = labels.toList(),
             checkedIndex = checked,
-            swatches = choices.map { it.solid }
+            swatches = choices.map { AccentPalette.swatchColor(this, it) }
         ) { which ->
             val choice = choices[which]
             IndexPreferences.setAccentColor(this, choice.key)

@@ -73,6 +73,18 @@
         <item name="colorAccent">#FFF43F5E</item>
     </style>
 
+    <!-- The OS's own accent. This base copy is Azure, because a device that cannot supply a dynamic
+         accent must still resolve every attribute the overlay touches; values-v31 replaces the whole
+         style with framework references once the platform has tones to offer. Offered in the picker
+         only when AccentPalette.isSystemAccentAvailable says the OS really provides one. -->
+    <style name="Accent.System">
+        <item name="accentColor">#FF3B9EFF</item>
+        <item name="accentColorLight">#FF6DB8FF</item>
+        <item name="accentColorAlpha14">#243B9EFF</item>
+        <item name="accentColorAlpha80">#CC3B9EFF</item>
+        <item name="colorAccent">#FF3B9EFF</item>
+    </style>
+
     <!-- Launch splash (AndroidX core-splashscreen; backported to minSdk) -->
     <style name="Theme.GallerySearch.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/ic_launcher_background</item>

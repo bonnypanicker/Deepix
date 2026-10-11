@@ -1,0 +1,22 @@
+<resources>
+    <!-- ===================== System accent (Android 12+) =====================
+         The only overlay that has no literals: every value is a framework tone, and the framework
+         rewrites those tones per user when the wallpaper/Material You palette changes (Runtime Resource
+         Overlays on the android package). Resolution happens when a view reads `?attr/accentColor`, so
+         the app follows the OS palette without holding a color of its own.
+
+         The tones are chosen for an AMOLED surface, not for Material's light-background roles:
+         400 is bright enough to read as an accent on pure black, 200 is its lighter partner, and the
+         two alpha attributes cannot reference a tone *with* alpha — XML has no way to blend a color
+         resource — so the low-alpha stroke takes the darkest usable tone (800) and the badge fill the
+         next step below the solid (600), which is what 14 % and 80 % of the solid looked like over black.
+         AccentPalette.isSystemAccentAvailable keeps this style away from a device that would resolve
+         the tones to nothing usable. -->
+    <style name="Accent.System">
+        <item name="accentColor">@android:color/system_accent1_400</item>
+        <item name="accentColorLight">@android:color/system_accent1_200</item>
+        <item name="accentColorAlpha14">@android:color/system_accent1_800</item>
+        <item name="accentColorAlpha80">@android:color/system_accent1_600</item>
+        <item name="colorAccent">@android:color/system_accent1_400</item>
+    </style>
+</resources>
