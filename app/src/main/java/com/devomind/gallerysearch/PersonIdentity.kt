@@ -50,7 +50,22 @@ object PersonIdentity {
 /** Editor for a person's [PersonEntity.nameLabel] + [PersonEntity.relationship]. */
 object PersonIdentityEditor {
 
+    /**
+     * The one way a person gains an identity — the grid's long-press, the detail title and the "Add name"
+     * button all arrive here, so the unlock is asked for once, before the keyboard, rather than after the
+     * user has typed a name and pressed Save.
+     *
+     * Naming and relationship labeling share [PersonDao.updateIdentity] and this dialog, so both are part
+     * of the paid identity: a relationship alone is a complete caption ("Mom"), and selling that separately
+     * would mean splitting one write into two rules.
+     */
     fun show(activity: AppCompatActivity, person: PersonEntity, onSaved: () -> Unit) {
+        Entitlements.guard(activity, activity.getString(R.string.gate_people)) {
+            openIdentityEditor(activity, person, onSaved)
+        }
+    }
+
+    private fun openIdentityEditor(activity: AppCompatActivity, person: PersonEntity, onSaved: () -> Unit) {
         val binding = DialogPersonIdentityBinding.inflate(activity.layoutInflater)
         binding.identityName.setText(person.nameLabel ?: "")
         binding.identityName.setSelection(binding.identityName.length())
