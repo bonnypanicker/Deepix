@@ -259,6 +259,22 @@ PersonDetailActivity identityAction  activity_person_detail.xml  the visible way
 
 ---
 
+## System accent pass additions
+
+```
+AccentPalette.Choice.SYSTEM   AccentPalette.kt  key "system", display "System accent", overlay Accent.System. Declared last so the six fixed swatches keep their positions. Its solid/light are Azure literals — a fallback, never the value it paints with, because no compile-time constant can hold a per-user color
+AccentPalette.isSystemAccentAvailable(context)  cached (process-stable) probe: systemAccentSupported(SDK_INT ≥ 31) AND readDynamicAccent() returned a tone with full alpha. Both halves are internal and pure so a host test can drive them without a Context
+AccentPalette.choicesFor(context)               what the picker lists — AccentPalette.choices minus SYSTEM when the probe says no. Hiding rather than degrading: a choice that paints Azure promises the user's palette and delivers the app's
+AccentPalette.resolveChoice(key, available)     the stored key plus the availability veto: "system" on a device without the tones reads AZURE. Covers the pref arriving through Auto Backup / device transfer on an older OS
+AccentPalette.solid/light(activity)             now resolve through DesignTokens.accent/accentLight (i.e. the applied overlay) instead of returning the enum constant, so Canvas-paint callers follow the dynamic tone. Same numbers as before for the six fixed swatches
+AccentPalette.swatchColor(context, choice)      the picker dot: the constant for a fixed swatch, one android.R.color.system_accent1_400 read for SYSTEM
+Accent.System               values/themes.xml + values-v31/themes.xml  the base copy is Azure so every attribute resolves on every OS version; v31 redefines the whole style as framework tone references (accent1_400 solid / _200 light / _800 for accentColorAlpha14 / _600 for _Alpha80 / colorAccent = _400). The two alpha attributes take tones because XML cannot blend a color *reference* with alpha — tones 0..1000 are the public set; 20/30/40/50-style intermediates do not exist for accent1
+SettingsActivity.showAccentColorDialog          reads AccentPalette.choicesFor(this) and swatchColor(), so the row appears only where it works
+AccentPaletteTest           (test)              choice order + key contract, the SDK-31 gate, the alpha rejection, and the unavailable-key fallback
+```
+
+---
+
 ## DB Entities & DAOs
 
 ```
