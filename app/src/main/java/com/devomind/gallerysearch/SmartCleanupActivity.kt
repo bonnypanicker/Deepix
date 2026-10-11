@@ -548,8 +548,16 @@ class SmartCleanupActivity : AppCompatActivity() {
     // Overview tiles
     // ---------------------------------------------------------------------------------------------
 
+    override fun onResume() {
+        super.onResume()
+        // Play's sheet backgrounds this Activity, so coming back is how a purchase made from this screen's
+        // own paywall is noticed: the locks come off the tiles without asking for a restart.
+        if (binding.overviewView.visibility == View.VISIBLE) renderTiles()
+    }
+
     private fun renderTiles() {
         binding.tilesContainer.removeAllViews()
+        val unlocked = Entitlements.isUnlocked(this)
         val nonEmpty = CleanupAnalyzer.Category.entries
             .filter { categoryItems[it]!!.isNotEmpty() }
             .sortedByDescending { categoryReclaimable(it) }
@@ -560,6 +568,8 @@ class SmartCleanupActivity : AppCompatActivity() {
             tile.setBackgroundColor(tileColor(category))
             tile.findViewById<TextView>(R.id.tileCount).text = count.toString()
             tile.findViewById<TextView>(R.id.tileTitle).text = categoryTitle(category)
+            tile.findViewById<View>(R.id.tileLock).visibility =
+                if (FreeTier.cleanupLocked(category, unlocked)) View.VISIBLE else View.GONE
             val bytes = categoryReclaimable(category)
             tile.findViewById<TextView>(R.id.tileSize).text =
                 if (bytes > 0L) {
@@ -626,6 +636,12 @@ class SmartCleanupActivity : AppCompatActivity() {
     // ---------------------------------------------------------------------------------------------
 
     private fun openCategory(category: CleanupAnalyzer.Category) {
+        // Gated at the door, not inside: a locked category's photos are still counted on the tile, but the
+        // user never lands in a detail view whose select-all, delete and Safe bars they cannot use.
+        if (FreeTier.cleanupLocked(category, Entitlements.isUnlocked(this))) {
+            ProPaywall.show(this, getString(R.string.gate_cleanup, categoryTitle(category)))
+            return
+        }
         currentCategory = category
         showingAllPhotos = false
         selectedAlbumId = null

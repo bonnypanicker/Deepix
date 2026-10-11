@@ -38,4 +38,18 @@
         android:includeFontPadding="false"
         android:textColor="@color/metroTextPrimary"
         android:textSize="12sp" />
+
+    <!-- Shown only for a cleanup category Pixa Pro unlocks. Placed opposite the count so the tile's own
+         numbers keep their positions, and drawn in the tile's text color: it is a quiet mark on a paid
+         surface, not a badge over the finding. -->
+    <ImageView
+        android:id="@+id/tileLock"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        android:layout_gravity="top|end"
+        android:alpha="0.9"
+        android:contentDescription="@string/locked"
+        android:src="@drawable/ic_fluent_lock_closed_24_regular"
+        android:tint="@color/metroTextPrimary"
+        android:visibility="gone" />
 </FrameLayout>
