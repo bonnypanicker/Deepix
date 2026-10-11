@@ -151,7 +151,7 @@ class MainActivity : AppCompatActivity() {
     private var lastProgressRefresh = -1
     private var indexRunning = false
     private var chargingPrefSnapshot = false
-    private var settingsLaunchAccentKey: String? = null
+    private var settingsLaunchAccent: AccentPalette.Choice? = null
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
     private var pendingAllFilesDeleteUris: List<Uri> = emptyList()
@@ -334,10 +334,11 @@ class MainActivity : AppCompatActivity() {
     ) { result ->
         val accentChangedByResult =
             result.data?.getBooleanExtra(SettingsActivity.ExtraAccentChanged, false) == true
+        // Compared against the accent in force, not the stored key: buying PRO can re-paint this screen
+        // without that key moving at all (a paid choice that was being demoted to Azure).
         val accentChangedByPreference =
-            settingsLaunchAccentKey != null &&
-                settingsLaunchAccentKey != IndexPreferences.getAccentColor(this)
-        settingsLaunchAccentKey = null
+            settingsLaunchAccent != null && settingsLaunchAccent != AccentPalette.current(this)
+        settingsLaunchAccent = null
         val accentChanged = accentChangedByResult || accentChangedByPreference
         if (accentChanged) recreate() else {
             applyBottomBarConfig()
@@ -666,7 +667,7 @@ class MainActivity : AppCompatActivity() {
         binding.drawerSettings.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             chargingPrefSnapshot = IndexPreferences.isChargingOnlyIndexing(this)
-            settingsLaunchAccentKey = IndexPreferences.getAccentColor(this)
+            settingsLaunchAccent = AccentPalette.current(this)
             settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
         }
 
@@ -3925,6 +3926,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCreateSmartAlbumDialog() {
+        // Stopped at the door, not at Save: naming an album and describing it, only to be refused after,
+        // is the distraction a cap should never cause. The count is the list already in memory.
+        if (FreeTier.smartAlbumsBlocked(smartAlbums.size, Entitlements.isUnlocked(this))) {
+            ProPaywall.show(this, getString(R.string.gate_smart_albums, FreeTier.FreeSmartAlbums))
+            return
+        }
         val dialogView = layoutInflater.inflate(R.layout.dialog_smart_album, null)
         val nameInput = dialogView.findViewById<EditText>(R.id.smartAlbumName)
         val promptInput = dialogView.findViewById<EditText>(R.id.smartAlbumPrompt)
