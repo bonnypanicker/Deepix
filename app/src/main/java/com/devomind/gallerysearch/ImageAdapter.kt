@@ -1120,15 +1120,17 @@ class ImageAdapter(
                 height = coverHeight
             }
             binding.albumName.text = album.name
-            // Smart albums carry their member count like any other album, so one branch covers both.
+            // Saved collections carry their member count like any other album, so one branch covers both.
             val countText = if (album.count == 1) "1 item" else "${album.count} items"
-            val showSize = !album.isSmart && showFolderSize
+            val showSize = album.kind == AlbumKind.Device && showFolderSize
             binding.albumCount.text = if (showSize && album.sizeBytes > 0L) {
                 "$countText \u00b7 ${formatStorageSize(album.sizeBytes)}"
             } else {
                 countText
             }
-            binding.smartOrb.visibility = if (album.isSmart) View.VISIBLE else View.GONE
+            // The orb is the AI mark: it claims a search made this album, which a folder or tag
+            // collection — gathered by rule, not by model — does not.
+            binding.smartOrb.visibility = if (album.kind == AlbumKind.Smart) View.VISIBLE else View.GONE
             Glide.with(binding.albumCover.context)
                 .load(album.coverUri)
                 .format(DecodeFormat.PREFER_RGB_565)

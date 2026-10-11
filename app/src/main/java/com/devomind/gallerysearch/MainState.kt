@@ -14,6 +14,6 @@ internal data class LibrarySnapshot(
     val videoItems: List<GalleryRepository.MediaItem>
 )
 
-internal enum class Mode { Browse, Search, AlbumDetail, FolderDetail, SmartAlbumDetail }
+internal enum class Mode { Browse, Search, AlbumDetail, FolderDetail, CollectionAlbumDetail }
 
 internal enum class Section { Collection, Videos, Albums, Favorites, Folders }

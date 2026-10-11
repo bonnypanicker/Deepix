@@ -108,7 +108,7 @@ class GalleryRepository(
         val count: Int,
         val coverUri: Uri?,
         val sizeBytes: Long = 0L,
-        val isSmart: Boolean = false
+        val kind: AlbumKind = AlbumKind.Device
     )
 
     data class Snapshot(

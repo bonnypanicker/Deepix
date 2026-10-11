@@ -128,7 +128,7 @@ class GallerySearchApp : Application() {
 
     /**
      * Must mirror the PrefName/PrefsName constants in IndexPreferences, BottomBarConfig,
-     * FavoritesStore, AlbumPinStore, SmartAlbumStore, AlbumCoverStore, IndexScopeStore, SafeStore,
+     * FavoritesStore, AlbumPinStore, CollectionAlbumStore, AlbumCoverStore, IndexScopeStore, SafeStore,
      * FaceEmbeddingModelMigration and FaceVectorIndexStatus. A stale entry costs only a no-op read
      * (an unknown name never creates a file), so drift here is harmless.
      */
