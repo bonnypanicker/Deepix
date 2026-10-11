@@ -67,7 +67,6 @@
     <string name="overnight_only_title">Overnight only</string>
     <string name="select_all_folders">Select all folders</string>
     <string name="collections_title">collections</string>
-    <string name="add_smart_album">Add smart album</string>
     <string name="similar_image">Similar image</string>
     <string name="ai_search">AI search</string>
     <string name="search_hint">Search with AI</string>
@@ -228,6 +227,33 @@
     <string name="create_smart_album">Create a smart album</string>
     <string name="smart_album_onboarding_body">Group photos automatically by describing them — like “beach sunsets”, “my dog”, or “birthday parties”. Your phone finds the matches for you, right on the device.</string>
     <string name="create_smart_album_caps">CREATE SMART ALBUM</string>
+
+    <!-- Album kinds (the "+" on the Albums page) -->
+    <string name="add_album">New album</string>
+    <string name="album_kind_smart">Smart album</string>
+    <string name="album_kind_folder">Folder album</string>
+    <string name="album_kind_tags">Tag collection</string>
+    <string name="folder_picker_title">Choose a folder</string>
+    <string name="folder_picker_intro">Pick a folder on this device. Its album follows it, so photos you add to the folder join the album by themselves.</string>
+    <string name="folder_picker_hint">Search folders</string>
+    <string name="folder_picker_none">No folder matches that</string>
+    <string name="picker_more">%1$d more — keep typing to narrow</string>
+    <string name="folder_album_none">No folder holds photos yet</string>
+    <string name="folder_album_name_title">Name the album</string>
+    <string name="folder_album_name_hint">e.g. Camera roll</string>
+    <string name="folder_album_exists">“%1$s” already mirrors that folder</string>
+    <string name="folder_album_gone">“%1$s” has no photos any more</string>
+    <string name="folder_album_gone_hint">Anything you put back in that folder joins the album by itself.</string>
+    <string name="delete_album_title">Delete %1$s?</string>
+    <string name="delete_album_message">Delete “%1$s”? This won\'t delete any actual photos.</string>
+    <string name="tag_album_intro">Pick the tags to collect. A photo carrying any one of them belongs, and new ones join as you tag them.</string>
+    <string name="label_tags">TAGS</string>
+    <string name="tag_album_name_hint">e.g. Trips</string>
+    <string name="tag_album_none">No tags yet — tag a photo from its info sheet first</string>
+    <string name="tag_album_empty_name">Album name is required</string>
+    <string name="tag_album_empty_tags">Pick at least one tag</string>
+    <string name="collection_album_empty_tags">Nothing tagged yet</string>
+    <string name="collection_album_empty_tags_hint">Tag the photos you want here — from any photo\'s info sheet — and this album fills itself.</string>
 
     <!-- Counts (programmatic) -->
     <string name="no_results">No results</string>

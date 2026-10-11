@@ -3,6 +3,8 @@ package com.devomind.gallerysearch
 import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.text.Editable
+import android.text.TextWatcher
 import android.text.method.ScrollingMovementMethod
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -246,6 +248,77 @@ object MetroDialog {
         return dialog
     }
 
+    /**
+     * A list long enough to need narrowing: [hint]'s field filters [items] as the user types, and one
+     * tap picks and closes. [items] is for the short kind, where seeing the whole list is the point.
+     *
+     * Only the first [MaxSearchRows] matches are built. A folder picker over a deep library can name
+     * thousands of rows, and a dialog that inflates all of them answers the tap on its own field
+     * before it shows the first; what fell past the cut is said out loud rather than left silent.
+     */
+    fun <T> searchableList(
+        context: Context,
+        title: String,
+        intro: String?,
+        hint: String,
+        items: List<T>,
+        label: (T) -> String,
+        @DrawableRes iconRes: Int? = null,
+        emptyLabel: String = "Nothing to pick",
+        matches: (T, String) -> Boolean = { value, query -> label(value).contains(query, ignoreCase = true) },
+        onSelect: (T) -> Unit
+    ): AlertDialog {
+        val v = inflate(context, title, iconRes)
+        if (intro != null) {
+            v.body.visibility = View.VISIBLE
+            v.body.text = intro
+        }
+        v.input.visibility = View.VISIBLE
+        v.input.hint = hint
+        v.footer.visibility = View.GONE
+        val dialog = create(context, v.root, cancelable = true)
+        val tertiary = ContextCompat.getColor(context, R.color.metroTextTertiary)
+
+        fun note(label: String): TextView = row(context, label, padded = false).apply {
+            setPadding(dp(context, 24), 0, dp(context, 24), 0)
+            setTextColor(tertiary)
+        }
+
+        fun render(query: String) {
+            val matched = items.filter { matches(it, query) }
+            val shown = matched.take(MaxSearchRows)
+            v.content.removeAllViews()
+            if (shown.isEmpty()) {
+                v.content.addView(note(emptyLabel))
+            }
+            shown.forEach { item ->
+                v.content.addView(row(context, label(item)).apply {
+                    setOnClickListener {
+                        dialog.dismiss()
+                        onSelect(item)
+                    }
+                })
+            }
+            val held = matched.size - shown.size
+            if (held > 0) v.content.addView(note(context.getString(R.string.picker_more, held)))
+            // The panel is sized to what is actually listed, so narrowing the list narrows the dialog
+            // instead of leaving a tall panel of blank space.
+            v.showList(context, (shown.size + 1) * dp(context, 52))
+        }
+
+        render("")
+        v.input.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) = render(s?.toString()?.trim().orEmpty())
+        })
+        dialog.show()
+        // Focused so typing starts the filter at once, and not forced open: the rows stay tappable
+        // for whoever came to look rather than to search.
+        v.input.requestFocus()
+        return dialog
+    }
+
     // ------------------------------------------------------------------ internals
 
     private class Views(val root: View) {
@@ -316,4 +389,7 @@ object MetroDialog {
 
     private fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
+
+    // Declared here rather than in a companion: a standalone object cannot have one.
+    private const val MaxSearchRows = 60
 }

@@ -607,7 +607,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindChrome() {
         binding.menuBtn.setOnClickListener { binding.drawerLayout.openDrawer(GravityCompat.START) }
-        binding.addAlbumBtn.setOnClickListener { showCreateSmartAlbumDialog() }
+        binding.addAlbumBtn.setOnClickListener { showCreateAlbumMenu() }
         binding.searchSparkle.setOnClickListener {
             startActivity(Intent(this, IndexingActivity::class.java))
         }
@@ -1326,12 +1326,9 @@ class MainActivity : AppCompatActivity() {
     private val albumDetailItems: List<GalleryRepository.MediaItem>
         get() {
             val album = currentAlbum ?: return emptyList()
-            return if (collectionAlbumStore.isCollectionId(album.id)) {
-                val sa = collectionAlbumStore.get(album.id) ?: return emptyList()
-                val order = sa.memberUris.withIndex().associate { (i, u) -> u to i }
-                collectionItems
-                    .filter { it.uri.toString() in order.keys }
-                    .sortedBy { order[it.uri.toString()] ?: Int.MAX_VALUE }
+            val record = collectionAlbums.find { it.id == album.id }
+            return if (record != null) {
+                collectionAlbumItems(record)
             } else {
                 collectionItems.filter { it.bucketId == album.id }
             }
@@ -1708,8 +1705,8 @@ class MainActivity : AppCompatActivity() {
         }
         ensureDefaultPins()
         val pinnedIds = albumPinStore.getPinnedAlbumIds()
-        val smartById = collectionAlbums.associate { it.id to it.toAlbum() }
-        val albumById = (albums + smartById.values).associateBy { it.id }
+        val collectionById = collectionAlbumViews().associateBy { it.id }
+        val albumById = (albums + collectionById.values).associateBy { it.id }
         val pinnedAlbums = listOfNotNull(peopleCollection) +
             pinnedIds.filterNot { it == PeopleAlbumId }.mapNotNull { albumById[it] }
         if ((peopleCollection != null || IndexPreferences.isShowPinnedInCollections(this)) &&
@@ -1769,6 +1766,7 @@ class MainActivity : AppCompatActivity() {
         currentMode = Mode.Browse
         pagedContext = null  // albums grid is not a paged timeline
         binding.searchPanel.visibility = View.GONE
+        refreshTagCacheForAlbums()
 
         // Never prune pins against an empty/partial album list — that erases saved pins.
         if (albums.isNotEmpty()) {
@@ -1778,8 +1776,8 @@ class MainActivity : AppCompatActivity() {
         ensureDefaultPins()
         val pinnedIds = albumPinStore.getPinnedAlbumIds()
 
-        val smartById = collectionAlbums.associate { it.id to it.toAlbum() }
-        val albumById = (albums + smartById.values).associateBy { it.id }
+        val collectionById = collectionAlbumViews().associateBy { it.id }
+        val albumById = (albums + collectionById.values).associateBy { it.id }
 
         val pinnedAlbums = pinnedIds.mapNotNull { albumById[it] }
         val currentSort = SortManager.optionFor(this, AlbumsSortScope)
@@ -1787,7 +1785,9 @@ class MainActivity : AppCompatActivity() {
 
         val cells = mutableListOf<GalleryCell>()
         // Onboarding: nudge first-time users to try smart albums (until dismissed).
-        if (collectionAlbums.isEmpty() && !IndexPreferences.isSmartAlbumOnboardingDismissed(this)) {
+        if (collectionAlbums.none { it.kind == AlbumKind.Smart } &&
+            !IndexPreferences.isSmartAlbumOnboardingDismissed(this)
+        ) {
             cells += GalleryCell.SmartAlbumOnboarding
         }
         if (pinnedAlbums.isNotEmpty()) {
@@ -1804,11 +1804,11 @@ class MainActivity : AppCompatActivity() {
                 listOf(
                     GalleryCell.Empty(
                         text = "No albums yet",
-                        hint = "Device albums show up here. You can also create a smart album " +
-                            "that collects photos matching a description.",
+                        hint = "Device albums show up here. You can also save an album of your own — " +
+                            "by description, by folder, or by tag.",
                         iconRes = R.drawable.ic_fluent_album_24_regular,
-                        actionLabel = "New smart album",
-                        onAction = { showCreateSmartAlbumDialog() }
+                        actionLabel = "New album",
+                        onAction = { showCreateAlbumMenu() }
                     )
                 )
             }
@@ -3800,14 +3800,14 @@ class MainActivity : AppCompatActivity() {
     private fun openAlbum(album: GalleryRepository.Album) {
         if (album.id == PeopleAlbumId) {
             startActivity(Intent(this, PersonAlbumsActivity::class.java))
-        } else if (album.kind != AlbumKind.Device) {
-            val smart = collectionAlbums.find { it.id == album.id }
-            if (smart != null) {
-                renderCollectionAlbumDetail(smart)
-            }
-        } else {
-            renderAlbumDetail(album)
+            return
         }
+        if (album.kind == AlbumKind.Device) {
+            renderAlbumDetail(album)
+            return
+        }
+        val record = collectionAlbums.find { it.id == album.id } ?: return
+        renderCollectionAlbumDetail(record)
     }
 
     private fun showAlbumPinMenu(album: GalleryRepository.Album, anchor: View) {
@@ -3830,19 +3830,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCollectionAlbumMenu(album: GalleryRepository.Album, anchor: View) {
-        val smart = collectionAlbums.find { it.id == album.id } ?: return
+        val record = collectionAlbums.find { it.id == album.id } ?: return
+        val isSmart = record.kind == AlbumKind.Smart
         MetroDropdownMenu.show(
             anchor,
-            listOf(
-                MetroDropdownMenu.Item("Refresh") { handleSmartAlbumRefresh(smart) },
-                MetroDropdownMenu.Item("Rename") { showRenameCollectionAlbumDialog(smart) },
-                MetroDropdownMenu.Item("Edit prompt") { showEditPromptDialog(smart) },
-                MetroDropdownMenu.Item("Unpin") {
-                    albumPinStore.unpin(album.id)
-                    renderCurrentSection()
-                },
-                MetroDropdownMenu.Item("Delete", danger = true) { confirmDeleteCollectionAlbum(smart) }
-            )
+            buildList {
+                // Only a smart album has something to rebuild: the other kinds hold a rule the library
+                // is read through on every render, so they are never stale.
+                if (isSmart) add(MetroDropdownMenu.Item("Refresh") { handleSmartAlbumRefresh(record) })
+                add(MetroDropdownMenu.Item("Rename") { showRenameCollectionAlbumDialog(record) })
+                if (isSmart) add(MetroDropdownMenu.Item("Edit prompt") { showEditPromptDialog(record) })
+                if (record.kind == AlbumKind.Tags) {
+                    add(MetroDropdownMenu.Item("Edit tags") { showTagAlbumDialog(record) })
+                }
+                add(
+                    MetroDropdownMenu.Item("Unpin") {
+                        albumPinStore.unpin(record.id)
+                        renderCurrentSection()
+                    }
+                )
+                add(MetroDropdownMenu.Item("Delete", danger = true) { confirmDeleteCollectionAlbum(record) })
+            }
         )
     }
 
@@ -3865,7 +3873,7 @@ class MainActivity : AppCompatActivity() {
             label = "NAME",
             positive = "Rename",
             initial = smart.name,
-            iconRes = R.drawable.ic_deepix_ai_orb_24
+            iconRes = collectionAlbumIconRes(smart.kind)
         ) { newName ->
             collectionAlbumStore.upsert(smart.copy(name = newName, updatedAt = System.currentTimeMillis()))
             collectionAlbums = collectionAlbumStore.getAll()
@@ -3892,18 +3900,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun confirmDeleteCollectionAlbum(smart: CollectionAlbum) {
+    private fun confirmDeleteCollectionAlbum(album: CollectionAlbum) {
         MetroDialog.confirm(
             this,
-            title = "Delete smart album?",
-            message = "Delete \"${smart.name}\"? This won't delete any actual photos.",
-            positive = "Delete",
+            title = getString(R.string.delete_album_title, albumKindLabel(album.kind)),
+            message = getString(R.string.delete_album_message, album.name),
+            positive = getString(R.string.delete),
             danger = true
         ) {
-            collectionAlbumStore.delete(smart.id)
-            albumPinStore.unpin(smart.id)
+            collectionAlbumStore.delete(album.id)
+            albumPinStore.unpin(album.id)
             collectionAlbums = collectionAlbumStore.getAll()
-            if (currentMode == Mode.CollectionAlbumDetail && currentCollectionAlbum?.id == smart.id) {
+            if (currentMode == Mode.CollectionAlbumDetail && currentCollectionAlbum?.id == album.id) {
                 currentCollectionAlbum = null
                 navigateToSection(activeSection)
             } else {
@@ -3912,33 +3920,326 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun renderCollectionAlbumDetail(smart: CollectionAlbum) {
+    /** The word a menu or a dialog calls this kind of album. */
+    private fun albumKindLabel(kind: AlbumKind): String = when (kind) {
+        AlbumKind.Smart -> getString(R.string.album_kind_smart)
+        AlbumKind.Folder -> getString(R.string.album_kind_folder)
+        AlbumKind.Tags -> getString(R.string.album_kind_tags)
+        AlbumKind.Device -> "album"  // a device album is never deleted through this menu
+    }
+
+    private fun collectionAlbumIconRes(kind: AlbumKind): Int = when (kind) {
+        AlbumKind.Folder -> R.drawable.ic_fluent_folder_24_regular
+        AlbumKind.Tags -> R.drawable.ic_fluent_tag_24_regular
+        else -> R.drawable.ic_deepix_ai_orb_24
+    }
+
+    private fun renderCollectionAlbumDetail(album: CollectionAlbum) {
         renderJob?.cancel()
         preAlbumDetailSection = activeSection
         rememberAlbumsGridScroll()
         currentMode = Mode.CollectionAlbumDetail
-        currentCollectionAlbum = smart
+        currentCollectionAlbum = album
         binding.searchPanel.visibility = View.GONE
-        updateTopBarForMode(smart.name)
+        updateTopBarForMode(album.name)
         updateDrawerState()
         updateBottomPanelState()
         showBottomPanel()
 
-        val uriOrder = smart.memberUris.withIndex().associate { (i, u) -> u to i }
-        val items = collectionItems
-            .filter { it.uri.toString() in uriOrder.keys }
-            .sortedBy { uriOrder[it.uri.toString()] ?: Int.MAX_VALUE }
-
         renderPagedTimeline(
-            items,
-            GalleryCell.Empty(
-                text = "No matches yet",
-                hint = "This smart album fills itself as matching photos are indexed. " +
-                    "Refresh it from the album menu, or broaden its description.",
-                iconRes = R.drawable.ic_deepix_ai_orb_24
-            ),
-            "smart:${smart.id}"
+            collectionAlbumItems(album),
+            collectionAlbumEmptyCell(album),
+            collectionAlbumScopeKey(album)
         )
+    }
+
+    /** Why the album is empty says what to do about it, and only a smart album can be refreshed. */
+    private fun collectionAlbumEmptyCell(album: CollectionAlbum): GalleryCell.Empty = when (album.kind) {
+        AlbumKind.Folder -> GalleryCell.Empty(
+            text = getString(R.string.folder_album_gone, album.name),
+            hint = getString(R.string.folder_album_gone_hint),
+            iconRes = R.drawable.ic_fluent_folder_24_regular
+        )
+        AlbumKind.Tags -> GalleryCell.Empty(
+            text = getString(R.string.collection_album_empty_tags),
+            hint = getString(R.string.collection_album_empty_tags_hint),
+            iconRes = R.drawable.ic_fluent_tag_24_regular
+        )
+        else -> GalleryCell.Empty(
+            text = "No matches yet",
+            hint = "This smart album fills itself as matching photos are indexed. " +
+                "Refresh it from the album menu, or broaden its description.",
+            iconRes = R.drawable.ic_deepix_ai_orb_24
+        )
+    }
+
+    // ------------------------------------------------------------------ saving an album ("+")
+
+    /**
+     * The Albums page's "+". Three kinds, in the order a person is likeliest to reach for them: an
+     * album the phone fills from a description, an album that mirrors a folder already on the device,
+     * and an album of the photos they tagged themselves.
+     */
+    private fun showCreateAlbumMenu() {
+        MetroDropdownMenu.show(
+            binding.addAlbumBtn,
+            listOf(
+                MetroDropdownMenu.Item(getString(R.string.album_kind_smart)) { showCreateSmartAlbumDialog() },
+                MetroDropdownMenu.Item(getString(R.string.album_kind_folder)) { showFolderAlbumPicker() },
+                MetroDropdownMenu.Item(getString(R.string.album_kind_tags)) { showTagAlbumDialog(null) }
+            )
+        )
+    }
+
+    /**
+     * Every folder holding a photo, at whatever depth. Built from the live library rather than from
+     * [folderTreeRoots]: the Albums page has no reason to have visited the Folders page, and the tree
+     * the picker shows is the same one the album later reads its photos out of.
+     */
+    private fun showFolderAlbumPicker() {
+        val choices = AlbumRules.folderChoices(buildFolderTree(collectionItems))
+        if (choices.isEmpty()) {
+            MetroDialog.message(
+                this,
+                title = getString(R.string.album_kind_folder),
+                message = getString(R.string.folder_album_none),
+                iconRes = R.drawable.ic_fluent_folder_24_regular
+            )
+            return
+        }
+        MetroDialog.searchableList(
+            this,
+            title = getString(R.string.folder_picker_title),
+            intro = getString(R.string.folder_picker_intro),
+            hint = getString(R.string.folder_picker_hint),
+            items = choices,
+            // The path rather than the folder's own name: two folders called "Camera" are one tap
+            // apart here only if the row says which is which.
+            label = { it.path },
+            iconRes = R.drawable.ic_fluent_folder_24_regular,
+            emptyLabel = getString(R.string.folder_picker_none)
+        ) { choice -> askFolderAlbumName(choice) }
+    }
+
+    private fun askFolderAlbumName(choice: AlbumRules.FolderChoice) {
+        // A folder album's id is the folder it mirrors, so one folder cannot yield two albums.
+        val existing = collectionAlbums.find { it.id == CollectionAlbumStore.folderIdFor(choice.path) }
+        if (existing != null) {
+            MetroDialog.message(
+                this,
+                title = getString(R.string.album_kind_folder),
+                message = getString(R.string.folder_album_exists, existing.name),
+                iconRes = R.drawable.ic_fluent_folder_24_regular
+            )
+            return
+        }
+        MetroDialog.input(
+            this,
+            title = getString(R.string.folder_album_name_title),
+            label = getString(R.string.label_name),
+            positive = getString(R.string.create),
+            initial = choice.name,
+            hint = getString(R.string.folder_album_name_hint),
+            iconRes = R.drawable.ic_fluent_folder_24_regular
+        ) { name -> createFolderAlbum(choice.path, name) }
+    }
+
+    private fun createFolderAlbum(folderPath: String, name: String) {
+        val now = System.currentTimeMillis()
+        saveCollectionAlbum(
+            CollectionAlbum(
+                id = CollectionAlbumStore.folderIdFor(folderPath),
+                name = name,
+                prompt = "",
+                searchMode = searchMode.name,
+                memberUris = emptyList(),
+                coverUri = null,
+                createdAt = now,
+                updatedAt = now,
+                kind = AlbumKind.Folder,
+                folderPath = folderPath
+            ),
+            pin = true
+        )
+    }
+
+    /**
+     * Opens the tag album dialog — a new one, or [existing] to edit it. Tags come from the same cache
+     * the search row reads, and the viewer writes them straight to Room, so the cache is brought up to
+     * date first rather than showing "no tags yet" for tags made a minute ago.
+     */
+    private fun showTagAlbumDialog(existing: CollectionAlbum?) {
+        lifecycleScope.launch {
+            if (tagCacheStale || allTags.isEmpty()) refreshTagCache()
+            openTagAlbumDialog(existing)
+        }
+    }
+
+    private fun openTagAlbumDialog(existing: CollectionAlbum?) {
+        val tags = allTags.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        if (tags.isEmpty()) {
+            MetroDialog.message(
+                this,
+                title = getString(R.string.album_kind_tags),
+                message = getString(R.string.tag_album_none),
+                iconRes = R.drawable.ic_fluent_tag_24_regular
+            )
+            return
+        }
+        val dialogView = layoutInflater.inflate(R.layout.dialog_tag_album, null)
+        val chipRow = dialogView.findViewById<LinearLayout>(R.id.tagAlbumTags)
+        val nameInput = dialogView.findViewById<EditText>(R.id.tagAlbumName)
+        val cancelBtn = dialogView.findViewById<TextView>(R.id.tagAlbumCancel)
+        val createBtn = dialogView.findViewById<TextView>(R.id.tagAlbumCreate)
+        val selected = existing?.tagNames?.toHashSet() ?: hashSetOf<String>()
+
+        val dialog = AlertDialog.Builder(this, R.style.Theme_GallerySearch_Dialog)
+            .setView(dialogView)
+            .create()
+
+        if (existing != null) {
+            nameInput.setText(existing.name)
+            nameInput.setSelection(existing.name.length)
+            createBtn.text = getString(R.string.save)
+        }
+        // Rebuilt on every tap: the pill pair (accent fill / outline) is the selection state, and
+        // redrawing a row of chips costs nothing beside deciding which tags to pick.
+        fun rebuildChips() {
+            chipRow.removeAllViews()
+            tags.forEach { tag ->
+                chipRow.addView(createSearchPillView(tag.name, tag.name in selected) {
+                    if (!selected.remove(tag.name)) selected.add(tag.name)
+                    rebuildChips()
+                })
+            }
+        }
+        rebuildChips()
+
+        cancelBtn.setOnClickListener { dialog.dismiss() }
+        createBtn.setOnClickListener {
+            // Offered in the display order, so an album's saved list does not depend on tap order.
+            val chosen = tags.map { it.name }.filter { it in selected }
+            if (chosen.isEmpty()) {
+                MetroBanner.show(this, getString(R.string.tag_album_empty_tags))
+                return@setOnClickListener
+            }
+            val name = nameInput.text.toString().trim()
+            if (name.isEmpty()) {
+                MetroBanner.show(this, getString(R.string.tag_album_empty_name))
+                return@setOnClickListener
+            }
+            dialog.dismiss()
+            saveTagAlbum(existing, name, chosen)
+        }
+        dialog.show()
+    }
+
+    private fun saveTagAlbum(existing: CollectionAlbum?, name: String, tagNames: List<String>) {
+        val now = System.currentTimeMillis()
+        val album = existing?.copy(name = name, tagNames = tagNames, updatedAt = now)
+            ?: CollectionAlbum(
+                id = CollectionAlbumStore.tagsId(),
+                name = name,
+                prompt = "",
+                searchMode = searchMode.name,
+                memberUris = emptyList(),
+                coverUri = null,
+                createdAt = now,
+                updatedAt = now,
+                kind = AlbumKind.Tags,
+                tagNames = tagNames
+            )
+        saveCollectionAlbum(album, pin = existing == null)
+    }
+
+    /**
+     * The one write path for a saved collection: store it, refresh the in-memory list, and re-render
+     * whatever page is showing. [pin] puts a brand-new album where it can be seen — the Albums page
+     * lists saved collections through the pinned strip, so an unpinned album is an invisible one.
+     */
+    private fun saveCollectionAlbum(album: CollectionAlbum, pin: Boolean) {
+        collectionAlbumStore.upsert(album)
+        collectionAlbums = collectionAlbumStore.getAll()
+        if (pin) albumPinStore.pin(album.id)
+        if (currentMode == Mode.CollectionAlbumDetail && currentCollectionAlbum?.id == album.id) {
+            renderCollectionAlbumDetail(album)
+        } else {
+            renderCurrentSection()
+        }
+    }
+
+    /**
+     * The Albums-grid cells for every saved collection. A smart album reports the URIs it stored; a
+     * folder or tag album asks the library how much it holds right now, so a tile's count is never
+     * one photo behind — the same reason those kinds are not offered a Refresh.
+     */
+    private fun collectionAlbumViews(): List<GalleryRepository.Album> {
+        // One tree for every folder album: walking the library to find out which folder each photo
+        // lives in is the same work whichever album is asking.
+        val folderRoots = if (collectionAlbums.any { it.kind == AlbumKind.Folder }) {
+            buildFolderTree(collectionItems)
+        } else {
+            emptyList()
+        }
+        return collectionAlbums.map { album ->
+            when (album.kind) {
+                AlbumKind.Folder -> {
+                    val node = AlbumRules.findFolderNode(folderRoots, album.folderPath)
+                    album.toAlbum(count = node?.itemCount ?: 0, coverUri = node?.coverUri?.toString())
+                }
+                AlbumKind.Tags -> {
+                    val items = collectionAlbumItems(album)
+                    album.toAlbum(count = items.size, coverUri = items.firstOrNull()?.uri?.toString())
+                }
+                else -> album.toAlbum()
+            }
+        }
+    }
+
+    /**
+     * What a saved collection holds at this moment. The live kinds are resolved from the library on
+     * every call rather than from a stored list, which is what takes a photo out of an album the same
+     * instant it leaves the folder or loses the tag.
+     */
+    private fun collectionAlbumItems(album: CollectionAlbum): List<GalleryRepository.MediaItem> =
+        when (album.kind) {
+            AlbumKind.Folder -> {
+                // The same walk the Folders page shows, so an album of a folder and that folder's own
+                // row can never disagree about what is inside.
+                val node = AlbumRules.findFolderNode(buildFolderTree(collectionItems), album.folderPath)
+                node?.let { flattenFolderItems(it) }.orEmpty()
+            }
+            AlbumKind.Tags -> {
+                val uris = AlbumRules.tagUris(album.tagNames, allTags, tagUriMap)
+                collectionItems.filter { it.uri.toString() in uris }
+            }
+            else -> {
+                // A smart album keeps the order its search ranked, which is the album's whole point.
+                val order = album.memberUris.withIndex().associate { (index, uri) -> uri to index }
+                collectionItems
+                    .filter { it.uri.toString() in order.keys }
+                    .sortedBy { order[it.uri.toString()] ?: Int.MAX_VALUE }
+            }
+        }
+
+    private fun collectionAlbumScopeKey(album: CollectionAlbum): String =
+        if (album.kind == AlbumKind.Smart) "smart:${album.id}" else album.id
+
+    /**
+     * Fills tag albums the moment the Albums page is opened after tag edits. The viewer writes tags
+     * straight to Room and comes back with [tagCacheStale] set, and nothing else on this page reads
+     * that cache — so without this an album would look empty until the next search refreshed it.
+     */
+    private fun refreshTagCacheForAlbums() {
+        if (!tagCacheStale) return
+        if (collectionAlbums.none { it.kind == AlbumKind.Tags }) return
+        lifecycleScope.launch {
+            refreshTagCache()
+            if (currentMode == Mode.Browse && activeSection == Section.Albums) {
+                rememberAlbumsGridScroll()
+                renderAlbums()
+            }
+        }
     }
 
     private fun showCreateSmartAlbumDialog() {
@@ -4006,22 +4307,20 @@ class MainActivity : AppCompatActivity() {
             ).take(CollectionAlbumStore.MAX_SMART_MEMBERS)
 
             val album = CollectionAlbum(
-                id = CollectionAlbumStore.SMART_PREFIX + java.util.UUID.randomUUID().toString(),
+                id = CollectionAlbumStore.smartId(),
                 name = name,
                 prompt = prompt,
                 searchMode = searchMode.name,
                 memberUris = resultUris.map { it.toString() },
                 coverUri = resultUris.firstOrNull()?.toString(),
                 createdAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis()
+                updatedAt = System.currentTimeMillis(),
+                kind = AlbumKind.Smart
             )
-            collectionAlbumStore.upsert(album)
-            collectionAlbums = collectionAlbumStore.getAll()
-            albumPinStore.pin(album.id)
             if (resultUris.isEmpty()) {
                 MetroBanner.show(this@MainActivity, "No matches yet — you can refresh later")
             }
-            renderCurrentSection()
+            saveCollectionAlbum(album, pin = true)
         }
     }
 
@@ -4236,7 +4535,7 @@ class MainActivity : AppCompatActivity() {
             putExtra(ViewerActivity.ExtraPosition, position)
             transitionName?.let { putExtra(ViewerActivity.ExtraTransitionName, it) }
             currentAlbum
-                ?.takeIf { !collectionAlbumStore.isCollectionId(it.id) }
+                ?.takeIf { it.kind == AlbumKind.Device }
                 ?.let { album ->
                     putExtra(ViewerActivity.ExtraAlbumId, album.id)
                     putExtra(ViewerActivity.ExtraAlbumName, album.name)
@@ -4896,7 +5195,7 @@ class MainActivity : AppCompatActivity() {
     private fun currentScopeKey(): String? = when (currentMode) {
         Mode.AlbumDetail -> currentAlbum?.let { "album:${it.id}" }
         Mode.FolderDetail -> currentFolder?.let { "folder:${it.path}" }
-        Mode.CollectionAlbumDetail -> currentCollectionAlbum?.let { "smart:${it.id}" }
+        Mode.CollectionAlbumDetail -> currentCollectionAlbum?.let(::collectionAlbumScopeKey)
         Mode.Search -> searchSortScope()
         Mode.Browse -> when (activeSection) {
             Section.Collection, Section.Videos, Section.Favorites -> "section:$activeSection"
