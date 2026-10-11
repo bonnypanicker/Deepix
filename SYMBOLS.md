@@ -367,7 +367,7 @@ FreeTier.smartAlbumsBlocked  still counts smart albums ONLY, which is what gate_
 ## Pro surface pass additions (the tour's benefits page, the drawer's offer row)
 
 ```
-OnboardingPanel.benefits  the tour's third page shape: feature (glyph + copy), permissions (ruled *live* rows), benefits (accent tile + ruled, inert rows). OnboardingPanelAdapter.bind dispatches permissions → benefits → feature, and [FirstRunActivity] still treats the LAST page as the permissions one — "Get started", finishBlocked(), and the dismiss X's goTo(pageCount - 1) all hang on that — so a new panel goes before it
+OnboardingPanel.benefits  the tour's third page shape: feature (glyph + copy), permissions (ruled *live* rows), benefits (accent tile + ruled, inert rows). OnboardingPanelAdapter.bind dispatches permissions → benefits → feature, and [FirstRunActivity] still treats the LAST page as the permissions one — "Get started", `requestFirstOutstandingRequired()` and the dismiss X's goTo(pageCount - 1) all hang on that — so a new panel goes before it
 OnboardingBenefit(label)  one included thing, said once. The six strings are the FreeTier gates restated for a reader who has not hit one yet — including compression, which is a batch size rather than a locked screen
 item_onboarding_benefit_row.xml  18-unit accent check + 13sp label + hairline; deliberately narrower than item_onboarding_perm_row, which also carries a summary and a state word and can be a button
 bindBenefitsPage  gives the tile a FIXED-height area (weight 0) and lets the ruled list absorb the slack below the copy, the way the permissions page does. Weighting both would have the glyph and the list compete for the same leftover, and on a short or landscape screen the list is the part that must not clip
