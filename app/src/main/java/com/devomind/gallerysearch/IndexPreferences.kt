@@ -457,11 +457,22 @@ object IndexPreferences {
     @Volatile
     private var cachedAccentKey: String? = null
 
-    /** Loads the accent selection into [cachedAccentKey]; called by the startup pre-warm thread. */
-    fun warmAccentCache(context: Context) {
+    /**
+     * Process-wide mirror of [KeyProEntitlement], for the same reason as [cachedAccentKey]: every accent
+     * overlay asks whether the unlock is held before `super.onCreate()`, and a gate that reads disk there
+     * would cost the same cold-start block on every screen of the app.
+     */
+    @Volatile
+    private var cachedEntitlement: Entitlement? = null
+
+    /** Loads the two keys the first Activity inflates with; called by the pre-warm thread. */
+    fun warmStartupKeys(context: Context) {
+        val prefs = context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
         if (cachedAccentKey == null) {
-            cachedAccentKey = context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-                .getString(KeyAccentColor, null) ?: "azure"
+            cachedAccentKey = prefs.getString(KeyAccentColor, null) ?: "azure"
+        }
+        if (cachedEntitlement == null) {
+            cachedEntitlement = parseEntitlement(prefs.getString(KeyProEntitlement, null))
         }
     }
 
@@ -486,16 +497,22 @@ object IndexPreferences {
      * from the Google app's own cache most of the time, and when it cannot, this is the record.
      */
     fun getProEntitlement(context: Context): Entitlement {
-        val stored = context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .getString(KeyProEntitlement, null)
-        return Entitlement.entries.firstOrNull { it.name.equals(stored, ignoreCase = true) }
-            ?: Entitlement.Unknown
+        cachedEntitlement?.let { return it }
+        return parseEntitlement(
+            context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+                .getString(KeyProEntitlement, null)
+        ).also { cachedEntitlement = it }
     }
 
     fun setProEntitlement(context: Context, entitlement: Entitlement) {
+        cachedEntitlement = entitlement
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putString(KeyProEntitlement, entitlement.name)
             .apply()
     }
+
+    private fun parseEntitlement(stored: String?): Entitlement =
+        Entitlement.entries.firstOrNull { it.name.equals(stored, ignoreCase = true) }
+            ?: Entitlement.Unknown
 }

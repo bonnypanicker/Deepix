@@ -155,6 +155,13 @@
     <string name="pro_buy_price">Buy %1$s</string>
     <string name="pro_restore">Restore</string>
     <string name="pro_owned_body">Unlocked on this device. Purchases belong to the Google Play account that paid for them, so a new phone restores them at no cost.</string>
+    <!-- What the user reached for, said back to them inside the offer. Each gate passes its own limit from
+         FreeTier rather than hard-coding the number here, so the sentence and the rule cannot drift apart. -->
+    <string name="gate_accent">More accent colors are part of Pixa Pro.</string>
+    <string name="gate_people">Naming people is part of Pixa Pro.</string>
+    <string name="gate_safe">The free Safe holds %1$d photos. Pixa Pro removes that limit.</string>
+    <string name="gate_cleanup">Unlock %1$s with Pixa Pro.</string>
+    <string name="gate_smart_albums">The free app saves %1$d smart albums. Pixa Pro adds as many as you like.</string>
     <string name="section_display">DISPLAY</string>
     <string name="collage_layout">Collage layout</string>
     <string name="thumbnail_size">Thumbnail size</string>

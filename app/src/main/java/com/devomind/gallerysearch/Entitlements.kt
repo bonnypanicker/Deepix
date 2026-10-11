@@ -43,16 +43,16 @@ object Entitlements {
     }
 
     /**
-     * The seam every gated feature will call: run [onUnlocked] when the user owns the unlock, otherwise
-     * show [ProPaywall] and report false. Features stay ignorant of billing — they hand over a body and
-     * never see a product id, a response code, or a dialog.
+     * The seam every gated feature calls: run [onUnlocked] when the user owns the unlock, otherwise show
+     * [ProPaywall] and report false. Features stay ignorant of billing — they hand over a body and a
+     * one-line [reason] for what they were reaching for, and never see a product id, a price, or a dialog.
      */
-    fun guard(activity: Activity, onUnlocked: () -> Unit): Boolean {
+    fun guard(activity: Activity, reason: String? = null, onUnlocked: () -> Unit): Boolean {
         if (isUnlocked(activity)) {
             onUnlocked()
             return true
         }
-        ProPaywall.show(activity)
+        ProPaywall.show(activity, reason)
         return false
     }
 }

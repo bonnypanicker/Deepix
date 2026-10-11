@@ -44,10 +44,10 @@ class GallerySearchApp : Application() {
         // getSharedPreferences() only STARTS the async XML load and returns, so the activity can
         // still block in awaitLoadedLocked() mid-load (StrictMode measured ~500 ms across two
         // files exactly that way). `.all` blocks THIS thread until each load completes; accent
-        // goes first since AccentPalette.apply() runs before super.onCreate().
+        // and the entitlement go first since AccentPalette.apply() reads both before super.onCreate().
         thread(isDaemon = true, priority = Thread.MAX_PRIORITY) {
             val app = applicationContext
-            runCatching { IndexPreferences.warmAccentCache(app) }
+            runCatching { IndexPreferences.warmStartupKeys(app) }
             for (name in StartupSharedPreferences) {
                 runCatching { app.getSharedPreferences(name, Context.MODE_PRIVATE).all }
             }

@@ -6,12 +6,16 @@ import android.app.Activity
  * The one place Pixa Pro is offered. Gated features reach it through [Entitlements.guard] and the settings
  * row through [show], so no feature code ever names a product id, a price, or a Play response code.
  *
+ * [reason] is what the user reached for — "the Safe holds 50 photos free" reads as an answer to their
+ * action, where a generic offer would read as an advertisement. Keeping it here means a feature states one
+ * sentence and nothing else about billing.
+ *
  * Re-showing after a failed launch is deliberate: [MetroDialog] dismisses on any button press, so
- * "Google Play is unreachable" has nowhere to appear unless the dialog is rebuilt with the note in it.
+ * "Google Play is unreachable" has nowhere to appear unless the dialog is rebuilt with the reason in it.
  */
 object ProPaywall {
 
-    fun show(activity: Activity, note: String? = null) {
+    fun show(activity: Activity, reason: String? = null) {
         if (Entitlements.isUnlocked(activity)) {
             MetroDialog.message(
                 activity,
@@ -23,7 +27,7 @@ object ProPaywall {
             return
         }
         val price = BillingGateway.priceLabel()
-        val reason = note ?: BillingGateway.statusMessage()
+        val status = BillingGateway.statusMessage()?.takeIf { it.isNotBlank() }
         MetroDialog.confirm(
             activity,
             title = activity.getString(R.string.pro_title),
@@ -35,6 +39,7 @@ object ProPaywall {
                     else activity.getString(R.string.pro_price_line, price)
                 )
                 if (!reason.isNullOrBlank()) append("\n\n").append(reason)
+                if (status != null) append("\n\n").append(status)
             },
             positive = if (price == null) activity.getString(R.string.pro_buy)
             else activity.getString(R.string.pro_buy_price, price),
@@ -44,7 +49,7 @@ object ProPaywall {
             // so the same verifyOwnership that refreshes the settings row is what finds it on this device.
             onNegative = { BillingGateway.refresh() },
             onPositive = {
-                if (!BillingGateway.purchase(activity)) show(activity, BillingGateway.statusMessage())
+                if (!BillingGateway.purchase(activity)) show(activity, reason)
             }
         )
     }
