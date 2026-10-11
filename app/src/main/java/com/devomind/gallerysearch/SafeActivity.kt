@@ -558,11 +558,36 @@ class SafeActivity : AppCompatActivity() {
         runImport(uris, isMove = true)
     }
 
+    /**
+     * The one door into the vault: the gallery's move, the cleanup screen's move and this screen's own
+     * picker all land here, so the free tier's 50-photo cap is enforced once, before a single byte is
+     * written.
+     *
+     * The count comes from the vault's own directory rather than the loaded grid, because a move handed
+     * over from the gallery runs [processPendingImport] the moment the vault unlocks — before the grid has
+     * anything in it. Too many for the free tier is never a partial success worth an original's life: the
+     * batch is clamped to the slots that fit, and since only [SafeManager.ImportResult.importedSources]
+     * is returned for deletion, a photo that did not make it into the vault stays exactly where it was.
+     */
     private fun runImport(uris: List<Uri>, isMove: Boolean) {
-        showBusy(if (uris.size > 1) "Encrypting 1 of ${uris.size}…" else "Encrypting…")
         lifecycleScope.launch {
+            val allowed = withContext(Dispatchers.IO) {
+                val inVault = runCatching { SafeManager.listItems(this@SafeActivity).size }.getOrDefault(0)
+                uris.take(
+                    FreeTier.safeRoom(inVault, Entitlements.isUnlocked(this@SafeActivity))
+                )
+            }
+            if (allowed.isEmpty()) {
+                // Nothing to write, so nothing to lose: say why the door is shut and stop.
+                ProPaywall.show(
+                    this@SafeActivity,
+                    getString(R.string.gate_safe, FreeTier.FreeSafePhotos)
+                )
+                return@launch
+            }
+            showBusy(if (allowed.size > 1) "Encrypting 1 of ${allowed.size}…" else "Encrypting…")
             val result = withContext(Dispatchers.IO) {
-                SafeManager.importPhotos(this@SafeActivity, uris) { done, total ->
+                SafeManager.importPhotos(this@SafeActivity, allowed) { done, total ->
                     if (total > 1) {
                         runOnUiThread { binding.busyLabel.text = "Encrypting ${done + 1} of $total…" }
                     }
@@ -580,6 +605,14 @@ class SafeActivity : AppCompatActivity() {
                 setResult(RESULT_OK, Intent().putParcelableArrayListExtra(ExtraImportedUris, importedForDeletion))
             }
             loadItems()
+            // Only when some of the pick was left out — a Safe that took everything hears nothing about
+            // pricing. The offer comes after the work is reported, never on top of it.
+            if (allowed.size < uris.size) {
+                ProPaywall.show(
+                    this@SafeActivity,
+                    getString(R.string.gate_safe, FreeTier.FreeSafePhotos)
+                )
+            }
         }
     }
 
