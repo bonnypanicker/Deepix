@@ -303,15 +303,16 @@ PurchaseRulesTest           (test)        ownership excludes Pending and foreign
 
 ---
 
-## Free tier gates pass additions (five feature locks on one seam)
+## Free tier gates pass additions (six limits on one seam)
 
 ```
 FreeTier                  the whole free/paid boundary in one file: a limit stated on five screens is five chances to disagree about what the user paid for
-  · FreeAccents = 3, FreeSafePhotos = 50, FreeSmartAlbums = 5, PaidCleanupCategories = {COMPRESSIBLE, BURSTS, NSFW}
+  · FreeAccents = 3, FreeSafePhotos = 50, FreeSmartAlbums = 5, FreeCompressionPhotos = 1, PaidCleanupCategories = {BURSTS, NSFW}
   · accentLocked(choice, unlocked)   uses AccentPalette.choices.indexOf(choice), so the enum's declaration order is pricing — see GRAPH.md. SYSTEM (declared last) is locked like any swatch: offering the OS's own palette free would make the paid half of the list depend on the phone
   · safeRoom(inVault, unlocked) → slots left, never negative; unlocked returns Int.MAX_VALUE so a 500-photo move stays one batch
   · smartAlbumsBlocked(existing, unlocked) → true AT the cap, not past it (the 5th is allowed)
-  · cleanupLocked(category, unlocked) → the three categories that do work past a metadata scan (encoder / O(n²) burst grouping / classifier)
+  · cleanupLocked(category, unlocked) → the two tiles whose lists only exist because the scan did work past metadata (the O(n²) burst grouping, the classifier)
+  · compressionRoom(requested, unlocked) → how much of a pick may go into this run; bought gets the whole list
   Every predicate takes `unlocked` and is false when it is true, so nothing here decides HOW a lock is shown
 AccentPalette.current(activity)     now also demotes a paid stored choice to AZURE. Enforced at read/apply time rather than only in the picker because this is what every activity's apply() goes through: a stored Rose arriving by Auto Backup, or bought then refunded, must not paint the app in a color nobody owns. The stored key is untouched, so buying unlocks it without a re-pick
 MetroDialog.singleChoice(…, locked: Set<Int>)   locked rows stay listed, dimmed: dot setAlpha(110), label metroTextTertiary, a lock glyph in place of the checkmark (a picker showing three colors reads as a three-color app, not a bought one). The tap still reports through onSelect — the widget knows nothing about entitlements, the caller decides
@@ -324,17 +325,31 @@ SafeActivity.runImport(uris, isMove)   the only door into the vault (gallery mov
 item_cleanup_tile.xml tileLock   18dp top|end lock glyph, gone by default, alpha 0.9, contentDescription @string/locked
 SmartCleanupActivity.renderTiles / onResume   a lock on a paid tile's corner, and re-render when Play's sheet backgrounds the screen, so a purchase made here takes the locks off without a restart
 SmartCleanupActivity.openCategory(category)   gated at the door with gate_cleanup + categoryTitle(category): the tile still counts the photos, but the user never lands in a detail view whose select-all/delete/Safe bars they cannot use. currentCategory is not in instance state, so a gated category cannot be restored across a recreation
+SmartCleanupActivity.launchCompressionReview()   compression is metered, not locked, so COMPRESSIBLE's tile opens and the cap lands on the batch instead: selectedUris().take(FreeTier.compressionRoom(...)) is the one place a fresh batch is formed (CompressionActivity either adopts a running batch or this hand-off), and the picks left behind stay selected. What was held back is remembered in compressionHeldBack and the offer shows from the compressionLauncher result — after the run is reported, never over it, and read-and-clear before the RESULT_OK test so a cancelled review cannot carry a stale promise
 MainActivity.showCreateSmartAlbumDialog()   blocked before the dialog opens (top-bar add, onboarding card, albums empty state all route here) — the count is the in-memory smartAlbums list, so no JSON parse on a tap. Refreshing/renaming an existing album stays free
 IndexPreferences.warmStartupKeys(context)  was warmAccentCache: one prefs handle now fills both @Volatile caches (cachedAccentKey, cachedEntitlement) because AccentPalette.apply() reads the accent and the entitlement before super.onCreate() — the measured cold-start block was ~400–500 ms when either hit disk
 GallerySearchApp               the startup pre-warm thread calls warmStartupKeys, "accent and the entitlement go first"
-strings.xml gate_accent / gate_people / gate_safe(%1$d) / gate_cleanup(%1$s) / gate_smart_albums(%1$d)  what the user reached for, said back inside the offer; each passes its own FreeTier limit so copy and rule cannot drift
-FreeTierTest            (test)  first three swatches free and everything after locked (SYSTEM last and paid), unlock frees all, safeRoom counts what is inside and never goes negative, unlocked safeRoom truncates nothing, the album boundary blocks at exactly 5 and not before, only the three work-doing cleanup categories are locked
+strings.xml gate_accent / gate_people / gate_safe(%1$d) / gate_cleanup(%1$s) / gate_compression(%1$d) / gate_smart_albums(%1$d)  what the user reached for, said back inside the offer; each passes its own FreeTier limit so copy and rule cannot drift
+FreeTierTest            (test)  first three swatches free and everything after locked (SYSTEM last and paid), unlock frees all, safeRoom counts what is inside and never goes negative, unlocked safeRoom truncates nothing, the album boundary blocks at exactly 5 and not before, only the two work-doing cleanup tiles are locked (COMPRESSIBLE explicitly free), a free compression run takes one photo of forty and bought takes all forty
+```
+
+---
+
+## Pro surface pass additions (the tour's benefits page, the drawer's offer row)
+
+```
+OnboardingPanel.benefits  the tour's third page shape: feature (glyph + copy), permissions (ruled *live* rows), benefits (accent tile + ruled, inert rows). OnboardingPanelAdapter.bind dispatches permissions → benefits → feature, and [FirstRunActivity] still treats the LAST page as the permissions one — "Get started", finishBlocked(), and the dismiss X's goTo(pageCount - 1) all hang on that — so a new panel goes before it
+OnboardingBenefit(label)  one included thing, said once. The six strings are the FreeTier gates restated for a reader who has not hit one yet — including compression, which is a batch size rather than a locked screen
+item_onboarding_benefit_row.xml  18-unit accent check + 13sp label + hairline; deliberately narrower than item_onboarding_perm_row, which also carries a summary and a state word and can be a button
+bindBenefitsPage  gives the tile a FIXED-height area (weight 0) and lets the ruled list absorb the slack below the copy, the way the permissions page does. Weighting both would have the glyph and the list compete for the same leftover, and on a short or landscape screen the list is the part that must not clip
+ic_onboarding_pro.xml  a brilliant-cut gem in the tour's own line-art language (24-unit viewport, 1.5 stroke, transparent fill), drawn white because it is tinted metroTextPrimary *on* the accent tile rather than accent-on-black like every other glyph
+onboarding_pro_tile_bg.xml  flat accent square, 2dp corners — the same fill and radius as onboarding_button_bg, without the ripple: this is a badge, not a button. White-on-accent is the pairing the tour's own CTA already uses
+MainActivity.drawerPro  the drawer's only row that reports a fact instead of a place: last row of the navigation list, accent-colored, tap closes the drawer and shows ProPaywall with no gate reason (an offer, not a refusal). updateDrawerState() labels it drawer_pro / drawer_pro_owned and glyphs it lock / checkmark from Entitlements.isUnlocked — setCompoundDrawablesRelative* drops the XML drawableTint, so the accent tint is re-applied in code. A SimpleDrawerListener on onDrawerOpened re-runs updateDrawerState(), because the verdict can move while the drawer is shut (Play's sheet, another screen's paywall, a refund)
 ```
 
 ---
 
 ## DB Entities & DAOs
-
 ```
 MediaMetadataEntity   db/MediaMetadataEntity.kt  table: media_metadata; PK: uri; BindVariables = 13
 ExifMetadataEntity    db/ExifMetadataEntity.kt   table: exif_metadata; PK: uri
