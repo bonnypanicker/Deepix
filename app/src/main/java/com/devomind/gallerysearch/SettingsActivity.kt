@@ -37,6 +37,10 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private var accentChanged = false
 
+    /** Held as a property so the exact same instance is registered and removed; a lambda built per call
+     *  would leave one observer behind for every pause/resume cycle. */
+    private val billingListener: () -> Unit = { updateProSubtitle() }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         AccentPalette.apply(this)
         super.onCreate(savedInstanceState)
@@ -55,6 +59,7 @@ class SettingsActivity : AppCompatActivity() {
         bindToggles()
         bindThumbnailSize()
         bindAccentColor()
+        bindPro()
         bindBottomBar()
         bindStorage()
         bindSafe()
@@ -67,6 +72,16 @@ class SettingsActivity : AppCompatActivity() {
         binding.accentColorSubtitle.text = AccentPalette.current(this).displayName
         updateIndexedFoldersSubtitle()
         updateSafeSubtitles()
+        BillingGateway.observe(billingListener)
+        updateProSubtitle()
+        // Play's sheet backgrounds this activity, so coming back here is also how a finished purchase is
+        // noticed. The query answers from the Google app's own cache, so it costs no network most times.
+        BillingGateway.refresh()
+    }
+
+    override fun onPause() {
+        BillingGateway.unobserve(billingListener)
+        super.onPause()
     }
 
     private fun applyInsets() {
@@ -135,6 +150,24 @@ class SettingsActivity : AppCompatActivity() {
     private fun bindAccentColor() {
         binding.accentColorSubtitle.text = AccentPalette.current(this).displayName
         binding.rowAccentColor.setOnClickListener { showAccentColorDialog() }
+    }
+
+    private fun bindPro() {
+        updateProSubtitle()
+        binding.rowPro.setOnClickListener { ProPaywall.show(this) }
+    }
+
+    /**
+     * Reads the stored verdict, never a live Play call — the row has to say the right thing on a plane.
+     * [Entitlement.Unknown] keeps saying "checking" because that is what each resume retries; only an
+     * answer from Play moves it.
+     */
+    private fun updateProSubtitle() {
+        binding.proSubtitle.text = when (Entitlements.state(this)) {
+            Entitlement.Owned -> getString(R.string.pro_owned_subtitle)
+            Entitlement.NotOwned -> getString(R.string.pro_not_purchased)
+            Entitlement.Unknown -> getString(R.string.pro_checking)
+        }
     }
 
     private fun bindBottomBar() {

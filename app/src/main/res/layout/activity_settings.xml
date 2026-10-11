@@ -53,6 +53,35 @@
                     android:textColor="@color/metroTextPrimary"
                     android:textSize="40sp" />
 
+                <!-- ===================== PRO =====================
+                     Kept above DISPLAY rather than beside ABOUT: the row is the app's only way back to a
+                     purchase or a restore, so it should not sit below seven screens of preferences. -->
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="@string/section_pro" />
+
+                <LinearLayout
+                    android:id="@+id/rowPro"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/pro_row_title" />
+
+                        <TextView
+                            android:id="@+id/proSubtitle"
+                            style="@style/SettingsRowSubtitle"
+                            android:text="@string/pro_checking" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_fluent_chevron_right_24_regular"
+                        android:tint="@color/metroTextTertiary" />
+                </LinearLayout>
+
                 <!-- ===================== DISPLAY ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"
