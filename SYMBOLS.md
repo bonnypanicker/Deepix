@@ -275,6 +275,34 @@ AccentPaletteTest           (test)              choice order + key contract, the
 
 ---
 
+## Play Billing pass additions (paywall seam — no feature is gated yet)
+
+```
+BillingGateway.ProProductId  "pixa_pro_unlock" — the one-time INAPP id. Renaming it here without creating the product (and keeping the old id owned by anyone who bought it) strands every existing purchase
+BillingGateway               object; one process-wide BillingClient built in GallerySearchApp.onCreate on the main thread (the library delivers callbacks on the caller's Looper). connect / refresh / purchase(activity) / isReachable / priceLabel() / statusMessage(). Every entry point is runCatching-wrapped and reports through lastMessage instead of throwing — a billing failure is a UI condition, the gallery still has to open
+  · observe/unobserve(listener: () -> Unit)   the only notification point (Handler(Looper.getMainLooper()) + CopyOnWriteArraySet, each listener runCatching). Screens MUST hold the lambda as a property: a fresh lambda per register is one leaked observer per pause/resume
+  · purchase() returns false + a message when there is no client, no catalogue answer yet, or Play is not ready — the caller keeps the dialog rather than pretending a sheet opened
+  · purchasesUpdated  USER_CANCELED clears the message; ITEM_ALREADY_OWNED re-syncs (heals a purchase paid on another device); otherwise the verdict is recorded. Pending purchases are enabled, so a cash/carrier payment that has not settled can arrive
+  · verifyOwnership   OK→QueryReply.Ok, ITEM_NOT_OWNED→NotOwned, anything else Failed; a thrown query is NOT recorded — an outage must not read as a refund
+  · acknowledgePending  Play auto-cancels an unacknowledged purchase in a few days, so this is what keeps the purchase; a Pending one is left for Play to acknowledge at settlement
+  · onBillingServiceDisconnected  one retry after ReconnectDelayMillis (3 s). A loop would spin against a Play that is genuinely absent; every paying screen reconnects via refresh() on resume
+PurchaseRules           the billing-free decision layer, so the verdicts can be tested on a host JVM without Play types
+  · PurchaseFact(productId, PurchaseState{Unspecified,Purchased,Pending}, acknowledged)   the boundary type BillingGateway maps Purchase into (products.firstOrNull(), purchaseState, isAcknowledged)
+  · QueryReply{Ok,NotOwned,Failed} → verdictOf() → PurchaseVerdict{Owned,NotOwned,Unreachable}   Failed is never folded into NotOwned
+  · owns() requires state == Purchased, so Pending is never ownership; needsAcknowledgment() only for a settled unacknowledged purchase
+Entitlement             Unknown (fresh install / Play never answered) | Owned | NotOwned
+Entitlements.state/isUnlocked(context)   reads the persisted verdict only — no Play, no network, so a bought feature keeps working on a plane
+Entitlements.record(context, verdict)    folds Entitlements.next(current, verdict) and persists it. Unreachable leaves the stored verdict alone; a successful query overwrites (that is how a refund eventually locks the feature again)
+Entitlements.guard(activity) { ... }     THE SEAM every gated feature will call: runs the body when owned, otherwise shows ProPaywall and returns false. Features never see a product id, a price, or a response code
+ProPaywall.show(activity, note)          MetroDialog only. Owned → message() "already unlocked"; else confirm() with body = pro_body + Play's formatted price (or "Price unavailable") + note ?: BillingGateway.statusMessage(), positive = "Buy <price>", negative = "Restore" → refresh(). Re-shows itself when purchase() fails, because MetroDialog dismisses on any button press and the reason has nowhere else to go. Uses ic_fluent_lock_closed_24_regular — there is no lock_open drawable in this repo
+SettingsActivity                         rowPro/proSubtitle (PRO section, above DISPLAY): bindPro + updateProSubtitle read Entitlements, onResume observes billingListener + refresh(), onPause unobserves. billingListener is a property for the reason above
+IndexPreferences.get/setProEntitlement   key "pro_entitlement" in "index_prefs", stores Entitlement.name, unparseable → Unknown. Warm-started by GallerySearchApp's StartupSharedPreferences list via the "index_prefs" entry
+build.gradle                             com.android.billingclient:billing-ktx:7.1.1 (ktx gives the suspend queryProductDetails / queryPurchasesAsync / acknowledgePurchase). No manifest edit: the library's own AAR manifest supplies com.android.vending.BILLING and the <queries> block, and the app still needs no INTERNET permission — billing is IPC to com.android.vending, and Play answers ownership queries from the Google app's cache
+PurchaseRulesTest           (test)        ownership excludes Pending and foreign products, the acknowledgment rule, verdictOf's four replies, and both halves of the persistence rule (an outage cannot strip Owned; a proof overwrites)
+```
+
+---
+
 ## DB Entities & DAOs
 
 ```
