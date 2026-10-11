@@ -42,17 +42,17 @@
 
     <TextView
         android:id="@+id/panelTitle"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:fontFamily="sans-serif-light"
-        android:letterSpacing="-0.02"
+        android:letterSpacing="0"
         android:lineSpacingMultiplier="1.05"
         android:textColor="@color/metroTextPrimary"
         android:textSize="28sp" />
 
     <TextView
         android:id="@+id/panelBody"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:lineSpacingMultiplier="1.35"
@@ -74,11 +74,20 @@
         android:background="@color/metroBgSurface"
         android:visibility="gone" />
 
-    <LinearLayout
-        android:id="@+id/permList"
+    <ScrollView
+        android:id="@+id/panelListScroller"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:orientation="vertical"
-        android:visibility="gone" />
+        android:fillViewport="false"
+        android:overScrollMode="ifContentScrolls"
+        android:scrollbarStyle="outsideOverlay"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/permList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
 </LinearLayout>

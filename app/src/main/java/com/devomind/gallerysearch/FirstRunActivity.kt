@@ -91,7 +91,11 @@ class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
 
         binding.btnNext.setOnClickListener {
             val current = binding.panels.currentItem
-            if (current >= pageCount - 1) complete() else goTo(current + 1)
+            if (current >= pageCount - 1) {
+                if (!requestFirstOutstandingRequired()) complete()
+            } else {
+                goTo(current + 1)
+            }
         }
         // The reference's X jumps to the permissions page rather than closing the tour: that page is
         // where the asks happen, so it is the one thing not to skip past.
@@ -197,6 +201,14 @@ class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
         row.required && statusOf(row.kind).state == OnboardingPermissionState.OUTSTANDING
     }
 
+    private fun requestFirstOutstandingRequired(): Boolean {
+        val row = permissionRows.firstOrNull {
+            it.required && statusOf(it.kind).state == OnboardingPermissionState.OUTSTANDING
+        } ?: return false
+        request(row.kind)
+        return true
+    }
+
     private fun refreshPermissions() {
         panelAdapter.refreshPermissions()
         syncChrome(binding.panels.currentItem)
@@ -254,9 +266,8 @@ class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
         binding.btnNext.setText(
             if (lastPage) R.string.onboarding_get_started else R.string.onboarding_next
         )
-        val canFinish = !lastPage || !finishBlocked()
-        binding.btnNext.isEnabled = canFinish
-        binding.btnNext.alpha = if (canFinish) 1f else 0.35f
+        binding.btnNext.isEnabled = true
+        binding.btnNext.alpha = 1f
     }
 
     /** One segment per page, weighted equally with the reference's 3-unit gap between them. */
@@ -285,10 +296,10 @@ class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
         binding.brandText.setTextSize(metrics.textSp(11f))
 
         binding.dismissBtn.layoutParams = binding.dismissBtn.layoutParams.apply {
-            width = metrics.units(40f)
-            height = metrics.units(40f)
+            width = metrics.dp(48f)
+            height = metrics.dp(48f)
         }
-        val dismissPad = metrics.units(12f)
+        val dismissPad = metrics.dp(12f)
         binding.dismissBtn.setPadding(dismissPad, dismissPad, dismissPad, dismissPad)
         binding.dismissBtn.requestLayout()
 
@@ -296,7 +307,7 @@ class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
             metrics.units(28f), metrics.units(4f), metrics.units(28f), metrics.units(26f)
         )
         binding.btnNext.layoutParams = (binding.btnNext.layoutParams as LinearLayout.LayoutParams).apply {
-            height = metrics.units(48f)
+            height = metrics.dp(48f)
             topMargin = metrics.units(22f)
         }
         binding.btnNext.setTextSize(metrics.textSp(13f))

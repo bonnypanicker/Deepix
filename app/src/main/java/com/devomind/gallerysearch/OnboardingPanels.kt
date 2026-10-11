@@ -98,44 +98,23 @@ fun onboardingPanels(): List<OnboardingPanel> = listOf(
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_search,
         iconSize = 72f,
-        eyebrow = R.string.onboarding_search_eyebrow,
-        title = R.string.onboarding_search_title,
-        body = R.string.onboarding_search_body
+        eyebrow = R.string.onboarding_find_eyebrow,
+        title = R.string.onboarding_find_title,
+        body = R.string.onboarding_find_body
     ),
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_people,
         iconSize = 72f,
-        eyebrow = R.string.onboarding_people_eyebrow,
-        title = R.string.onboarding_people_title,
-        body = R.string.onboarding_people_body
-    ),
-    OnboardingPanel(
-        iconRes = R.drawable.ic_onboarding_smart_album,
-        iconSize = 72f,
-        eyebrow = R.string.onboarding_smart_album_eyebrow,
-        title = R.string.onboarding_smart_album_title,
-        body = R.string.onboarding_smart_album_body
+        eyebrow = R.string.onboarding_organize_eyebrow,
+        title = R.string.onboarding_organize_title,
+        body = R.string.onboarding_organize_body
     ),
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_cleanup,
         iconSize = 72f,
-        eyebrow = R.string.onboarding_cleanup_eyebrow,
-        title = R.string.onboarding_cleanup_title,
-        body = R.string.onboarding_cleanup_body
-    ),
-    OnboardingPanel(
-        iconRes = R.drawable.ic_onboarding_edit,
-        iconSize = 72f,
-        eyebrow = R.string.onboarding_edit_eyebrow,
-        title = R.string.onboarding_edit_title,
-        body = R.string.onboarding_edit_body
-    ),
-    OnboardingPanel(
-        iconRes = R.drawable.ic_onboarding_safe,
-        iconSize = 72f,
-        eyebrow = R.string.onboarding_safe_eyebrow,
-        title = R.string.onboarding_safe_title,
-        body = R.string.onboarding_safe_body
+        eyebrow = R.string.onboarding_care_eyebrow,
+        title = R.string.onboarding_care_title,
+        body = R.string.onboarding_care_body
     ),
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_pro,
@@ -198,8 +177,11 @@ class OnboardingMetrics(var factor: Float, val density: Float) {
     /** A hairline: as thin as the screen can draw, but never invisible. */
     fun hairline(): Int = max(1, units(1f))
 
-    /** A mock-space font size, as scaled sp. */
-    fun textSp(mockPx: Float): Float = mockPx * factor
+    /** A plain dp length for controls that must keep their minimum touch target. */
+    fun dp(value: Float): Int = (value * density).roundToInt()
+
+    /** A stable sp size. Layout scales to the window, but type remains readable and predictable. */
+    fun textSp(mockPx: Float): Float = mockPx
 }
 
 /** The pages themselves, swiped through by ViewPager2. */
@@ -298,7 +280,7 @@ class OnboardingPanelAdapter(
                     weight = 0.8f
                 }
             b.permTopDivider.visibility = View.GONE
-            b.permList.visibility = View.GONE
+            b.panelListScroller.visibility = View.GONE
             b.permList.removeAllViews()
         }
 
@@ -341,7 +323,12 @@ class OnboardingPanelAdapter(
                     topMargin = metrics.units(10f)
                     height = metrics.hairline()
                 }
-            b.permList.visibility = View.VISIBLE
+            b.panelListScroller.visibility = View.VISIBLE
+            b.panelListScroller.layoutParams =
+                (b.panelListScroller.layoutParams as LinearLayout.LayoutParams).apply {
+                    height = 0
+                    weight = 1f
+                }
             b.permList.removeAllViews()
             panel.benefits.forEach { b.permList.addView(benefitRowView(it)) }
         }
@@ -361,6 +348,7 @@ class OnboardingPanelAdapter(
             }
             val rowPad = metrics.units(11f)
             r.benefitRowContent.setPadding(0, rowPad, 0, rowPad)
+            r.benefitRowContent.minimumHeight = metrics.dp(44f)
             r.benefitRowLabel.margin { marginStart = metrics.units(16f) }
             return r.root
         }
@@ -384,7 +372,12 @@ class OnboardingPanelAdapter(
                     topMargin = metrics.units(18f)
                     height = metrics.hairline()
                 }
-            b.permList.visibility = View.VISIBLE
+            b.panelListScroller.visibility = View.VISIBLE
+            b.panelListScroller.layoutParams =
+                (b.panelListScroller.layoutParams as LinearLayout.LayoutParams).apply {
+                    height = 0
+                    weight = 1f
+                }
             b.permList.removeAllViews()
             panel.permissions.forEach { b.permList.addView(rowView(it)) }
         }
@@ -406,6 +399,7 @@ class OnboardingPanelAdapter(
                 height = metrics.hairline()
             }
             r.permRowContent.setPadding(0, metrics.units(13f), 0, metrics.units(13f))
+            r.permRowContent.minimumHeight = metrics.dp(56f)
             r.permRowCopy.margin { marginStart = metrics.units(16f) }
             r.permRowSummary.margin { topMargin = metrics.units(2f) }
             r.permRowStatus.margin { marginStart = metrics.units(12f) }

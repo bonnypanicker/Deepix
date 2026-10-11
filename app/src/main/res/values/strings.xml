@@ -299,15 +299,26 @@
     <string name="people_empty">No people yet</string>
     <string name="people_empty_hint">Faces from your photos will cluster here as indexing runs.</string>
 
-    <!-- First-run tour: seven feature pages, then the permissions page. The copy is the product's
-         own pitch, so it reads as prose rather than UI labels. -->
+    <!-- First-run tour: a short product pass, Pro limits, then permissions. -->
     <string name="onboarding_next">Next</string>
     <string name="onboarding_get_started">Get started</string>
     <string name="onboarding_dismiss">Skip to permissions</string>
 
     <string name="onboarding_welcome_eyebrow">Privacy-first photo gallery</string>
     <string name="onboarding_welcome_title">Your gallery, kept private</string>
-    <string name="onboarding_welcome_body">Pixa is a full photo and video gallery with AI search, face grouping, and smart organization — all of it processed on your device, so your library is never uploaded anywhere.</string>
+    <string name="onboarding_welcome_body">Pixa is a full gallery with AI search, face grouping, smart albums, cleanup, editing, and Safe. Your library stays on this device.</string>
+
+    <string name="onboarding_find_eyebrow">AI search</string>
+    <string name="onboarding_find_title">Find any photo fast</string>
+    <string name="onboarding_find_body">Search by description, date, place, person, album, or by choosing a similar photo. Results come from your on-device index.</string>
+
+    <string name="onboarding_organize_eyebrow">Organization</string>
+    <string name="onboarding_organize_title">People and albums stay current</string>
+    <string name="onboarding_organize_body">Faces are grouped automatically, and smart albums keep collecting matching photos as your library grows.</string>
+
+    <string name="onboarding_care_eyebrow">Care tools</string>
+    <string name="onboarding_care_title">Clean up, edit, and protect</string>
+    <string name="onboarding_care_body">Review clutter before deleting, make quick edits without leaving the gallery, and move private photos into encrypted Safe storage.</string>
 
     <string name="onboarding_search_eyebrow">Search</string>
     <string name="onboarding_search_title">Search by description or by photo</string>
@@ -338,7 +349,7 @@
          FreeTier — keep the two in step when a number changes. -->
     <string name="onboarding_pro_eyebrow">Pixa Pro</string>
     <string name="onboarding_pro_title">One purchase, kept forever</string>
-    <string name="onboarding_pro_body">The free app is not a trial: search, face grouping, cleanup and the Safe all keep working, with room to grow. Pro lifts those limits and never expires — no subscription, and nothing is uploaded to buy it or to use it.</string>
+    <string name="onboarding_pro_body">The free app is not a trial. Pro lifts the advanced limits with one purchase and never changes how your photos are processed.</string>
     <string name="onboarding_pro_benefit_people">Name people and label relationships</string>
     <string name="onboarding_pro_benefit_accents">Every accent color, including your device\'s own</string>
     <string name="onboarding_pro_benefit_safe">Unlimited photos in the Safe</string>
