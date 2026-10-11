@@ -275,7 +275,7 @@ AccentPaletteTest           (test)              choice order + key contract, the
 
 ---
 
-## Play Billing pass additions (paywall seam — no feature is gated yet)
+## Play Billing pass additions (paywall seam)
 
 ```
 BillingGateway.ProProductId  "pixa_pro_unlock" — the one-time INAPP id. Renaming it here without creating the product (and keeping the old id owned by anyone who bought it) strands every existing purchase
@@ -293,12 +293,42 @@ PurchaseRules           the billing-free decision layer, so the verdicts can be 
 Entitlement             Unknown (fresh install / Play never answered) | Owned | NotOwned
 Entitlements.state/isUnlocked(context)   reads the persisted verdict only — no Play, no network, so a bought feature keeps working on a plane
 Entitlements.record(context, verdict)    folds Entitlements.next(current, verdict) and persists it. Unreachable leaves the stored verdict alone; a successful query overwrites (that is how a refund eventually locks the feature again)
-Entitlements.guard(activity) { ... }     THE SEAM every gated feature will call: runs the body when owned, otherwise shows ProPaywall and returns false. Features never see a product id, a price, or a response code
-ProPaywall.show(activity, note)          MetroDialog only. Owned → message() "already unlocked"; else confirm() with body = pro_body + Play's formatted price (or "Price unavailable") + note ?: BillingGateway.statusMessage(), positive = "Buy <price>", negative = "Restore" → refresh(). Re-shows itself when purchase() fails, because MetroDialog dismisses on any button press and the reason has nowhere else to go. Uses ic_fluent_lock_closed_24_regular — there is no lock_open drawable in this repo
+Entitlements.guard(activity, reason) { ... }     THE SEAM every gated feature calls: runs the body when owned, otherwise shows ProPaywall with that reason and returns false. Features never see a product id, a price, or a response code. `reason` is the per-gate string already formatted with its own limit, so the sentence shown cannot drift from the rule enforced
+ProPaywall.show(activity, reason)          MetroDialog only. Owned → message() "already unlocked"; else confirm() with body = pro_body + Play's formatted price (or "Price unavailable") + reason ?: BillingGateway.statusMessage(), positive = "Buy <price>", negative = "Restore" → refresh(). Re-shows itself when purchase() fails, because MetroDialog dismisses on any button press and the reason has nowhere else to go. Uses ic_fluent_lock_closed_24_regular — there is no lock_open drawable in this repo
 SettingsActivity                         rowPro/proSubtitle (PRO section, above DISPLAY): bindPro + updateProSubtitle read Entitlements, onResume observes billingListener + refresh(), onPause unobserves. billingListener is a property for the reason above
-IndexPreferences.get/setProEntitlement   key "pro_entitlement" in "index_prefs", stores Entitlement.name, unparseable → Unknown. Warm-started by GallerySearchApp's StartupSharedPreferences list via the "index_prefs" entry
+IndexPreferences.get/setProEntitlement   key "pro_entitlement" in "index_prefs", stores Entitlement.name, unparseable → Unknown. Held in a @Volatile cachedEntitlement and read by the same warm-up as the accent — see the gate section below
 build.gradle                             com.android.billingclient:billing-ktx:7.1.1 (ktx gives the suspend queryProductDetails / queryPurchasesAsync / acknowledgePurchase). No manifest edit: the library's own AAR manifest supplies com.android.vending.BILLING and the <queries> block, and the app still needs no INTERNET permission — billing is IPC to com.android.vending, and Play answers ownership queries from the Google app's cache
 PurchaseRulesTest           (test)        ownership excludes Pending and foreign products, the acknowledgment rule, verdictOf's four replies, and both halves of the persistence rule (an outage cannot strip Owned; a proof overwrites)
+```
+
+---
+
+## Free tier gates pass additions (five feature locks on one seam)
+
+```
+FreeTier                  the whole free/paid boundary in one file: a limit stated on five screens is five chances to disagree about what the user paid for
+  · FreeAccents = 3, FreeSafePhotos = 50, FreeSmartAlbums = 5, PaidCleanupCategories = {COMPRESSIBLE, BURSTS, NSFW}
+  · accentLocked(choice, unlocked)   uses AccentPalette.choices.indexOf(choice), so the enum's declaration order is pricing — see GRAPH.md. SYSTEM (declared last) is locked like any swatch: offering the OS's own palette free would make the paid half of the list depend on the phone
+  · safeRoom(inVault, unlocked) → slots left, never negative; unlocked returns Int.MAX_VALUE so a 500-photo move stays one batch
+  · smartAlbumsBlocked(existing, unlocked) → true AT the cap, not past it (the 5th is allowed)
+  · cleanupLocked(category, unlocked) → the three categories that do work past a metadata scan (encoder / O(n²) burst grouping / classifier)
+  Every predicate takes `unlocked` and is false when it is true, so nothing here decides HOW a lock is shown
+AccentPalette.current(activity)     now also demotes a paid stored choice to AZURE. Enforced at read/apply time rather than only in the picker because this is what every activity's apply() goes through: a stored Rose arriving by Auto Backup, or bought then refunded, must not paint the app in a color nobody owns. The stored key is untouched, so buying unlocks it without a re-pick
+MetroDialog.singleChoice(…, locked: Set<Int>)   locked rows stay listed, dimmed: dot setAlpha(110), label metroTextTertiary, a lock glyph in place of the checkmark (a picker showing three colors reads as a three-color app, not a bought one). The tap still reports through onSelect — the widget knows nothing about entitlements, the caller decides
+SettingsActivity.showAccentColorDialog  passes the paid indexes from FreeTier.accentLocked; the check mark can never sit on a locked row because AccentPalette.current already demoted the stored choice
+SettingsActivity.applyAccent(choice)    Entitlements.guard(this, gate_accent) wrapping the pref write + accentChanged flag
+SettingsActivity.appliedAccent + onResume check  recreate() when the accent IN FORCE moved while this screen was open — the case where buying PRO re-paints a swatch the user picked before the gate existed, with no pref write to notice
+MainActivity.settingsLaunchAccent (was …AccentKey)  now holds AccentPalette.Choice, not the raw key, so the same verdict-change recreate fires on the gallery side; the drawer's Settings click stores AccentPalette.current(this)
+PersonIdentityEditor.show(activity, person, onSaved)  one guard over the renamed private openIdentityEditor, covering all three roads in (PersonAlbumsActivity long-press, PersonDetailActivity title tap, identityAction button) — asked before the keyboard, not after Save. Naming and relationship share PersonDao.updateIdentity and this dialog, so both are the paid identity
+SafeActivity.runImport(uris, isMove)   the only door into the vault (gallery move, cleanup move, this screen's picker), so the cap is enforced once: SafeManager.listItems().size on IO → FreeTier.safeRoom → uris.take(...) BEFORE any byte is written. Empty → paywall and return, nothing lost. Partial → the batch imports, the banner reports, THEN the offer shows; and since only ImportResult.importedSources is set as ExtraImportedUris, a photo left out of the clamp is never deleted from the gallery. Restoring OUT of the Safe is never gated
+item_cleanup_tile.xml tileLock   18dp top|end lock glyph, gone by default, alpha 0.9, contentDescription @string/locked
+SmartCleanupActivity.renderTiles / onResume   a lock on a paid tile's corner, and re-render when Play's sheet backgrounds the screen, so a purchase made here takes the locks off without a restart
+SmartCleanupActivity.openCategory(category)   gated at the door with gate_cleanup + categoryTitle(category): the tile still counts the photos, but the user never lands in a detail view whose select-all/delete/Safe bars they cannot use. currentCategory is not in instance state, so a gated category cannot be restored across a recreation
+MainActivity.showCreateSmartAlbumDialog()   blocked before the dialog opens (top-bar add, onboarding card, albums empty state all route here) — the count is the in-memory smartAlbums list, so no JSON parse on a tap. Refreshing/renaming an existing album stays free
+IndexPreferences.warmStartupKeys(context)  was warmAccentCache: one prefs handle now fills both @Volatile caches (cachedAccentKey, cachedEntitlement) because AccentPalette.apply() reads the accent and the entitlement before super.onCreate() — the measured cold-start block was ~400–500 ms when either hit disk
+GallerySearchApp               the startup pre-warm thread calls warmStartupKeys, "accent and the entitlement go first"
+strings.xml gate_accent / gate_people / gate_safe(%1$d) / gate_cleanup(%1$s) / gate_smart_albums(%1$d)  what the user reached for, said back inside the offer; each passes its own FreeTier limit so copy and rule cannot drift
+FreeTierTest            (test)  first three swatches free and everything after locked (SYSTEM last and paid), unlock frees all, safeRoom counts what is inside and never goes negative, unlocked safeRoom truncates nothing, the album boundary blocks at exactly 5 and not before, only the three work-doing cleanup categories are locked
 ```
 
 ---
