@@ -39,7 +39,8 @@
 | `MetadataSearch` | TF-IDF-style keyword search over filename/bucket/mime/date fields |
 | `ImageAdapter` | RecyclerView adapter: grid + **justified-rows collage** layouts (per-photo span/height precomputed from aspect ratio), sticky date headers, selection, album rows, **smart-album onboarding card** (`onCreateSmartAlbum` cb) |
 | `AlbumPinStore` | SharedPreferences JSON array of pinned album IDs (ordered). Tracks an `initialized` flag so default pins apply only once |
-| `SmartAlbumStore` | SharedPreferences JSON array of smart album definitions (name, prompt, member Uris, cover) |
+| `CollectionAlbumStore` | SharedPreferences JSON array of the saved collections — Smart (name, prompt, member Uris, cover), Folder (folder path) and Tags (tag names). One store, one ID scheme (`smart:`/`folder:`/`tag:` prefixes) |
+| `AlbumRules` | The two pure rules behind the live kinds: which folders the picker offers (every depth, biggest first) and which photos a tag collection collects (union by tag name) |
 | `FavoritesStore` | Wraps Room `FavoriteDao`. Migrates legacy SharedPrefs on first run |
 | `IndexPreferences` | SharedPrefs: last-indexed timestamp, tuned thread count, indexing batch-size override, grid columns, layout mode |
 | `DesignTokens` | All constants: sizes, durations, caps, column counts, thresholds |
@@ -138,21 +139,25 @@ SmartCleanupActivity observes worker progress → reload store → renderTiles (
   Auto re-scans (resume) when indexing completes
 ```
 
-### Smart Album Flow
+### Saved Collections Flow (Smart / Folder / Tags)
 ```
-MainActivity.createSmartAlbum(name, prompt)
-  → runSearchPipeline(query, mode, candidateItems)  [shared search core]
-      → MetadataSearch + repo.search() → merged results
-  → SmartAlbumStore.upsert(SmartAlbum(name, prompt, memberUris, coverUri, …))
-  → AlbumPinStore.pin(id)  → appears in PINNED section
+MainActivity.addAlbumBtn → showCreateAlbumMenu()  [MetroDropdownMenu over the "+"]
+  ├── Smart album → FreeTier gate → showCreateSmartAlbumDialog() → createSmartAlbum(name, prompt)
+  │     → runSearchPipeline(query, mode, candidateItems)  [shared search core]
+  │         → MetadataSearch + repo.search() → merged results
+  └── Folder album → showFolderAlbumPicker()  [AlbumRules.folderChoices(buildFolderTree(collectionItems)),
+  │     MetroDialog.searchableList → askFolderAlbumName → createFolderAlbum]; tag collections are
+  │     deduped by folderIdFor(path), so a folder cannot yield two albums
+  └── Tag collection → showTagAlbumDialog → openTagAlbumDialog (dialog_tag_album.xml, chips multi-select)
+  All three converge on saveCollectionAlbum(album, pin = true):
+  → CollectionAlbumStore.upsert(...) → collectionAlbums = getAll() → AlbumPinStore.pin(id)
+    [pinning is required for visibility: saved collections reach the user only through the
+     Albums page's pinned strip]
 
-MainActivity.renderAlbums()
-  → albumPinStore.cleanup(realAlbumIds + smartAlbumIds)  [prevents pruning]
-  → pinnedAlbums = pinnedIds.mapNotNull { albumById[it] }  [real + smart]
-
-MainActivity.renderMediaSection() (Collections page)
-  → albumPinStore.cleanup(realAlbumIds + smartAlbumIds)
-  → pinnedAlbums = pinnedIds.mapNotNull { albumById[it] }  [same merge as Albums page]
+MainActivity.renderAlbums() / buildPinnedAlbumStrip() (Collections page)
+  → refreshTagCacheForAlbums()  [Room read only when a Tags album exists and tagCacheStale]
+  → albumPinStore.cleanup(realAlbumIds + collectionAlbumIds)  [prevents pruning]
+  → pinnedAlbums = pinnedIds.mapNotNull { albumById[it] }  [device albums + collectionAlbumViews()]
   → renderPagedTimeline(items, ..., "section:<Section>", prefix)  [incremental]
 
 Browse timeline paging (renderPagedTimeline / paginateBrowse):
@@ -162,15 +167,21 @@ Browse timeline paging (renderPagedTimeline / paginateBrowse):
     lastVisible >= total - PAGE_PREFETCH_CELLS(12); guarded by pagingInFlight +
     pagedContext staleness. buildTimelinePage(from,to,continuingMonth) avoids
     repeating month headers across page boundaries.
-  → Used by Collections/Videos/Favorites + album/folder/smart-album details.
+  → Used by Collections/Videos/Favorites + album/folder/collection-album details.
     Albums & folder-tree grids set pagedContext=null (not timelines); search has
     its own pagination.
 
-Album-detail for smart albums:
-  → albumDetailItems resolves from stored smartAlbum.memberUris (engine-rank order)
-  → No re-search on open — instant from SharedPreferences data
+Album-detail (Mode.CollectionAlbumDetail) → collectionAlbumItems(album):
+  → Smart  resolves from stored memberUris in engine-rank order; no re-search on open
+  → Folder resolves from the folder tree node (flattenFolderItems) — the same walk the Folders
+    page shows, so an album and that folder's own row cannot disagree
+  → Tags   resolves from AlbumRules.tagUris against the in-memory tag cache
+  → A photo leaves a live album the instant it leaves the folder or loses the tag; tile counts
+    come from the same resolution, so they are never one photo behind
+  → scope key: "smart:<id>" for Smart (keeps the historic sort preference), album id otherwise
 
-Refresh: re-runs runSearchPipeline, updates stored memberUris + cover
+Refresh: Smart only — re-runs runSearchPipeline, updates stored memberUris + cover. The live
+kinds have nothing stored to refresh, so the sheet does not offer it.
 ```
 
 ### Safe (encrypted photo locker) Flow
@@ -299,7 +310,7 @@ SAF tree grant (`takePersistableUriPermission`). `SafeActivity` is `excludeFromR
 ---
 
 ## UI Modes & Navigation
-- **Mode enum:** `Browse | Search | AlbumDetail | FolderDetail | SmartAlbumDetail`
+- **Mode enum:** `Browse | Search | AlbumDetail | FolderDetail | CollectionAlbumDetail`
 - **Section enum:** `Collection | Videos | Albums | Favorites | Folders`
 - **SearchMode enum:** `Hybrid | AiOnly | MetadataOnly` (selected in the Sort & filter sheet "Match")
 - **SortMode enum:** `Relevance | Newest | Oldest` (search results)
@@ -338,7 +349,7 @@ SAF tree grant (`takePersistableUriPermission`). `SafeActivity` is `excludeFromR
 25. **"Index only while charging" ignored on notification Resume** — `IndexControlReceiver.resumeIndexing()` built its own work request with no constraints, so resuming from the notification bypassed the charging preference. Each enqueue path had its own request-builder, inviting drift. Fixed by centralizing on `IndexWorker.buildWorkRequest(context, selection)` (reads the pref at build time, applies `setRequiresCharging`); `MainActivity` and `IndexControlReceiver` both route through it. Settings toggle while indexing re-enqueues with `ExistingWorkPolicy.REPLACE` so the constraint swaps on the running job.
 26. **Screen titles centered/inconsistent** — the shared `screenTitle` was `gravity=center` with 56dp side padding. Now `start`-aligned with a 16dp start inset (the app standard, matching the Pinned Albums header), so collections/albums/favorites/videos/folders headers all left-align consistently. `paddingEnd=56dp` kept so the title clears the `+` add button on the Albums page.
 27. **Fast-scroll bar missing on Collections + spanned full screen** — visibility was gated on month-`Header` count (`> 2`), so a Collections page of recent photos (≤2 months) never showed the bar. Now `updateFastScrollVisibility()` posts after layout and shows when the scroll range exceeds the viewport by `FAST_SCROLL_MIN_RATIO` (1.5×) — works on every image listing regardless of date spread. Also the `FastScrollIndicator` track spanned the whole screen (behind the search bar / nav); it now follows the RecyclerView's top/bottom padding (`trackTop()`/`trackBottom()`) so the thumb + touch area stay within the visible listing in every mode.
-28. **Smart-album onboarding card not dismissable** — the Albums onboarding card had no close affordance. Added a top-right ✕ (`onboardingDismissBtn`) wired through `ImageAdapter.onDismissSmartAlbumOnboarding`; dismissal persists via `IndexPreferences.isSmartAlbumOnboardingDismissed`/`set…` and re-renders the page. `renderAlbums()` shows the card only when `smartAlbums.isEmpty() && !dismissed`.
+28. **Smart-album onboarding card not dismissable** — the Albums onboarding card had no close affordance. Added a top-right ✕ (`onboardingDismissBtn`) wired through `ImageAdapter.onDismissSmartAlbumOnboarding`; dismissal persists via `IndexPreferences.isSmartAlbumOnboardingDismissed`/`set…` and re-renders the page. `renderAlbums()` shows the card only when the device holds no Smart-kind collection (`collectionAlbums.none { it.kind == AlbumKind.Smart }`) and `!dismissed` — folder and tag albums don't suppress it, since the card teaches the one kind they can't.
 29. **Collage thumbnails too small / uneven rows** — the justified-rows builder greedily added items until `aspectSum ≥ target` and always kept the crossing item, so rows overshot the target and scaled shorter than intended (small thumbnails, uneven heights). Now `appendJustifiedRows` makes a closest-to-target break decision (keep the crossing item only if it lands the row height nearer the target, else start a new row with it), stretched-row height is clamped to `0.6×–1.7×` the target (`COLLAGE_MIN/MAX_ROW_HEIGHT_RATIO`), the trailing row stretches to fill when ≥`COLLAGE_LAST_ROW_FILL_THRESHOLD` (0.7) full, and `COLLAGE_SPAN_COUNT` was raised 12 → 60 for finer width fitting. Thumbnails (centerCrop) are unaffected by aspect since only the box shape changes.
 30. **Indexing controls in Settings + percentage notification** — Settings INDEXING section now shows a live progress bar + status with a contextual primary button (Pause/Resume/Start/Re-index) and a Stop button (observes `WorkManager` work info; live % from `ProgressPercentKey`, persisted `IndexPreferences.getIndexProgressPercent` for paused/idle). Foreground notification shows **percentage** (`setProgress(100, %)`) instead of `x / total`, with Pause + Stop actions; the paused notification has Resume + Stop. Lifecycle centralized in `IndexController` (pause/resume/stop/start). **Stop** removes the notification and sets a distinct `isIndexStopped` flag (paused stays false, so the cancelled worker's teardown can't re-post a notification) — browse/relaunch won't silently restart; Start/Resume clears it. Onboarding dialog reworded: one-time full scan, then only new photos, fully offline ("Local AI photo search").
 31. **Blur sensitive content (Beta)** — Settings › PRIVACY toggle (`IndexPreferences.isBlurSensitive`). `NsfwClassifier` embeds sensitive vs safe CLIP text prompts once and flags an image when its embedding is closer to a sensitive prompt by `SENSITIVE_MARGIN` — reuses stored embeddings (no re-encode). `MainActivity.refreshSensitiveBlur()` computes the flagged uri set off-thread after index load / on settings return / on index complete, then `ImageAdapter.setSensitiveState`. Flagged tiles load at 16px (cheap all-API blur) with a "Tap to view" eye overlay (`item_image.xml` sensitiveOverlay); first tap reveals (session-only `revealedUris`), then normal open. Applies to grid + collage (both use PhotoViewHolder). Beta heuristic — margin/prompts tunable. **Temporarily disabled** via `NsfwClassifier.FEATURE_ENABLED = false`: the Settings › Privacy section is hidden and `refreshSensitiveBlur` runs no classification. Flip the flag to true to re-enable everything.

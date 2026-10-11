@@ -28,8 +28,10 @@ PhotoEditOps              PhotoEditOps.kt          rotate/flip/crop/perspective(
 MediaImageSaver           MediaImageSaver.kt       overwrite(uri) [RecoverableSecurityException/createWriteRequest] + saveCopy → Pictures/Deepix
 EditorCropView / EditorQuadView / EditorDrawView   crop rect+aspect / 4-corner perspective quad / freehand draw overlays
 AlbumPinStore             AlbumPinStore.kt         pin/unpin/isPinned/getPinnedAlbumIds/setPinnedOrder/cleanup/isInitialized/markInitialized
-SmartAlbumStore           SmartAlbumStore.kt       getAll(); get(id); upsert(album); delete(id); isSmartId(id)
-  SmartAlbum              SmartAlbumStore.kt       data class: id,name,prompt,searchMode,memberUris,coverUri,createdAt,updatedAt; toAlbum(): Album
+CollectionAlbumStore      CollectionAlbumStore.kt  getAll(); get(id); upsert(album); delete(id). Prefs file "smart_albums" and key "smart_album_data" keep their old names — an upgrade must still read the albums a user already made
+  CollectionAlbum         CollectionAlbumStore.kt  data class: id,name,prompt,searchMode,memberUris,coverUri,createdAt,updatedAt,kind,folderPath,tagNames; toAlbum(count,coverUri): Album — a live kind passes what the library says, a smart one reports its stored list
+  AlbumKind               CollectionAlbumStore.kt  Device | Smart | Folder | Tags. Smart keeps the URIs a search returned; Folder and Tags keep a rule and are resolved from the library on every render, so their counts cannot go stale and they are never offered Refresh
+AlbumRules                AlbumRules.kt            object; folderChoices(roots) — every folder holding a photo, at any depth, biggest first; findFolderNode(roots,path); tagUris(tagNames,tags,urisByTag) — the union, matched by tag NAME because a rowid can be handed to a different tag. Pure: no Context, no library, JVM-tested
 FavoritesStore            FavoritesStore.kt        all(); isFavorite(Uri); toggle(Uri): Boolean — wraps DbRepository
 QueryExpander             QueryExpander.kt         buildWeightedEmbedding(query: String): FloatArray
 WordNetExpansionDictionary WordNetExpansionDictionary.kt  lookup(term): Expansion?; isAvailable; WeightOriginal=1.0/Synonym=0.85/Hypernym=0.6/Hyponym=0.5
@@ -199,7 +201,8 @@ binding.imageGrid.addOnLayoutChangeListener { width != oldWidth }  the rotation 
 MediaPagerAdapter.decodeOverridePx()/reloadImageForSizeChange()  Glide decodes at the page's measured size, not the window's; ViewerActivity.onConfigurationChanged calls it (video pages are skipped)
 ViewerActivity.clampInfoScrollHeight()                           info sheet capped to the window, floor 140dp
 MetroDialog body.maxHeight / Views.showList(context, naturalPx)  dialog body and option lists capped via Responsive.bodyHeightPx; dialog_metro_generic's metroDialogContent now sits in metroDialogScroll
-dialog_tag_picker / dialog_safe_setup / dialog_smart_album / dialog_bottom_bar_order  roots are ScrollViews — their stacks exceed a 360dp-tall sideways window and used to clip the footer buttons
+MetroDialog.searchableList(context,title,intro,hint,items,label,onSelect)  a list long enough to need narrowing: the hint field filters as the user types and one tap picks and closes. Only the first MaxSearchRows (60) matches are built — a folder picker over a deep library would otherwise inflate thousands of rows before answering the tap — and what fell past the cut is counted out loud (picker_more) rather than left silent. The list height is re-capped on every keystroke, so the panel shrinks with what is listed
+dialog_tag_picker / dialog_safe_setup / dialog_smart_album / dialog_tag_album / dialog_bottom_bar_order  roots are ScrollViews — their stacks exceed a 360dp-tall sideways window and used to clip the footer buttons
 FirstRunActivity.scaleFactor()                                   reads the measured root (+inset padding) once laid out; rescaleForWindow() re-applies chrome, progress track and the visible pages on rotation
 OnboardingMetrics(var factor) / OnboardingPanelAdapter.rescaleVisiblePages()  the tour bakes units in at bind time, so a shape change rebinds the live pages (no notifyDataSetChanged — on ViewPager2 it can leave a stale page)
 BinActivity/SafeActivity.gridColumns()/tileSizePx()/applyResponsiveChrome()  fixed 3-column squares: side = measured width ÷ columns, so sideways widens the tile with the row instead of overflowing it
@@ -326,11 +329,36 @@ item_cleanup_tile.xml tileLock   18dp top|end lock glyph, gone by default, alpha
 SmartCleanupActivity.renderTiles / onResume   a lock on a paid tile's corner, and re-render when Play's sheet backgrounds the screen, so a purchase made here takes the locks off without a restart
 SmartCleanupActivity.openCategory(category)   gated at the door with gate_cleanup + categoryTitle(category): the tile still counts the photos, but the user never lands in a detail view whose select-all/delete/Safe bars they cannot use. currentCategory is not in instance state, so a gated category cannot be restored across a recreation
 SmartCleanupActivity.launchCompressionReview()   compression is metered, not locked, so COMPRESSIBLE's tile opens and the cap lands on the batch instead: selectedUris().take(FreeTier.compressionRoom(...)) is the one place a fresh batch is formed (CompressionActivity either adopts a running batch or this hand-off), and the picks left behind stay selected. What was held back is remembered in compressionHeldBack and the offer shows from the compressionLauncher result — after the run is reported, never over it, and read-and-clear before the RESULT_OK test so a cancelled review cannot carry a stale promise
-MainActivity.showCreateSmartAlbumDialog()   blocked before the dialog opens (top-bar add, onboarding card, albums empty state all route here) — the count is the in-memory smartAlbums list, so no JSON parse on a tap. Refreshing/renaming an existing album stays free
+MainActivity.showCreateSmartAlbumDialog()   blocked before the dialog opens (the top-bar add reaches it through showCreateAlbumMenu, and the albums onboarding card still goes straight there) — the count is the in-memory collectionAlbums list filtered to `kind == Smart`, so no JSON parse on a tap. Refreshing/renaming an existing album stays free
 IndexPreferences.warmStartupKeys(context)  was warmAccentCache: one prefs handle now fills both @Volatile caches (cachedAccentKey, cachedEntitlement) because AccentPalette.apply() reads the accent and the entitlement before super.onCreate() — the measured cold-start block was ~400–500 ms when either hit disk
 GallerySearchApp               the startup pre-warm thread calls warmStartupKeys, "accent and the entitlement go first"
 strings.xml gate_accent / gate_people / gate_safe(%1$d) / gate_cleanup(%1$s) / gate_compression(%1$d) / gate_smart_albums(%1$d)  what the user reached for, said back inside the offer; each passes its own FreeTier limit so copy and rule cannot drift
 FreeTierTest            (test)  first three swatches free and everything after locked (SYSTEM last and paid), unlock frees all, safeRoom counts what is inside and never goes negative, unlocked safeRoom truncates nothing, the album boundary blocks at exactly 5 and not before, only the two work-doing cleanup tiles are locked (COMPRESSIBLE explicitly free), a free compression run takes one photo of forty and bought takes all forty
+```
+
+---
+
+## Saved album kinds pass additions (the "+" now offers three ways to collect)
+
+```
+MainActivity.showCreateAlbumMenu()  the top-bar "+" and the Albums empty state's action both open this MetroDropdownMenu: Smart album / Folder album / Tag collection. Was a direct jump to the smart dialog
+MainActivity.showFolderAlbumPicker()  AlbumRules.folderChoices(buildFolderTree(collectionItems)) in a MetroDialog.searchableList, labelled by path (two folders named "Camera" have to say which is which). Empty library → folder_album_none
+MainActivity.askFolderAlbumName(choice)  a folder album's id IS the folder, so an existing record for that path stops the flow with folder_album_exists instead of making a second album of one folder
+MainActivity.createFolderAlbum(folderPath,name) / saveTagAlbum(existing,name,tagNames)  both end in saveCollectionAlbum
+MainActivity.saveCollectionAlbum(album,pin)  the one write path: upsert → refresh the in-memory list → pin when new → re-render the detail page if it is showing this album. A saved collection is only visible through the pinned strip, so pin=false would hide what was just made
+MainActivity.showTagAlbumDialog(existing)  refreshes the tag cache first (the viewer writes tags straight to Room), then openTagAlbumDialog over dialog_tag_album.xml — chips from createSearchPillView, accent fill = selected, rebuilt on every tap; Create becomes Save and the chips come pre-ticked when editing. No tags at all → tag_album_none
+MainActivity.collectionAlbumItems(album)  what the album holds at this moment. Folder: the Folders page's own tree node flattened, so an album and the folder row it came from cannot disagree. Tags: the tag-name union against allTags/tagUriMap. Smart: stored memberUris in their ranked order
+MainActivity.collectionAlbumViews()  the grid cells, one folder-tree pass shared by every folder album (walking the library to learn where each photo lives is the same work whichever album asks)
+MainActivity.collectionAlbumEmptyCell(album)  why it is empty says what to do: folder_album_gone / collection_album_empty_tags / the smart album's refresh hint
+MainActivity.collectionAlbumScopeKey(album)  the paging key that doubles as the sort scope. Smart keeps its historic "smart:"+id so an order picked before folder albums existed is not silently reset; the live kinds use their already-prefixed id (a folder album shares its folder's order)
+MainActivity.refreshTagCacheForAlbums()  renderAlbums calls it: stale cache + at least one tag album → refresh off-thread, re-remember the scroll anchor, render once. Without it a tag album looks empty until the next search unstales the cache
+MainActivity.albumKindLabel(kind) / collectionAlbumIconRes(kind)  the word and the glyph for a kind. The AI orb stays a smart-album mark — a folder album was not gathered by a model, and the same rule drives smartOrb in ImageAdapter
+MainActivity.showCollectionAlbumMenu(…)  rows are built per kind: Refresh and Edit prompt are smart only (a live album has nothing to rebuild), Edit tags is tag-album only, Rename/Unpin/Delete are shared
+AlbumRules                AlbumRules.kt            object; folderChoices(roots) — every folder holding a photo, at any depth, biggest first; findFolderNode(roots,path); tagUris(tagNames,tags,urisByTag) — the union, matched by tag NAME because a rowid can be handed to a different tag. Pure: no Context, no library, JVM-tested
+AlbumRulesTest            (test)                   the folder chooser's order and depth, path lookup, tag union and de-dup, a vanished tag, id prefixes, live vs stored counts
+dialog_tag_album.xml      ScrollView shell cloned from dialog_smart_album.xml — TAGS chip row above NAME, because the choice is the work and the name is a label
+strings.xml album_kind_* / folder_picker_* / folder_album_* / tag_album_* / collection_album_empty_tags* / delete_album_title(%1$s) / delete_album_message(%1$s) / picker_more(%1$d)  the three kinds named, and every dead end said out loud
+FreeTier.smartAlbumsBlocked  still counts smart albums ONLY, which is what gate_smart_albums promises: a folder or tag album stores no embeddings and runs no search, so it is not the thing the cap prices
 ```
 
 ---
@@ -368,7 +396,7 @@ TagDao                db/TagDao.kt                getAll(); getTagsForMedia(uri)
 ## Enums & State
 
 ```
-Mode          MainState.kt   Browse | Search | AlbumDetail | FolderDetail | SmartAlbumDetail
+Mode          MainState.kt   Browse | Search | AlbumDetail | FolderDetail | CollectionAlbumDetail
 Section       MainState.kt   Collection | Videos | Albums | Favorites | Folders
 SearchMode    MainActivity   Hybrid | AiOnly | MetadataOnly  (private enum; chosen in Sort & filter sheet)
 SortMode      MainActivity   Relevance | Newest | Oldest  (private enum; search result order)

@@ -9,7 +9,7 @@ Use this file to navigate cross-file impact before editing. Each entry shows wha
 | Node | Used by | Uses |
 |---|---|---|
 | `GalleryRepository` | MainActivity, IndexWorker, DbRepository | ImageEncoder, TextEncoder, MetadataSearch, QueryExpander, EmbeddingUtils, IndexPreferences, ActivityManager |
-| `MainActivity` | (entry point) | GalleryRepository, DbRepository, ImageAdapter, FavoritesStore, AlbumPinStore, SmartAlbumStore, IndexPreferences, StructuredSearch, DesignTokens, SearchResultManager, ViewerActivity, ThreadBenchmark |
+| `MainActivity` | (entry point) | GalleryRepository, DbRepository, ImageAdapter, FavoritesStore, AlbumPinStore, CollectionAlbumStore, AlbumRules, IndexPreferences, StructuredSearch, DesignTokens, SearchResultManager, ViewerActivity, ThreadBenchmark |
 | `DesignTokens` | MainActivity, IndexPreferences, ImageAdapter, FastScrollIndicator | colors.xml |
 | `IndexPreferences` | MainActivity, IndexWorker, IndexControlReceiver, GallerySearchApp, GalleryRepository, ThreadBenchmark | DesignTokens |
 
@@ -102,25 +102,45 @@ CleanupWorker (foreground, parallel to IndexWorker)
   └── IndexPreferences.isCleanupPaused()  (pause/resume/stop)
 ```
 
-### Smart Album Pipeline
+### Saved collections (the three album kinds)
 ```
-MainActivity.createSmartAlbum(name, prompt)
-  ├── runSearchPipeline(query, mode, candidateItems)
-  │     ├── GalleryRepository.search()  + MetadataSearch
-  │     └── buildMergedPhotoSearchResults()
-  └── SmartAlbumStore.upsert(SmartAlbum)
-        └── SharedPreferences persistence (JSON via org.json)
+MainActivity.addAlbumBtn → showCreateAlbumMenu()  [MetroDropdownMenu, three rows]
+  ├── "Smart album"  → FreeTier.smartAlbumsBlocked(count of kind==Smart) → ProPaywall | showCreateSmartAlbumDialog()
+  │     └── createSmartAlbum(name, prompt)
+  │           ├── runSearchPipeline(query, mode, candidateItems)
+  │           │     ├── GalleryRepository.search()  + MetadataSearch
+  │           │     └── buildMergedPhotoSearchResults()
+  │           └── saveCollectionAlbum(album, pin = true)
+  ├── "Folder album" → showFolderAlbumPicker()
+  │     ├── AlbumRules.folderChoices(buildFolderTree(collectionItems))   [every depth, biggest first]
+  │     ├── MetroDialog.searchableList(...) → askFolderAlbumName(choice)   [folderIdFor() already taken → message]
+  │     └── createFolderAlbum(folderPath, name) → saveCollectionAlbum(album, pin = true)
+  └── "Tag collection" → showTagAlbumDialog(null) → refreshTagCache() first
+        └── openTagAlbumDialog(existing)  [dialog_tag_album.xml, chips via createSearchPillView]
+              └── saveTagAlbum(existing, name, chosen) → saveCollectionAlbum(album, pin = true)
 
-MainActivity.refreshSmartAlbum(smart)
-  └── runSearchPipeline()  → SmartAlbumStore.upsert()
+saveCollectionAlbum(album, pin)              [the one write path for all three kinds]
+  ├── CollectionAlbumStore.upsert(album)  → SharedPreferences persistence (JSON via org.json)
+  ├── collectionAlbums = store.getAll()
+  ├── AlbumPinStore.pin(album.id)  [an unpinned collection is an invisible one]
+  └── renderCollectionAlbumDetail(album) | renderCurrentSection()
 
-MainActivity.renderAlbums()  [smart albums in PINNED section]
-  ├── SmartAlbumStore.getAll()  → smartAlbums list
-  ├── SmartAlbum.toAlbum()  → GalleryRepository.Album(isSmart=true)
-  └── AlbumPinStore.cleanup(realAlbumIds + smartAlbumIds)
+MainActivity.renderAlbums() / buildPinnedAlbumStrip()
+  ├── refreshTagCacheForAlbums()   [only when a Tags album exists and tagCacheStale]
+  ├── collectionAlbumViews() → GalleryRepository.Album(kind = …)
+  │     ├── one buildFolderTree pass shared by every Folder album; node.itemCount / node.coverUri
+  │     ├── Tags: collectionAlbumItems() size + first item as cover
+  │     └── Smart: the stored memberUris and stored cover
+  └── AlbumPinStore.cleanup(validIds = device album ids + collectionAlbums ids)
 
-Album-detail (smart):
-  albumDetailItems  → SmartAlbumStore.get(id)  → memberUris resolved from collectionItems
+Album-detail (any kind): Mode.CollectionAlbumDetail
+  albumDetailItems → collectionAlbumItems(album)          [resolved from the library on every render]
+    ├── Folder → AlbumRules.findFolderNode(...) → flattenFolderItems(node)   [same walk as the Folders page]
+    ├── Tags   → AlbumRules.tagUris(album.tagNames, allTags, tagUriMap)      [union by NAME]
+    └── Smart  → stored memberUris, in the order the search ranked them
+  collectionAlbumScopeKey: "smart:<id>" for Smart, plain id otherwise   [keeps sort preference per album]
+
+Refresh (Smart only — the live kinds have nothing stale to refresh)
 ```
 
 ### Safe (encrypted photo locker) Pipeline
@@ -216,7 +236,7 @@ SafeManager → SafeWorkGuard  (import/encrypt vs lock; end() returns the lock d
 res/xml/backup_rules.xml + data_extraction_rules.xml  (gallery_metadata.db/-wal/-shm excluded from cloud backup and device transfer — see DECISION_GATES Gate C)
 
 AlbumPinStore  (SharedPreferences / JSONArray)
-SmartAlbumStore  (SharedPreferences / JSONArray)
+CollectionAlbumStore  (SharedPreferences "smart_albums" / JSONArray — all three saved kinds, one store)
 IndexPreferences  (SharedPreferences; incl. isCleanupPaused, optimal_thread_count, index_batch_size_override)
 CleanupResultStore  (JSON file: filesDir/cleanup_results.json)
 ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hour:millis` pairs, rolled 24 h window)
@@ -244,12 +264,12 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | `GalleryRepository.computeBatchSize()` (2/4/6 + override) | Memory pressure on low-RAM devices; `buildIndex()` chunking; OOM override persisted via `IndexPreferences.saveIndexBatchSizeOverride` (IndexWorker OOM path) |
 | `MainActivity.BROWSE_PAGE_SIZE/MAX` (120/320) | Browse timeline page size; grid is paged (no hard item cap) |
 | `DesignTokens.SEARCH_METADATA_HARD_CAP` (80) | Search pagination cap in `MainActivity` |
-| `SmartAlbumStore.MAX_SMART_MEMBERS` (800) | Stored URI count per smart album in `createSmartAlbum()` |
-| `SmartAlbumStore.SMART_PREFIX` ("smart:") | ID parsing in `isSmartId()`, `albumDetailItems`, `renderAlbums()` |
-| `SmartAlbum` data class fields | JSON serialization in `albumToJson()`/`parseSmartAlbum()` |
+| `CollectionAlbumStore.MAX_SMART_MEMBERS` (800) | Stored URI count per smart album in `createSmartAlbum()` |
+| `CollectionAlbumStore.SMART_PREFIX` ("smart:") / `FOLDER_PREFIX` ("folder:") / `TAGS_PREFIX` ("tag:") | ID prefix — the fallback that reads `kind` off a record written before the field existed, and `folderIdFor(path)`'s one-folder-one-album key |
+| `CollectionAlbum` data class fields | JSON serialization in `albumToJson()`/`parseAlbum()` — `kind`, `folderPath` and `tagNames` included |
 | `IndexPreferences` SharedPrefs keys | Cannot rename without migration — stored on device |
 | `AlbumPinStore` JSON format | Stored in SharedPrefs — changing breaks existing pins |
-| `SmartAlbumStore` JSON format | Stored in SharedPrefs — changing breaks existing smart albums |
+| `CollectionAlbumStore` JSON format (prefs "smart_albums" / key "smart_album_data") | Stored in SharedPrefs — changing it breaks every saved collection on the device, smart albums included. `parseAlbum` tolerates a record with no `kind` by falling back to its ID prefix |
 | `IndexMagic` / `IndexVersion` in GalleryRepository | Will invalidate all existing embedding indexes on user devices (v2→3 did exactly this for EXIF-oriented embeddings) |
 | `MetadataIndexMagic` / `MetadataIndexVersion` | Will invalidate metadata indexes |
 | `OnnxSessionOptions.DefaultThreadCount` (4) | Fallback only — `SharedEncoders` prefers the cached `ThreadBenchmark` result; benchmark trigger points are `MainActivity.ensureEncodersLoaded` + `IndexWorker.doWork` |
@@ -263,7 +283,7 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | `Responsive.CRAMPED_HEIGHT_DP` / `MAX_GRID_COLUMNS` | Every screen that trims chrome or counts columns: `MainActivity.applyChromeForHeight`, hero titles through `applyTitleText`, and `gridColumns` — the span canvas is shared with card rows, so a cap re-sizes album cards too. `ResponsiveTest` holds the boundaries |
 | An activity's `configChanges` declaration | Dropping it makes that screen recreate on rotation: the layout re-inflates, but in-memory state goes with it (search results, selection, `FirstRunActivity`'s asked-before flags). Keeping it means every XML size is only ever the size the window started with, so a `-land` variant cannot help — the number has to be re-applied from code |
 | `ImageAdapter.gridColumnCount` semantics | It is the **resolved** canvas (preference × window ratio), not the user's preference. Read by `spanSizeAt`, the `GridLayoutManager` constructions in PersonDetail/SmartCleanup, `albumCardSpanBase`, and each `addOnLayoutChangeListener` that re-resolves it |
-| A dialog layout's root | `AlertDialog.setView` never re-inflates and clips whatever passes a sideways phone's ~360dp. The tall panels (`dialog_tag_picker`, `dialog_safe_setup`, `dialog_smart_album`, `dialog_bottom_bar_order`, `metroDialogScroll`) scroll instead; a new fixed stack will clip its own buttons |
+| A dialog layout's root | `AlertDialog.setView` never re-inflates and clips whatever passes a sideways phone's ~360dp. The tall panels (`dialog_tag_picker`, `dialog_safe_setup`, `dialog_smart_album`, `dialog_tag_album`, `dialog_bottom_bar_order`, `metroDialogScroll`) scroll instead; a new fixed stack will clip its own buttons |
 | An entity's column list | Its `BindVariables` companion — `RoomBatchingTest` reflects over the declared fields and fails the build when the two drift. Room binds one variable per column per row, so a 13-column bulk insert was already past Android 8–10's SQLite ceiling at 77 rows |
 | `RoomBatching.MaxBoundVariables` (900) | `DbRepository.upsertMedia`/`recordEmbeddingSources`/the chunked `IN (:list)` reads, and the chunking in `FaceIndexWorker`/`FaceAnalyzer` — the margin under 999 is what a query's own scalar arguments get |
 | a `CleanupAnalyzer` category's suggestion set | `SuggestionGated` — read by both `Report.deletableUris` and `SmartCleanupActivity.categoryDeletable`. A new similarity tile outside that set inherits "the empty suggestion list *is* the offer", so accepting it deletes everything listed |
@@ -315,6 +335,7 @@ info_sheet_bg.xml       → activity_viewer.xml (info sheet surface: metroBgSeco
 scrubber_thumb.xml / scrubber_progress.xml → item_viewer_page.xml (video SeekBar)
 dialog_tag_picker.xml   → TagPickerDialog
 dialog_smart_album.xml  → MainActivity (smart album create dialog, Metro Theme.GallerySearch.Dialog)
+dialog_tag_album.xml    → MainActivity (tag collection create/edit dialog — name plus the tag chip row; Metro Theme.GallerySearch.Dialog)
 item_smart_album_onboarding.xml → ImageAdapter (albums onboarding card; onCreateSmartAlbum)
 item_empty.xml          → ImageAdapter (empty state)
 activity_smart_cleanup.xml → SmartCleanupActivity (overview tiles + progress + detail grid)
