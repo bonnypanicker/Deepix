@@ -72,12 +72,11 @@ class FreeTierTest {
     }
 
     @Test
-    fun aFreeCompressionRunTakesOnePhotoAndNoMore() {
-        assertEquals(FreeTier.FreeCompressionPhotos, FreeTier.compressionRoom(40, false))
-        assertEquals(1, FreeTier.compressionRoom(1, false))
-        assertEquals(0, FreeTier.compressionRoom(0, false))
-        // Bought: the whole pick is one run, however large — the list handed to the worker is never
-        // truncated, so a 500-photo selection stays a 500-photo batch.
-        assertEquals(40, FreeTier.compressionRoom(40, true))
+    fun aFreeCompressionRunAllowsOnePhotoAndBlocksBatches() {
+        assertFalse(FreeTier.compressionBlocked(0, false))
+        assertFalse(FreeTier.compressionBlocked(1, false))
+        assertTrue(FreeTier.compressionBlocked(2, false))
+        assertTrue(FreeTier.compressionBlocked(40, false))
+        assertFalse(FreeTier.compressionBlocked(40, true))
     }
 }

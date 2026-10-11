@@ -2,27 +2,34 @@ package com.devomind.gallerysearch
 
 import android.content.Context
 import android.util.Log
-import java.io.ByteArrayOutputStream
 
 object AssetUtils {
 
     private const val Tag = "AssetUtils"
+    private const val MinModelBufferBytes = 8192
 
     /**
      * Reads an asset file fully into a byte array.
-     * Uses a buffered approach to handle large files (e.g. 60MB+ ONNX models).
+     *
+     * The buffer is sized from the stream's declared length and filled in place: growing a
+     * ByteArrayOutputStream to 60MB+ and then copying it with `toByteArray()` keeps two arrays that
+     * size alive at once, and a model is loaded exactly when a search starts — on a heap that already
+     * holds the grid. One oversized array instead of two is the difference between a GC pause and the
+     * main thread being starved for tens of seconds.
      */
     fun readAssetBytes(context: Context, assetName: String): ByteArray {
         return context.assets.open(assetName).use { input ->
-            val buffer = ByteArrayOutputStream(input.available().coerceAtLeast(8192))
-            val chunk = ByteArray(8192)
-            var bytesRead: Int
-            while (input.read(chunk).also { bytesRead = it } != -1) {
-                buffer.write(chunk, 0, bytesRead)
+            var data = ByteArray(input.available().coerceAtLeast(MinModelBufferBytes))
+            var size = 0
+            while (true) {
+                if (size == data.size) data = data.copyOf(data.size * 2)
+                val bytesRead = input.read(data, size, data.size - size)
+                if (bytesRead == -1) break
+                size += bytesRead
             }
-            buffer.toByteArray().also {
-                Log.d(Tag, "Loaded $assetName: ${it.size} bytes")
-            }
+            val result = if (size == data.size) data else data.copyOf(size)
+            Log.d(Tag, "Loaded $assetName: ${result.size} bytes")
+            result
         }
     }
 

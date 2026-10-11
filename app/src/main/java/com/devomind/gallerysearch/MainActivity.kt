@@ -134,6 +134,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
     private var folderTreeRoots = listOf<FolderNode>()
+    /**
+     * The folder tree as album resolution sees it, held against the exact [collectionItems] list it
+     * was built from: a media change or a hide installs a new list, which rebuilds it. The Albums page
+     * re-renders often against an unchanged library, and this walk is a folder album's whole cost.
+     */
+    private var albumFolderTree: Pair<List<GalleryRepository.MediaItem>, List<FolderNode>>? = null
     private var folderSort = FolderSort.Name
     private var currentMode = Mode.Browse
     private var preAlbumDetailSection = Section.Collection
@@ -3997,7 +4003,7 @@ class MainActivity : AppCompatActivity() {
      * the picker shows is the same one the album later reads its photos out of.
      */
     private fun showFolderAlbumPicker() {
-        val choices = AlbumRules.folderChoices(buildFolderTree(collectionItems))
+        val choices = AlbumRules.folderChoices(albumFolderRoots())
         if (choices.isEmpty()) {
             MetroDialog.message(
                 this,
@@ -4169,17 +4175,46 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * The Albums page's folder tree, built at most once per library snapshot. Deliberately separate
+     * from [folderTreeRoots]: that one carries the Folders page's expansion state and is patched in
+     * place as photos are hidden, while albums only ever ask the tree what a path holds.
+     */
+    private fun albumFolderRoots(): List<FolderNode> {
+        albumFolderTree?.let { (source, roots) ->
+            if (source === collectionItems) return roots
+        }
+        val roots = buildFolderTree(collectionItems)
+        albumFolderTree = collectionItems to roots
+        return roots
+    }
+
+    /**
      * The Albums-grid cells for every saved collection. A smart album reports the URIs it stored; a
      * folder or tag album asks the library how much it holds right now, so a tile's count is never
      * one photo behind — the same reason those kinds are not offered a Refresh.
      */
     private fun collectionAlbumViews(): List<GalleryRepository.Album> {
-        // One tree for every folder album: walking the library to find out which folder each photo
-        // lives in is the same work whichever album is asking.
         val folderRoots = if (collectionAlbums.any { it.kind == AlbumKind.Folder }) {
-            buildFolderTree(collectionItems)
+            albumFolderRoots()
         } else {
             emptyList()
+        }
+        // The grid needs a count and a cover, not the membership itself, and one pass over the library
+        // answers for every tag album at once — a photo can sit in several of them.
+        val tagAlbums = collectionAlbums.filter { it.kind == AlbumKind.Tags }
+        val tagCounts = HashMap<String, Int>(tagAlbums.size)
+        val tagCovers = HashMap<String, GalleryRepository.MediaItem>(tagAlbums.size)
+        if (tagAlbums.isNotEmpty()) {
+            val memberships = tagAlbums.map { it to AlbumRules.tagUris(it.tagNames, allTags, tagUriMap) }
+            collectionItems.forEach { item ->
+                val key = item.uri.toString()
+                memberships.forEach { (album, uris) ->
+                    if (key in uris) {
+                        tagCounts[album.id] = (tagCounts[album.id] ?: 0) + 1
+                        if (!tagCovers.containsKey(album.id)) tagCovers[album.id] = item
+                    }
+                }
+            }
         }
         return collectionAlbums.map { album ->
             when (album.kind) {
@@ -4187,10 +4222,10 @@ class MainActivity : AppCompatActivity() {
                     val node = AlbumRules.findFolderNode(folderRoots, album.folderPath)
                     album.toAlbum(count = node?.itemCount ?: 0, coverUri = node?.coverUri?.toString())
                 }
-                AlbumKind.Tags -> {
-                    val items = collectionAlbumItems(album)
-                    album.toAlbum(count = items.size, coverUri = items.firstOrNull()?.uri?.toString())
-                }
+                AlbumKind.Tags -> album.toAlbum(
+                    count = tagCounts[album.id] ?: 0,
+                    coverUri = tagCovers[album.id]?.uri?.toString(),
+                )
                 else -> album.toAlbum()
             }
         }
@@ -4206,7 +4241,7 @@ class MainActivity : AppCompatActivity() {
             AlbumKind.Folder -> {
                 // The same walk the Folders page shows, so an album of a folder and that folder's own
                 // row can never disagree about what is inside.
-                val node = AlbumRules.findFolderNode(buildFolderTree(collectionItems), album.folderPath)
+                val node = AlbumRules.findFolderNode(albumFolderRoots(), album.folderPath)
                 node?.let { flattenFolderItems(it) }.orEmpty()
             }
             AlbumKind.Tags -> {

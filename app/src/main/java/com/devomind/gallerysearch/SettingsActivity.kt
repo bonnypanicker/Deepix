@@ -301,13 +301,15 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun applyAccent(choice: AccentPalette.Choice) {
-        Entitlements.guard(this, getString(R.string.gate_accent)) {
-            IndexPreferences.setAccentColor(this, choice.key)
-            accentChanged = true
-            binding.accentColorSubtitle.text = choice.displayName
-            updateAccentResult()
-            recreate()
+        if (FreeTier.accentLocked(choice, Entitlements.isUnlocked(this))) {
+            ProPaywall.show(this, getString(R.string.gate_accent))
+            return
         }
+        IndexPreferences.setAccentColor(this, choice.key)
+        accentChanged = true
+        binding.accentColorSubtitle.text = choice.displayName
+        updateAccentResult()
+        recreate()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

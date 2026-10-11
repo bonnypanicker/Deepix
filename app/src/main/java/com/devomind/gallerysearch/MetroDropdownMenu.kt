@@ -11,10 +11,17 @@ import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import kotlin.math.roundToInt
 
 /** Shared flat Metro dropdown used by sort controls and anchored contextual actions. */
 object MetroDropdownMenu {
+
+    // One menu at a time, app-wide. A second open replaces the first so a fast double tap cannot
+    // leave two windows stacked on the same activity token — both of which then leak together.
+    private var openPopup: PopupWindow? = null
 
     data class Item(
         val label: CharSequence,
@@ -28,6 +35,9 @@ object MetroDropdownMenu {
     fun show(anchor: View, items: List<Item>) {
         if (items.isEmpty()) return
         val context = anchor.context
+        val lifecycle = (context as? LifecycleOwner)?.lifecycle
+        if (lifecycle?.currentState == Lifecycle.State.DESTROYED) return
+        openPopup?.dismiss()
         val menu = column(context, MenuMinWidthDp)
 
         // A flyout opens to the menu's left, inside this same window: two PopupWindows would let the
@@ -64,6 +74,25 @@ object MetroDropdownMenu {
         // Before the flyout opens, the reserved width beside the menu is empty space, and empty space
         // beside a menu belongs to "tap outside": with a modal window it would otherwise be inert.
         slack?.setOnClickListener { popup.dismiss() }
+
+        // The popup holds this window's token, so it has to be gone before the window is: an activity
+        // destroyed while a menu is open leaks the PopupDecorView. Dismissing is idempotent, and the
+        // dismiss listener is what unregisters the observer, so a menu that closes normally leaves
+        // nothing behind.
+        val observer = object : LifecycleEventObserver {
+            override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
+                if (event == Lifecycle.Event.ON_DESTROY) {
+                    popup.dismiss()
+                    source.lifecycle.removeObserver(this)
+                }
+            }
+        }
+        popup.setOnDismissListener {
+            lifecycle?.removeObserver(observer)
+            if (openPopup === popup) openPopup = null
+        }
+        lifecycle?.addObserver(observer)
+        openPopup = popup
 
         items.forEach { item ->
             val row = buildRow(context, item)

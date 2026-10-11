@@ -1131,13 +1131,20 @@ class ImageAdapter(
             // The orb is the AI mark: it claims a search made this album, which a folder or tag
             // collection — gathered by rule, not by model — does not.
             binding.smartOrb.visibility = if (album.kind == AlbumKind.Smart) View.VISIBLE else View.GONE
-            Glide.with(binding.albumCover.context)
-                .load(album.coverUri)
-                .format(DecodeFormat.PREFER_RGB_565)
-                .centerCrop()
-                .override(coverWidth, coverHeight)
-                .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
-                .into(binding.albumCover)
+            // A live collection can legitimately have no cover yet (an empty tag set, a folder whose
+            // first photo has no thumbnail), and Glide reports a null model as a load failure.
+            if (album.coverUri == null) {
+                Glide.with(binding.albumCover).clear(binding.albumCover)
+                binding.albumCover.setImageDrawable(null)
+            } else {
+                Glide.with(binding.albumCover.context)
+                    .load(album.coverUri)
+                    .format(DecodeFormat.PREFER_RGB_565)
+                    .centerCrop()
+                    .override(coverWidth, coverHeight)
+                    .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
+                    .into(binding.albumCover)
+            }
             binding.root.setOnClickListener { onAlbumClick(album) }
             binding.root.setOnLongClickListener {
                 onAlbumLongClick(album, binding.root)
@@ -1229,12 +1236,17 @@ class ImageAdapter(
         ) : RecyclerView.ViewHolder(binding.root) {
             fun bind(album: GalleryRepository.Album, onAlbumClick: (GalleryRepository.Album) -> Unit) {
                 binding.chipName.text = album.name
-                Glide.with(binding.chipCover.context)
-                    .load(album.coverUri)
-                    .format(DecodeFormat.PREFER_RGB_565)
-                    .centerCrop()
-                    .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
-                    .into(binding.chipCover)
+                if (album.coverUri == null) {
+                    Glide.with(binding.chipCover).clear(binding.chipCover)
+                    binding.chipCover.setImageDrawable(null)
+                } else {
+                    Glide.with(binding.chipCover.context)
+                        .load(album.coverUri)
+                        .format(DecodeFormat.PREFER_RGB_565)
+                        .centerCrop()
+                        .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
+                        .into(binding.chipCover)
+                }
                 binding.root.setOnClickListener { onAlbumClick(album) }
             }
         }

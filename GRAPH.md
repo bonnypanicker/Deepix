@@ -112,7 +112,7 @@ MainActivity.addAlbumBtn → showCreateAlbumMenu()  [MetroDropdownMenu, three ro
   │           │     └── buildMergedPhotoSearchResults()
   │           └── saveCollectionAlbum(album, pin = true)
   ├── "Folder album" → showFolderAlbumPicker()
-  │     ├── AlbumRules.folderChoices(buildFolderTree(collectionItems))   [every depth, biggest first]
+  │     ├── AlbumRules.folderChoices(albumFolderRoots())                 [every depth, biggest first]
   │     ├── MetroDialog.searchableList(...) → askFolderAlbumName(choice)   [folderIdFor() already taken → message]
   │     └── createFolderAlbum(folderPath, name) → saveCollectionAlbum(album, pin = true)
   └── "Tag collection" → showTagAlbumDialog(null) → refreshTagCache() first
@@ -128,8 +128,9 @@ saveCollectionAlbum(album, pin)              [the one write path for all three k
 MainActivity.renderAlbums() / buildPinnedAlbumStrip()
   ├── refreshTagCacheForAlbums()   [only when a Tags album exists and tagCacheStale]
   ├── collectionAlbumViews() → GalleryRepository.Album(kind = …)
-  │     ├── one buildFolderTree pass shared by every Folder album; node.itemCount / node.coverUri
-  │     ├── Tags: collectionAlbumItems() size + first item as cover
+  │     ├── albumFolderRoots(): one tree shared by every Folder album, cached against the exact
+  │     │     collectionItems list — node.itemCount / node.coverUri
+  │     ├── Tags: ONE pass over the library fills every album's count + first cover (no per-album copy)
   │     └── Smart: the stored memberUris and stored cover
   └── AlbumPinStore.cleanup(validIds = device album ids + collectionAlbums ids)
 
@@ -303,6 +304,8 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | `drawerPro`'s label and glyph | `MainActivity.updateDrawerState` (which the drawer's `onDrawerOpened` re-runs) reads `Entitlements.isUnlocked`, so the row is the verdict's public face in the nav list. The glyph must be re-tinted in code — `setCompoundDrawablesRelative*` replaces the drawable and with it the XML `drawableTint` — and `drawer_pro` / `drawer_pro_owned` are the two states, not a hidden row: an owned user tapping it hears "unlocked on this device" from `ProPaywall` rather than finding the row gone |
 | `MetroDialog` button callbacks | every helper dismisses on any button press before invoking the callback, so a caller that wants to keep the dialog open on failure (as `ProPaywall` does when `BillingGateway.purchase` returns false) must rebuild it — a `show()` inside the callback is the established pattern, not a bug |
 | a `MetroDropdownMenu.Item` with `children` | The flyout is a **column of the same PopupWindow**, never a second popup: the menu's window is modal, so it would swallow the child's touches. Group menus therefore open the window `MATCH_PARENT` wide, and the empty slack beside a closed flyout has to dismiss on tap or it becomes dead space that behaves like neither inside nor outside |
+| who dismisses a `MetroDropdownMenu` popup | `MetroDropdownMenu` itself, always: it holds the one live popup (`openPopup`, so a second open replaces the first) and dismisses on the anchor activity's `ON_DESTROY`. A caller that keeps its own popup reference — or a menu that dismisses only on tap — leaves a window holding a dead activity token, which is the `WindowLeaked` the "+" button produced twice in one logcat |
+| a large asset read into memory | one array, sized from `available()`, filled in place (`AssetUtils.readAssetBytes`). A `ByteArrayOutputStream` + `toByteArray()` pair holds ~2× a 60 MB ONNX model at the same instant — at the exact moment a first search loads it, on a heap already holding the grid, which is what turns a search into a 40-second GC storm |
 
 ---
 

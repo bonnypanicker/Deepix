@@ -38,11 +38,7 @@ object FreeTier {
         CleanupAnalyzer.Category.NSFW
     )
 
-    /**
-     * Photos one free compression run may take. Compression is metered rather than locked: the encoder
-     * is the slow part, but a single photo is a complete, useful job, so the free app does it and the
-     * purchase is the batch — not the feature.
-     */
+    /** Photos one free compression run may take. Multi-photo compression is the paid workflow. */
     const val FreeCompressionPhotos = 1
 
     fun accentLocked(choice: AccentPalette.Choice, unlocked: Boolean): Boolean =
@@ -52,9 +48,9 @@ object FreeTier {
     fun safeRoom(inVault: Int, unlocked: Boolean): Int =
         if (unlocked) Int.MAX_VALUE else (FreeSafePhotos - inVault).coerceAtLeast(0)
 
-    /** How much of an N-photo compression pick may go into this run — one for free, all of it once bought. */
-    fun compressionRoom(requested: Int, unlocked: Boolean): Int =
-        if (unlocked) requested else requested.coerceAtMost(FreeCompressionPhotos)
+    /** True when a compression pick is too large for the free app. */
+    fun compressionBlocked(requested: Int, unlocked: Boolean): Boolean =
+        !unlocked && requested > FreeCompressionPhotos
 
     /** True once a free user is at the album cap, so the create dialog should not open at all. */
     fun smartAlbumsBlocked(existing: Int, unlocked: Boolean): Boolean =
