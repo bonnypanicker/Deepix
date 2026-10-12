@@ -11,6 +11,7 @@ import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingFlowParams
 import com.android.billingclient.api.BillingResult
+import com.android.billingclient.api.PendingPurchasesParams
 import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
@@ -105,7 +106,9 @@ object BillingGateway {
                 .setListener(purchasesUpdated)
                 // Without this the library throws IllegalStateException the moment a pending purchase
                 // (a payment the user has not finished, e.g. cash or carrier billing) reaches us.
-                .enablePendingPurchases()
+                // Billing 8.0.0 deleted the no-arg overload, and the params object defaults to *off* for
+                // one-time products — which is the only thing sold here, so it has to be named.
+                .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
                 .build()
         }.onFailure { Log.w(Tag, "Could not build the billing client", it) }.getOrNull()
         if (created == null) {

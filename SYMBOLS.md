@@ -300,7 +300,7 @@ Entitlements.guard(activity, reason) { ... }     THE SEAM every gated feature ca
 ProPaywall.open(activity, reason)                the whole paywall seam: startActivity(ProActivity.intent(...)). It used to be a MetroDialog — see "Pro page pass additions" below for what replaced it and why the name stayed
 SettingsActivity                         rowPro/proSubtitle (PRO section, above DISPLAY): bindPro + updateProSubtitle read Entitlements, onResume observes billingListener + refresh(), onPause unobserves. billingListener is a property for the reason above
 IndexPreferences.get/setProEntitlement   key "pro_entitlement" in "index_prefs", stores Entitlement.name, unparseable → Unknown. Held in a @Volatile cachedEntitlement and read by the same warm-up as the accent — see the gate section below
-build.gradle                             com.android.billingclient:billing-ktx:7.1.1 (ktx gives the suspend queryProductDetails / queryPurchasesAsync / acknowledgePurchase). No manifest edit: the library's own AAR manifest supplies com.android.vending.BILLING and the <queries> block, and the app still needs no INTERNET permission — billing is IPC to com.android.vending, and Play answers ownership queries from the Google app's cache
+build.gradle                             com.android.billingclient:billing-ktx:8.0.0 (ktx gives the suspend queryProductDetails / queryPurchasesAsync / acknowledgePurchase; 8.0.0 is Play's enforced floor and the last version before the Kotlin 2.2 metadata). No manifest edit: the library's own AAR manifest supplies com.android.vending.BILLING and the <queries> block, and the app still needs no INTERNET permission — billing is IPC to com.android.vending, and Play answers ownership queries from the Google app's cache
 PurchaseRulesTest           (test)        ownership excludes Pending and foreign products, the acknowledgment rule, verdictOf's four replies, and both halves of the persistence rule (an outage cannot strip Owned; a proof overwrites)
 ```
 
@@ -430,7 +430,7 @@ ProOfferTest                (test) a price prints the moment Play names one, and
 ## Android 10 storage truth pass additions (the permission stopped lying about a device that cannot grant it)
 
 ```
-StoragePermissions.hasAllFilesAccess   now `SDK_INT < Q` on the legacy side, not `true` for every pre-R OS. Every caller of it is a direct-file path, and Android 10 puts a targetSdk-35 app in scoped storage whatever the manifest declares — so claiming access there made failing writes look like the app's own bugs
+StoragePermissions.hasAllFilesAccess   now `SDK_INT < Q` on the legacy side, not `true` for every pre-R OS. Every caller of it is a direct-file path, and Android 10 puts an app targeting API 29+ in scoped storage whatever the manifest declares — so claiming access there made failing writes look like the app's own bugs
 StoragePermissions.allFilesAccessRequestable()   `SDK_INT >= R`: does this device have the switch at all? Ask it before sending anyone to Settings, and before promising a toggle in copy
 StoragePermissions.manageAllFilesIntent   unchanged, and reached on fewer devices now — its pre-R app-details branch is the fallback it always was
 DeleteCoordinator.shouldAskForStorageAccess   !canDeleteDirectly && requestable. The gate at MainActivity.requestDelete, ViewerActivity.requestDelete and SmartCleanupActivity.confirmDeleteSelected: on Android 10 it is false, so the delete falls through to Outcome.NeedsSystemDelete and the per-item consent dialog (contentResolver.delete → RecoverableSecurityException → launchDeleteConsent) runs at last. Bulk on Q is still refused by the existing "Android 11 or newer" banner — one dialog per photo is not a delete
@@ -438,6 +438,21 @@ SafeActivity.promptStorageAccess   branches on requestable: Q gets a MetroDialog
 CompressionActivity.onReplaceClicked / onKeepBothClicked   same branch, banner only ("Replacing originals needs Android 11 or newer" / "Saving copies …"), no Settings launch
 FirstRunActivity.statusOf(AllFiles)   UNAVAILABLE + onboarding_perm_state_not_available on Q (a row that could never be tapped off; UNAVAILABLE rows are excluded from finishBlocked by design), and request(AllFiles) returns without opening Settings
 onboarding_perm_state_not_available   strings.xml "Not available"
+```
+
+---
+
+## API 36 + Billing 8 pass additions (two Play gates; one builder call and one screen)
+
+```
+build.gradle (root)                     AGP 8.11.0 — compileSdk 36 is not supported below 8.9.1. Gradle wrapper 8.9 → 8.14.3 moves with it
+app/build.gradle                        compileSdk 36 / targetSdk 36, billing-ktx 8.0.0. 8.0.0 is the OLDEST version Play accepts, taken so Kotlin stays at 2.0.20: 8.1.0+ ships Kotlin 2.2 metadata this plugin cannot read, and 9.0.0 asks for targetSdk 35 anyway
+versionCode                             still 1 — a second APK at that number is refused by Console, but the number is a release decision, not a code fix
+BillingGateway.connect                  .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build()). Billing 8.0.0 deleted the no-arg overload, and the params object defaults to off for one-time products — the only kind this app sells, so an empty builder would have silently un-armed pending purchases
+PhotoEditorActivity.applyInsets()       the last screen that let the decor consume its insets is now on the idiom the other 14 use: topBar top = bars.top + 10dp, bottomArea bottom = bars.bottom, setDecorFitsSystemWindows(false), transparent status bar
+activity_photo_editor.xml               bottomArea is wrap_content and carries an explicit 64dp on toolBar/toolActionBar. A fixed-height container + match_parent children means the nav-bar inset would have been subtracted from the bar's own height; the bar now keeps 64dp and the inset lands below it
+CompareFullscreenActivity               deliberately unchanged — immersive, nothing to pad
+statusBarColor / navigationBarColor     kept in themes and in code, ignored by the framework at 36. Bars are black because the content under them is black
 ```
 
 ---

@@ -248,17 +248,19 @@
                 android:visibility="gone" />
         </FrameLayout>
 
-        <!-- Bottom bar (tools) / action bar (apply-cancel) -->
+        <!-- Bottom bar (tools) / action bar (apply-cancel). The 64dp bars are the content and the
+             navigation-bar inset is padding the activity adds, so the row keeps its height instead of
+             being eaten by the inset. -->
         <FrameLayout
             android:id="@+id/bottomArea"
             android:layout_width="match_parent"
-            android:layout_height="64dp"
+            android:layout_height="wrap_content"
             android:background="@color/metroBgPrimary">
 
             <LinearLayout
                 android:id="@+id/toolBar"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="64dp"
                 android:orientation="horizontal">
 
                 <LinearLayout android:id="@+id/toolCrop" style="@style/EditorToolTab">
@@ -285,7 +287,7 @@
             <LinearLayout
                 android:id="@+id/toolActionBar"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="64dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:paddingStart="8dp"

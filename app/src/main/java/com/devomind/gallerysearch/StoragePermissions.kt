@@ -52,8 +52,8 @@ object StoragePermissions {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             Environment.isExternalStorageManager()
         } else {
-            // Legacy storage covers direct file deletes on Android 8-9 only. On Android 10 a
-            // targetSdk-35 app is in scoped storage whether or not the write permission was granted,
+            // Legacy storage covers direct file deletes on Android 8-9 only. On Android 10 an app
+            // targeting API 29+ is in scoped storage whether or not the write permission was granted,
             // so claiming access there sends every direct path (delete, bin, vault) into a failure it
             // reports as its own.
             Build.VERSION.SDK_INT < Build.VERSION_CODES.Q

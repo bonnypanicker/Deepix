@@ -255,9 +255,9 @@ class SafeActivity : AppCompatActivity() {
 
     private fun promptStorageAccess() {
         if (!StoragePermissions.allFilesAccessRequestable()) {
-            // Android 10: the vault is a real file in a public folder, which scoped storage forbids a
-            // targetSdk-35 app to create, and there is no All-files switch to turn on. Say so instead
-            // of opening a Settings screen with nothing in it.
+            // Android 10: the vault is a real file in a public folder, which scoped storage forbids an
+            // app targeting API 29+ to create, and there is no All-files switch to turn on. Say so
+            // instead of opening a Settings screen with nothing in it.
             MetroDialog.message(
                 context = this,
                 title = "Safe needs Android 11 or newer",

@@ -21,8 +21,11 @@ import androidx.activity.addCallback
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.doOnPreDraw
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnPreDraw
+import androidx.core.view.updatePadding
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.lifecycleScope
 import com.devomind.gallerysearch.databinding.ActivityPhotoEditorBinding
@@ -80,11 +83,12 @@ class PhotoEditorActivity : AppCompatActivity() {
         AccentPalette.apply(this)
         super.onCreate(savedInstanceState)
         accentColor = DesignTokens.accent(this)
-        WindowCompat.setDecorFitsSystemWindows(window, true)
-        window.statusBarColor = Color.BLACK
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.BLACK
         binding = ActivityPhotoEditorBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        applyInsets()
 
         val uriStr = intent.getStringExtra(ExtraUri)
         if (uriStr == null) { finish(); return }
@@ -94,6 +98,19 @@ class PhotoEditorActivity : AppCompatActivity() {
         wireChrome()
         buildSwatches()
         loadSource()
+    }
+
+    /**
+     * Android 16 forces edge-to-edge on a targetSdk-36 app, so the chrome insets itself: the top bar
+     * keeps its 10dp below the status bar, the 64dp tool row keeps its height with the nav inset under it.
+     */
+    private fun applyInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.editorRoot) { _, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            binding.topBar.updatePadding(top = bars.top + dp(10f).toInt())
+            binding.bottomArea.updatePadding(bottom = bars.bottom)
+            insets
+        }
     }
 
     // ------------------------------------------------------------------ loading

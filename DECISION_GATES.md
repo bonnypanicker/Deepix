@@ -35,7 +35,8 @@ and is deliberately not assumed here.
 **Status: the crash is bounded app-side (`ForegroundBudget`) — the dependency question stays open and is
 now a tidiness call rather than a safety one.**
 
-What the app does today: `targetSdk 35`, and three workers call `setForeground` with
+What the app does today: `targetSdk 36` (raised from 35 for Play's August 2026 gate — the `dataSync`
+budget below is Android 15's rule and is unchanged by that), and three workers call `setForeground` with
 `ForegroundInfo(..., ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)` — `IndexWorker`,
 `CompressionWorker`, `CleanupWorker` — with `android:foregroundServiceType="dataSync"` declared in
 `AndroidManifest.xml` and `FOREGROUND_SERVICE_MEDIA_PROCESSING`-style typing done by hand rather than
