@@ -98,23 +98,44 @@ fun onboardingPanels(): List<OnboardingPanel> = listOf(
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_search,
         iconSize = 72f,
-        eyebrow = R.string.onboarding_find_eyebrow,
-        title = R.string.onboarding_find_title,
-        body = R.string.onboarding_find_body
+        eyebrow = R.string.onboarding_search_eyebrow,
+        title = R.string.onboarding_search_title,
+        body = R.string.onboarding_search_body
     ),
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_people,
         iconSize = 72f,
-        eyebrow = R.string.onboarding_organize_eyebrow,
-        title = R.string.onboarding_organize_title,
-        body = R.string.onboarding_organize_body
+        eyebrow = R.string.onboarding_people_eyebrow,
+        title = R.string.onboarding_people_title,
+        body = R.string.onboarding_people_body
     ),
     OnboardingPanel(
-        iconRes = R.drawable.ic_onboarding_cleanup,
+        iconRes = R.drawable.ic_onboarding_smart_albums,
         iconSize = 72f,
-        eyebrow = R.string.onboarding_care_eyebrow,
-        title = R.string.onboarding_care_title,
-        body = R.string.onboarding_care_body
+        eyebrow = R.string.onboarding_smart_albums_eyebrow,
+        title = R.string.onboarding_smart_albums_title,
+        body = R.string.onboarding_smart_albums_body
+    ),
+    OnboardingPanel(
+        iconRes = R.drawable.ic_onboarding_smart_cleanup,
+        iconSize = 72f,
+        eyebrow = R.string.onboarding_smart_cleanup_eyebrow,
+        title = R.string.onboarding_smart_cleanup_title,
+        body = R.string.onboarding_smart_cleanup_body
+    ),
+    OnboardingPanel(
+        iconRes = R.drawable.ic_onboarding_editor,
+        iconSize = 72f,
+        eyebrow = R.string.onboarding_editor_eyebrow,
+        title = R.string.onboarding_editor_title,
+        body = R.string.onboarding_editor_body
+    ),
+    OnboardingPanel(
+        iconRes = R.drawable.ic_onboarding_safe,
+        iconSize = 72f,
+        eyebrow = R.string.onboarding_safe_eyebrow,
+        title = R.string.onboarding_safe_title,
+        body = R.string.onboarding_safe_body
     ),
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_pro,

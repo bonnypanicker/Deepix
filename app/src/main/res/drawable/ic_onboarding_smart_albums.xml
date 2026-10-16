@@ -1,0 +1,56 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="300dp"
+    android:height="220dp"
+    android:viewportWidth="300"
+    android:viewportHeight="220">
+    
+    <!-- Main background tile -->
+    <rect android:x="10" android:y="26" android:width="280" android:height="172" android:fillColor="#0078D4"/>
+    
+    <!-- Header bar -->
+    <rect android:x="22" android:y="38" android:width="256" android:height="32" android:fillColor="#005A9E"/>
+    <path android:pathData="M32,64 V49 H46 L51,54 H72 V64 Z" android:fillColor="#52C7F9"/>
+    <rect android:x="82" android:y="51" android:width="93" android:height="4" android:fillColor="#FFFFFF"/>
+    <rect android:x="82" android:y="59" android:width="60" android:height="3" android:fillColor="#B9DDF1"/>
+    
+    <!-- Left album - orange photo -->
+    <rect android:x="22" android:y="82" android:width="76" android:height="102" android:fillColor="#00A4EF"/>
+    <path android:pathData="M30,90 h60 v56 h-60 z" android:fillColor="#F5C5A5"/>
+    <circle android:centerX="82.8" android:centerY="100.1" android:r="5.8" android:fillColor="#FFD45C"/>
+    <path android:pathData="M30,129.2 L46.8,109 L60,123.6 L72,112.4 L90,131.4 L90,146 L30,146 Z" 
+          android:fillColor="#2A8FA8"/>
+    <path android:pathData="M46.8,109 L50.8,113.4 L48.4,118.4 L46.4,115.2 L44.5,118.6 L41.8,115.1 Z" 
+          android:fillColor="#FFFFFF"/>
+    <path android:pathData="M72,112.4 L77.4,118.1 L75.1,117.6 L73.1,115.8 L71.1,117.7 L68.4,115.8 Z" 
+          android:fillColor="#FFFFFF"/>
+    <path android:pathData="M30,140.4 L43.2,132.6 L56.4,140.4 L69.6,131.4 L81.6,139.3 L90,134.8 L90,146 L30,146 Z" 
+          android:fillColor="#12667F"/>
+    
+    <!-- Middle album - yellow/photo with mountains -->
+    <rect android:x="114" android:y="90" android:width="60" android:height="56" android:fillColor="#F7D36C"/>
+    <circle android:centerX="157.2" android:centerY="106.8" android:r="7.3" android:fillColor="#FFFFFF"/>
+    <path android:pathData="M114,131.4 C129,115.8 144,120.8 151.2,124.7 S166.8,122.5 174,127 V146 H114 Z" 
+          android:fillColor="#6FB08F"/>
+    <path android:pathData="M114,139.3 C132,127 147,137 160.8,131.4 S171,132.6 174,134.8 V146 H114 Z" 
+          android:fillColor="#3E8A6B"/>
+    
+    <!-- Right album - green landscape -->
+    <rect android:x="198" android:y="90" android:width="72" android:height="56" android:fillColor="#8DD8C8"/>
+    <circle android:centerX="258.5" android:centerY="101.2" android:r="5.8" android:fillColor="#FFF3C4"/>
+    <path android:pathData="M198,133.7 L212.4,114.6 L222.5,124.7 L239,104.6 L257,124.7 L263.5,118 L270,125.8 L270,146 L198,146 Z" 
+          android:fillColor="#3E9C8B"/>
+    <path android:pathData="M212.4,114.6 L215.4,117.7 L213.5,123.5 L211.9,120.5 L210.3,123.7 L208.1,120.4 Z" 
+          android:fillColor="#F1FBF8"/>
+    <path android:pathData="M239,104.6 L244.4,110.6 L241.7,113.9 L239.5,110.7 L237.2,114.1 L234.1,110.6 Z" 
+          android:fillColor="#F1FBF8"/>
+    <path android:pathData="M198,138.2 L209.5,129.2 L222.5,138.2 L235.4,128.1 L251.3,139.3 L261.4,133.7 L270,140.4 L270,146 L198,146 Z" 
+          android:fillColor="#1F7568"/>
+    
+    <!-- Text stubs under albums -->
+    <rect android:x="30" android:y="157" android:width="48" android:height="4" android:fillColor="#FFFFFF"/>
+    <rect android:x="114" android:y="157" android:width="48" android:height="4" android:fillColor="#FFFFFF"/>
+    <rect android:x="198" android:y="157" android:width="56" android:height="4" android:fillColor="#FFFFFF"/>
+    <rect android:x="30" android:y="167" android:width="32" android:height="3" android:fillColor="#B9DDF1"/>
+    <rect android:x="114" android:y="167" android:width="37" android:height="3" android:fillColor="#B9DDF1"/>
+    <rect android:x="198" android:y="167" android:width="39" android:height="3" android:fillColor="#B9DDF1"/>
+</vector>

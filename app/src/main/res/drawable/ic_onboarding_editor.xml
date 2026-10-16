@@ -1,0 +1,75 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="300dp"
+    android:height="220dp"
+    android:viewportWidth="300"
+    android:viewportHeight="220">
+    
+    <!-- Main background -->
+    <rect android:x="10" android:y="12" android:width="280" android:height="196" android:fillColor="#0078D4"/>
+    
+    <!-- Image canvas with mountain photo -->
+    <path android:pathData="M22,24 h256 v112 h-256 z" android:fillColor="#5CC8F2"/>
+    <circle android:centerX="237" android:centerY="46.4" android:r="10.5" android:fillColor="#FFD45C"/>
+    <path android:pathData="M22,111.4 L73.2,73.3 L109,93.4 L167.9,53.1 L231.9,93.4 L255,80 L278,95.7 L278,136 L22,136 Z" 
+          android:fillColor="#1E8AA6"/>
+    <path android:pathData="M73.2,73.3 L84,79.3 L77.2,91 L71.4,84.9 L65.7,91.3 L57.8,84.7 Z" 
+          android:fillColor="#F4F8FB"/>
+    <path android:pathData="M167.9,53.1 L187.1,65.2 L177.5,71.9 L169.4,65.5 L161.3,72.2 L150.3,65.2 Z" 
+          android:fillColor="#F4F8FB"/>
+    <path android:pathData="M22,120.3 L63,102.4 L109,120.3 L155.1,100.2 L211.4,122.6 L247.3,111.4 L278,124.8 L278,136 L22,136 Z" 
+          android:fillColor="#0B607C"/>
+    
+    <!-- Top shadow bar -->
+    <rect android:x="22" android:y="24" android:width="256" android:height="12" android:fillColor="#000000" android:fillAlpha="0.35"/>
+    
+    <!-- Left shadow bar -->
+    <rect android:x="22" android:y="36" android:width="16" android:height="88" android:fillColor="#000000" android:fillAlpha="0.35"/>
+    
+    <!-- Right shadow bar -->
+    <rect android:x="262" android:y="36" android:width="16" android:height="88" android:fillColor="#000000" android:fillAlpha="0.35"/>
+    
+    <!-- Bottom shadow bar -->
+    <rect android:x="22" android:y="124" android:width="256" android:height="12" android:fillColor="#000000" android:fillAlpha="0.35"/>
+    
+    <!-- Crop grid overlay - vertical lines -->
+    <path android:pathData="M112.7,36 V124" android:strokeColor="#FFFFFF" android:strokeWidth="1" 
+          android:fillColor="#00000000" android:strokeOpacity="0.38"/>
+    <path android:pathData="M187.3,36 V124" android:strokeColor="#FFFFFF" android:strokeWidth="1" 
+          android:fillColor="#00000000" android:strokeOpacity="0.38"/>
+    
+    <!-- Crop grid overlay - horizontal lines -->
+    <path android:pathData="M38,65.3 H262" android:strokeColor="#FFFFFF" android:strokeWidth="1" 
+          android:fillColor="#00000000" android:strokeOpacity="0.38"/>
+    <path android:pathData="M38,94.7 H262" android:strokeColor="#FFFFFF" android:strokeWidth="1" 
+          android:fillColor="#00000000" android:strokeOpacity="0.38"/>
+    
+    <!-- Crop corner markers -->
+    <path android:pathData="M38,50 V36 H52" android:strokeColor="#FFFFFF" android:strokeWidth="3" 
+          android:fillColor="#00000000" android:strokeLinecap="square" android:strokeLinejoin="miter"/>
+    <path android:pathData="M248,36 H262 V50" android:strokeColor="#FFFFFF" android:strokeWidth="3" 
+          android:fillColor="#00000000" android:strokeLinecap="square" android:strokeLinejoin="miter"/>
+    <path android:pathData="M262,110 V124 H248" android:strokeColor="#FFFFFF" android:strokeWidth="3" 
+          android:fillColor="#00000000" android:strokeLinecap="square" android:strokeLinejoin="miter"/>
+    <path android:pathData="M52,124 H38 V110" android:strokeColor="#FFFFFF" android:strokeWidth="3" 
+          android:fillColor="#00000000" android:strokeLinecap="square" android:strokeLinejoin="miter"/>
+    
+    <!-- Bottom toolbar buttons -->
+    <rect android:x="22" android:y="148" android:width="58" android:height="44" android:fillColor="#00A4EF"/>
+    <path android:pathData="M46,161 V177 H62 M41,166 H56 V182" android:strokeColor="#FFFFFF" android:strokeWidth="2.2" 
+          android:fillColor="#00000000" android:strokeLinecap="square" android:strokeLinejoin="miter"/>
+    
+    <rect android:x="88" android:y="148" android:width="58" android:height="44" android:fillColor="#005A9E"/>
+    <path android:pathData="M107,163 H127 M107,171 H127 M107,179 H127" android:strokeColor="#B9DDF1" android:strokeWidth="2" 
+          android:fillColor="#00000000"/>
+    <rect android:x="111" android:y="160.5" android:width="5" android:height="5" android:fillColor="#FFFFFF"/>
+    <rect android:x="119" android:y="168.5" android:width="5" android:height="5" android:fillColor="#FFFFFF"/>
+    <rect android:x="113" android:y="176.5" android:width="5" android:height="5" android:fillColor="#FFFFFF"/>
+    
+    <rect android:x="154" android:y="148" android:width="58" android:height="44" android:fillColor="#005A9E"/>
+    <polygon android:points="176,182 178,174 191,161 197,167 184,180" android:fillColor="#FFFFFF"/>
+    
+    <rect android:x="220" android:y="148" android:width="58" android:height="44" android:fillColor="#005A9E"/>
+    <path android:pathData="M243,162 H238 V180 H243 M255,162 H260 V180 H255 M243,171 H255" 
+          android:strokeColor="#FFFFFF" android:strokeWidth="2.2" android:fillColor="#00000000"
+          android:strokeLinecap="square" android:strokeLinejoin="miter"/>
+</vector>

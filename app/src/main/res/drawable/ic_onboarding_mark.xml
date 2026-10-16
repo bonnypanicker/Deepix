@@ -1,21 +1,142 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Onboarding identity mark: a picture frame holding a ridge line and a sun. The frame is one
-     even-odd path (outer rounded square minus the inner one) so the ring stays a constant weight.
-     Filled white and tinted with ?attr/accentColor at the usage site. Distinct from IndexingOrbView,
-     which is the AI mark. -->
+<!-- Metro-style collage icon for Welcome panel (page 0). Exact spec from landing mock: two tiles, one dark blue with a photo mosaic inside, one medium blue with a portrait. Strokes are square caps/mitters; fills are your Deepix/Metro palette. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
+    android:width="300dp"
+    android:height="220dp"
+    android:viewportWidth="300"
+    android:viewportHeight="220">
+
+    <!-- Left tile: #0078D4 background, photo collage inside -->
+    <rect
+        android:fillColor="#0078D4"
+        android:x="14"
+        android:y="18"
+        android:width="150"
+        android:height="150" />
+
+    <!-- Photo area: white rectangle -->
+    <rect
+        android:fillColor="#F4F4F4"
+        android:x="28"
+        android:y="32"
+        android:width="122"
+        android:height="122" />
+
+    <!-- Clip path for image content in left tile -->
     <path
-        android:fillColor="#FFFFFFFF"
-        android:fillType="evenOdd"
-        android:pathData="M34,26h40a8,8 0 0 1 8,8v40a8,8 0 0 1 -8,8h-40a8,8 0 0 1 -8,-8v-40a8,8 0 0 1 8,-8zM38,33a5,5 0 0 0 -5,5v32a5,5 0 0 0 5,5h32a5,5 0 0 0 5,-5v-32a5,5 0 0 0 -5,-5z" />
+        android:pathData="M28,32h122v92H28z"
+        android:fillColor="#5CC8F2" />
+
+    <!-- Sun circle in left photo -->
+    <circle
+        android:fillColor="#FFD45C"
+        android:centerX="130.5"
+        android:centerY="50.4"
+        android:radius="8.8" />
+
+    <!-- Landscape polygons for mountains -->
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M33,73l17,-22l9,11l5,-5l11,16z" />
+        android:pathData="M28,103.8L52.4,72.5L69.5,89L97.5,55.9L128,89L139,78L150,90.9L150,124H28z"
+        android:fillColor="#1E8AA6" />
+
+    <!-- Highlight triangles -->
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M60,40a5,5 0 1 0 10,0a5,5 0 1 0 -10,0z" />
+        android:pathData="M52.4,72.5L57.5,77.4L54.3,87L51.6,82.1L48.8,87.3L45.1,81.9z"
+        android:fillColor="#F4F8FB" />
+
+    <path
+        android:pathData="M97.5,55.9L106.7,65.9L102.1,71.3L98.3,66.1L94.4,71.6L89.1,65.9z"
+        android:fillColor="#F4F8FB" />
+
+    <!-- Horizon line polygon -->
+    <path
+        android:pathData="M28,111.1L47.5,96.4L69.5,111.1L91.4,94.6L118.3,113L135.4,103.8L150,114.8L150,124H28z"
+        android:fillColor="#0B607C" />
+
+    <!-- Text bars in left photo -->
+    <rect
+        android:fillColor="#BCC8D2"
+        android:x="38"
+        android:y="134"
+        android:width="62"
+        android:height="4" />
+    <rect
+        android:fillColor="#D6DEE5"
+        android:x="38"
+        android:y="143"
+        android:width="40"
+        android:height="3" />
+
+    <!-- Right tile: #00A4EF background, different photo content -->
+    <rect
+        android:fillColor="#00A4EF"
+        android:x="133"
+        android:y="70"
+        android:width="150"
+        android:height="132" />
+
+    <!-- Image clip for right tile -->
+    <path
+        android:pathData="M148,85h120v86H148z"
+        android:fillColor="#F2B49B" />
+
+    <!-- Sun in right photo -->
+    <circle
+        android:fillColor="#FFE3A3"
+        android:centerX="253.6"
+        android:centerY="100.5"
+        android:radius="8.3" />
+
+    <!-- Mountain silhouette in right photo -->
+    <path
+        android:pathData="M148,145.2L181.6,114.2L208,136.6L232,119.4L268,148.6L268,171H148z"
+        android:fillColor="#C65D7B" />
+
+    <!-- Highlights in right photo -->
+    <path
+        android:pathData="M181.6,114.2L189.5,120.9L184.8,128.6L180.9,123.7L176.9,128.9L171.5,123.5z"
+        android:fillColor="#FBE4DA" />
+
+    <path
+        android:pathData="M232,119.4L242.8,128.2L238.1,127.4L234.2,124.7L230.2,127.6L224.8,124.6z"
+        android:fillColor="#FBE4DA" />
+
+    <!-- Lower horizon in right photo -->
+    <path
+        android:pathData="M148,162.4L174.4,150.4L200.8,162.4L227.2,148.6L251.2,160.7L268,153.8L268,171H148z"
+        android:fillColor="#8E3556" />
+
+    <!-- Text bars in right photo -->
+    <rect
+        android:fillColor="#FFFFFF"
+        android:alpha="0.9"
+        android:x="148"
+        android:y="180"
+        android:width="100"
+        android:height="5" />
+    <rect
+        android:fillColor="#B9DDF1"
+        android:x="148"
+        android:y="189"
+        android:width="62"
+        android:height="3" />
+
+    <!-- Bottom band for window title -->
+    <rect
+        android:fillColor="#005A9E"
+        android:x="14"
+        android:y="181"
+        android:width="100"
+        android:height="21" />
+    <rect
+        android:fillColor="#FFFFFF"
+        android:x="25"
+        android:y="190"
+        android:width="42"
+        android:height="3" />
+    <rect
+        android:fillColor="#B9DDF1"
+        android:x="72"
+        android:y="190"
+        android:width="25"
+        android:height="3" />
 </vector>

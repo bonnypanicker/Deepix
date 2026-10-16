@@ -357,45 +357,34 @@
     <string name="onboarding_get_started">Get started</string>
     <string name="onboarding_dismiss">Skip to permissions</string>
 
-    <string name="onboarding_welcome_eyebrow">Privacy-first photo gallery</string>
-    <string name="onboarding_welcome_title">Your gallery, kept private</string>
-    <string name="onboarding_welcome_body">Pixa is a full gallery with AI search, face grouping, smart albums, cleanup, editing, and Safe. Your library stays on this device.</string>
-
-    <string name="onboarding_find_eyebrow">AI search</string>
-    <string name="onboarding_find_title">Find any photo fast</string>
-    <string name="onboarding_find_body">Search by description, date, place, person, album, or by choosing a similar photo. Results come from your on-device index.</string>
-
-    <string name="onboarding_organize_eyebrow">Organization</string>
-    <string name="onboarding_organize_title">People and albums stay current</string>
-    <string name="onboarding_organize_body">Faces are grouped automatically, and smart albums keep collecting matching photos as your library grows.</string>
-
-    <string name="onboarding_care_eyebrow">Care tools</string>
-    <string name="onboarding_care_title">Clean up, edit, and protect</string>
-    <string name="onboarding_care_body">Review clutter before deleting, make quick edits without leaving the gallery, and move private photos into encrypted Safe storage.</string>
+    <!-- Metro-style onboarding strings from reference mock -->
+    <string name="onboarding_welcome_eyebrow">YOUR PHOTOS. YOUR DEVICE.</string>
+    <string name="onboarding_welcome_title">Your memories stay yours</string>
+    <string name="onboarding_welcome_body">A smarter home for every photo and video. Search, organize, and rediscover your memories with AI that runs right on your device.</string>
 
     <string name="onboarding_search_eyebrow">Search</string>
-    <string name="onboarding_search_title">Search by description or by photo</string>
-    <string name="onboarding_search_body">Type a description, or select any photo to find similar ones. Results combine semantic matches, metadata, albums, people, and locations in a single search.</string>
+    <string name="onboarding_search_title">Find it with a few words</string>
+    <string name="onboarding_search_body">Try "golden hour at the beach" or tap a photo to find similar moments. Your whole library is searchable in one place.</string>
 
     <string name="onboarding_people_eyebrow">People</string>
-    <string name="onboarding_people_title">Automatic face grouping</string>
-    <string name="onboarding_people_body">Pixa clusters photos by the people in them during background indexing, organizing your library under the People tab without any manual tagging.</string>
+    <string name="onboarding_people_title">Every face, in its place</string>
+    <string name="onboarding_people_body">Pixa groups photos by the people in them as your library indexes—no tedious tagging or sorting required.</string>
 
-    <string name="onboarding_smart_album_eyebrow">Smart albums</string>
-    <string name="onboarding_smart_album_title">Self-updating albums</string>
-    <string name="onboarding_smart_album_body">Define an album with a text description — \"beach sunsets\", \"my dog\" — and Pixa automatically adds matching photos as your library grows.</string>
+    <string name="onboarding_smart_albums_eyebrow">Smart albums</string>
+    <string name="onboarding_smart_albums_title">Albums that build themselves</string>
+    <string name="onboarding_smart_albums_body">Create an album like "weekend hikes" or "my dog." Pixa finds matching photos and keeps the collection up to date.</string>
 
-    <string name="onboarding_cleanup_eyebrow">Smart cleanup</string>
-    <string name="onboarding_cleanup_title">Reclaim storage automatically</string>
-    <string name="onboarding_cleanup_body">Pixa detects duplicates, blurry shots, screenshots, and other clutter, then lets you review and confirm before anything is deleted.</string>
+    <string name="onboarding_smart_cleanup_eyebrow">Smart cleanup</string>
+    <string name="onboarding_smart_cleanup_title">Make room for what matters</string>
+    <string name="onboarding_smart_cleanup_body">Spot duplicates, blurry shots, and screenshots, or compress photos to save space. You review every suggestion before anything is deleted or replaced.</string>
 
-    <string name="onboarding_edit_eyebrow">Edit</string>
-    <string name="onboarding_edit_title">Built-in photo and video editing</string>
-    <string name="onboarding_edit_body">Crop, adjust, and annotate photos or trim videos directly in the gallery — no separate app required.</string>
+    <string name="onboarding_editor_eyebrow">Edit</string>
+    <string name="onboarding_editor_title">Little fixes. Right here.</string>
+    <string name="onboarding_editor_body">Crop, tune, annotate, or trim a clip without leaving your gallery or opening another app.</string>
 
     <string name="onboarding_safe_eyebrow">Safe</string>
-    <string name="onboarding_safe_title">Encrypted storage for private photos</string>
-    <string name="onboarding_safe_body">Files moved to Safe are stored in a standard AES-256 encrypted ZIP, openable with any file manager or zip utility and your password — so your photos survive even if Pixa is uninstalled.</string>
+    <string name="onboarding_safe_title">Your private photos, locked away</string>
+    <string name="onboarding_safe_body">Move sensitive files to Safe, protected in an AES-256 encrypted ZIP with your password. Your files remain yours—even if you uninstall Pixa.</string>
 
     <!-- The Pro page states the free tier honestly rather than as a trial: what stays free is said
          first, because that is the promise the rest of the tour rests on. Limits are the ones in

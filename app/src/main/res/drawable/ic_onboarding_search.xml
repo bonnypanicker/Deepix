@@ -1,26 +1,191 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Onboarding: semantic search — a magnifier with a sparkle cut into its lens. Stroke geometry
-     cloned from the reference; transparent fill so the stroke carries the shape. -->
+<!-- Metro-style search icon (page 1). Search bar with query text + two result cards below showing matching photos. Exact spec from HTML mock: #0078D4 search bar, white search icon in circle, query stubs, two photo tiles with mountains/sun. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
+    android:width="300dp"
+    android:height="220dp"
+    android:viewportWidth="300"
+    android:viewportHeight="220">
+
+    <!-- Top search bar: #0078D4 background -->
+    <rect
+        android:fillColor="#0078D4"
+        android:x="8"
+        android:y="20"
+        android:width="284"
+        android:height="52" />
+
+    <!-- Search icon: white circle with magnifying glass -->
+    <circle
+        android:fillColor="#0078D4"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:centerX="34"
+        android:centerY="46"
+        android:radius="9" />
+
+    <!-- Magnifying glass handle -->
     <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M3.8,10.2a6.4,6.4 0 1 0 12.8,0a6.4,6.4 0 1 0 -12.8,0z"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.5" />
+        android:pathData="M41,53 L49,61"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="square"
+        android:strokeLineJoin="miter"
+        android:fillColor="#00000000" />
+
+    <!-- Query text stubs in search bar -->
+    <rect
+        android:fillColor="#FFFFFF"
+        android:x="62"
+        android:y="40"
+        android:width="153"
+        android:height="4" />
+    <rect
+        android:fillColor="#B9DDF1"
+        android:x="62"
+        android:y="49"
+        android:width="105"
+        android:height="3" />
+
+    <!-- Left result card: #00A4EF background -->
+    <rect
+        android:fillColor="#00A4EF"
+        android:x="8"
+        android:y="86"
+        android:width="132"
+        android:height="112" />
+
+    <!-- Photo content clip in left card -->
     <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M15,15l5,5"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeLineCap="round"
-        android:strokeWidth="1.5" />
+        android:pathData="M20,98h108v74H20z"
+        android:fillColor="#5CC8F2" />
+
+    <!-- Sun in left photo -->
+    <circle
+        android:fillColor="#FFD45C"
+        android:centerX="110.7"
+        android:centerY="112.8"
+        android:radius="7.3" />
+
+    <!-- Mountains in left photo -->
     <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M12.6,5.6l0.5,1.3l1.3,0.5l-1.3,0.5l-0.5,1.3l-0.5,-1.3l-1.3,-0.5l1.3,-0.5z"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeLineJoin="round"
-        android:strokeWidth="1" />
+        android:pathData="M20,155.7L41.6,130.6L56.7,143.9L81.6,117.2L108.6,143.9L118.3,135L128,145.4L128,172H20z"
+        android:fillColor="#1E8AA6" />
+
+    <!-- Highlights in left photo -->
+    <path
+        android:pathData="M41.6,130.6L46.1,134.6L43.3,142.3L40.8,138.3L38.4,142.5L35.1,138.1z"
+        android:fillColor="#F4F8FB" />
+
+    <path
+        android:pathData="M81.6,117.2L89.7,125.2L85.6,129.6L82.2,125.4L78.8,129.9L74.1,125.2z"
+        android:fillColor="#F4F8FB" />
+
+    <!-- Horizon in left photo -->
+    <path
+        android:pathData="M20,161.6L37.3,149.8L56.7,161.6L76.2,148.3L99.9,163.1L115,155.7L128,164.6L128,172H20z"
+        android:fillColor="#0B607C" />
+
+    <!-- Text bars in left card -->
+    <rect
+        android:fillColor="#FFFFFF"
+        android:x="20"
+        android:y="180"
+        android:width="70"
+        android:height="4" />
+
+    <!-- Right side panel: dark blue backgrounds for two cards -->
+    <rect
+        android:fillColor="#164F75"
+        android:x="151"
+        android:y="86"
+        android:width="141"
+        android:height="52" />
+
+    <!-- Left sub-card in right panel: portrait placeholder -->
+    <path
+        android:pathData="M163,98h42v28H163z"
+        android:fillColor="#F6C6A9" />
+
+    <!-- Head silhouette top -->
+    <path
+        android:pathData="M161,128L161,123.2Q169.7,118.2L179.6,118.2L188.4,118.2Q198.3,118.2L207,123.2L207,128Z"
+        android:fillColor="#F4F4F4" />
+
+    <!-- Neck -->
+    <rect
+        android:fillColor="#A9714F"
+        android:x="181.1"
+        android:y="110"
+        android:width="5.9"
+        android:height="9" />
+
+    <!-- Shoulder base -->
+    <ellipse
+        android:fillColor="#C98B6B"
+        android:centerX="184"
+        android:centerY="110"
+        android:rx="5"
+        android:ry="6.6" />
+
+    <!-- Shirt collar -->
+    <path
+        android:pathData="M177.8,110Q179,108.6Q182.4,106L186,108.6L188.6,112Q188.6,112Q184,106L180.4,108.6L177.8,112Z"
+        android:fillColor="#2B2830" />
+
+    <!-- Text stubs in right panel card 1 -->
+    <rect
+        android:fillColor="#FFFFFF"
+        android:x="214"
+        android:y="101"
+        android:width="63"
+        android:height="4" />
+    <rect
+        android:fillColor="#B9DDF1"
+        android:x="214"
+        android:y="112"
+        android:width="46"
+        android:height="3" />
+
+    <!-- Bottom card in right panel: dark blue bg -->
+    <rect
+        android:fillColor="#005A9E"
+        android:x="151"
+        android:y="146"
+        android:width="141"
+        android:height="52" />
+
+    <!-- Right sub-card: landscape placeholder -->
+    <path
+        android:pathData="M163,157h42v29H163z"
+        android:fillColor="#8DD8C8" />
+
+    <!-- Small sun/moon in right photo -->
+    <circle
+        android:fillColor="#FFF3C4"
+        android:centerX="198.3"
+        android:centerY="162.8"
+        android:radius="3.5" />
+
+    <!-- Mountains in right photo -->
+    <path
+        android:pathData="M163,179.6L171.4,169.8L177.3,175L186.9,164.5L197.4,175L201.2,171.5L205,175.6L205,186H163z"
+        android:fillColor="#3E9C8B" />
+
+    <!-- Lower horizon in right photo -->
+    <path
+        android:pathData="M163,181.9L169.7,177.3L177.3,181.9L184.8,176.7L194.1,182.5L200,179.6L205,183.1L205,186H163z"
+        android:fillColor="#1F7568" />
+
+    <!-- Text stubs in bottom card -->
+    <rect
+        android:fillColor="#FFFFFF"
+        android:x="214"
+        android:y="160"
+        android:width="63"
+        android:height="4" />
+    <rect
+        android:fillColor="#B9DDF1"
+        android:x="214"
+        android:y="171"
+        android:width="48"
+        android:height="3" />
 </vector>
