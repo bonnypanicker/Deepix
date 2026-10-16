@@ -1,68 +1,147 @@
+<!-- Metro-style smart cleanup before/after icon for Smart Cleanup panel (page 4). Two identical photos side-by-side showing compression from 4.8 MB to 1.2 MB (-75%). Includes duplicate badge and download icon. Viewport 300x220 exact from mock spec. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="300dp"
     android:height="220dp"
     android:viewportWidth="300"
     android:viewportHeight="220">
-    
+
     <!-- Left photo tile - before compression -->
-    <rect android:x="12" android:y="18" android:width="124" android:height="126" android:fillColor="#0078D4"/>
-    <path android:pathData="M24,30 h100 v72 h-100 z" android:fillColor="#5CC8F2"/>
-    <path android:pathData="M108,37.3 A7.1,7.1 0 0,0 100.9,44.4 A7.1,7.1 0 0,0 108,51.5 A7.1,7.1 0 0,0 115.1,44.4 A7.1,7.1 0 0,0 108,37.3 Z" android:fillColor="#FFD45C"/>
-    <path android:pathData="M24,86.2 L44,61.7 L58,74.6 L81,48.7 L106,74.6 L115,66 L124,76.1 L124,102 L24,102 Z" 
-          android:fillColor="#1E8AA6"/>
-    <path android:pathData="M44,61.7 L48.2,65.6 L45.5,73.1 L43.3,69.2 L41.1,73.3 L38,69 Z" 
-          android:fillColor="#F4F8FB"/>
-    <path android:pathData="M81,48.7 L88.5,56.5 L84.8,60.8 L81.6,56.7 L78.4,61 L74.1,56.5 Z" 
-          android:fillColor="#F4F8FB"/>
-    <path android:pathData="M24,91.9 L40,80.4 L58,91.9 L76,79 L98,93.4 L112,86.2 L124,94.8 L124,102 L24,102 Z" 
-          android:fillColor="#0B607C"/>
-    
+    <rect
+        android:fillColor="#0078D4"
+        android:x="12"
+        android:y="18"
+        android:width="124"
+        android:height="126" />
+    <path
+        android:pathData="M24,30H124V102H24z"
+        android:fillColor="#5CC8F2" />
+    <path
+        android:pathData="M108,37.3A7.1,7.1 0 0,0 100.9,44.4A7.1,7.1 0 0,0 108,51.5A7.1,7.1 0 0,0 115.1,44.4A7.1,7.1 0 0,0 108,37.3Z"
+        android:fillColor="#FFD45C" />
+    <path
+        android:pathData="M24,86.2L44,61.7L58,74.6L81,48.7L106,74.6L115,66L124,76.1L124,102H24z"
+        android:fillColor="#1E8AA6" />
+    <path
+        android:pathData="M44,61.7L48.2,65.6L45.5,73.1L43.3,69.2L41.1,73.3L38,69Z"
+        android:fillColor="#F4F8FB" />
+    <path
+        android:pathData="M81,48.7L88.5,56.5L84.8,60.8L81.6,56.7L78.4,61L74.1,56.5Z"
+        android:fillColor="#F4F8FB" />
+    <path
+        android:pathData="M24,91.9L40,80.4L58,91.9L76,79L98,93.4L112,86.2L124,94.8L124,102H24z"
+        android:fillColor="#0B607C" />
+
     <!-- Text stubs left -->
-    <rect android:x="24" android:y="111" android:width="62" android:height="4" android:fillColor="#FFFFFF"/>
-    <rect android:x="24" android:y="122" android:width="42" android:height="3" android:fillColor="#B9DDF1"/>
-    
+    <rect
+        android:fillColor="#FFFFFF"
+        android:x="24"
+        android:y="111"
+        android:width="62"
+        android:height="4" />
+    <rect
+        android:fillColor="#B9DDF1"
+        android:x="24"
+        android:y="122"
+        android:width="42"
+        android:height="3" />
+
     <!-- Duplicate badge left (grey circle with slash) -->
-    <rect android:x="31" android:y="37" android:width="20" android:height="20" android:fillColor="#000000" android:fillAlpha="0.28"/>
-    <rect android:x="32" android:y="38" android:width="18" android:height="18" android:strokeColor="#FFFFFF" android:strokeWidth="2" android:fillColor="#00000000"/>
-    
+    <rect
+        android:fillColor="#000000"
+        android:fillAlpha="0.28"
+        android:x="31"
+        android:y="37"
+        android:width="20"
+        android:height="20" />
+    <rect
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:x="32"
+        android:y="38"
+        android:width="18"
+        android:height="18" />
+
     <!-- Right photo tile - after compression -->
-    <rect android:x="164" android:y="18" android:width="124" android:height="126" android:fillColor="#164F75"/>
-    <path android:pathData="M176,30 h100 v72 h-100 z" android:fillColor="#5CC8F2"/>
-    <path android:pathData="M260,37.3 A7.1,7.1 0 0,0 252.9,44.4 A7.1,7.1 0 0,0 260,51.5 A7.1,7.1 0 0,0 267.1,44.4 A7.1,7.1 0 0,0 260,37.3 Z" 
-          android:fillColor="#FFD45C"/>
-    <path android:pathData="M176,86.2 L196,61.7 L210,74.6 L233,48.7 L258,74.6 L267,66 L276,76.1 L276,102 L176,102 Z" 
-          android:fillColor="#1E8AA6"/>
-    <path android:pathData="M196,61.7 L200.2,65.6 L197.5,73.1 L195.3,69.2 L193.1,73.3 L190,69 Z" 
-          android:fillColor="#F4F8FB"/>
-    <path android:pathData="M233,48.7 L240.5,56.5 L236.8,60.8 L233.6,56.7 L230.4,61 L226.1,56.5 Z" 
-          android:fillColor="#F4F8FB"/>
-    <path android:pathData="M176,91.9 L192,80.4 L210,91.9 L228,79 L250,93.4 L264,86.2 L276,94.8 L276,102 L176,102 Z" 
-          android:fillColor="#0B607C"/>
-    
+    <rect
+        android:fillColor="#164F75"
+        android:x="164"
+        android:y="18"
+        android:width="124"
+        android:height="126" />
+    <path
+        android:pathData="M176,30H276V102H176z"
+        android:fillColor="#5CC8F2" />
+    <path
+        android:pathData="M260,37.3A7.1,7.1 0 0,0 252.9,44.4A7.1,7.1 0 0,0 260,51.5A7.1,7.1 0 0,0 267.1,44.4A7.1,7.1 0 0,0 260,37.3Z"
+        android:fillColor="#FFD45C" />
+    <path
+        android:pathData="M176,86.2L196,61.7L210,74.6L233,48.7L258,74.6L267,66L276,76.1L276,102H176z"
+        android:fillColor="#1E8AA6" />
+    <path
+        android:pathData="M196,61.7L200.2,65.6L197.5,73.1L195.3,69.2L193.1,73.3L190,69Z"
+        android:fillColor="#F4F8FB" />
+    <path
+        android:pathData="M233,48.7L240.5,56.5L236.8,60.8L233.6,56.7L230.4,61L226.1,56.5Z"
+        android:fillColor="#F4F8FB" />
+    <path
+        android:pathData="M176,91.9L192,80.4L210,91.9L228,79L250,93.4L264,86.2L276,94.8L276,102H176z"
+        android:fillColor="#0B607C" />
+
     <!-- Text stubs right -->
-    <rect android:x="176" android:y="111" android:width="62" android:height="4" android:fillColor="#FFFFFF"/>
-    <rect android:x="176" android:y="122" android:width="42" android:height="3" android:fillColor="#B9DDF1"/>
-    
+    <rect
+        android:fillColor="#FFFFFF"
+        android:x="176"
+        android:y="111"
+        android:width="62"
+        android:height="4" />
+    <rect
+        android:fillColor="#B9DDF1"
+        android:x="176"
+        android:y="122"
+        android:width="42"
+        android:height="3" />
+
     <!-- Download icon right (green badge) -->
-    <rect android:x="183" android:y="37" android:width="20" android:height="20" android:fillColor="#00A4EF"/>
-    <path android:pathData="M188,49.5 L192,53.5 L199,44.5" android:strokeColor="#FFFFFF" android:strokeWidth="2.6" 
-          android:fillColor="#00000000" android:strokeLinecap="square" android:strokeLinejoin="miter"/>
-    
+    <rect
+        android:fillColor="#00A4EF"
+        android:x="183"
+        android:y="37"
+        android:width="20"
+        android:height="20" />
+    <path
+        android:pathData="M188,49.5L192,53.5L199,44.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.6"
+        android:fillColor="#00000000"
+        android:strokeLinecap="square"
+        android:strokeLinejoin="miter" />
+
     <!-- Bottom bar with file sizes and savings -->
-    <rect android:x="12" android:y="156" android:width="276" android:height="46" android:fillColor="#005A9E"/>
-    <path android:pathData="M22,165 h42 v28 h-42 z" android:fillColor="#5CC8F2"/>
-    <path android:pathData="M57.3,167.2 A3.4,3.4 0 0,0 53.9,170.6 A3.4,3.4 0 0,0 57.3,174 A3.4,3.4 0 0,0 60.7,170.6 A3.4,3.4 0 0,0 57.3,167.2 Z" 
-          android:fillColor="#FFD45C"/>
-    <path android:pathData="M22,186.8 L30.4,177.3 L36.3,182.4 L45.9,172.3 L56.4,182.4 L60.2,179 L64,182.9 L64,193 L22,193 Z" 
-          android:fillColor="#1E8AA6"/>
-    <path android:pathData="M22,189.1 L28.7,184.6 L36.3,189.1 L43.8,184 L53.1,189.6 L59,186.8 L64,190.2 L64,193 L22,193 Z" 
-          android:fillColor="#0B607C"/>
-    
-    <!-- Size labels and arrow -->
-    <path android:pathData="M94,183" android:strokeColor="#B9DDF1" android:strokeWidth="10" android:strokeLinecap="square"/>
-    <path android:pathData="M120,179 H146 M141,174 L146,179 L141,184" android:strokeColor="#FFFFFF" android:strokeWidth="2.4" 
-          android:fillColor="#00000000" android:strokeLinecap="square" android:strokeLinejoin="miter"/>
-    
+    <rect
+        android:fillColor="#005A9E"
+        android:x="12"
+        android:y="156"
+        android:width="276"
+        android:height="46" />
+    <path
+        android:pathData="M22,165H64V193H22z"
+        android:fillColor="#5CC8F2" />
+    <path
+        android:pathData="M57.3,167.2A3.4,3.4 0 0,0 53.9,170.6A3.4,3.4 0 0,0 57.3,174A3.4,3.4 0 0,0 60.7,170.6A3.4,3.4 0 0,0 57.3,167.2Z"
+        android:fillColor="#FFD45C" />
+    <path
+        android:pathData="M22,186.8L30.4,177.3L36.3,182.4L45.9,172.3L56.4,182.4L60.2,179L64,182.9L64,193H22z"
+        android:fillColor="#1E8AA6" />
+    <path
+        android:pathData="M22,189.1L28.7,184.6L36.3,189.1L43.8,184L53.1,189.6L59,186.8L64,190.2L64,193H22z"
+        android:fillColor="#0B607C" />
+
     <!-- Green savings badge -->
-    <rect android:x="222" android:y="168" android:width="56" android:height="22" android:fillColor="#00A4EF"/>
+    <rect
+        android:fillColor="#00A4EF"
+        android:x="222"
+        android:y="168"
+        android:width="56"
+        android:height="22" />
 </vector>

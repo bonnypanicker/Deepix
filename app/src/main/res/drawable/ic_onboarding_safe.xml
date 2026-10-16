@@ -1,64 +1,115 @@
+<!-- Metro-style Safe/vault icon for Locked panel (page 6). Shows grid of locked photo thumbnails behind padlock overlay with AES-256 label. Viewport 300x220 exact from mock spec. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="300dp"
     android:height="220dp"
     android:viewportWidth="300"
     android:viewportHeight="220">
-    
-    <!-- Main background -->
-    <rect android:x="28" android:y="22" android:width="244" android:height="176" android:fillColor="#0078D4"/>
-    
+
+    <!-- Main background tile -->
+    <rect
+        android:fillColor="#0078D4"
+        android:x="28"
+        android:y="22"
+        android:width="244"
+        android:height="176" />
+
     <!-- Dark overlay for locked area -->
-    <rect android:x="48" android:y="42" android:width="204" android:height="136" android:fillColor="#005A9E" android:fillAlpha="0.55"/>
-    
-    <!-- Top-left photo tile (with opacity applied by parent) -->
-    <path android:pathData="M60,60 h44 v34 h-44 z" android:fillColor="#5CC8F2"/>
-    <path android:pathData="M97,62.9 A3.9,3.9 0 0,0 93.1,66.8 A3.9,3.9 0 0,0 97,70.7 A3.9,3.9 0 0,0 100.9,66.8 A3.9,3.9 0 0,0 97,62.9 Z" android:fillColor="#FFD45C"/>
-    <path android:pathData="M60,86.5 L68.8,75 L75,81.1 L85.1,68.8 L96.1,81.1 L100,77 L104,81.8 L104,94 L60,94 Z" 
-          android:fillColor="#1E8AA6"/>
-    <path android:pathData="M60,89.2 L67,83.8 L75,89.2 L82.9,83.1 L92.6,89.9 L98.7,86.5 L104,90.6 L104,94 L60,94 Z" 
-          android:fillColor="#0B607C"/>
-    
+    <rect
+        android:fillColor="#005A9E"
+        android:x="48"
+        android:y="42"
+        android:width="204"
+        android:height="136"
+        android:fillAlpha="0.55" />
+
+    <!-- Top-left photo tile -->
+    <path
+        android:pathData="M60,60H104V94H60z"
+        android:fillColor="#5CC8F2" />
+    <path
+        android:pathData="M97,62.9A3.9,3.9 0 0,0 93.1,66.8A3.9,3.9 0 0,0 97,70.7A3.9,3.9 0 0,0 100.9,66.8A3.9,3.9 0 0,0 97,62.9Z"
+        android:fillColor="#FFD45C" />
+    <path
+        android:pathData="M60,86.5L68.8,75L75,81.1L85.1,68.8L96.1,81.1L100,77L104,81.8L104,94H60z"
+        android:fillColor="#1E8AA6" />
+    <path
+        android:pathData="M60,89.2L67,83.8L75,89.2L82.9,83.1L92.6,89.9L98.7,86.5L104,90.6L104,94H60z"
+        android:fillColor="#0B607C" />
+
     <!-- Bottom-left photo tile -->
-    <path android:pathData="M60,106 h44 v34 h-44 z" android:fillColor="#F5C5A5"/>
-    <path android:pathData="M98.7,108.2 A3.9,3.9 0 0,0 94.8,112.1 A3.9,3.9 0 0,0 98.7,116 A3.9,3.9 0 0,0 102.6,112.1 A3.9,3.9 0 0,0 98.7,108.2 Z" android:fillColor="#FFD45C"/>
-    <path android:pathData="M60,129.8 L72.3,117.6 L82,126.4 L90.8,119.6 L104,131.2 L104,140 L60,140 Z" 
-          android:fillColor="#2A8FA8"/>
-    <path android:pathData="M60,136.6 L69.7,131.8 L79.4,136.6 L89,131.2 L97.8,135.9 L104,133.2 L104,140 L60,140 Z" 
-          android:fillColor="#12667F"/>
-    
+    <path
+        android:pathData="M60,106H104V140H60z"
+        android:fillColor="#F5C5A5" />
+    <path
+        android:pathData="M98.7,108.2A3.9,3.9 0 0,0 94.8,112.1A3.9,3.9 0 0,0 98.7,116A3.9,3.9 0 0,0 102.6,112.1A3.9,3.9 0 0,0 98.7,108.2Z"
+        android:fillColor="#FFD45C" />
+    <path
+        android:pathData="M60,129.8L72.3,117.6L82,126.4L90.8,119.6L104,131.2L104,140H60z"
+        android:fillColor="#2A8FA8" />
+    <path
+        android:pathData="M60,136.6L69.7,131.8L79.4,136.6L89,131.2L97.8,135.9L104,133.2L104,140H60z"
+        android:fillColor="#12667F" />
+
     <!-- Top-right photo tile -->
-    <path android:pathData="M196,60 h44 v34 h-44 z" android:fillColor="#8DD8C8"/>
-    <path android:pathData="M234.7,62.2 A3.9,3.9 0 0,0 230.8,66.1 A3.9,3.9 0 0,0 234.7,70 A3.9,3.9 0 0,0 238.6,66.1 A3.9,3.9 0 0,0 234.7,62.2 Z" android:fillColor="#FFF3C4"/>
-    <path android:pathData="M196,83.8 L208.3,71.6 L218,80.4 L226.8,73.6 L240,85.2 L240,94 L196,94 Z" 
-          android:fillColor="#3E9C8B"/>
-    <path android:pathData="M196,90.6 L205.7,85.8 L215.4,90.6 L225,85.2 L233.8,89.9 L240,87.2 L240,94 L196,94 Z" 
-          android:fillColor="#1F7568"/>
-    
+    <path
+        android:pathData="M196,60H240V94H196z"
+        android:fillColor="#8DD8C8" />
+    <path
+        android:pathData="M234.7,62.2A3.9,3.9 0 0,0 230.8,66.1A3.9,3.9 0 0,0 234.7,70A3.9,3.9 0 0,0 238.6,66.1A3.9,3.9 0 0,0 234.7,62.2Z"
+        android:fillColor="#FFF3C4" />
+    <path
+        android:pathData="M196,83.8L208.3,71.6L218,80.4L226.8,73.6L240,85.2L240,94H196z"
+        android:fillColor="#3E9C8B" />
+    <path
+        android:pathData="M196,90.6L205.7,85.8L215.4,90.6L225,85.2L233.8,89.9L240,87.2L240,94H196z"
+        android:fillColor="#1F7568" />
+
     <!-- Bottom-right photo tile -->
-    <path android:pathData="M196,106 h44 v34 h-44 z" android:fillColor="#F2B49B"/>
-    <path android:pathData="M233,108.9 A3.9,3.9 0 0,0 229.1,112.8 A3.9,3.9 0 0,0 233,116.7 A3.9,3.9 0 0,0 236.9,112.8 A3.9,3.9 0 0,0 233,108.9 Z" android:fillColor="#FFE3A3"/>
-    <path android:pathData="M196,132.5 L204.8,121 L211,127.1 L221.1,114.8 L232.1,127.1 L236,123 L240,127.8 L240,140 L196,140 Z" 
-          android:fillColor="#C65D7B"/>
-    <path android:pathData="M196,135.2 L203,129.8 L211,135.2 L218.9,129.1 L228.6,135.9 L234.7,132.5 L240,136.6 L240,140 L196,140 Z" 
-          android:fillColor="#8E3556"/>
-    
+    <path
+        android:pathData="M196,106H240V140H196z"
+        android:fillColor="#F2B49B" />
+    <path
+        android:pathData="M233,108.9A3.9,3.9 0 0,0 229.1,112.8A3.9,3.9 0 0,0 233,116.7A3.9,3.9 0 0,0 236.9,112.8A3.9,3.9 0 0,0 233,108.9Z"
+        android:fillColor="#FFE3A3" />
+    <path
+        android:pathData="M196,132.5L204.8,121L211,127.1L221.1,114.8L232.1,127.1L236,123L240,127.8L240,140H196z"
+        android:fillColor="#C65D7B" />
+    <path
+        android:pathData="M196,135.2L203,129.8L211,135.2L218.9,129.1L228.6,135.9L234.7,132.5L240,136.6L240,140H196z"
+        android:fillColor="#8E3556" />
+
     <!-- Padlock shackle (curved top part) -->
-    <path android:pathData="M130,100 V82 A20,20 0 0,1 170,82 V100" 
-          android:strokeColor="#FFFFFF" android:strokeWidth="9" android:fillColor="#00000000"
-          android:strokeLinecap="butt" android:strokeLinejoin="miter"/>
-    
-    <!-- Padlock body (solid blue rectangle) -->
-    <rect android:x="114" android:y="96" android:width="72" android:height="58" android:fillColor="#00A4EF"/>
-    
+    <path
+        android:pathData="M130,100V82A20,20 0 0,1 170,82V100"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="9"
+        android:fillColor="#00000000"
+        android:strokeLinecap="butt"
+        android:strokeLinejoin="miter" />
+
+    <!-- Padlock body -->
+    <rect
+        android:fillColor="#00A4EF"
+        android:x="114"
+        android:y="96"
+        android:width="72"
+        android:height="58" />
+
     <!-- Padlock keyhole (circle) -->
-    <path android:pathData="M150,113 A7,7 0 0,0 143,120 A7,7 0 0,0 150,127 A7,7 0 0,0 157,120 A7,7 0 0,0 150,113 Z" android:fillColor="#003E68"/>
-    
-    <!-- Padlock keyhole slot (vertical rectangle) -->
-    <polygon android:points="146.5,124 153.5,124 155.5,141 144.5,141" android:fillColor="#003E68"/>
-    
-    <!-- AES-256 label background -->
-    <rect android:x="115" android:y="162" android:width="70" android:height="12" android:fillColor="#003E68"/>
-    
+    <path
+        android:pathData="M150,113A7,7 0 0,0 143,120A7,7 0 0,0 150,127A7,7 0 0,0 157,120A7,7 0 0,0 150,113Z"
+        android:fillColor="#003E68" />
+
+    <!-- Padlock keyhole slot -->
+    <path
+        android:pathData="M146.5,124H153.5V141H144.5Z"
+        android:fillColor="#003E68" />
+
     <!-- Accent stripe at bottom -->
-    <rect android:x="28" android:y="188" android:width="244" android:height="10" android:fillColor="#00A4EF"/>
+    <rect
+        android:fillColor="#00A4EF"
+        android:x="28"
+        android:y="188"
+        android:width="244"
+        android:height="10" />
 </vector>

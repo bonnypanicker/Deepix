@@ -1,58 +1,149 @@
+<!-- Metro-style people faces icon for People panel (page 2). Two vertical tiles with portrait photos showing face silhouettes and text stubs. Viewport 300x220 exact from mock spec. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="300dp"
     android:height="220dp"
     android:viewportWidth="300"
     android:viewportHeight="220">
-    
+
     <!-- Left tile - portrait photo with face -->
-    <rect android:x="12" android:y="18" android:width="132" android:height="184" android:fillColor="#0078D4"/>
-    <clipPath android:name="pxc6"/>
-    <path android:pathData="M24,30 h108 v118 h-108 z" android:fillColor="#F3CDB5"/>
-    <path android:pathData="M22,150 L22,136.2 Q41.3,115 61,115 L95,115 Q114.7,115 134,136.2 L134,150 Z" 
-          android:fillColor="#F4F4F4"/>
-    <rect android:x="66.7" android:y="80.7" android:width="22.7" android:height="37.8" android:fillColor="#A9714F"/>
-    <ellipse android:centerX="78" android:centerY="80.7" android:rx="19.4" android:ry="25.4" android:fillColor="#C98B6B"/>
-    <path android:pathData="M57.4,80.7 A20.6,26.6 0 0,1 98.6,80.7 L98.6,88.4 L92,75.2 Q78,65 64,75.2 L57.4,88.4 Z" 
-          android:fillColor="#2B2830"/>
-    <path android:pathData="M48.6,55.4 V45.4 H58.6 M97.4,45.4 H107.4 V55.4 M107.4,106.1 V116.1 H97.4 M58.6,116.1 H48.6 V106.1" 
-          android:strokeColor="#FFFFFF" android:strokeWidth="2.6" android:fillColor="#00000000"
-          android:strokeLinecap="square" android:strokeLinejoin="miter"/>
-    
+    <rect
+        android:fillColor="#0078D4"
+        android:x="12"
+        android:y="18"
+        android:width="132"
+        android:height="184" />
+    <path
+        android:pathData="M24,30H132V148H24z"
+        android:fillColor="#F3CDB5" />
+    <path
+        android:pathData="M22,150L22,136.2Q41.3,115 61,115L95,115Q114.7,115 134,136.2L134,150Z"
+        android:fillColor="#F4F4F4" />
+    <path
+        android:pathData="M66.7,80.7H89.4V118.5H66.7z"
+        android:fillColor="#A9714F" />
+    <path
+        android:pathData="M78,55.3A19.4,25.4 0 0,0 58.6,80.7H98.6Q98.6,55.3 78,55.3z"
+        android:fillColor="#C98B6B" />
+    <path
+        android:pathData="M57.4,80.7A20.6,26.6 0 0,1 98.6,80.7L98.6,88.4L92,75.2Q78,65 64,75.2L57.4,88.4Z"
+        android:fillColor="#2B2830" />
+    <path
+        android:pathData="M48.6,55.4V45.4H58.6M97.4,45.4H107.4V55.4M107.4,106.1V116.1H97.4M58.6,116.1H48.6V106.1"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.6"
+        android:fillColor="#00000000"
+        android:strokeLinecap="square"
+        android:strokeLinejoin="miter" />
+
     <!-- Text stubs left -->
-    <rect android:x="24" android:y="158" android:width="67" android:height="4" android:fillColor="#FFFFFF"/>
-    <rect android:x="24" android:y="168" android:width="45" android:height="3" android:fillColor="#B9DDF1"/>
-    <rect android:x="24" android:y="178" android:width="30" android:height="3" android:fillColor="#B9DDF1"/>
-    
+    <rect
+        android:fillColor="#FFFFFF"
+        android:x="24"
+        android:y="158"
+        android:width="67"
+        android:height="4" />
+    <rect
+        android:fillColor="#B9DDF1"
+        android:x="24"
+        android:y="168"
+        android:width="45"
+        android:height="3" />
+    <rect
+        android:fillColor="#B9DDF1"
+        android:x="24"
+        android:y="178"
+        android:width="30"
+        android:height="3" />
+
     <!-- Right top tile - smaller portrait with phone -->
-    <rect android:x="156" android:y="18" android:width="132" android:height="88" android:fillColor="#00A4EF"/>
-    <path android:pathData="M168,36 h52 v52 h-52 z" android:fillColor="#F7D36C"/>
-    <rect android:x="181.1" android:y="55.9" android:width="25.7" android:height="21.8" android:rx="4.7" android:fillColor="#1E1B22"/>
-    <path android:pathData="M166,90 L166,82.8 Q176.3,73.4 185.8,73.4 L202.2,73.4 Q211.7,73.4 222,82.8 L222,90 Z" 
-          android:fillColor="#164F75"/>
-    <rect android:x="188.5" android:y="58.4" android:width="10.9" android:height="16.6" android:fillColor="#6F4334"/>
-    <ellipse android:centerX="194" android:centerY="58.4" android:rx="9.4" android:ry="12.2" android:fillColor="#8D5745"/>
-    <path android:pathData="M183.4,58.4 A10.6,13.4 0 0,1 204.6,58.4 L204.6,65.1 L200.7,55.7 Q194,50.8 187.3,55.7 L183.4,65.1 Z" 
-          android:fillColor="#1E1B22"/>
-    
+    <rect
+        android:fillColor="#00A4EF"
+        android:x="156"
+        android:y="18"
+        android:width="132"
+        android:height="88" />
+    <path
+        android:pathData="M168,36H220V88H168z"
+        android:fillColor="#F7D36C" />
+    <path
+        android:pathData="M181.1,55.9H206.8V77.7H181.1z"
+        android:fillColor="#1E1B22" />
+    <path
+        android:pathData="M166,90L166,82.8Q176.3,73.4 185.8,73.4L202.2,73.4Q211.7,73.4 222,82.8L222,90Z"
+        android:fillColor="#164F75" />
+    <path
+        android:pathData="M188.5,58.4H199.4V75H188.5z"
+        android:fillColor="#6F4334" />
+    <path
+        android:pathData="M194,46.2A9.4,12.2 0 0,0 184.6,58.4H203.4Q203.4,46.2 194,46.2z"
+        android:fillColor="#8D5745" />
+    <path
+        android:pathData="M183.4,58.4A10.6,13.4 0 0,1 204.6,58.4L204.6,65.1L200.7,55.7Q194,50.8 187.3,55.7L183.4,65.1Z"
+        android:fillColor="#1E1B22" />
+
     <!-- Text stubs right top -->
-    <rect android:x="229" android:y="49" android:width="50" android:height="5" android:fillColor="#FFFFFF"/>
-    <rect android:x="229" android:y="61" android:width="36" android:height="3" android:fillColor="#B9DDF1"/>
-    <rect android:x="229" android:y="71" android:width="42" android:height="3" android:fillColor="#B9DDF1"/>
-    
+    <rect
+        android:fillColor="#FFFFFF"
+        android:x="229"
+        android:y="49"
+        android:width="50"
+        android:height="5" />
+    <rect
+        android:fillColor="#B9DDF1"
+        android:x="229"
+        android:y="61"
+        android:width="36"
+        android:height="3" />
+    <rect
+        android:fillColor="#B9DDF1"
+        android:x="229"
+        android:y="71"
+        android:width="42"
+        android:height="3" />
+
     <!-- Right bottom tile - another portrait -->
-    <rect android:x="156" android:y="118" android:width="132" android:height="84" android:fillColor="#164F75"/>
-    <path android:pathData="M168,134 h52 v52 h-52 z" android:fillColor="#A8DCD7"/>
-    <path android:pathData="M194,138.6 A3.9,3.9 0 0,0 190.1,142.5 A3.9,3.9 0 0,0 194,146.4 A3.9,3.9 0 0,0 197.9,142.5 A3.9,3.9 0 0,0 194,138.6 Z" 
-          android:fillColor="#6B3F2A"/>
-    <path android:pathData="M166,188 L166,180.8 Q176.3,171.4 185.8,171.4 L202.2,171.4 Q211.7,171.4 222,180.8 L222,188 Z" 
-          android:fillColor="#F4F4F4"/>
-    <rect android:x="188.5" android:y="156.4" android:width="10.9" android:height="16.6" android:fillColor="#C8966F"/>
-    <ellipse android:centerX="194" android:centerY="156.4" android:rx="9.4" android:ry="12.2" android:fillColor="#E3B592"/>
-    <path android:pathData="M183.4,156.4 A10.6,13.4 0 0,1 204.6,156.4 L204.6,160 L200.7,153.7 Q194,148.8 187.3,153.7 L183.4,160 Z" 
-          android:fillColor="#6B3F2A"/>
-    
+    <rect
+        android:fillColor="#164F75"
+        android:x="156"
+        android:y="118"
+        android:width="132"
+        android:height="84" />
+    <path
+        android:pathData="M168,134H220V186H168z"
+        android:fillColor="#A8DCD7" />
+    <path
+        android:pathData="M194,138.6A3.9,3.9 0 0,0 190.1,142.5A3.9,3.9 0 0,0 194,146.4A3.9,3.9 0 0,0 197.9,142.5A3.9,3.9 0 0,0 194,138.6Z"
+        android:fillColor="#6B3F2A" />
+    <path
+        android:pathData="M166,188L166,180.8Q176.3,171.4 185.8,171.4L202.2,171.4Q211.7,171.4 222,180.8L222,188Z"
+        android:fillColor="#F4F4F4" />
+    <path
+        android:pathData="M188.5,156.4H199.4V173H188.5z"
+        android:fillColor="#C8966F" />
+    <path
+        android:pathData="M194,144.2A9.4,12.2 0 0,0 184.6,156.4H203.4Q203.4,144.2 194,144.2z"
+        android:fillColor="#E3B592" />
+    <path
+        android:pathData="M183.4,156.4A10.6,13.4 0 0,1 204.6,156.4L204.6,160L200.7,153.7Q194,148.8 187.3,153.7L183.4,160Z"
+        android:fillColor="#6B3F2A" />
+
     <!-- Text stubs right bottom -->
-    <rect android:x="229" android:y="147" android:width="50" android:height="5" android:fillColor="#FFFFFF"/>
-    <rect android:x="229" android:y="159" android:width="36" android:height="3" android:fillColor="#B9DDF1"/>
-    <rect android:x="229" android:y="169" android:width="42" android:height="3" android:fillColor="#B9DDF1"/>
+    <rect
+        android:fillColor="#FFFFFF"
+        android:x="229"
+        android:y="147"
+        android:width="50"
+        android:height="5" />
+    <rect
+        android:fillColor="#B9DDF1"
+        android:x="229"
+        android:y="159"
+        android:width="36"
+        android:height="3" />
+    <rect
+        android:fillColor="#B9DDF1"
+        android:x="229"
+        android:y="169"
+        android:width="42"
+        android:height="3" />
 </vector>
