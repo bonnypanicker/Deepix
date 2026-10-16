@@ -9,7 +9,7 @@
     
     <!-- Image canvas with mountain photo -->
     <path android:pathData="M22,24 h256 v112 h-256 z" android:fillColor="#5CC8F2"/>
-    <circle android:centerX="237" android:centerY="46.4" android:r="10.5" android:fillColor="#FFD45C"/>
+    <path android:pathData="M237,35.9 A10.5,10.5 0 0,0 226.5,46.4 A10.5,10.5 0 0,0 237,57.3 A10.5,10.5 0 0,0 247.5,46.4 A10.5,10.5 0 0,0 237,35.9 Z" android:fillColor="#FFD45C"/>
     <path android:pathData="M22,111.4 L73.2,73.3 L109,93.4 L167.9,53.1 L231.9,93.4 L255,80 L278,95.7 L278,136 L22,136 Z" 
           android:fillColor="#1E8AA6"/>
     <path android:pathData="M73.2,73.3 L84,79.3 L77.2,91 L71.4,84.9 L65.7,91.3 L57.8,84.7 Z" 

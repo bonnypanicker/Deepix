@@ -42,7 +42,8 @@
     <!-- Right bottom tile - another portrait -->
     <rect android:x="156" android:y="118" android:width="132" android:height="84" android:fillColor="#164F75"/>
     <path android:pathData="M168,134 h52 v52 h-52 z" android:fillColor="#A8DCD7"/>
-    <circle android:centerX="194" android:centerY="142.5" android:r="3.9" android:fillColor="#6B3F2A"/>
+    <path android:pathData="M194,138.6 A3.9,3.9 0 0,0 190.1,142.5 A3.9,3.9 0 0,0 194,146.4 A3.9,3.9 0 0,0 197.9,142.5 A3.9,3.9 0 0,0 194,138.6 Z" 
+          android:fillColor="#6B3F2A"/>
     <path android:pathData="M166,188 L166,180.8 Q176.3,171.4 185.8,171.4 L202.2,171.4 Q211.7,171.4 222,180.8 L222,188 Z" 
           android:fillColor="#F4F4F4"/>
     <rect android:x="188.5" android:y="156.4" android:width="10.9" android:height="16.6" android:fillColor="#C8966F"/>

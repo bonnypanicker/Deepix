@@ -7,7 +7,7 @@
     <!-- Left photo tile - before compression -->
     <rect android:x="12" android:y="18" android:width="124" android:height="126" android:fillColor="#0078D4"/>
     <path android:pathData="M24,30 h100 v72 h-100 z" android:fillColor="#5CC8F2"/>
-    <circle android:centerX="108" android:centerY="44.4" android:r="7.1" android:fillColor="#FFD45C"/>
+    <path android:pathData="M108,37.3 A7.1,7.1 0 0,0 100.9,44.4 A7.1,7.1 0 0,0 108,51.5 A7.1,7.1 0 0,0 115.1,44.4 A7.1,7.1 0 0,0 108,37.3 Z" android:fillColor="#FFD45C"/>
     <path android:pathData="M24,86.2 L44,61.7 L58,74.6 L81,48.7 L106,74.6 L115,66 L124,76.1 L124,102 L24,102 Z" 
           android:fillColor="#1E8AA6"/>
     <path android:pathData="M44,61.7 L48.2,65.6 L45.5,73.1 L43.3,69.2 L41.1,73.3 L38,69 Z" 
@@ -28,7 +28,8 @@
     <!-- Right photo tile - after compression -->
     <rect android:x="164" android:y="18" android:width="124" android:height="126" android:fillColor="#164F75"/>
     <path android:pathData="M176,30 h100 v72 h-100 z" android:fillColor="#5CC8F2"/>
-    <circle android:centerX="260" android:centerY="44.4" android:r="7.1" android:fillColor="#FFD45C"/>
+    <path android:pathData="M260,37.3 A7.1,7.1 0 0,0 252.9,44.4 A7.1,7.1 0 0,0 260,51.5 A7.1,7.1 0 0,0 267.1,44.4 A7.1,7.1 0 0,0 260,37.3 Z" 
+          android:fillColor="#FFD45C"/>
     <path android:pathData="M176,86.2 L196,61.7 L210,74.6 L233,48.7 L258,74.6 L267,66 L276,76.1 L276,102 L176,102 Z" 
           android:fillColor="#1E8AA6"/>
     <path android:pathData="M196,61.7 L200.2,65.6 L197.5,73.1 L195.3,69.2 L193.1,73.3 L190,69 Z" 
@@ -50,7 +51,8 @@
     <!-- Bottom bar with file sizes and savings -->
     <rect android:x="12" android:y="156" android:width="276" android:height="46" android:fillColor="#005A9E"/>
     <path android:pathData="M22,165 h42 v28 h-42 z" android:fillColor="#5CC8F2"/>
-    <circle android:centerX="57.3" android:centerY="170.6" android:r="3.4" android:fillColor="#FFD45C"/>
+    <path android:pathData="M57.3,167.2 A3.4,3.4 0 0,0 53.9,170.6 A3.4,3.4 0 0,0 57.3,174 A3.4,3.4 0 0,0 60.7,170.6 A3.4,3.4 0 0,0 57.3,167.2 Z" 
+          android:fillColor="#FFD45C"/>
     <path android:pathData="M22,186.8 L30.4,177.3 L36.3,182.4 L45.9,172.3 L56.4,182.4 L60.2,179 L64,182.9 L64,193 L22,193 Z" 
           android:fillColor="#1E8AA6"/>
     <path android:pathData="M22,189.1 L28.7,184.6 L36.3,189.1 L43.8,184 L53.1,189.6 L59,186.8 L64,190.2 L64,193 L22,193 Z" 

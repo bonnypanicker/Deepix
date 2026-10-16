@@ -16,7 +16,8 @@
     <!-- Left album - orange photo -->
     <rect android:x="22" android:y="82" android:width="76" android:height="102" android:fillColor="#00A4EF"/>
     <path android:pathData="M30,90 h60 v56 h-60 z" android:fillColor="#F5C5A5"/>
-    <circle android:centerX="82.8" android:centerY="100.1" android:r="5.8" android:fillColor="#FFD45C"/>
+    <path android:pathData="M82.8,94.3 A5.8,5.8 0 0,0 77,100.1 A5.8,5.8 0 0,0 82.8,105.9 A5.8,5.8 0 0,0 88.6,100.1 A5.8,5.8 0 0,0 82.8,94.3 Z" 
+          android:fillColor="#FFD45C"/>
     <path android:pathData="M30,129.2 L46.8,109 L60,123.6 L72,112.4 L90,131.4 L90,146 L30,146 Z" 
           android:fillColor="#2A8FA8"/>
     <path android:pathData="M46.8,109 L50.8,113.4 L48.4,118.4 L46.4,115.2 L44.5,118.6 L41.8,115.1 Z" 
@@ -28,7 +29,8 @@
     
     <!-- Middle album - yellow/photo with mountains -->
     <rect android:x="114" android:y="90" android:width="60" android:height="56" android:fillColor="#F7D36C"/>
-    <circle android:centerX="157.2" android:centerY="106.8" android:r="7.3" android:fillColor="#FFFFFF"/>
+    <path android:pathData="M157.2,99.5 A7.3,7.3 0 0,0 149.9,106.8 A7.3,7.3 0 0,0 157.2,114.1 A7.3,7.3 0 0,0 164.5,106.8 A7.3,7.3 0 0,0 157.2,99.5 Z" 
+          android:fillColor="#FFFFFF"/>
     <path android:pathData="M114,131.4 C129,115.8 144,120.8 151.2,124.7 S166.8,122.5 174,127 V146 H114 Z" 
           android:fillColor="#6FB08F"/>
     <path android:pathData="M114,139.3 C132,127 147,137 160.8,131.4 S171,132.6 174,134.8 V146 H114 Z" 
@@ -36,7 +38,8 @@
     
     <!-- Right album - green landscape -->
     <rect android:x="198" android:y="90" android:width="72" android:height="56" android:fillColor="#8DD8C8"/>
-    <circle android:centerX="258.5" android:centerY="101.2" android:r="5.8" android:fillColor="#FFF3C4"/>
+    <path android:pathData="M258.5,95.4 A5.8,5.8 0 0,0 252.7,101.2 A5.8,5.8 0 0,0 258.5,107 A5.8,5.8 0 0,0 264.3,101.2 A5.8,5.8 0 0,0 258.5,95.4 Z" 
+          android:fillColor="#FFF3C4"/>
     <path android:pathData="M198,133.7 L212.4,114.6 L222.5,124.7 L239,104.6 L257,124.7 L263.5,118 L270,125.8 L270,146 L198,146 Z" 
           android:fillColor="#3E9C8B"/>
     <path android:pathData="M212.4,114.6 L215.4,117.7 L213.5,123.5 L211.9,120.5 L210.3,123.7 L208.1,120.4 Z" 
