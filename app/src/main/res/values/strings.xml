@@ -290,8 +290,16 @@
     <!-- Putting photos into a folder album -->
     <string name="album_add_photos">Add photos</string>
     <string name="album_options">Album options</string>
-    <string name="album_add_photos_intro">Tap the photos to pick them. Copy leaves the originals where they are. Move writes the copy into the album\'s folder, reads it back to check it came out whole, and only then removes the original.</string>
     <string name="album_pick_none">Nothing selected</string>
+    <string name="selection_options">Selection options</string>
+    <string name="move_to">Move to</string>
+    <string name="set_as_album_cover">Set as album cover</string>
+    <string name="move_to_folder_title">Move the selected photos to which folder?</string>
+    <string name="no_other_folder">There is no other folder to move photos into</string>
+    <string name="moved_to_folder">Moved %1$d photos to %2$s</string>
+    <string name="album_cover_set">Set as cover for %1$s</string>
+    <string name="selection_info_size">%1$s in %2$s</string>
+    <string name="your_library">your library</string>
     <string name="album_pick_count">%1$d selected</string>
     <string name="album_copy_here">Copy here</string>
     <string name="album_move_here">Move here</string>
@@ -301,12 +309,12 @@
     <string name="album_copy_failed">%1$d couldn\'t be copied</string>
     <string name="album_copy_none">Nothing was copied — every photo is still where it was</string>
     <plurals name="album_photos_copied">
-        <item quantity="one">%1$d photo copied into the album</item>
-        <item quantity="other">%1$d photos copied into the album</item>
+        <item quantity="one">%1$d photo copied into %2$s</item>
+        <item quantity="other">%1$d photos copied into %2$s</item>
     </plurals>
     <plurals name="album_photos_moved">
-        <item quantity="one">%1$d photo moved into the album</item>
-        <item quantity="other">%1$d photos moved into the album</item>
+        <item quantity="one">%1$d photo moved into %2$s</item>
+        <item quantity="other">%1$d photos moved into %2$s</item>
     </plurals>
 
     <!-- Counts (programmatic) -->

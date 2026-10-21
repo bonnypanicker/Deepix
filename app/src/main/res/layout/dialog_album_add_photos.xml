@@ -41,20 +41,11 @@
                 android:textAppearance="@style/TextAppearance.Metro.DialogTitle" />
         </LinearLayout>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:includeFontPadding="false"
-            android:lineSpacingExtra="2dp"
-            android:text="@string/album_add_photos_intro"
-            android:textAppearance="@style/TextAppearance.Metro.BodySecondary" />
-
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/albumPickGrid"
             android:layout_width="match_parent"
             android:layout_height="300dp"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="12dp"
             android:overScrollMode="never"
             android:scrollbars="vertical" />
 

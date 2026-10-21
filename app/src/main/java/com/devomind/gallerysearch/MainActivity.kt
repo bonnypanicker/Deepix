@@ -97,6 +97,9 @@ class MainActivity : AppCompatActivity() {
     private var dbRepository: DbRepository? = null
     private var albums: List<GalleryRepository.Album> = emptyList()
     private var imageItems: List<GalleryRepository.MediaItem> = emptyList()
+    /** The album covers the user has chosen by hand, kept outside the repository so the
+     *  gallery can set one without reaching into the library's own state. */
+    private val albumCoverStore by lazy { AlbumCoverStore(this) }
     private var collectionItems: List<GalleryRepository.MediaItem> = emptyList()
     private var videoItems: List<GalleryRepository.MediaItem> = emptyList()
     private var allUris: List<Uri> = emptyList()
@@ -4149,8 +4152,25 @@ class MainActivity : AppCompatActivity() {
      * folder is in the album.
      */
     private fun showAlbumAddPhotosDialog(album: CollectionAlbum) {
-        val alreadyInAlbum = collectionAlbumItems(album).mapTo(HashSet()) { it.uri }
-        val candidates = imageItems.filterNot { it.uri in alreadyInAlbum }
+        showAddPhotosToFolderDialog(
+            targetPath = album.folderPath,
+            alreadyIn = collectionAlbumItems(album).mapTo(HashSet()) { it.uri },
+            targetName = album.name
+        )
+    }
+
+    /**
+     * Adds photos to a folder by picking them out of the rest of the library. A folder reads its
+     * contents on every render, so this writes files rather than editing a list: whatever lands in
+     * that folder is in it. The folder is named by its MediaStore-relative path, so the same picker
+     * fills one of the app's own album folders and a device folder alike.
+     */
+    private fun showAddPhotosToFolderDialog(
+        targetPath: String,
+        alreadyIn: Set<Uri>,
+        targetName: String
+    ) {
+        val candidates = imageItems.filterNot { it.uri in alreadyIn }
         if (candidates.isEmpty()) {
             MetroDialog.message(
                 this,
@@ -4160,11 +4180,12 @@ class MainActivity : AppCompatActivity() {
             )
             return
         }
-        openAlbumAddPhotosDialog(album, candidates)
+        openAlbumAddPhotosDialog(targetPath, targetName, candidates)
     }
 
     private fun openAlbumAddPhotosDialog(
-        album: CollectionAlbum,
+        targetPath: String,
+        targetName: String,
         candidates: List<GalleryRepository.MediaItem>
     ) {
         val view = layoutInflater.inflate(R.layout.dialog_album_add_photos, null)
@@ -4242,7 +4263,7 @@ class MainActivity : AppCompatActivity() {
                     AlbumFolderOps.copyInto(
                         context = this@MainActivity,
                         sources = picked,
-                        relativePath = album.folderPath,
+                        relativePath = targetPath,
                         onProgress = { done, total ->
                             runOnUiThread {
                                 if (running) status.text = getString(progressLabel, done, total)
@@ -4252,7 +4273,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 running = false
                 dialog.dismiss()
-                applyAlbumAddPhotos(result, move)
+                applyAlbumAddPhotos(result, move, targetName)
             }
         }
 
@@ -4267,17 +4288,23 @@ class MainActivity : AppCompatActivity() {
      * that leave go through the app's ordinary delete policy — Recycle Bin when it is on, so a move that
      * surprised someone stays undoable for its usual 30 days.
      */
-    private fun applyAlbumAddPhotos(result: AlbumFolderOps.Result, move: Boolean) {
+    private fun applyAlbumAddPhotos(
+        result: AlbumFolderOps.Result,
+        move: Boolean,
+        targetName: String
+    ) {
         if (result.copied.isEmpty()) {
             // Nothing was verified, so nothing was deleted either.
             MetroBanner.show(this, getString(R.string.album_copy_none))
             return
         }
         val count = result.copied.size
+        // The folder is named rather than called an album: it may be one of the device's own.
         val base = resources.getQuantityString(
             if (move) R.plurals.album_photos_moved else R.plurals.album_photos_copied,
             count,
-            count
+            count,
+            targetName
         )
         val message = if (result.failed.isEmpty()) base
         else "$base · ${getString(R.string.album_copy_failed, result.failed.size)}"
@@ -5374,26 +5401,227 @@ class MainActivity : AppCompatActivity() {
             currentMode == Mode.Browse &&
             adapter.selectionCount == 0
         binding.addAlbumBtn.visibility = if (isAlbumsSection) View.VISIBLE else View.GONE
-        val isFoldersSection = activeSection == Section.Folders &&
-            currentMode == Mode.Browse &&
-            adapter.selectionCount == 0
+        updateOverflowButton()
+    }
+
+    /**
+     * The overflow button in the header, and what it opens. Where the user is decides that: the
+     * folders list sorts itself, an album's own menu adds photos to it, a device folder's menu
+     * fills it, and a long-press selection gets the actions that apply to what is selected.
+     */
+    private fun updateOverflowButton() {
+        val selecting = adapter.selectionCount > 0
         // Inside a saved collection the "more" button is that album's own menu — the way in for adding
         // photos to the album being looked at, rather than going back out to the grid to long-press it.
-        val albumDetailRecord = if (
-            currentMode == Mode.CollectionAlbumDetail && adapter.selectionCount == 0
-        ) {
-            currentCollectionAlbum
-        } else {
-            null
+        val albumDetailRecord = currentCollectionAlbum.takeIf {
+            currentMode == Mode.CollectionAlbumDetail && !selecting
         }
+        // A device folder gets one as well, so the folder on screen is not a dead end: its menu is
+        // the way to add photos to it.
+        val inDeviceFolder = currentMode == Mode.FolderDetail
+        val inFoldersList = activeSection == Section.Folders && currentMode == Mode.Browse
+        val visible = selecting || inDeviceFolder || inFoldersList
         binding.folderOptionsBtn.visibility =
-            if (isFoldersSection || albumDetailRecord != null) View.VISIBLE else View.GONE
-        binding.folderOptionsBtn.contentDescription =
-            getString(if (albumDetailRecord != null) R.string.album_options else R.string.folder_options)
+            if (visible || albumDetailRecord != null) View.VISIBLE else View.GONE
+        binding.folderOptionsBtn.contentDescription = getString(
+            when {
+                selecting -> R.string.selection_options
+                albumDetailRecord != null -> R.string.album_options
+                else -> R.string.folder_options
+            }
+        )
         binding.folderOptionsBtn.setOnClickListener { anchor ->
-            val record = albumDetailRecord
-            if (record != null) showCollectionAlbumMenu(record, anchor) else showFolderOptions(anchor)
+            when {
+                selecting -> showSelectionMenu(anchor)
+                albumDetailRecord != null -> showCollectionAlbumMenu(albumDetailRecord, anchor)
+                inDeviceFolder -> showFolderDetailMenu(anchor)
+                else -> showFolderOptions(anchor)
+            }
         }
+    }
+
+    /**
+     * The overflow for a long-press selection: the actions that apply to what is selected. The
+     * command bar along the bottom already carries select all, share, safe and delete, so this is
+     * the rest of them — and the one place a selection can be sent somewhere else.
+     */
+    private fun showSelectionMenu(anchor: View) {
+        val selected = adapter.selectedUris()
+        if (selected.isEmpty()) return
+        // Every kind of media in the selection, not only the stills: the count, the size and the
+        // delete all cover videos too.
+        val items = selected.mapNotNull { uri -> collectionItems.firstOrNull { it.uri == uri } }
+        val stills = items.filter { it.mediaType == GalleryRepository.MediaType.Image }
+        val options = mutableListOf<MetroDropdownMenu.Item>()
+
+        // A folder is somewhere photos can go. The destinations are the app's own folder
+        // albums — the ones it created and can write into — and they hold stills, so a
+        // selection of nothing but videos has nowhere to go.
+        val destinations = collectionAlbums.filter { it.kind == AlbumKind.Folder }
+        if (destinations.isNotEmpty() && stills.isNotEmpty()) {
+            options += MetroDropdownMenu.Item(getString(R.string.move_to)) {
+                showMoveToFolderPicker(destinations)
+            }
+        }
+        // A cover is one photo, and there has to be an album to cover.
+        val album = currentAlbum
+        if (stills.size == 1 && album != null) {
+            options += MetroDropdownMenu.Item(getString(R.string.set_as_album_cover)) {
+                setAsAlbumCover(album, stills.first())
+            }
+        }
+        // The editor takes one photo at a time, and only stills.
+        val editable = stills.firstOrNull()
+        if (editable != null) {
+            options += MetroDropdownMenu.Item(getString(R.string.edit)) {
+                openEditorFor(editable)
+            }
+        }
+        options += MetroDropdownMenu.Item(getString(R.string.share)) { shareSelected() }
+        options += MetroDropdownMenu.Item(getString(R.string.info)) { showSelectionInfo(items) }
+        options += MetroDropdownMenu.Item(getString(R.string.delete), danger = true) {
+            confirmDeleteSelected()
+        }
+        MetroDropdownMenu.show(anchor, options)
+    }
+
+    /**
+     * Where a selection can be sent: the app's own folder albums. A device folder is the user's
+     * own library organisation, and the app writes into the folders it made.
+     */
+    private fun showMoveToFolderPicker(destinations: List<CollectionAlbum>) {
+        if (destinations.isEmpty()) {
+            MetroDialog.message(
+                this,
+                title = getString(R.string.move_to),
+                message = getString(R.string.no_other_folder),
+                iconRes = R.drawable.ic_fluent_folder_24_regular
+            )
+            return
+        }
+        MetroDialog.singleChoice(
+            context = this,
+            title = getString(R.string.move_to_folder_title),
+            options = destinations.map { it.name },
+            checkedIndex = -1
+        ) { index ->
+            val target = destinations.getOrNull(index) ?: return@singleChoice
+            moveSelectionInto(target)
+        }
+    }
+
+    /**
+     * Moves the selection into a folder album: the copies are written and verified while the
+     * originals are still in the library, and only then do the originals go — through the
+     * ordinary delete policy, so the move stays undoable in the Bin for its usual thirty days.
+     */
+    private fun moveSelectionInto(target: CollectionAlbum) {
+        val picked = adapter.selectedUris()
+        if (picked.isEmpty()) return
+        val sources = imageItems.filter { it.uri in picked }
+        if (sources.isEmpty()) {
+            MetroBanner.show(this, getString(R.string.album_pick_none))
+            return
+        }
+        adapter.clearSelection()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                AlbumFolderOps.copyInto(
+                    context = this@MainActivity,
+                    sources = sources,
+                    relativePath = target.folderPath
+                )
+            }
+            if (result.copied.isEmpty()) {
+                MetroBanner.show(this@MainActivity, getString(R.string.album_copy_none))
+                return@launch
+            }
+            val count = result.copied.size
+            val message = if (result.failed.isEmpty()) {
+                getString(R.string.moved_to_folder, count, target.name)
+            } else {
+                "${getString(R.string.moved_to_folder, count, target.name)} · " +
+                    getString(R.string.album_copy_failed, result.failed.size)
+            }
+            // The copies are on screen before the originals leave, and only the originals whose
+            // copy read back whole are handed to the delete.
+            refreshVisibleItems()?.join()
+            performManagedDelete(result.copiedSources, outcomeLabel = message)
+        }
+    }
+
+    /** The overflow of a device folder: the things that apply to the folder itself. */
+    private fun showFolderDetailMenu(anchor: View) {
+        val folder = currentFolder ?: return
+        val options = mutableListOf<MetroDropdownMenu.Item>()
+        options += MetroDropdownMenu.Item(getString(R.string.album_add_photos)) {
+            showAddPhotosToFolderDialog(
+                targetPath = folder.path,
+                alreadyIn = folderDetailItems(folder).mapTo(HashSet()) { it.uri },
+                targetName = folder.name
+            )
+        }
+        options += MetroDropdownMenu.Item(getString(R.string.info)) {
+            MetroDialog.message(
+                this,
+                title = folder.name,
+                message = getString(
+                    R.string.selection_info_size,
+                    formatStorageSize(folder.sizeBytes),
+                    folder.name
+                ),
+                iconRes = R.drawable.ic_fluent_folder_24_regular
+            )
+        }
+        MetroDropdownMenu.show(anchor, options)
+    }
+
+    /** A size in the units the rest of the app counts in. */
+    private fun formatStorageSize(bytes: Long): String {
+        if (bytes <= 0L) return "0 KB"
+        val units = arrayOf("B", "KB", "MB", "GB", "TB")
+        var value = bytes.toDouble()
+        var unit = 0
+        while (value >= 1024.0 && unit < units.lastIndex) {
+            value /= 1024.0
+            unit++
+        }
+        return if (unit == 0) {
+            "$bytes B"
+        } else {
+            val pattern = if (value >= 10.0) "%.0f %s" else "%.1f %s"
+            String.format(java.util.Locale.getDefault(), pattern, value, units[unit])
+        }
+    }
+
+    /** A cover is one photo, and the album it belongs to is the one on screen. */
+    private fun setAsAlbumCover(album: GalleryRepository.Album, item: GalleryRepository.MediaItem) {
+        if (item.mediaType == GalleryRepository.MediaType.Video) return
+        albumCoverStore.setCover(album.id, item.uri)
+        refreshVisibleItems()
+        MetroBanner.show(this, getString(R.string.album_cover_set, album.name.ifBlank { "album" }))
+    }
+
+    /** The editor takes a single still. */
+    private fun openEditorFor(item: GalleryRepository.MediaItem) {
+        if (item.mediaType != GalleryRepository.MediaType.Image) return
+        val intent = Intent(this, PhotoEditorActivity::class.java).apply {
+            putExtra(PhotoEditorActivity.ExtraUri, item.uri)
+        }
+        startActivity(intent)
+    }
+
+    /** What the selection is: how many, how big, and where they are. */
+    private fun showSelectionInfo(items: List<GalleryRepository.MediaItem>) {
+        val bytes = items.sumOf { it.sizeBytes }
+        val where = currentFolder?.name ?: currentAlbum?.name ?: currentCollectionAlbum?.name
+        val place = where?.takeIf { it.isNotBlank() } ?: getString(R.string.your_library)
+        MetroDialog.message(
+            this,
+            title = resources.getQuantityString(R.plurals.selected_count, items.size, items.size),
+            message = getString(R.string.selection_info_size, formatStorageSize(bytes), place),
+            iconRes = R.drawable.ic_fluent_info_24_regular
+        )
     }
 
     private enum class FolderSort { Name, Newest, MostItems }

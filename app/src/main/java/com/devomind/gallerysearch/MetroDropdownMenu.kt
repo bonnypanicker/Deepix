@@ -37,6 +37,10 @@ object MetroDropdownMenu {
         val context = anchor.context
         val lifecycle = (context as? LifecycleOwner)?.lifecycle
         if (lifecycle?.currentState == Lifecycle.State.DESTROYED) return
+        // A menu is a window on the activity's token. One whose anchor is not on a live
+        // window asks the window manager to add a view to a token that has already gone,
+        // which the framework refuses and the app dies on.
+        if (!anchor.isAttachedToWindow || anchor.windowToken == null) return
         openPopup?.dismiss()
         val menu = column(context, MenuMinWidthDp)
 
@@ -76,14 +80,23 @@ object MetroDropdownMenu {
         slack?.setOnClickListener { popup.dismiss() }
 
         // The popup holds this window's token, so it has to be gone before the window is: an activity
-        // destroyed while a menu is open leaks the PopupDecorView. Dismissing is idempotent, and the
-        // dismiss listener is what unregisters the observer, so a menu that closes normally leaves
-        // nothing behind.
+        // destroyed while a menu is open leaks the PopupDecorView, and the framework reports that
+        // leak as a WindowLeaked exception, which is a crash.
+        //
+        // Stopping is the moment to close it, not destroying: ON_STOP runs while the activity's token
+        // is still good, whereas by ON_DESTROY the window manager is already tearing the window down
+        // and the dismiss can lose the race against it. Dismissing is idempotent, and the dismiss
+        // listener is what unregisters the observer, so a menu that closes normally leaves nothing
+        // behind.
         val observer = object : LifecycleEventObserver {
             override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
-                if (event == Lifecycle.Event.ON_DESTROY) {
-                    popup.dismiss()
-                    source.lifecycle.removeObserver(this)
+                when (event) {
+                    Lifecycle.Event.ON_STOP -> popup.dismiss()
+                    Lifecycle.Event.ON_DESTROY -> {
+                        popup.dismiss()
+                        source.lifecycle.removeObserver(this)
+                    }
+                    else -> {}
                 }
             }
         }
