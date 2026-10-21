@@ -23,7 +23,7 @@
             android:layout_width="20dp"
             android:layout_height="20dp"
             android:contentDescription="@null"
-            android:tint="@color/metroTextSecondary" />
+            android:tint="?attr/accentColor" />
 
         <LinearLayout
             android:id="@+id/permRowCopy"
@@ -39,15 +39,15 @@
                 android:layout_height="wrap_content"
                 android:fontFamily="sans-serif-medium"
                 android:textColor="@color/metroTextPrimary"
-                android:textSize="13.5sp" />
+                android:textSize="14sp" />
 
             <TextView
                 android:id="@+id/permRowSummary"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
-                android:textColor="@color/metroTextSecondary"
-                android:textSize="11.5sp" />
+                android:textColor="@color/onboardingTextSummary"
+                android:textSize="11sp" />
         </LinearLayout>
 
         <TextView
@@ -65,5 +65,5 @@
         android:id="@+id/permRowDivider"
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="@color/metroBgSurface" />
+        android:background="@color/onboardingHairline" />
 </LinearLayout>

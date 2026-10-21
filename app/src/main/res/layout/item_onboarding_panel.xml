@@ -21,10 +21,9 @@
 
         <ImageView
             android:id="@+id/panelIcon"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
             android:layout_gravity="center"
-            android:adjustViewBounds="true"
             android:scaleType="fitCenter"
             android:contentDescription="@null" />
     </FrameLayout>
@@ -35,30 +34,30 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="10dp"
         android:fontFamily="sans-serif-medium"
-        android:letterSpacing="0.09"
+        android:letterSpacing="0.02"
         android:textAllCaps="true"
         android:textColor="?attr/accentColor"
-        android:textSize="12sp" />
+        android:textSize="11sp" />
 
     <TextView
         android:id="@+id/panelTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:fontFamily="sans-serif-light"
-        android:letterSpacing="0"
+        android:letterSpacing="-0.045"
         android:lineSpacingMultiplier="1.05"
         android:textColor="@color/metroTextPrimary"
-        android:textSize="28sp" />
+        android:textSize="38sp" />
 
     <TextView
         android:id="@+id/panelBody"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:lineSpacingMultiplier="1.35"
-        android:maxWidth="280dp"
-        android:textColor="@color/metroTextSecondary"
-        android:textSize="13.5sp" />
+        android:lineSpacingMultiplier="1.55"
+        android:maxWidth="295dp"
+        android:textColor="@color/onboardingTextBody"
+        android:textSize="14sp" />
 
     <View
         android:id="@+id/panelBottomSpacer"
@@ -71,7 +70,7 @@
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_marginTop="18dp"
-        android:background="@color/metroBgSurface"
+        android:background="@color/onboardingHairline"
         android:visibility="gone" />
 
     <ScrollView

@@ -40,7 +40,7 @@ class OnboardingPanel(
 class OnboardingBenefit(@StringRes val label: Int)
 
 /** Which runtime grant a row stands for, and therefore how the tour asks for it. */
-enum class OnboardingPermissionKind { Media, AllFiles, Notifications }
+enum class OnboardingPermissionKind { Media, AllFiles, Notifications, Fingerprint }
 
 /** What can still be done about a permission, as of the last time the page was drawn. */
 enum class OnboardingPermissionState {
@@ -100,7 +100,8 @@ private const val ProTileSize = 84f
  *
  * The permissions page lists what this build actually requests — media access gates every feature,
  * all-files access is what lets Safe and the recycle bin move or delete originals, and notifications
- * are the optional one. Fingerprint is not listed: it has no runtime request and is enrolled inside Safe.
+ * are the optional one. Fingerprint is listed because the reference lists it, but it has no runtime
+ * request: it is enrolled inside Safe, so that row only says where to find it.
  */
 fun onboardingPanels(): List<OnboardingPanel> = listOf(
     OnboardingPanel(
@@ -203,6 +204,13 @@ fun onboardingPanels(): List<OnboardingPanel> = listOf(
                 R.string.onboarding_perm_notifications_summary,
                 OnboardingPermissionKind.Notifications,
                 required = false
+            ),
+            OnboardingPermission(
+                R.drawable.ic_onboarding_perm_fingerprint,
+                R.string.onboarding_perm_fingerprint,
+                R.string.onboarding_perm_fingerprint_summary,
+                OnboardingPermissionKind.Fingerprint,
+                required = false
             )
         )
     )
@@ -281,12 +289,14 @@ class OnboardingPanelAdapter(
             val context = b.root.context
             b.panelRoot.setPadding(metrics.units(28f), 0, metrics.units(28f), metrics.units(4f))
 
-            b.panelEyebrow.setTextSize(metrics.textSp(12f))
-            b.panelEyebrow.margin { bottomMargin = metrics.units(10f) }
-            b.panelTitle.setTextSize(metrics.textSp(28f))
-            b.panelBody.setTextSize(metrics.textSp(13.5f))
-            b.panelBody.margin { topMargin = metrics.units(12f) }
-            b.panelBody.maxWidth = metrics.units(280f)
+            // The reference's own type: an 11-unit eyebrow with a 12-unit gap under it, a
+            // 38-unit light headline, and a 14-unit body under a 16-unit gap.
+            b.panelEyebrow.setTextSize(metrics.textSp(11f))
+            b.panelEyebrow.margin { bottomMargin = metrics.units(12f) }
+            b.panelTitle.setTextSize(metrics.textSp(38f))
+            b.panelBody.setTextSize(metrics.textSp(14f))
+            b.panelBody.margin { topMargin = metrics.units(16f) }
+            b.panelBody.maxWidth = metrics.units(295f)
 
             b.panelEyebrow.text = context.getString(panel.eyebrow)
             b.panelTitle.text = context.getString(panel.title)
@@ -312,9 +322,15 @@ class OnboardingPanelAdapter(
             // picture into a flat silhouette in one colour. The Pro page's single-colour gem is the
             // one that still wants a tint, and it sets its own below.
             b.panelIcon.imageTintList = null
+            // The illustration is drawn at the reference's own size, and scales down if the page has
+            // less room than it needs. The headline is large enough that on a short screen the
+            // illustration's area can come up short, and a clipped picture is worse than a smaller
+            // one - the reference centres its drawing in whatever space is left.
+            b.panelIcon.maxWidth = metrics.units(panel.iconWidth)
+            b.panelIcon.maxHeight = metrics.units(panel.iconHeight)
             b.panelIcon.layoutParams = (b.panelIcon.layoutParams as FrameLayout.LayoutParams).apply {
-                width = metrics.units(panel.iconWidth)
-                height = metrics.units(panel.iconHeight)
+                width = FrameLayout.LayoutParams.MATCH_PARENT
+                height = FrameLayout.LayoutParams.MATCH_PARENT
             }
             b.panelIconArea.layoutParams =
                 (b.panelIconArea.layoutParams as LinearLayout.LayoutParams).apply {
@@ -350,6 +366,10 @@ class OnboardingPanelAdapter(
             b.panelIcon.imageTintList = android.content.res.ColorStateList.valueOf(
                 ContextCompat.getColor(b.root.context, R.color.metroTextPrimary)
             )
+            // The tile is its own size, so the cap the feature pages set on the illustration must
+            // not carry over to this holder.
+            b.panelIcon.maxWidth = tile
+            b.panelIcon.maxHeight = tile
             b.panelIcon.layoutParams = (b.panelIcon.layoutParams as FrameLayout.LayoutParams).apply {
                 width = tile
                 height = tile
@@ -405,7 +425,9 @@ class OnboardingPanelAdapter(
             b.panelIcon.visibility = View.GONE
             b.panelIconArea.layoutParams =
                 (b.panelIconArea.layoutParams as LinearLayout.LayoutParams).apply {
-                    height = metrics.units(38f)
+                    // The reference opens this page with a 26-unit gap above the eyebrow, where
+                    // the feature pages carry an illustration instead.
+                    height = metrics.units(26f)
                     weight = 0f
                 }
             b.panelBottomSpacer.layoutParams =
@@ -433,21 +455,23 @@ class OnboardingPanelAdapter(
             val context = b.root.context
             val r = ItemOnboardingPermRowBinding.inflate(LayoutInflater.from(context), b.permList, false)
             r.permRowIcon.setImageResource(row.iconRes)
+            // The reference's own row metrics: a 21-unit glyph, a 14-unit gap, a 14-unit label over
+            // an 11-unit summary, and 15 units of padding above and below.
             r.permRowIcon.layoutParams = (r.permRowIcon.layoutParams as LinearLayout.LayoutParams).apply {
-                width = metrics.units(20f)
-                height = metrics.units(20f)
+                width = metrics.units(21f)
+                height = metrics.units(21f)
             }
-            r.permRowTitle.setTextSize(metrics.textSp(13.5f))
-            r.permRowSummary.setTextSize(metrics.textSp(11.5f))
+            r.permRowTitle.setTextSize(metrics.textSp(14f))
+            r.permRowSummary.setTextSize(metrics.textSp(11f))
             r.permRowStatus.setTextSize(metrics.textSp(11f))
             r.permRowTitle.text = context.getString(row.label)
             r.permRowSummary.text = context.getString(row.summary)
             r.permRowDivider.layoutParams = (r.permRowDivider.layoutParams as LinearLayout.LayoutParams).apply {
                 height = metrics.hairline()
             }
-            r.permRowContent.setPadding(0, metrics.units(13f), 0, metrics.units(13f))
+            r.permRowContent.setPadding(0, metrics.units(15f), 0, metrics.units(15f))
             r.permRowContent.minimumHeight = metrics.dp(56f)
-            r.permRowCopy.margin { marginStart = metrics.units(16f) }
+            r.permRowCopy.margin { marginStart = metrics.units(14f) }
             r.permRowSummary.margin { topMargin = metrics.units(2f) }
             r.permRowStatus.margin { marginStart = metrics.units(12f) }
 

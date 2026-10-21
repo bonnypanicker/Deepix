@@ -175,6 +175,14 @@ class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
                 )
             else -> outstanding()
         }
+
+        // The reference lists fingerprint unlock among the optional permissions, but Android has no
+        // runtime request for it: it is enrolled from inside Safe. The row says so rather than
+        // pretending it is one tap away, and stays out of the tour's own asks.
+        OnboardingPermissionKind.Fingerprint -> OnboardingPermissionStatus(
+            OnboardingPermissionState.UNAVAILABLE,
+            R.string.onboarding_perm_state_in_safe
+        )
     }
 
     override fun request(kind: OnboardingPermissionKind) {
@@ -200,6 +208,9 @@ class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
                 notificationsAsked = true
                 notificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
+
+            // Fingerprint has no runtime request to make; the row points at Safe instead.
+            OnboardingPermissionKind.Fingerprint -> Unit
         }
     }
 
@@ -304,7 +315,7 @@ class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
             metrics.units(20f), metrics.units(14f), metrics.units(12f), 0
         )
         binding.brandRow.requestLayout()
-        binding.brandText.setTextSize(metrics.textSp(11f))
+        binding.brandText.setTextSize(metrics.textSp(10f))
 
         binding.dismissBtn.layoutParams = binding.dismissBtn.layoutParams.apply {
             width = metrics.dp(48f)

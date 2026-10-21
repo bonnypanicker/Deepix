@@ -25,6 +25,14 @@
     <color name="metroNavBar">#FF000000</color>
     <color name="metroDivider">#FF1A1A1A</color>
 
+    <!-- The first-run tour's own greys, taken from the reference mock's Metro theme: #aaa for the
+         copy under a heading, #999 for a row's summary, #8c8c8c for the brand line, and #252525 for
+         the rule between rows. Scoped to the tour so the app's own text palette is left alone. -->
+    <color name="onboardingTextBody">#FFAAAAAA</color>
+    <color name="onboardingTextSummary">#FF999999</color>
+    <color name="onboardingTextBrand">#FF8C8C8C</color>
+    <color name="onboardingHairline">#FF252525</color>
+
     <!-- Interaction overlays (single tactile language; see drawable/metro_row_pressed) -->
     <color name="metroPressOverlay">#1FFFFFFF</color>
     <color name="metroFocusOverlay">#0FFFFFFF</color>
