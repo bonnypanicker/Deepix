@@ -32,7 +32,8 @@
                 android:layout_width="26dp"
                 android:layout_height="26dp"
                 android:contentDescription="@null"
-                android:src="@drawable/ic_deepix_ai_orb_mono_24" />
+                android:src="@drawable/ic_deepix_ai_orb_mono_24"
+                android:tint="?attr/accentColor" />
 
             <TextView
                 android:layout_width="0dp"
