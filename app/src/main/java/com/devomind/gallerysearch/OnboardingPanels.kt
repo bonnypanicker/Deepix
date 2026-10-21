@@ -40,7 +40,7 @@ class OnboardingPanel(
 class OnboardingBenefit(@StringRes val label: Int)
 
 /** Which runtime grant a row stands for, and therefore how the tour asks for it. */
-enum class OnboardingPermissionKind { Media, AllFiles, Notifications, Fingerprint }
+enum class OnboardingPermissionKind { Media, AllFiles, Notifications }
 
 /** What can still be done about a permission, as of the last time the page was drawn. */
 enum class OnboardingPermissionState {
@@ -100,8 +100,8 @@ private const val ProTileSize = 84f
  *
  * The permissions page lists what this build actually requests — media access gates every feature,
  * all-files access is what lets Safe and the recycle bin move or delete originals, and notifications
- * are the optional one. Fingerprint is listed because the reference lists it, but it has no runtime
- * request: it is enrolled inside Safe, so that row only says where to find it.
+ * are the optional one. Fingerprint is not listed: it has no runtime request and is enrolled inside
+ * Safe.
  */
 fun onboardingPanels(): List<OnboardingPanel> = listOf(
     OnboardingPanel(
@@ -203,13 +203,6 @@ fun onboardingPanels(): List<OnboardingPanel> = listOf(
                 R.string.onboarding_perm_notifications,
                 R.string.onboarding_perm_notifications_summary,
                 OnboardingPermissionKind.Notifications,
-                required = false
-            ),
-            OnboardingPermission(
-                R.drawable.ic_onboarding_perm_fingerprint,
-                R.string.onboarding_perm_fingerprint,
-                R.string.onboarding_perm_fingerprint_summary,
-                OnboardingPermissionKind.Fingerprint,
                 required = false
             )
         )

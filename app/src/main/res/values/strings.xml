@@ -408,8 +408,6 @@
     <string name="onboarding_perm_files_summary">Only for Safe and the recycle bin — lets Pixa move or delete the originals you choose</string>
     <string name="onboarding_perm_notifications">Notifications</string>
     <string name="onboarding_perm_notifications_summary">Optional — progress while indexing runs in the background</string>
-    <string name="onboarding_perm_fingerprint">Fingerprint unlock</string>
-    <string name="onboarding_perm_fingerprint_summary">Optional — open your Safe instantly instead of typing a password</string>
 
     <!-- The word at the right end of each permission row. Tapping an outstanding row asks for it. -->
     <string name="onboarding_perm_state_granted">Granted</string>
@@ -419,7 +417,6 @@
     <string name="onboarding_perm_state_not_needed">Not needed</string>
     <string name="onboarding_perm_state_blocked">Blocked</string>
     <string name="onboarding_perm_state_not_available">Not available</string>
-    <string name="onboarding_perm_state_in_safe">Set up in Safe</string>
     <string name="faces_section">FACES</string>
 
     <!-- Search page: pre-query empty state -->
