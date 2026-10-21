@@ -1,66 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Smart cleanup panel (page 4) — a photo before and after compression, and the saving.
+
+  Converted from the reference mock's SVG. The three photographs are clipped groups, so each is
+  cropped to its own frame the way the reference crops it.
+
+  The mock sets its three labels as live <text>; a vector drawable cannot hold text, so "20 MB",
+  "4 MB" and "−80%" are traced here as stroked outlines at the same sizes, weights, and
+  positions the mock used. They read as the mock's labels rather than as a substitute for them.
+
+  The blue family follows the theme accent; the photographs stay fixed.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="300dp"
     android:height="220dp"
     android:viewportWidth="300"
     android:viewportHeight="220">
-    
-    <!-- Left photo tile - before compression -->
-    <rect android:x="12" android:y="18" android:width="124" android:height="126" android:fillColor="#0078D4"/>
-    <path android:pathData="M24,30 h100 v72 h-100 z" android:fillColor="#5CC8F2"/>
-    <circle android:centerX="108" android:centerY="44.4" android:r="7.1" android:fillColor="#FFD45C"/>
-    <path android:pathData="M24,86.2 L44,61.7 L58,74.6 L81,48.7 L106,74.6 L115,66 L124,76.1 L124,102 L24,102 Z" 
-          android:fillColor="#1E8AA6"/>
-    <path android:pathData="M44,61.7 L48.2,65.6 L45.5,73.1 L43.3,69.2 L41.1,73.3 L38,69 Z" 
-          android:fillColor="#F4F8FB"/>
-    <path android:pathData="M81,48.7 L88.5,56.5 L84.8,60.8 L81.6,56.7 L78.4,61 L74.1,56.5 Z" 
-          android:fillColor="#F4F8FB"/>
-    <path android:pathData="M24,91.9 L40,80.4 L58,91.9 L76,79 L98,93.4 L112,86.2 L124,94.8 L124,102 L24,102 Z" 
-          android:fillColor="#0B607C"/>
-    
-    <!-- Text stubs left -->
-    <rect android:x="24" android:y="111" android:width="62" android:height="4" android:fillColor="#FFFFFF"/>
-    <rect android:x="24" android:y="122" android:width="42" android:height="3" android:fillColor="#B9DDF1"/>
-    
-    <!-- Duplicate badge left (grey circle with slash) -->
-    <rect android:x="31" android:y="37" android:width="20" android:height="20" android:fillColor="#000000" android:fillAlpha="0.28"/>
-    <rect android:x="32" android:y="38" android:width="18" android:height="18" android:strokeColor="#FFFFFF" android:strokeWidth="2" android:fillColor="#00000000"/>
-    
-    <!-- Right photo tile - after compression -->
-    <rect android:x="164" android:y="18" android:width="124" android:height="126" android:fillColor="#164F75"/>
-    <path android:pathData="M176,30 h100 v72 h-100 z" android:fillColor="#5CC8F2"/>
-    <circle android:centerX="260" android:centerY="44.4" android:r="7.1" android:fillColor="#FFD45C"/>
-    <path android:pathData="M176,86.2 L196,61.7 L210,74.6 L233,48.7 L258,74.6 L267,66 L276,76.1 L276,102 L176,102 Z" 
-          android:fillColor="#1E8AA6"/>
-    <path android:pathData="M196,61.7 L200.2,65.6 L197.5,73.1 L195.3,69.2 L193.1,73.3 L190,69 Z" 
-          android:fillColor="#F4F8FB"/>
-    <path android:pathData="M233,48.7 L240.5,56.5 L236.8,60.8 L233.6,56.7 L230.4,61 L226.1,56.5 Z" 
-          android:fillColor="#F4F8FB"/>
-    <path android:pathData="M176,91.9 L192,80.4 L210,91.9 L228,79 L250,93.4 L264,86.2 L276,94.8 L276,102 L176,102 Z" 
-          android:fillColor="#0B607C"/>
-    
-    <!-- Text stubs right -->
-    <rect android:x="176" android:y="111" android:width="62" android:height="4" android:fillColor="#FFFFFF"/>
-    <rect android:x="176" android:y="122" android:width="42" android:height="3" android:fillColor="#B9DDF1"/>
-    
-    <!-- Download icon right (green badge) -->
-    <rect android:x="183" android:y="37" android:width="20" android:height="20" android:fillColor="#00A4EF"/>
-    <path android:pathData="M188,49.5 L192,53.5 L199,44.5" android:strokeColor="#FFFFFF" android:strokeWidth="2.6" 
-          android:fillColor="#00000000" android:strokeLinecap="square" android:strokeLinejoin="miter"/>
-    
-    <!-- Bottom bar with file sizes and savings -->
-    <rect android:x="12" android:y="156" android:width="276" android:height="46" android:fillColor="#005A9E"/>
-    <path android:pathData="M22,165 h42 v28 h-42 z" android:fillColor="#5CC8F2"/>
-    <circle android:centerX="57.3" android:centerY="170.6" android:r="3.4" android:fillColor="#FFD45C"/>
-    <path android:pathData="M22,186.8 L30.4,177.3 L36.3,182.4 L45.9,172.3 L56.4,182.4 L60.2,179 L64,182.9 L64,193 L22,193 Z" 
-          android:fillColor="#1E8AA6"/>
-    <path android:pathData="M22,189.1 L28.7,184.6 L36.3,189.1 L43.8,184 L53.1,189.6 L59,186.8 L64,190.2 L64,193 L22,193 Z" 
-          android:fillColor="#0B607C"/>
-    
-    <!-- Size labels and arrow -->
-    <path android:pathData="M94,183" android:strokeColor="#B9DDF1" android:strokeWidth="10" android:strokeLinecap="square"/>
-    <path android:pathData="M120,179 H146 M141,174 L146,179 L141,184" android:strokeColor="#FFFFFF" android:strokeWidth="2.4" 
-          android:fillColor="#00000000" android:strokeLinecap="square" android:strokeLinejoin="miter"/>
-    
-    <!-- Green savings badge -->
-    <rect android:x="222" android:y="168" android:width="56" android:height="22" android:fillColor="#00A4EF"/>
+
+    <!-- The photo before compression -->
+    <path
+        android:fillColor="?attr/accentColor"
+        android:pathData="M12,18h124v126H12z" />
+    <group>
+        <clip-path>
+            <path android:pathData="M24,30h100v72H24z" />
+        </clip-path>
+        <path
+            android:fillColor="#5CC8F2"
+            android:pathData="M24,30h100v72H24z" />
+        <path
+            android:fillColor="#FFD45C"
+            android:pathData="M108,37.3a7.1,7.1 0,1 0,0 14.2a7.1,7.1 0,1 0,0 -14.2" />
+        <path
+            android:fillColor="#1E8AA6"
+            android:pathData="M24,86.2L44,61.7L58,74.6L81,48.7L106,74.6L115,66L124,76.1L124,102L24,102Z" />
+        <path
+            android:fillColor="#F4F8FB"
+            android:pathData="M44,61.7L48.2,65.6L45.5,73.1L43.3,69.2L41.1,73.3L38,69Z" />
+        <path
+            android:fillColor="#F4F8FB"
+            android:pathData="M81,48.7L88.5,56.5L84.8,60.8L81.6,56.7L78.4,61L74.1,56.5Z" />
+        <path
+            android:fillColor="#0B607C"
+            android:pathData="M24,91.9L40,80.4L58,91.9L76,79L98,93.4L112,86.2L124,94.8L124,102L24,102Z" />
+    </group>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,111h62v4H24z" />
+    <path
+        android:fillColor="?attr/accentColorMuted"
+        android:pathData="M24,122h42v3H24z" />
+
+    <!-- The photo after compression -->
+    <path
+        android:fillColor="?attr/accentColorDark"
+        android:pathData="M164,18h124v126H164z" />
+    <group>
+        <clip-path>
+            <path android:pathData="M176,30h100v72H176z" />
+        </clip-path>
+        <path
+            android:fillColor="#5CC8F2"
+            android:pathData="M176,30h100v72H176z" />
+        <path
+            android:fillColor="#FFD45C"
+            android:pathData="M260,37.3a7.1,7.1 0,1 0,0 14.2a7.1,7.1 0,1 0,0 -14.2" />
+        <path
+            android:fillColor="#1E8AA6"
+            android:pathData="M176,86.2L196,61.7L210,74.6L233,48.7L258,74.6L267,66L276,76.1L276,102L176,102Z" />
+        <path
+            android:fillColor="#F4F8FB"
+            android:pathData="M196,61.7L200.2,65.6L197.5,73.1L195.3,69.2L193.1,73.3L190,69Z" />
+        <path
+            android:fillColor="#F4F8FB"
+            android:pathData="M233,48.7L240.5,56.5L236.8,60.8L233.6,56.7L230.4,61L226.1,56.5Z" />
+        <path
+            android:fillColor="#0B607C"
+            android:pathData="M176,91.9L192,80.4L210,91.9L228,79L250,93.4L264,86.2L276,94.8L276,102L176,102Z" />
+    </group>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M176,111h62v4H176z" />
+    <path
+        android:fillColor="?attr/accentColorMuted"
+        android:pathData="M176,122h42v3H176z" />
+
+    <!-- The pair of dashes between the two photos -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M143,63h14v3H143z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M143,70h14v3H143z" />
+
+    <!-- The badge on the photo before: a dimmed frame, to mark it as the one being replaced -->
+    <path
+        android:fillColor="#000000"
+        android:fillAlpha="0.28"
+        android:pathData="M31,37h20v20H31z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M32,38h18v18H32z" />
+
+    <!-- The badge on the photo after: the tick, to mark it as the one kept -->
+    <path
+        android:fillColor="?attr/accentColorBright"
+        android:pathData="M183,37h20v20H183z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.6"
+        android:strokeLineCap="square"
+        android:strokeLineJoin="miter"
+        android:pathData="M188,49.5L192,53.5L199,44.5" />
+
+    <!-- The savings bar across the bottom -->
+    <path
+        android:fillColor="?attr/accentColorDarker"
+        android:pathData="M12,156h276v46H12z" />
+
+    <!-- Its thumbnail -->
+    <group>
+        <clip-path>
+            <path android:pathData="M22,165h42v28H22z" />
+        </clip-path>
+        <path
+            android:fillColor="#5CC8F2"
+            android:pathData="M22,165h42v28H22z" />
+        <path
+            android:fillColor="#FFD45C"
+            android:pathData="M57.3,167.2a3.4,3.4 0,1 0,0 6.8a3.4,3.4 0,1 0,0 -6.8" />
+        <path
+            android:fillColor="#1E8AA6"
+            android:pathData="M22,186.8L30.4,177.3L36.3,182.4L45.9,172.3L56.4,182.4L60.2,179L64,182.9L64,193L22,193Z" />
+        <path
+            android:fillColor="#0B607C"
+            android:pathData="M22,189.1L28.7,184.6L36.3,189.1L43.8,184L53.1,189.6L59,186.8L64,190.2L64,193L22,193Z" />
+    </group>
+
+    <!-- "20 MB" — the size before, in the muted tone -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="?attr/accentColorMuted"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M78.2,178.2C78.2,176.6 79.5,175.5 81.3,175.5C83.1,175.5 84.4,176.6 84.4,178C84.4,179.2 83.6,180 82.4,180.8L78.2,183.2H84.8" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="?attr/accentColorMuted"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M89.3,175.6C90.9,175.6 92,177 92,179.4C92,181.8 90.9,183.2 89.3,183.2C87.7,183.2 86.5,181.8 86.5,179.4C86.5,177 87.7,175.6 89.3,175.6Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="?attr/accentColorMuted"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="square"
+        android:strokeLineJoin="miter"
+        android:pathData="M93.5,183.2V175.8L97.2,181L100.9,175.8V183.2" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="?attr/accentColorMuted"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="square"
+        android:strokeLineJoin="miter"
+        android:pathData="M103,183.2V175.8H106.4C107.7,175.8 108.5,176.5 108.5,177.6C108.5,178.7 107.7,179.4 106.4,179.4H103M103,179.4H106.8C108.2,179.4 109,180.2 109,181.3C109,182.4 108.2,183.2 106.8,183.2H103" />
+
+    <!-- The arrow from the old size to the new one -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="square"
+        android:strokeLineJoin="miter"
+        android:pathData="M120,179H146M141,174L146,179L141,184" />
+
+    <!-- "4 MB" — the size after, in the bright tone -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="square"
+        android:strokeLineJoin="miter"
+        android:pathData="M173.2,175.8L168.8,180.4H175.8M173.2,175.8V183.2" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="square"
+        android:strokeLineJoin="miter"
+        android:pathData="M176.8,183.2V175.8L180.6,181.2L184.4,175.8V183.2" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="square"
+        android:strokeLineJoin="miter"
+        android:pathData="M186.2,183.2V175.8H189.5C190.7,175.8 191.4,176.6 191.4,177.6C191.4,178.6 190.7,179.3 189.5,179.3H186.2M186.2,179.3H189.8C191.1,179.3 191.9,180.1 191.9,181.2C191.9,182.3 191.1,183.2 189.8,183.2H186.2" />
+
+    <!-- The saving badge -->
+    <path
+        android:fillColor="?attr/accentColorBright"
+        android:pathData="M222,168h56v22H222z" />
+
+    <!-- "−80%" — the saving, in white -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="butt"
+        android:pathData="M235,179.2H240" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M244.5,174.8C245.9,174.8 247,175.6 247,176.8C247,178 245.9,178.8 244.5,178.8C243.1,178.8 242,178 242,176.8C242,175.6 243.1,174.8 244.5,174.8Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M244.5,178.8C246,178.8 247.1,179.7 247.1,181C247.1,182.3 246,183.2 244.5,183.2C243,183.2 241.9,182.3 241.9,181C241.9,179.7 243,178.8 244.5,178.8Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M252.5,174.6C254.4,174.6 255.6,176.1 255.6,178.9C255.6,181.7 254.4,183.2 252.5,183.2C250.6,183.2 249.4,181.7 249.4,178.9C249.4,176.1 250.6,174.6 252.5,174.6Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M265.4,174.6L258.6,183.2" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.9"
+        android:pathData="M259.6,175.1a1.5,1.5 0,1 0,0 3a1.5,1.5 0,1 0,0 -3" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.9"
+        android:pathData="M264.4,179.7a1.5,1.5 0,1 0,0 3a1.5,1.5 0,1 0,0 -3" />
 </vector>

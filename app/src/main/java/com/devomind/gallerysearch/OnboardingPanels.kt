@@ -25,7 +25,10 @@ import kotlin.math.roundToInt
  */
 class OnboardingPanel(
     @DrawableRes val iconRes: Int,
-    val iconSize: Float,
+    /** Width of the illustration in mock units. The reference draws each one to the panel's width. */
+    val iconWidth: Float,
+    /** Height of the illustration in mock units, so the page keeps the reference's proportions. */
+    val iconHeight: Float,
     @StringRes val eyebrow: Int,
     @StringRes val title: Int,
     @StringRes val body: Int,
@@ -78,6 +81,18 @@ interface OnboardingPermissionHost {
 }
 
 /**
+ * The reference draws each feature illustration to the full width of its panel and holds it at the
+ * SVG's own 300 x 220 proportions, so the picture is the page's upper half rather than a small mark
+ * floating in it. The panel column is 304 units wide, so a 300-unit illustration fills it without
+ * touching the text gutter.
+ */
+private const val IllustrationWidth = 300f
+private const val IllustrationHeight = 220f
+
+/** The Pro page's glyph sits on a square accent tile, not on the wide feature illustration. */
+private const val ProTileSize = 84f
+
+/**
  * The tour's contents: what Pixa does, what costs extra, then what it needs. The permissions page stays
  * last because the tour's own chrome treats the final page specially — "Get started" and the blocked
  * finish both hang on it, and the dismiss button jumps to it. The Pro page therefore sits before it,
@@ -90,56 +105,64 @@ interface OnboardingPermissionHost {
 fun onboardingPanels(): List<OnboardingPanel> = listOf(
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_mark,
-        iconSize = 100f,
+        iconWidth = IllustrationWidth,
+        iconHeight = IllustrationHeight,
         eyebrow = R.string.onboarding_welcome_eyebrow,
         title = R.string.onboarding_welcome_title,
         body = R.string.onboarding_welcome_body
     ),
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_search,
-        iconSize = 72f,
+        iconWidth = IllustrationWidth,
+        iconHeight = IllustrationHeight,
         eyebrow = R.string.onboarding_search_eyebrow,
         title = R.string.onboarding_search_title,
         body = R.string.onboarding_search_body
     ),
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_people,
-        iconSize = 72f,
+        iconWidth = IllustrationWidth,
+        iconHeight = IllustrationHeight,
         eyebrow = R.string.onboarding_people_eyebrow,
         title = R.string.onboarding_people_title,
         body = R.string.onboarding_people_body
     ),
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_smart_albums,
-        iconSize = 72f,
+        iconWidth = IllustrationWidth,
+        iconHeight = IllustrationHeight,
         eyebrow = R.string.onboarding_smart_albums_eyebrow,
         title = R.string.onboarding_smart_albums_title,
         body = R.string.onboarding_smart_albums_body
     ),
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_smart_cleanup,
-        iconSize = 72f,
+        iconWidth = IllustrationWidth,
+        iconHeight = IllustrationHeight,
         eyebrow = R.string.onboarding_smart_cleanup_eyebrow,
         title = R.string.onboarding_smart_cleanup_title,
         body = R.string.onboarding_smart_cleanup_body
     ),
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_editor,
-        iconSize = 72f,
+        iconWidth = IllustrationWidth,
+        iconHeight = IllustrationHeight,
         eyebrow = R.string.onboarding_editor_eyebrow,
         title = R.string.onboarding_editor_title,
         body = R.string.onboarding_editor_body
     ),
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_safe,
-        iconSize = 72f,
+        iconWidth = IllustrationWidth,
+        iconHeight = IllustrationHeight,
         eyebrow = R.string.onboarding_safe_eyebrow,
         title = R.string.onboarding_safe_title,
         body = R.string.onboarding_safe_body
     ),
     OnboardingPanel(
         iconRes = R.drawable.ic_onboarding_pro,
-        iconSize = 84f,
+        iconWidth = ProTileSize,
+        iconHeight = ProTileSize,
         eyebrow = R.string.onboarding_pro_eyebrow,
         title = R.string.onboarding_pro_title,
         body = R.string.onboarding_pro_body,
@@ -154,7 +177,8 @@ fun onboardingPanels(): List<OnboardingPanel> = listOf(
     ),
     OnboardingPanel(
         iconRes = 0,
-        iconSize = 0f,
+        iconWidth = 0f,
+        iconHeight = 0f,
         eyebrow = R.string.onboarding_perm_eyebrow,
         title = R.string.onboarding_perm_title,
         body = R.string.onboarding_perm_body,
@@ -273,22 +297,24 @@ class OnboardingPanelAdapter(
             else bindFeaturePage(panel)
         }
 
-        /** Glyph in the larger share of the spare height, copy settled above a gap below it. */
+        /** The illustration in the larger share of the spare height, copy settled above a gap below it. */
         private fun bindFeaturePage(panel: OnboardingPanel) {
             b.panelIconArea.visibility = View.VISIBLE
             b.panelIcon.visibility = View.VISIBLE
             b.panelIcon.setImageResource(panel.iconRes)
             // Every glyph property is set here rather than "reset" here, because ViewPager2 hands a
             // recycled holder to whichever page needs one next: the Pro page paints its glyph on an
-            // accent tile in white, and a search icon must not inherit that.
+            // accent tile in white, and a search illustration must not inherit that.
             b.panelIcon.background = null
             b.panelIcon.setPadding(0, 0, 0, 0)
-            b.panelIcon.imageTintList = android.content.res.ColorStateList.valueOf(
-                DesignTokens.accent(b.root.context)
-            )
+            // No tint. These illustrations are scenes, not a single glyph: the panel backdrop follows
+            // the accent inside the vector itself, and tinting the whole drawable would flatten the
+            // picture into a flat silhouette in one colour. The Pro page's single-colour gem is the
+            // one that still wants a tint, and it sets its own below.
+            b.panelIcon.imageTintList = null
             b.panelIcon.layoutParams = (b.panelIcon.layoutParams as FrameLayout.LayoutParams).apply {
-                width = metrics.units(panel.iconSize)
-                height = metrics.units(panel.iconSize)
+                width = metrics.units(panel.iconWidth)
+                height = metrics.units(panel.iconHeight)
             }
             b.panelIconArea.layoutParams =
                 (b.panelIconArea.layoutParams as LinearLayout.LayoutParams).apply {
@@ -315,8 +341,8 @@ class OnboardingPanelAdapter(
          * promotional gesture, and white on accent is the pairing the CTA already uses.
          */
         private fun bindBenefitsPage(panel: OnboardingPanel) {
-            val tile = metrics.units(panel.iconSize)
-            val glyphPadding = metrics.units(panel.iconSize * 0.26f)
+            val tile = metrics.units(panel.iconWidth)
+            val glyphPadding = metrics.units(panel.iconWidth * 0.26f)
             b.panelIcon.visibility = View.VISIBLE
             b.panelIcon.setImageResource(panel.iconRes)
             b.panelIcon.setBackgroundResource(R.drawable.onboarding_pro_tile_bg)

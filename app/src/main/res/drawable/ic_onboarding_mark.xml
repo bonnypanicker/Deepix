@@ -1,142 +1,209 @@
-<!-- Metro-style collage icon for Welcome panel (page 0). Exact spec from landing mock: two tiles, one dark blue with a photo mosaic inside, one medium blue with a portrait. Strokes are square caps/mitters; fills are your Deepix/Metro palette. -->
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Welcome panel (page 0) — the app identity mark: a collage of photos held on the device.
+
+  Converted from the reference mock's SVG. Two tiles overlap: a deep-blue tile carrying a photo
+  of three people, and a brighter tile carrying a photo of a cake. The clipped groups reproduce the
+  mock's <clipPath> exactly, so the photo content is cropped to its panel the way it is in the
+  reference rather than spilling over the tile.
+
+  The blue family follows the theme accent (see the accent ramp in values/attrs.xml) so the mark
+  moves with the user's chosen palette. The photographic content — skin, hair, cake, the yellow
+  tier of the backdrop — stays fixed: those are the picture, not the chrome.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="300dp"
     android:height="220dp"
     android:viewportWidth="300"
     android:viewportHeight="220">
 
-    <!-- Left tile: #0078D4 background, photo collage inside -->
-    <rect
-        android:fillColor="#0078D4"
-        android:x="14"
-        android:y="18"
-        android:width="150"
-        android:height="150" />
+    <!-- Left tile: the deep-blue panel -->
+    <path
+        android:fillColor="?attr/accentColor"
+        android:pathData="M14,18h150v150H14z" />
 
-    <!-- Photo area: white rectangle -->
-    <rect
+    <!-- Its white caption bed, which the photo is clipped into -->
+    <path
         android:fillColor="#F4F4F4"
-        android:x="28"
-        android:y="32"
-        android:width="122"
-        android:height="122" />
+        android:pathData="M28,32h122v122H28z" />
 
-    <!-- Clip path for image content in left tile -->
+    <!-- The photo: three people, cropped to the top of the caption bed -->
+    <group>
+        <clip-path>
+            <path android:pathData="M28,32h122v92H28z" />
+        </clip-path>
+        <path
+            android:fillColor="#F6C6A9"
+            android:pathData="M28,32h122v92H28z" />
+
+        <!-- heart on the backdrop -->
+        <path
+            android:fillColor="#E8546B"
+            android:pathData="M135.4,52.6C126.4,46.6 130.4,38.6 135.4,43.6C140.4,38.6 144.4,46.6 135.4,52.6Z" />
+
+        <!-- the person in the dark jacket -->
+        <path
+            android:fillColor="#2B2830"
+            android:pathData="M51.300000000000004,65.3H70.5A6.7,6.7 0 0 1 77.2,72V91.2A6.7,6.7 0 0 1 70.5,97.9H51.300000000000004A6.7,6.7 0 0 1 44.6,91.2V72A6.7,6.7 0 0 1 51.300000000000004,65.3Z" />
+        <path
+            android:fillColor="?attr/accentColorDark"
+            android:pathData="M36.5,126L36.5,105.8Q38.5,90.9 49,90.9L72.9,90.9Q83.4,90.9 85.3,105.8L85.3,126Z" />
+
+        <!-- their face and hair -->
+        <path
+            android:fillColor="#A9714F"
+            android:pathData="M53,68.8h16v24.1H53z" />
+        <path
+            android:fillColor="#C98B6B"
+            android:pathData="M60.9,51.3a13.3,17.5 0,1 0,0 35a13.3,17.5 0,1 0,0 -35" />
+        <path
+            android:fillColor="#2B2830"
+            android:pathData="M46.5,68.8A14.4,18.6 0,0 1,75.3 68.8L75.3,78.4L70.5,65Q60.9,58 51.4,65L46.5,78.4Z" />
+
+        <!-- the person in the white top -->
+        <path
+            android:fillColor="#F4F4F4"
+            android:pathData="M92.7,126L92.7,104.8Q94.6,89 105.1,89L129,89Q139.5,89 141.5,104.8L141.5,126Z" />
+        <path
+            android:fillColor="#6F4334"
+            android:pathData="M109.1,67h16v24.1h-16z" />
+        <path
+            android:fillColor="#8D5745"
+            android:pathData="M117.1,49.5a13.3,17.5 0,1 0,0 35a13.3,17.5 0,1 0,0 -35" />
+        <path
+            android:fillColor="#1E1B22"
+            android:pathData="M102.7,67A14.4,18.6 0,0 1,131.5 67L131.5,71.9L126.6,63.1Q117.1,56.1 107.5,63.1L102.7,71.9Z" />
+
+        <!-- the person in the yellow top, in front of the other two -->
+        <path
+            android:fillColor="#FFD45C"
+            android:pathData="M69.5,126L69.5,113.9Q71,105.6 79.5,105.6L98.5,105.6Q107,105.6 108.5,113.9L108.5,126Z" />
+        <path
+            android:fillColor="#C8966F"
+            android:pathData="M82.7,87.2h12.6v20.4H82.7z" />
+        <path
+            android:fillColor="#E3B592"
+            android:pathData="M89,73.7a10.5,13.5 0,1 0,0 27a10.5,13.5 0,1 0,0 -27" />
+        <path
+            android:fillColor="#6B3F2A"
+            android:pathData="M77.4,87.2A11.6,14.6 0,0 1,100.6 87.2L100.6,91L96.6,84.2Q89,78.8 81.4,84.2L77.4,91Z" />
+    </group>
+
+    <!-- The caption on the white bed -->
     <path
-        android:pathData="M28,32h122v92H28z"
-        android:fillColor="#5CC8F2" />
-
-    <!-- Sun circle in left photo -->
-    <circle
-        android:fillColor="#FFD45C"
-        android:centerX="130.5"
-        android:centerY="50.4"
-        android:radius="8.8" />
-
-    <!-- Landscape polygons for mountains -->
-    <path
-        android:pathData="M28,103.8L52.4,72.5L69.5,89L97.5,55.9L128,89L139,78L150,90.9L150,124H28z"
-        android:fillColor="#1E8AA6" />
-
-    <!-- Highlight triangles -->
-    <path
-        android:pathData="M52.4,72.5L57.5,77.4L54.3,87L51.6,82.1L48.8,87.3L45.1,81.9z"
-        android:fillColor="#F4F8FB" />
-
-    <path
-        android:pathData="M97.5,55.9L106.7,65.9L102.1,71.3L98.3,66.1L94.4,71.6L89.1,65.9z"
-        android:fillColor="#F4F8FB" />
-
-    <!-- Horizon line polygon -->
-    <path
-        android:pathData="M28,111.1L47.5,96.4L69.5,111.1L91.4,94.6L118.3,113L135.4,103.8L150,114.8L150,124H28z"
-        android:fillColor="#0B607C" />
-
-    <!-- Text bars in left photo -->
-    <rect
         android:fillColor="#BCC8D2"
-        android:x="38"
-        android:y="134"
-        android:width="62"
-        android:height="4" />
-    <rect
+        android:pathData="M38,134h62v4H38z" />
+    <path
         android:fillColor="#D6DEE5"
-        android:x="38"
-        android:y="143"
-        android:width="40"
-        android:height="3" />
+        android:pathData="M38,143h40v3H38z" />
 
-    <!-- Right tile: #00A4EF background, different photo content -->
-    <rect
-        android:fillColor="#00A4EF"
-        android:x="133"
-        android:y="70"
-        android:width="150"
-        android:height="132" />
-
-    <!-- Image clip for right tile -->
+    <!-- Right tile: the brighter panel, overlapping the first -->
     <path
-        android:pathData="M148,85h120v86H148z"
-        android:fillColor="#F2B49B" />
+        android:fillColor="?attr/accentColorBright"
+        android:pathData="M133,70h150v132H133z" />
 
-    <!-- Sun in right photo -->
-    <circle
-        android:fillColor="#FFE3A3"
-        android:centerX="253.6"
-        android:centerY="100.5"
-        android:radius="8.3" />
+    <!-- The photo: a cake on a stand, cropped to the tile's photo area -->
+    <group>
+        <clip-path>
+            <path android:pathData="M148,85h120v86H148z" />
+        </clip-path>
+        <path
+            android:fillColor="#F2B49B"
+            android:pathData="M148,85h120v86H148z" />
 
-    <!-- Mountain silhouette in right photo -->
+        <!-- the table and its cloth -->
+        <path
+            android:fillColor="#8E3556"
+            android:pathData="M148,153.8h120v17.2H148z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M208,148.8a40,5 0,1 0,0 10a40,5 0,1 0,0 -10" />
+
+        <!-- the cake's lower tier -->
+        <path
+            android:fillColor="#C65D7B"
+            android:pathData="M180,131.8h56v22H180z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M180,131.8h56v6H180z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M188,134.8H188A2,2 0 0 1 190,136.8V141.8A2,2 0 0 1 188,143.8H188A2,2 0 0 1 186,141.8V136.8A2,2 0 0 1 188,134.8Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M206,134.8H206A2,2 0 0 1 208,136.8V139.8A2,2 0 0 1 206,141.8H206A2,2 0 0 1 204,139.8V136.8A2,2 0 0 1 206,134.8Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M224,134.8H224A2,2 0 0 1 226,136.8V142.8A2,2 0 0 1 224,144.8H224A2,2 0 0 1 222,142.8V136.8A2,2 0 0 1 224,134.8Z" />
+
+        <!-- the cake's upper tier -->
+        <path
+            android:fillColor="#8E3556"
+            android:pathData="M190,115.8h36v16H190z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M190,115.8h36v6H190z" />
+
+        <!-- the candles -->
+        <path
+            android:fillColor="?attr/accentColorLight"
+            android:pathData="M197.5,103.8h3v12H197.5z" />
+        <path
+            android:fillColor="#FFD45C"
+            android:pathData="M206.5,103.8h3v12H206.5z" />
+        <path
+            android:fillColor="?attr/accentColorLight"
+            android:pathData="M215.5,103.8h3v12H215.5z" />
+
+        <!-- the candle flames -->
+        <path
+            android:fillColor="#FFD45C"
+            android:pathData="M199,97.8L202,102.3L199,104.3L196,102.3Z" />
+        <path
+            android:fillColor="#FFD45C"
+            android:pathData="M208,97.8L211,102.3L208,104.3L205,102.3Z" />
+        <path
+            android:fillColor="#FFD45C"
+            android:pathData="M217,97.8L220,102.3L217,104.3L214,102.3Z" />
+
+        <!-- confetti -->
+        <path
+            android:fillColor="#FFD45C"
+            android:pathData="M162.4,101.7a2.2,2.2 0,1 0,0 4.4a2.2,2.2 0,1 0,0 -4.4" />
+        <path
+            android:fillColor="?attr/accentColorLight"
+            android:pathData="M256,99.8a2.4,2.4 0,1 0,0 4.8a2.4,2.4 0,1 0,0 -4.8" />
+        <path
+            android:fillColor="?attr/accentColorLight"
+            android:pathData="M167.2,130.3a2,2 0,1 0,0 4a2,2 0,1 0,0 -4" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M251.2,125.8a2.2,2.2 0,1 0,0 4.4a2.2,2.2 0,1 0,0 -4.4" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M184,93.5a1.8,1.8 0,1 0,0 3.6a1.8,1.8 0,1 0,0 -3.6" />
+        <path
+            android:fillColor="#FFD45C"
+            android:pathData="M234.4,91.8a1.8,1.8 0,1 0,0 3.6a1.8,1.8 0,1 0,0 -3.6" />
+    </group>
+
+    <!-- The caption on the brighter tile -->
     <path
-        android:pathData="M148,145.2L181.6,114.2L208,136.6L232,119.4L268,148.6L268,171H148z"
-        android:fillColor="#C65D7B" />
-
-    <!-- Highlights in right photo -->
-    <path
-        android:pathData="M181.6,114.2L189.5,120.9L184.8,128.6L180.9,123.7L176.9,128.9L171.5,123.5z"
-        android:fillColor="#FBE4DA" />
-
-    <path
-        android:pathData="M232,119.4L242.8,128.2L238.1,127.4L234.2,124.7L230.2,127.6L224.8,124.6z"
-        android:fillColor="#FBE4DA" />
-
-    <!-- Lower horizon in right photo -->
-    <path
-        android:pathData="M148,162.4L174.4,150.4L200.8,162.4L227.2,148.6L251.2,160.7L268,153.8L268,171H148z"
-        android:fillColor="#8E3556" />
-
-    <!-- Text bars in right photo -->
-    <rect
         android:fillColor="#FFFFFF"
-        android:alpha="0.9"
-        android:x="148"
-        android:y="180"
-        android:width="100"
-        android:height="5" />
-    <rect
-        android:fillColor="#B9DDF1"
-        android:x="148"
-        android:y="189"
-        android:width="62"
-        android:height="3" />
+        android:fillAlpha="0.9"
+        android:pathData="M148,180h100v5H148z" />
+    <path
+        android:fillColor="?attr/accentColorMuted"
+        android:pathData="M148,189h62v3H148z" />
 
-    <!-- Bottom band for window title -->
-    <rect
-        android:fillColor="#005A9E"
-        android:x="14"
-        android:y="181"
-        android:width="100"
-        android:height="21" />
-    <rect
+    <!-- The title bar tucked under the first tile -->
+    <path
+        android:fillColor="?attr/accentColorDarker"
+        android:pathData="M14,181h100v21H14z" />
+    <path
         android:fillColor="#FFFFFF"
-        android:x="25"
-        android:y="190"
-        android:width="42"
-        android:height="3" />
-    <rect
-        android:fillColor="#B9DDF1"
-        android:x="72"
-        android:y="190"
-        android:width="25"
-        android:height="3" />
+        android:pathData="M25,190h42v3H25z" />
+    <path
+        android:fillColor="?attr/accentColorMuted"
+        android:pathData="M72,190h25v3H72z" />
 </vector>

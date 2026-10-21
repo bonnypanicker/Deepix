@@ -11,12 +11,21 @@
          resource — so the low-alpha stroke takes the darkest usable tone (800) and the badge fill the
          next step below the solid (600), which is what 14 % and 80 % of the solid looked like over black.
          AccentPalette.isSystemAccentAvailable keeps this style away from a device that would resolve
-         the tones to nothing usable. -->
+         the tones to nothing usable.
+
+         The tonal ramp the onboarding illustrations are drawn in follows the same ladder: 300 is the
+         bright tile, 100 the pale caption, and 600/700/900 the three steps down that a multi-panel
+         scene needs to keep its depth without the app holding a color of its own. -->
     <style name="Accent.System">
         <item name="accentColor">@android:color/system_accent1_400</item>
         <item name="accentColorLight">@android:color/system_accent1_200</item>
         <item name="accentColorAlpha14">@android:color/system_accent1_800</item>
         <item name="accentColorAlpha80">@android:color/system_accent1_600</item>
+        <item name="accentColorBright">@android:color/system_accent1_300</item>
+        <item name="accentColorMuted">@android:color/system_accent1_100</item>
+        <item name="accentColorDark">@android:color/system_accent1_600</item>
+        <item name="accentColorDarker">@android:color/system_accent1_700</item>
+        <item name="accentColorDeep">@android:color/system_accent1_900</item>
         <item name="colorAccent">@android:color/system_accent1_400</item>
     </style>
 </resources>

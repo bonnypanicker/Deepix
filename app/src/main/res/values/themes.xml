@@ -17,6 +17,11 @@
         <item name="accentColorLight">@color/metroAccentLight</item>
         <item name="accentColorAlpha14">#243B9EFF</item>
         <item name="accentColorAlpha80">#CC3B9EFF</item>
+        <item name="accentColorBright">#FF00A4EF</item>
+        <item name="accentColorMuted">#FFB9DDF1</item>
+        <item name="accentColorDark">#FF164F75</item>
+        <item name="accentColorDarker">#FF005A9E</item>
+        <item name="accentColorDeep">#FF003E68</item>
     </style>
 
     <!-- ===================== Accent color overlays =====================
@@ -30,6 +35,11 @@
         <item name="accentColorLight">#FF6DB8FF</item>
         <item name="accentColorAlpha14">#243B9EFF</item>
         <item name="accentColorAlpha80">#CC3B9EFF</item>
+        <item name="accentColorBright">#FF00A4EF</item>
+        <item name="accentColorMuted">#FFB9DDF1</item>
+        <item name="accentColorDark">#FF164F75</item>
+        <item name="accentColorDarker">#FF005A9E</item>
+        <item name="accentColorDeep">#FF003E68</item>
         <item name="colorAccent">#FF3B9EFF</item>
     </style>
 
@@ -38,6 +48,11 @@
         <item name="accentColorLight">#FFA78BFA</item>
         <item name="accentColorAlpha14">#248B5CF6</item>
         <item name="accentColorAlpha80">#CC8B5CF6</item>
+        <item name="accentColorBright">#FFA855F7</item>
+        <item name="accentColorMuted">#FFDCC9FB</item>
+        <item name="accentColorDark">#FF4C1D95</item>
+        <item name="accentColorDarker">#FF3B1173</item>
+        <item name="accentColorDeep">#FF2A0A54</item>
         <item name="colorAccent">#FF8B5CF6</item>
     </style>
 
@@ -46,6 +61,11 @@
         <item name="accentColorLight">#FF2DD4BF</item>
         <item name="accentColorAlpha14">#2414B8A6</item>
         <item name="accentColorAlpha80">#CC14B8A6</item>
+        <item name="accentColorBright">#FF00C2B2</item>
+        <item name="accentColorMuted">#FFB3EDE5</item>
+        <item name="accentColorDark">#FF0A5C54</item>
+        <item name="accentColorDarker">#FF07463F</item>
+        <item name="accentColorDeep">#FF053029</item>
         <item name="colorAccent">#FF14B8A6</item>
     </style>
 
@@ -54,6 +74,11 @@
         <item name="accentColorLight">#FF4ADE80</item>
         <item name="accentColorAlpha14">#2422C55E</item>
         <item name="accentColorAlpha80">#CC22C55E</item>
+        <item name="accentColorBright">#FF12C04B</item>
+        <item name="accentColorMuted">#FFBEF2CE</item>
+        <item name="accentColorDark">#FF14572C</item>
+        <item name="accentColorDarker">#FF0E421F</item>
+        <item name="accentColorDeep">#FF093217</item>
         <item name="colorAccent">#FF22C55E</item>
     </style>
 
@@ -62,6 +87,11 @@
         <item name="accentColorLight">#FFFBBF24</item>
         <item name="accentColorAlpha14">#24F59E0B</item>
         <item name="accentColorAlpha80">#CCF59E0B</item>
+        <item name="accentColorBright">#FFFFA81A</item>
+        <item name="accentColorMuted">#FFFBE2B0</item>
+        <item name="accentColorDark">#FF7A4A05</item>
+        <item name="accentColorDarker">#FF5C3803</item>
+        <item name="accentColorDeep">#FF422802</item>
         <item name="colorAccent">#FFF59E0B</item>
     </style>
 
@@ -70,6 +100,11 @@
         <item name="accentColorLight">#FFFB7185</item>
         <item name="accentColorAlpha14">#24F43F5E</item>
         <item name="accentColorAlpha80">#CCF43F5E</item>
+        <item name="accentColorBright">#FFFF4E6E</item>
+        <item name="accentColorMuted">#FFFBCBD3</item>
+        <item name="accentColorDark">#FF7E1E30</item>
+        <item name="accentColorDarker">#FF5E1624</item>
+        <item name="accentColorDeep">#FF430E18</item>
         <item name="colorAccent">#FFF43F5E</item>
     </style>
 
@@ -82,6 +117,11 @@
         <item name="accentColorLight">#FF6DB8FF</item>
         <item name="accentColorAlpha14">#243B9EFF</item>
         <item name="accentColorAlpha80">#CC3B9EFF</item>
+        <item name="accentColorBright">#FF00A4EF</item>
+        <item name="accentColorMuted">#FFB9DDF1</item>
+        <item name="accentColorDark">#FF164F75</item>
+        <item name="accentColorDarker">#FF005A9E</item>
+        <item name="accentColorDeep">#FF003E68</item>
         <item name="colorAccent">#FF3B9EFF</item>
     </style>
 

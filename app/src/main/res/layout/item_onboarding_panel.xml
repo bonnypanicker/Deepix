@@ -25,8 +25,8 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:adjustViewBounds="true"
-            android:contentDescription="@null"
-            android:tint="?attr/accentColor" />
+            android:scaleType="fitCenter"
+            android:contentDescription="@null" />
     </FrameLayout>
 
     <TextView

@@ -1,57 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  People panel (page 2) — faces found and grouped, with detection brackets on the portrait.
+
+  Converted from the reference mock's SVG. Each photo is a clipped group, so the portrait is
+  cropped to its own tile the way the reference crops it.
+
+  The blue family follows the theme accent; skin, hair, and shirt colours stay fixed.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="300dp"
     android:height="220dp"
     android:viewportWidth="300"
     android:viewportHeight="220">
-    
-    <!-- Left tile - portrait photo with face -->
-    <rect android:x="12" android:y="18" android:width="132" android:height="184" android:fillColor="#0078D4"/>
-    <clipPath android:name="pxc6"/>
-    <path android:pathData="M24,30 h108 v118 h-108 z" android:fillColor="#F3CDB5"/>
-    <path android:pathData="M22,150 L22,136.2 Q41.3,115 61,115 L95,115 Q114.7,115 134,136.2 L134,150 Z" 
-          android:fillColor="#F4F4F4"/>
-    <rect android:x="66.7" android:y="80.7" android:width="22.7" android:height="37.8" android:fillColor="#A9714F"/>
-    <ellipse android:centerX="78" android:centerY="80.7" android:rx="19.4" android:ry="25.4" android:fillColor="#C98B6B"/>
-    <path android:pathData="M57.4,80.7 A20.6,26.6 0 0,1 98.6,80.7 L98.6,88.4 L92,75.2 Q78,65 64,75.2 L57.4,88.4 Z" 
-          android:fillColor="#2B2830"/>
-    <path android:pathData="M48.6,55.4 V45.4 H58.6 M97.4,45.4 H107.4 V55.4 M107.4,106.1 V116.1 H97.4 M58.6,116.1 H48.6 V106.1" 
-          android:strokeColor="#FFFFFF" android:strokeWidth="2.6" android:fillColor="#00000000"
-          android:strokeLinecap="square" android:strokeLinejoin="miter"/>
-    
-    <!-- Text stubs left -->
-    <rect android:x="24" android:y="158" android:width="67" android:height="4" android:fillColor="#FFFFFF"/>
-    <rect android:x="24" android:y="168" android:width="45" android:height="3" android:fillColor="#B9DDF1"/>
-    <rect android:x="24" android:y="178" android:width="30" android:height="3" android:fillColor="#B9DDF1"/>
-    
-    <!-- Right top tile - smaller portrait with phone -->
-    <rect android:x="156" android:y="18" android:width="132" android:height="88" android:fillColor="#00A4EF"/>
-    <path android:pathData="M168,36 h52 v52 h-52 z" android:fillColor="#F7D36C"/>
-    <rect android:x="181.1" android:y="55.9" android:width="25.7" android:height="21.8" android:rx="4.7" android:fillColor="#1E1B22"/>
-    <path android:pathData="M166,90 L166,82.8 Q176.3,73.4 185.8,73.4 L202.2,73.4 Q211.7,73.4 222,82.8 L222,90 Z" 
-          android:fillColor="#164F75"/>
-    <rect android:x="188.5" android:y="58.4" android:width="10.9" android:height="16.6" android:fillColor="#6F4334"/>
-    <ellipse android:centerX="194" android:centerY="58.4" android:rx="9.4" android:ry="12.2" android:fillColor="#8D5745"/>
-    <path android:pathData="M183.4,58.4 A10.6,13.4 0 0,1 204.6,58.4 L204.6,65.1 L200.7,55.7 Q194,50.8 187.3,55.7 L183.4,65.1 Z" 
-          android:fillColor="#1E1B22"/>
-    
-    <!-- Text stubs right top -->
-    <rect android:x="229" android:y="49" android:width="50" android:height="5" android:fillColor="#FFFFFF"/>
-    <rect android:x="229" android:y="61" android:width="36" android:height="3" android:fillColor="#B9DDF1"/>
-    <rect android:x="229" android:y="71" android:width="42" android:height="3" android:fillColor="#B9DDF1"/>
-    
-    <!-- Right bottom tile - another portrait -->
-    <rect android:x="156" android:y="118" android:width="132" android:height="84" android:fillColor="#164F75"/>
-    <path android:pathData="M168,134 h52 v52 h-52 z" android:fillColor="#A8DCD7"/>
-    <circle android:centerX="194" android:centerY="142.5" android:r="3.9" android:fillColor="#6B3F2A"/>
-    <path android:pathData="M166,188 L166,180.8 Q176.3,171.4 185.8,171.4 L202.2,171.4 Q211.7,171.4 222,180.8 L222,188 Z" 
-          android:fillColor="#F4F4F4"/>
-    <rect android:x="188.5" android:y="156.4" android:width="10.9" android:height="16.6" android:fillColor="#C8966F"/>
-    <ellipse android:centerX="194" android:centerY="156.4" android:rx="9.4" android:ry="12.2" android:fillColor="#E3B592"/>
-    <path android:pathData="M183.4,156.4 A10.6,13.4 0 0,1 204.6,156.4 L204.6,160 L200.7,153.7 Q194,148.8 187.3,153.7 L183.4,160 Z" 
-          android:fillColor="#6B3F2A"/>
-    
-    <!-- Text stubs right bottom -->
-    <rect android:x="229" android:y="147" android:width="50" android:height="5" android:fillColor="#FFFFFF"/>
-    <rect android:x="229" android:y="159" android:width="36" android:height="3" android:fillColor="#B9DDF1"/>
-    <rect android:x="229" android:y="169" android:width="42" android:height="3" android:fillColor="#B9DDF1"/>
+
+    <!-- The tall tile: one portrait, with the face found -->
+    <path
+        android:fillColor="?attr/accentColor"
+        android:pathData="M12,18h132v184H12z" />
+    <group>
+        <clip-path>
+            <path android:pathData="M24,30h108v118H24z" />
+        </clip-path>
+        <path
+            android:fillColor="#F3CDB5"
+            android:pathData="M24,30h108v118H24z" />
+
+        <!-- the shoulders -->
+        <path
+            android:fillColor="#F4F4F4"
+            android:pathData="M22,150L22,136.2Q41.3,115 61,115L95,115Q114.7,115 134,136.2L134,150Z" />
+
+        <!-- the neck, the head, the hair -->
+        <path
+            android:fillColor="#A9714F"
+            android:pathData="M66.7,80.7h22.7v37.8H66.7z" />
+        <path
+            android:fillColor="#C98B6B"
+            android:pathData="M78,55.3a19.4,25.4 0,1 0,0 50.8a19.4,25.4 0,1 0,0 -50.8" />
+        <path
+            android:fillColor="#2B2830"
+            android:pathData="M57.4,80.7A20.6,26.6 0,0 1,98.6 80.7L98.6,88.4L92,75.2Q78,65 64,75.2L57.4,88.4Z" />
+
+        <!-- the detection brackets -->
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2.6"
+            android:strokeLineCap="square"
+            android:strokeLineJoin="miter"
+            android:pathData="M48.6,55.4V45.4H58.6M97.4,45.4H107.4V55.4M107.4,106.1V116.1H97.4M58.6,116.1H48.6V106.1" />
+    </group>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,158h67v4H24z" />
+    <path
+        android:fillColor="?attr/accentColorMuted"
+        android:pathData="M24,168h45v3H24z" />
+    <path
+        android:fillColor="?attr/accentColorMuted"
+        android:pathData="M24,178h30v3H24z" />
+
+    <!-- The small tile: another portrait -->
+    <path
+        android:fillColor="?attr/accentColorBright"
+        android:pathData="M156,18h132v88H156z" />
+    <group>
+        <clip-path>
+            <path android:pathData="M168,36h52v52H168z" />
+        </clip-path>
+        <path
+            android:fillColor="#F7D36C"
+            android:pathData="M168,36h52v52H168z" />
+
+        <!-- a phone held in front of the face -->
+        <path
+            android:fillColor="#1E1B22"
+            android:pathData="M185.79999999999998,55.9H202.1A4.7,4.7 0 0 1 206.79999999999998,60.6V73A4.7,4.7 0 0 1 202.1,77.7H185.79999999999998A4.7,4.7 0 0 1 181.1,73V60.6A4.7,4.7 0 0 1 185.79999999999998,55.9Z" />
+
+        <!-- the shoulders and the head behind it -->
+        <path
+            android:fillColor="?attr/accentColorDark"
+            android:pathData="M166,90L166,82.8Q176.3,73.4 185.8,73.4L202.2,73.4Q211.7,73.4 222,82.8L222,90Z" />
+        <path
+            android:fillColor="#6F4334"
+            android:pathData="M188.5,58.4h10.9v16.6H188.5z" />
+        <path
+            android:fillColor="#8D5745"
+            android:pathData="M194,46.2a9.4,12.2 0,1 0,0 24.4a9.4,12.2 0,1 0,0 -24.4" />
+        <path
+            android:fillColor="#1E1B22"
+            android:pathData="M183.4,58.4A10.6,13.4 0,0 1,204.6 58.4L204.6,65.1L200.7,55.7Q194,50.8 187.3,55.7L183.4,65.1Z" />
+    </group>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M229,49h50v5H229z" />
+    <path
+        android:fillColor="?attr/accentColorMuted"
+        android:pathData="M229,61h36v3H229z" />
+    <path
+        android:fillColor="?attr/accentColorMuted"
+        android:pathData="M229,71h42v3H229z" />
+
+    <!-- The small tile below: a third portrait -->
+    <path
+        android:fillColor="?attr/accentColorDark"
+        android:pathData="M156,118h132v84H156z" />
+    <group>
+        <clip-path>
+            <path android:pathData="M168,134h52v52H168z" />
+        </clip-path>
+        <path
+            android:fillColor="#A8DCD7"
+            android:pathData="M168,134h52v52H168z" />
+
+        <!-- the head seen from above, and the shoulders -->
+        <path
+            android:fillColor="#6B3F2A"
+            android:pathData="M190.1,142.5a3.9,3.9 0,1 0,0 7.8a3.9,3.9 0,1 0,0 -7.8" />
+        <path
+            android:fillColor="#F4F4F4"
+            android:pathData="M166,188L166,180.8Q176.3,171.4 185.8,171.4L202.2,171.4Q211.7,171.4 222,180.8L222,188Z" />
+        <path
+            android:fillColor="#C8966F"
+            android:pathData="M188.5,156.4h10.9v16.6H188.5z" />
+        <path
+            android:fillColor="#E3B592"
+            android:pathData="M194,144.2a9.4,12.2 0,1 0,0 24.4a9.4,12.2 0,1 0,0 -24.4" />
+        <path
+            android:fillColor="#6B3F2A"
+            android:pathData="M183.4,156.4A10.6,13.4 0,0 1,204.6 156.4L204.6,160L200.7,153.7Q194,148.8 187.3,153.7L183.4,160Z" />
+    </group>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M229,147h50v5H229z" />
+    <path
+        android:fillColor="?attr/accentColorMuted"
+        android:pathData="M229,159h36v3H229z" />
+    <path
+        android:fillColor="?attr/accentColorMuted"
+        android:pathData="M229,169h42v3H229z" />
 </vector>

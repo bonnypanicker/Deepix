@@ -1,191 +1,159 @@
-<!-- Metro-style search icon (page 1). Search bar with query text + two result cards below showing matching photos. Exact spec from HTML mock: #0078D4 search bar, white search icon in circle, query stubs, two photo tiles with mountains/sun. -->
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Search panel (page 1) — a search bar over one large result and two small ones.
+
+  Converted from the reference mock's SVG. The clipped groups reproduce the mock's <clipPath>
+  exactly, so each photo is cropped to its own tile.
+
+  The blue family follows the theme accent. The photographic content — the sky, the mountains, the
+  snow, the skin and hair of the portrait, the flower — stays fixed: those are the picture.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="300dp"
     android:height="220dp"
     android:viewportWidth="300"
     android:viewportHeight="220">
 
-    <!-- Top search bar: #0078D4 background -->
-    <rect
-        android:fillColor="#0078D4"
-        android:x="8"
-        android:y="20"
-        android:width="284"
-        android:height="52" />
+    <!-- The search bar -->
+    <path
+        android:fillColor="?attr/accentColor"
+        android:pathData="M8,20h284v52H8z" />
 
-    <!-- Search icon: white circle with magnifying glass -->
-    <circle
-        android:fillColor="#0078D4"
+    <!-- The magnifier -->
+    <path
+        android:fillColor="?attr/accentColor"
         android:strokeColor="#FFFFFF"
         android:strokeWidth="2.5"
-        android:centerX="34"
-        android:centerY="46"
-        android:radius="9" />
-
-    <!-- Magnifying glass handle -->
+        android:pathData="M34,37a9,9 0,1 0,0 18a9,9 0,1 0,0 -18" />
     <path
-        android:pathData="M41,53 L49,61"
+        android:fillColor="#00000000"
         android:strokeColor="#FFFFFF"
         android:strokeWidth="2.5"
         android:strokeLineCap="square"
         android:strokeLineJoin="miter"
-        android:fillColor="#00000000" />
+        android:pathData="M41,53L49,61" />
 
-    <!-- Query text stubs in search bar -->
-    <rect
+    <!-- The query text -->
+    <path
         android:fillColor="#FFFFFF"
-        android:x="62"
-        android:y="40"
-        android:width="153"
-        android:height="4" />
-    <rect
-        android:fillColor="#B9DDF1"
-        android:x="62"
-        android:y="49"
-        android:width="105"
-        android:height="3" />
-
-    <!-- Left result card: #00A4EF background -->
-    <rect
-        android:fillColor="#00A4EF"
-        android:x="8"
-        android:y="86"
-        android:width="132"
-        android:height="112" />
-
-    <!-- Photo content clip in left card -->
+        android:pathData="M62,40h153v4H62z" />
     <path
-        android:pathData="M20,98h108v74H20z"
-        android:fillColor="#5CC8F2" />
+        android:fillColor="?attr/accentColorMuted"
+        android:pathData="M62,49h105v3H62z" />
 
-    <!-- Sun in left photo -->
-    <circle
-        android:fillColor="#FFD45C"
-        android:centerX="110.7"
-        android:centerY="112.8"
-        android:radius="7.3" />
-
-    <!-- Mountains in left photo -->
+    <!-- The large result tile -->
     <path
-        android:pathData="M20,155.7L41.6,130.6L56.7,143.9L81.6,117.2L108.6,143.9L118.3,135L128,145.4L128,172H20z"
-        android:fillColor="#1E8AA6" />
+        android:fillColor="?attr/accentColorBright"
+        android:pathData="M8,86h132v112H8z" />
 
-    <!-- Highlights in left photo -->
+    <!-- Its photo: a mountain range under the sun -->
+    <group>
+        <clip-path>
+            <path android:pathData="M20,98h108v74H20z" />
+        </clip-path>
+        <path
+            android:fillColor="#5CC8F2"
+            android:pathData="M20,98h108v74H20z" />
+        <path
+            android:fillColor="#FFD45C"
+            android:pathData="M110.7,105.5a7.3,7.3 0,1 0,0 14.6a7.3,7.3 0,1 0,0 -14.6" />
+
+        <!-- the far ridge -->
+        <path
+            android:fillColor="#1E8AA6"
+            android:pathData="M20,155.7L41.6,130.6L56.7,143.9L81.6,117.2L108.6,143.9L118.3,135L128,145.4L128,172L20,172Z" />
+
+        <!-- the snow caps -->
+        <path
+            android:fillColor="#F4F8FB"
+            android:pathData="M41.6,130.6L46.1,134.6L43.3,142.3L40.8,138.3L38.4,142.5L35.1,138.1Z" />
+        <path
+            android:fillColor="#F4F8FB"
+            android:pathData="M81.6,117.2L89.7,125.2L85.6,129.6L82.2,125.4L78.8,129.9L74.1,125.2Z" />
+
+        <!-- the near ridge -->
+        <path
+            android:fillColor="#0B607C"
+            android:pathData="M20,161.6L37.3,149.8L56.7,161.6L76.2,148.3L99.9,163.1L115,155.7L128,164.6L128,172L20,172Z" />
+    </group>
+
+    <!-- The caption under it -->
     <path
-        android:pathData="M41.6,130.6L46.1,134.6L43.3,142.3L40.8,138.3L38.4,142.5L35.1,138.1z"
-        android:fillColor="#F4F8FB" />
-
-    <path
-        android:pathData="M81.6,117.2L89.7,125.2L85.6,129.6L82.2,125.4L78.8,129.9L74.1,125.2z"
-        android:fillColor="#F4F8FB" />
-
-    <!-- Horizon in left photo -->
-    <path
-        android:pathData="M20,161.6L37.3,149.8L56.7,161.6L76.2,148.3L99.9,163.1L115,155.7L128,164.6L128,172H20z"
-        android:fillColor="#0B607C" />
-
-    <!-- Text bars in left card -->
-    <rect
         android:fillColor="#FFFFFF"
-        android:x="20"
-        android:y="180"
-        android:width="70"
-        android:height="4" />
+        android:pathData="M20,180h70v4H20z" />
 
-    <!-- Right side panel: dark blue backgrounds for two cards -->
-    <rect
-        android:fillColor="#164F75"
-        android:x="151"
-        android:y="86"
-        android:width="141"
-        android:height="52" />
-
-    <!-- Left sub-card in right panel: portrait placeholder -->
+    <!-- The first small result: a portrait -->
     <path
-        android:pathData="M163,98h42v28H163z"
-        android:fillColor="#F6C6A9" />
-
-    <!-- Head silhouette top -->
+        android:fillColor="?attr/accentColorDark"
+        android:pathData="M151,86h141v52H151z" />
+    <group>
+        <clip-path>
+            <path android:pathData="M163,98h42v28H163z" />
+        </clip-path>
+        <path
+            android:fillColor="#F6C6A9"
+            android:pathData="M163,98h42v28H163z" />
+        <path
+            android:fillColor="#F4F4F4"
+            android:pathData="M161,128L161,123.2Q169.7,118.2 179.6,118.2L188.4,118.2Q198.3,118.2 207,123.2L207,128Z" />
+        <path
+            android:fillColor="#A9714F"
+            android:pathData="M181.1,110h5.9v9H181.1z" />
+        <path
+            android:fillColor="#C98B6B"
+            android:pathData="M184,103.4a5,6.6 0,1 0,0 13.2a5,6.6 0,1 0,0 -13.2" />
+        <path
+            android:fillColor="#2B2830"
+            android:pathData="M177.8,110A6.2,7.8 0,0 1,190.2 110L190.2,112L187.6,108.6Q184,106 180.4,108.6L177.8,112Z" />
+    </group>
     <path
-        android:pathData="M161,128L161,123.2Q169.7,118.2L179.6,118.2L188.4,118.2Q198.3,118.2L207,123.2L207,128Z"
-        android:fillColor="#F4F4F4" />
-
-    <!-- Neck -->
-    <rect
-        android:fillColor="#A9714F"
-        android:x="181.1"
-        android:y="110"
-        android:width="5.9"
-        android:height="9" />
-
-    <!-- Shoulder base -->
-    <ellipse
-        android:fillColor="#C98B6B"
-        android:centerX="184"
-        android:centerY="110"
-        android:rx="5"
-        android:ry="6.6" />
-
-    <!-- Shirt collar -->
-    <path
-        android:pathData="M177.8,110Q179,108.6Q182.4,106L186,108.6L188.6,112Q188.6,112Q184,106L180.4,108.6L177.8,112Z"
-        android:fillColor="#2B2830" />
-
-    <!-- Text stubs in right panel card 1 -->
-    <rect
         android:fillColor="#FFFFFF"
-        android:x="214"
-        android:y="101"
-        android:width="63"
-        android:height="4" />
-    <rect
-        android:fillColor="#B9DDF1"
-        android:x="214"
-        android:y="112"
-        android:width="46"
-        android:height="3" />
-
-    <!-- Bottom card in right panel: dark blue bg -->
-    <rect
-        android:fillColor="#005A9E"
-        android:x="151"
-        android:y="146"
-        android:width="141"
-        android:height="52" />
-
-    <!-- Right sub-card: landscape placeholder -->
+        android:pathData="M214,101h63v4H214z" />
     <path
-        android:pathData="M163,157h42v29H163z"
-        android:fillColor="#8DD8C8" />
+        android:fillColor="?attr/accentColorMuted"
+        android:pathData="M214,112h46v3H214z" />
 
-    <!-- Small sun/moon in right photo -->
-    <circle
-        android:fillColor="#FFF3C4"
-        android:centerX="198.3"
-        android:centerY="162.8"
-        android:radius="3.5" />
-
-    <!-- Mountains in right photo -->
+    <!-- The second small result: a flower -->
     <path
-        android:pathData="M163,179.6L171.4,169.8L177.3,175L186.9,164.5L197.4,175L201.2,171.5L205,175.6L205,186H163z"
-        android:fillColor="#3E9C8B" />
-
-    <!-- Lower horizon in right photo -->
+        android:fillColor="?attr/accentColorDarker"
+        android:pathData="M151,146h141v52H151z" />
+    <group>
+        <clip-path>
+            <path android:pathData="M163,157h42v29H163z" />
+        </clip-path>
+        <path
+            android:fillColor="#F8D7E3"
+            android:pathData="M163,157h42v29H163z" />
+        <path
+            android:fillColor="#3E8A6B"
+            android:pathData="M183,169.2h2v16.8H183z" />
+        <path
+            android:fillColor="#3E8A6B"
+            android:pathData="M190,180.2a5,2 0,1 0,0 4a5,2 0,1 0,0 -4"
+            android:rotation="-25"
+            android:pivotX="190"
+            android:pivotY="180.2" />
+        <!-- the petals, one per hour mark -->
+        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6"/>
+        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="30" android:pivotX="184" android:pivotY="169.2"/>
+        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="60" android:pivotX="184" android:pivotY="169.2"/>
+        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="90" android:pivotX="184" android:pivotY="169.2"/>
+        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="120" android:pivotX="184" android:pivotY="169.2"/>
+        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="150" android:pivotX="184" android:pivotY="169.2"/>
+        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="180" android:pivotX="184" android:pivotY="169.2"/>
+        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="210" android:pivotX="184" android:pivotY="169.2"/>
+        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="240" android:pivotX="184" android:pivotY="169.2"/>
+        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="270" android:pivotX="184" android:pivotY="169.2"/>
+        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="300" android:pivotX="184" android:pivotY="169.2"/>
+        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="330" android:pivotX="184" android:pivotY="169.2"/>
+        <path
+            android:fillColor="#8A5A2B"
+            android:pathData="M189.1,164.3a4.9,4.9 0,1 0,0 9.8a4.9,4.9 0,1 0,0 -9.8" />
+    </group>
     <path
-        android:pathData="M163,181.9L169.7,177.3L177.3,181.9L184.8,176.7L194.1,182.5L200,179.6L205,183.1L205,186H163z"
-        android:fillColor="#1F7568" />
-
-    <!-- Text stubs in bottom card -->
-    <rect
         android:fillColor="#FFFFFF"
-        android:x="214"
-        android:y="160"
-        android:width="63"
-        android:height="4" />
-    <rect
-        android:fillColor="#B9DDF1"
-        android:x="214"
-        android:y="171"
-        android:width="48"
-        android:height="3" />
+        android:pathData="M214,160h63v4H214z" />
+    <path
+        android:fillColor="?attr/accentColorMuted"
+        android:pathData="M214,171h48v3H214z" />
 </vector>

@@ -10,9 +10,27 @@
       - accentColorLight   : a lighter tint of the accent (replaces @color/metroAccentLight)
       - accentColorAlpha14 : accent at ~14% alpha (card strokes, e.g. #243B9EFF)
       - accentColorAlpha80 : accent at ~80% alpha (badge fills, e.g. #CC3B9EFF)
+
+      The ramp below is the tonal family the onboarding illustrations are drawn in. Their artwork
+      needs more than one accent tone: a multi-panel scene is built from a bright tile, a pale
+      caption, and two or three progressively deeper blues, and a single accent cannot stand in
+      for all of them without flattening the composition. Each step is a fixed role, so every
+      accent palette fills all of them and the picture keeps its structure.
+
+      - accentColorBright  : the saturated, lighter tile (the accent's "next tile up")
+      - accentColorLight   : the pale highlight tier
+      - accentColorMuted   : the desaturated tier used for captions and hairlines
+      - accentColorDark    : the first step down, for secondary panels
+      - accentColorDarker  : the second step down, for bars and headers
+      - accentColorDeep    : the deepest step, for shadows and small details
     -->
     <attr name="accentColor" format="color" />
     <attr name="accentColorLight" format="color" />
     <attr name="accentColorAlpha14" format="color" />
     <attr name="accentColorAlpha80" format="color" />
+    <attr name="accentColorBright" format="color" />
+    <attr name="accentColorMuted" format="color" />
+    <attr name="accentColorDark" format="color" />
+    <attr name="accentColorDarker" format="color" />
+    <attr name="accentColorDeep" format="color" />
 </resources>
