@@ -72,3 +72,7 @@ htmlcov/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
+
+# Release bundles and the runtime log, both produced by a local build
+app/release/
+gallerysearch_log.txt
