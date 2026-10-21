@@ -287,7 +287,7 @@ class OnboardingPanelAdapter(
 
         fun bind(panel: OnboardingPanel) {
             val context = b.root.context
-            b.panelRoot.setPadding(metrics.units(28f), 0, metrics.units(28f), metrics.units(4f))
+            b.panelRoot.setPadding(metrics.units(28f), 0, metrics.units(28f), metrics.units(8f))
 
             // The reference's own type: an 11-unit eyebrow with a 12-unit gap under it, a
             // 38-unit light headline, and a 14-unit body under a 16-unit gap.
@@ -337,11 +337,6 @@ class OnboardingPanelAdapter(
                     height = 0
                     weight = 1f
                 }
-            b.panelBottomSpacer.layoutParams =
-                (b.panelBottomSpacer.layoutParams as LinearLayout.LayoutParams).apply {
-                    height = 0
-                    weight = 0.8f
-                }
             b.permTopDivider.visibility = View.GONE
             b.panelListScroller.visibility = View.GONE
             b.permList.removeAllViews()
@@ -377,11 +372,6 @@ class OnboardingPanelAdapter(
             b.panelIconArea.layoutParams =
                 (b.panelIconArea.layoutParams as LinearLayout.LayoutParams).apply {
                     height = tile + metrics.units(8f)
-                    weight = 0f
-                }
-            b.panelBottomSpacer.layoutParams =
-                (b.panelBottomSpacer.layoutParams as LinearLayout.LayoutParams).apply {
-                    height = 0
                     weight = 0f
                 }
             b.permTopDivider.visibility = View.VISIBLE
@@ -425,14 +415,9 @@ class OnboardingPanelAdapter(
             b.panelIcon.visibility = View.GONE
             b.panelIconArea.layoutParams =
                 (b.panelIconArea.layoutParams as LinearLayout.LayoutParams).apply {
-                    // The reference opens this page with a 26-unit gap above the eyebrow, where
-                    // the feature pages carry an illustration instead.
-                    height = metrics.units(26f)
-                    weight = 0f
-                }
-            b.panelBottomSpacer.layoutParams =
-                (b.panelBottomSpacer.layoutParams as LinearLayout.LayoutParams).apply {
-                    height = 0
+                    // The reference opens this page 32 units below the top of the panel: 6 of
+                    // its own padding and 26 of margin above the eyebrow.
+                    height = metrics.units(32f)
                     weight = 0f
                 }
             b.permTopDivider.visibility = View.VISIBLE
