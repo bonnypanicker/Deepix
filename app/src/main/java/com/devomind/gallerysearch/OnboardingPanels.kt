@@ -291,7 +291,7 @@ class OnboardingPanelAdapter(
 
             // The reference's own type: an 11-unit eyebrow with a 12-unit gap under it, a
             // 38-unit light headline, and a 14-unit body under a 16-unit gap.
-            b.panelEyebrow.setTextSize(metrics.textSp(11f))
+            b.panelEyebrow.setTextSize(metrics.textSp(14f))
             b.panelEyebrow.margin { bottomMargin = metrics.units(12f) }
             b.panelTitle.setTextSize(metrics.textSp(38f))
             b.panelBody.setTextSize(metrics.textSp(14f))

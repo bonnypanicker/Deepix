@@ -34,10 +34,10 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="10dp"
         android:fontFamily="sans-serif-medium"
-        android:letterSpacing="0.02"
+        android:letterSpacing="0.04"
         android:textAllCaps="true"
         android:textColor="?attr/accentColor"
-        android:textSize="11sp" />
+        android:textSize="14sp" />
 
     <TextView
         android:id="@+id/panelTitle"
