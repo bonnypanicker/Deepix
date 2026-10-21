@@ -21,9 +21,7 @@
 
     <!-- The photo on the canvas -->
     <group>
-        <clip-path>
-            <path android:pathData="M22,24h256v112H22z" />
-        </clip-path>
+        <clip-path android:pathData="M22,24h256v112H22z" />
         <path
             android:fillColor="#5CC8F2"
             android:pathData="M22,24h256v112H22z" />

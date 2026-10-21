@@ -50,9 +50,7 @@
 
     <!-- First photo: a sunset over water -->
     <group>
-        <clip-path>
-            <path android:pathData="M30,90h60v56H30z" />
-        </clip-path>
+        <clip-path android:pathData="M30,90h60v56H30z" />
         <path
             android:fillColor="#FFD9A8"
             android:pathData="M30,90h60v56H30z" />
@@ -88,9 +86,7 @@
 
     <!-- Second photo: a cat -->
     <group>
-        <clip-path>
-            <path android:pathData="M114,90h60v56H114z" />
-        </clip-path>
+        <clip-path android:pathData="M114,90h60v56H114z" />
         <path
             android:fillColor="#A8DCD7"
             android:pathData="M114,90h60v56H114z" />
@@ -167,9 +163,7 @@
 
     <!-- Third photo: a city at night -->
     <group>
-        <clip-path>
-            <path android:pathData="M198,90h72v56H198z" />
-        </clip-path>
+        <clip-path android:pathData="M198,90h72v56H198z" />
         <path
             android:fillColor="#1F3A5F"
             android:pathData="M198,90h72v56H198z" />

@@ -29,9 +29,7 @@
 
         <!-- top left: mountains -->
         <group>
-            <clip-path>
-                <path android:pathData="M60,60h44v34H60z" />
-            </clip-path>
+            <clip-path android:pathData="M60,60h44v34H60z" />
             <path
                 android:fillColor="#5CC8F2"
                 android:pathData="M60,60h44v34H60z" />
@@ -48,9 +46,7 @@
 
         <!-- bottom left: a warm hillside -->
         <group>
-            <clip-path>
-                <path android:pathData="M60,106h44v34H60z" />
-            </clip-path>
+            <clip-path android:pathData="M60,106h44v34H60z" />
             <path
                 android:fillColor="#F5C5A5"
                 android:pathData="M60,106h44v34H60z" />
@@ -67,9 +63,7 @@
 
         <!-- top right: a green ridge -->
         <group>
-            <clip-path>
-                <path android:pathData="M196,60h44v34H196z" />
-            </clip-path>
+            <clip-path android:pathData="M196,60h44v34H196z" />
             <path
                 android:fillColor="#8DD8C8"
                 android:pathData="M196,60h44v34H196z" />
@@ -86,9 +80,7 @@
 
         <!-- bottom right: a rose-coloured ridge -->
         <group>
-            <clip-path>
-                <path android:pathData="M196,106h44v34H196z" />
-            </clip-path>
+            <clip-path android:pathData="M196,106h44v34H196z" />
             <path
                 android:fillColor="#F2B49B"
                 android:pathData="M196,106h44v34H196z" />

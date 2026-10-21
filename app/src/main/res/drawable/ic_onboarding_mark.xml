@@ -29,9 +29,7 @@
 
     <!-- The photo: three people, cropped to the top of the caption bed -->
     <group>
-        <clip-path>
-            <path android:pathData="M28,32h122v92H28z" />
-        </clip-path>
+        <clip-path android:pathData="M28,32h122v92H28z" />
         <path
             android:fillColor="#F6C6A9"
             android:pathData="M28,32h122v92H28z" />
@@ -104,9 +102,7 @@
 
     <!-- The photo: a cake on a stand, cropped to the tile's photo area -->
     <group>
-        <clip-path>
-            <path android:pathData="M148,85h120v86H148z" />
-        </clip-path>
+        <clip-path android:pathData="M148,85h120v86H148z" />
         <path
             android:fillColor="#F2B49B"
             android:pathData="M148,85h120v86H148z" />

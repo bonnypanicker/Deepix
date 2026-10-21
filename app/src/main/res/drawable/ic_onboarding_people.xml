@@ -18,9 +18,7 @@
         android:fillColor="?attr/accentColor"
         android:pathData="M12,18h132v184H12z" />
     <group>
-        <clip-path>
-            <path android:pathData="M24,30h108v118H24z" />
-        </clip-path>
+        <clip-path android:pathData="M24,30h108v118H24z" />
         <path
             android:fillColor="#F3CDB5"
             android:pathData="M24,30h108v118H24z" />
@@ -65,9 +63,7 @@
         android:fillColor="?attr/accentColorBright"
         android:pathData="M156,18h132v88H156z" />
     <group>
-        <clip-path>
-            <path android:pathData="M168,36h52v52H168z" />
-        </clip-path>
+        <clip-path android:pathData="M168,36h52v52H168z" />
         <path
             android:fillColor="#F7D36C"
             android:pathData="M168,36h52v52H168z" />
@@ -106,9 +102,7 @@
         android:fillColor="?attr/accentColorDark"
         android:pathData="M156,118h132v84H156z" />
     <group>
-        <clip-path>
-            <path android:pathData="M168,134h52v52H168z" />
-        </clip-path>
+        <clip-path android:pathData="M168,134h52v52H168z" />
         <path
             android:fillColor="#A8DCD7"
             android:pathData="M168,134h52v52H168z" />

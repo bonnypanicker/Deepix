@@ -48,9 +48,7 @@
 
     <!-- Its photo: a mountain range under the sun -->
     <group>
-        <clip-path>
-            <path android:pathData="M20,98h108v74H20z" />
-        </clip-path>
+        <clip-path android:pathData="M20,98h108v74H20z" />
         <path
             android:fillColor="#5CC8F2"
             android:pathData="M20,98h108v74H20z" />
@@ -87,9 +85,7 @@
         android:fillColor="?attr/accentColorDark"
         android:pathData="M151,86h141v52H151z" />
     <group>
-        <clip-path>
-            <path android:pathData="M163,98h42v28H163z" />
-        </clip-path>
+        <clip-path android:pathData="M163,98h42v28H163z" />
         <path
             android:fillColor="#F6C6A9"
             android:pathData="M163,98h42v28H163z" />
@@ -118,9 +114,7 @@
         android:fillColor="?attr/accentColorDarker"
         android:pathData="M151,146h141v52H151z" />
     <group>
-        <clip-path>
-            <path android:pathData="M163,157h42v29H163z" />
-        </clip-path>
+        <clip-path android:pathData="M163,157h42v29H163z" />
         <path
             android:fillColor="#F8D7E3"
             android:pathData="M163,157h42v29H163z" />
