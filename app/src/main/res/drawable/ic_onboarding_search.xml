@@ -123,7 +123,7 @@
             android:pathData="M183,169.2h2v16.8H183z" />
         <path
             android:fillColor="#3E8A6B"
-            android:pathData="M190,180.2a5,2 0,1 0,0 4a5,2 0,1 0,0 -4"
+            android:pathData="M190,178.2a5,2 0,1 0,0 4a5,2 0,1 0,0 -4"
             android:rotation="-25"
             android:pivotX="190"
             android:pivotY="180.2" />
@@ -142,7 +142,7 @@
         <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="330" android:pivotX="184" android:pivotY="169.2"/>
         <path
             android:fillColor="#8A5A2B"
-            android:pathData="M189.1,164.3a4.9,4.9 0,1 0,0 9.8a4.9,4.9 0,1 0,0 -9.8" />
+            android:pathData="M184,164.3a4.9,4.9 0,1 0,0 9.8a4.9,4.9 0,1 0,0 -9.8" />
     </group>
     <path
         android:fillColor="#FFFFFF"

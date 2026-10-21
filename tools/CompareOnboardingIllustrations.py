@@ -129,6 +129,76 @@ def check_android_markup(src, name):
         raise SystemExit(f"{name}:\n  " + "\n  ".join(problems))
 
 
+# An ellipse written as two arcs starts at (cx, cy-ry); the first arc then sweeps
+# 2*ry. Both follow from the start point, so a mistyped centre shows up as a
+# correctly-shaped ellipse in the wrong place - which a picture diff shows only as
+# a smear of pixels. Comparing the geometry against the reference catches it.
+TWO_ARC = re.compile(
+    r'^M(-?[\d.]+),(-?[\d.]+)a([\d.]+),([\d.]+) 0,1 0,0 (-?[\d.]+)'
+    r'a([\d.]+),([\d.]+) 0,1 0,0 (-?[\d.]+)$')
+
+def ellipse_geometry(path_data):
+    """The centre and radii of a two-arc ellipse, or None if it is not one."""
+    m = TWO_ARC.match(path_data)
+    if not m:
+        return None
+    x0, y0 = float(m.group(1)), float(m.group(2))
+    rx, ry = float(m.group(3)), float(m.group(4))
+    return (x0, y0 + float(m.group(5)) / 2, rx, ry)
+
+def reference_ellipses(svg):
+    """Every circle and ellipse in the reference, as (cx, cy, rx, ry)."""
+    out = []
+    for m in re.finditer(r'<circle\b([^>]*)/>', svg):
+        a = dict(re.findall(r'([\w-]+)="([^"]*)"', m.group(1)))
+        out.append((float(a["cx"]), float(a["cy"]), float(a["r"]), float(a["r"])))
+    for m in re.finditer(r'<ellipse\b([^>]*)/>', svg):
+        a = dict(re.findall(r'([\w-]+)="([^"]*)"', m.group(1)))
+        out.append((float(a["cx"]), float(a["cy"]), float(a["rx"]), float(a["ry"])))
+    return out
+
+def native_ellipses(src):
+    """Every two-arc ellipse in the vector, as (cx, cy, rx, ry).
+
+    Only filled ones. The labels the reference sets as live text are traced here as
+    stroked outlines, and those have no counterpart among the reference's elements
+    - a "%" drawn by hand is a diagonal and two small circles, where the reference
+    gets the glyph from its font.
+    """
+    out = []
+    for m in re.finditer(r'<path\b([^>]*?)/>', src, re.S):
+        a = dict(re.findall(r'android:(\w+)="([^"]*)"', m.group(1)))
+        if a.get("fillColor", "") in ("#00000000", "none"):
+            continue
+        g = ellipse_geometry(a.get("pathData", ""))
+        if g:
+            out.append(g)
+    return out
+
+def check_shapes_match(ref_svg, src, name):
+    """The reference's circles and ellipses must land where the reference puts them."""
+    def bucket(shapes, tol=0.05):
+        counts = {}
+        for s in shapes:
+            k = tuple(round(v / tol) for v in s)
+            counts.setdefault(k, []).append(s)
+        return counts
+
+    ref = bucket(reference_ellipses(ref_svg))
+    nat = bucket(native_ellipses(src))
+    problems = []
+    for k, shapes in ref.items():
+        if k not in nat:
+            for s in shapes:
+                problems.append(f"reference has a circle/ellipse at {s} that the vector does not")
+    for k, shapes in nat.items():
+        if k not in ref:
+            for s in shapes:
+                problems.append(f"the vector has a circle/ellipse at {s} that the reference does not")
+    if problems:
+        raise SystemExit(f"{name}:\n  " + "\n  ".join(problems))
+
+
 def convert(path, counter):
     src = path.read_text(encoding="utf-8")
     check_android_markup(src, path.name)
@@ -184,6 +254,7 @@ counter = [0]
 rows = []
 for idx, (nm, dn) in enumerate(zip(names, draw)):
     r = svgs[idx]
+    check_shapes_match(r, (DRAW / f"{dn}.xml").read_text(encoding="utf-8"), dn)
     r = re.sub(r'\sclass="[^"]*"', '', r)
     for o, nw in SUB.items():
         r = r.replace('fill="%s"' % o, 'fill="%s"' % nw)
