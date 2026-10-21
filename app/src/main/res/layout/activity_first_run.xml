@@ -31,17 +31,22 @@
             android:textColor="@color/onboardingTextBrand"
             android:textSize="10sp" />
 
-        <ImageView
+        <TextView
             android:id="@+id/dismissBtn"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
             android:background="@drawable/metro_row_pressed"
             android:clickable="true"
-            android:contentDescription="@string/onboarding_dismiss"
             android:focusable="true"
-            android:padding="12dp"
-            android:src="@drawable/ic_fluent_dismiss_24_regular"
-            android:tint="@color/metroTextSecondary" />
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
+            android:letterSpacing="0.04"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="@string/onboarding_skip"
+            android:textAllCaps="true"
+            android:textColor="?attr/accentColor"
+            android:textSize="11sp" />
     </LinearLayout>
 
     <androidx.viewpager2.widget.ViewPager2

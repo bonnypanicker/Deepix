@@ -355,7 +355,7 @@
     <!-- First-run tour: a short product pass, Pro limits, then permissions. -->
     <string name="onboarding_next">Next</string>
     <string name="onboarding_get_started">Get started</string>
-    <string name="onboarding_dismiss">Skip to permissions</string>
+    <string name="onboarding_skip">Skip</string>
 
     <!-- Metro-style onboarding strings from reference mock -->
     <string name="onboarding_welcome_eyebrow">YOUR PHOTOS. YOUR DEVICE.</string>

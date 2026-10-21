@@ -317,12 +317,13 @@ class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
         binding.brandRow.requestLayout()
         binding.brandText.setTextSize(metrics.textSp(10f))
 
+        // The skip is a word, not a glyph: it keeps a 48-unit touch target, but the text itself
+        // is only as wide as it needs to be.
         binding.dismissBtn.layoutParams = binding.dismissBtn.layoutParams.apply {
-            width = metrics.dp(48f)
             height = metrics.dp(48f)
         }
-        val dismissPad = metrics.dp(12f)
-        binding.dismissBtn.setPadding(dismissPad, dismissPad, dismissPad, dismissPad)
+        val dismissPad = metrics.dp(8f)
+        binding.dismissBtn.setPadding(dismissPad, 0, dismissPad, 0)
         binding.dismissBtn.requestLayout()
 
         binding.footer.setPadding(
