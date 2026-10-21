@@ -92,18 +92,22 @@
             android:pathData="M114,90h60v56H114z" />
 
         <!-- the ears -->
-        <path
-            android:fillColor="#8A5A2B"
-            android:pathData="M126.9,110.1a5.4,11.8 0,1 0,0 23.6a5.4,11.8 0,1 0,0 -23.6"
-            android:rotation="14"
+        <group
             android:pivotX="126.9"
-            android:pivotY="121.9" />
-        <path
-            android:fillColor="#8A5A2B"
-            android:pathData="M161.1,110.1a5.4,11.8 0,1 0,0 23.6a5.4,11.8 0,1 0,0 -23.6"
-            android:rotation="-14"
+            android:pivotY="121.9"
+            android:rotation="14">
+            <path
+                android:fillColor="#8A5A2B"
+                android:pathData="M126.9,110.1a5.4,11.8 0,1 0,0 23.6a5.4,11.8 0,1 0,0 -23.6" />
+        </group>
+        <group
             android:pivotX="161.1"
-            android:pivotY="121.9" />
+            android:pivotY="121.9"
+            android:rotation="-14">
+            <path
+                android:fillColor="#8A5A2B"
+                android:pathData="M161.1,110.1a5.4,11.8 0,1 0,0 23.6a5.4,11.8 0,1 0,0 -23.6" />
+        </group>
 
         <!-- the head -->
         <path

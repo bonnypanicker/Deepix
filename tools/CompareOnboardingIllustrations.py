@@ -123,8 +123,15 @@ def check_android_markup(src, name):
             if "android:pathData" not in attrs:
                 problems.append("<clip-path> has no android:pathData of its own, so the "
                                 "clip it guards is empty and the group is clipped away")
-        if tag == "path" and "android:pathData" not in attrs:
-            problems.append("<path> has no android:pathData")
+        if tag == "path":
+            if "android:pathData" not in attrs:
+                problems.append("<path> has no android:pathData")
+            for group_only in ("rotation", "pivotX", "pivotY", "scaleX", "scaleY",
+                               "translateX", "translateY"):
+                if f"android:{group_only}" in attrs:
+                    problems.append(
+                        f"<path> carries android:{group_only}, which the framework reads "
+                        f"from a <group> only - it is ignored on a path")
     if problems:
         raise SystemExit(f"{name}:\n  " + "\n  ".join(problems))
 
@@ -214,6 +221,8 @@ def convert(path, counter):
             if tag == "group":
                 op = a.get("alpha")
                 gattrs = f' opacity="{op}"' if op else ""
+                # rotation and pivot are the group's own, the way the framework reads them
+                gattrs += transform_of(a)
                 kids = parse_children(body) if body is not None else []
                 # Only a clip-path that is a direct child clips this group; one nested
                 # deeper belongs to the group it sits in. The geometry comes from the

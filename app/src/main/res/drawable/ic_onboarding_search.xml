@@ -121,25 +121,104 @@
         <path
             android:fillColor="#3E8A6B"
             android:pathData="M183,169.2h2v16.8H183z" />
-        <path
-            android:fillColor="#3E8A6B"
-            android:pathData="M190,178.2a5,2 0,1 0,0 4a5,2 0,1 0,0 -4"
-            android:rotation="-25"
+        <group
             android:pivotX="190"
-            android:pivotY="180.2" />
+            android:pivotY="180.2"
+            android:rotation="-25">
+            <path
+                android:fillColor="#3E8A6B"
+                android:pathData="M190,178.2a5,2 0,1 0,0 4a5,2 0,1 0,0 -4" />
+        </group>
         <!-- the petals, one per hour mark -->
         <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6"/>
-        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="30" android:pivotX="184" android:pivotY="169.2"/>
-        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="60" android:pivotX="184" android:pivotY="169.2"/>
-        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="90" android:pivotX="184" android:pivotY="169.2"/>
-        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="120" android:pivotX="184" android:pivotY="169.2"/>
-        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="150" android:pivotX="184" android:pivotY="169.2"/>
-        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="180" android:pivotX="184" android:pivotY="169.2"/>
-        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="210" android:pivotX="184" android:pivotY="169.2"/>
-        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="240" android:pivotX="184" android:pivotY="169.2"/>
-        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="270" android:pivotX="184" android:pivotY="169.2"/>
-        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="300" android:pivotX="184" android:pivotY="169.2"/>
-        <path android:fillColor="#FFD45C" android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" android:rotation="330" android:pivotX="184" android:pivotY="169.2"/>
+        <group
+            android:pivotX="184"
+            android:pivotY="169.2"
+            android:rotation="30">
+            <path
+                android:fillColor="#FFD45C"
+                android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" />
+        </group>
+        <group
+            android:pivotX="184"
+            android:pivotY="169.2"
+            android:rotation="60">
+            <path
+                android:fillColor="#FFD45C"
+                android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" />
+        </group>
+        <group
+            android:pivotX="184"
+            android:pivotY="169.2"
+            android:rotation="90">
+            <path
+                android:fillColor="#FFD45C"
+                android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" />
+        </group>
+        <group
+            android:pivotX="184"
+            android:pivotY="169.2"
+            android:rotation="120">
+            <path
+                android:fillColor="#FFD45C"
+                android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" />
+        </group>
+        <group
+            android:pivotX="184"
+            android:pivotY="169.2"
+            android:rotation="150">
+            <path
+                android:fillColor="#FFD45C"
+                android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" />
+        </group>
+        <group
+            android:pivotX="184"
+            android:pivotY="169.2"
+            android:rotation="180">
+            <path
+                android:fillColor="#FFD45C"
+                android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" />
+        </group>
+        <group
+            android:pivotX="184"
+            android:pivotY="169.2"
+            android:rotation="210">
+            <path
+                android:fillColor="#FFD45C"
+                android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" />
+        </group>
+        <group
+            android:pivotX="184"
+            android:pivotY="169.2"
+            android:rotation="240">
+            <path
+                android:fillColor="#FFD45C"
+                android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" />
+        </group>
+        <group
+            android:pivotX="184"
+            android:pivotY="169.2"
+            android:rotation="270">
+            <path
+                android:fillColor="#FFD45C"
+                android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" />
+        </group>
+        <group
+            android:pivotX="184"
+            android:pivotY="169.2"
+            android:rotation="300">
+            <path
+                android:fillColor="#FFD45C"
+                android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" />
+        </group>
+        <group
+            android:pivotX="184"
+            android:pivotY="169.2"
+            android:rotation="330">
+            <path
+                android:fillColor="#FFD45C"
+                android:pathData="M191.8,167.4a3.4,1.8 0,1 0,0 3.6a3.4,1.8 0,1 0,0 -3.6" />
+        </group>
         <path
             android:fillColor="#8A5A2B"
             android:pathData="M184,164.3a4.9,4.9 0,1 0,0 9.8a4.9,4.9 0,1 0,0 -9.8" />
