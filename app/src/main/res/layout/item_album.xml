@@ -9,7 +9,7 @@
     <FrameLayout
         android:id="@+id/albumCoverContainer"
         android:layout_width="match_parent"
-        android:layout_height="132dp">
+        android:layout_height="@dimen/album_cover_height">
 
         <ImageView
             android:id="@+id/albumCover"

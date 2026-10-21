@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The album grid's cover tile. Its height is the grid's own, not a fraction of the
+      card's width: deriving it from the width made the cover's shape follow the photo
+      grid's density setting, so a third-width card got a 4:3 landscape cover where it
+      had always been a square-ish tile, and the cover came out shorter than the design
+      it was drawn to. The layout and the image decode both read it from here, so the
+      picture is fetched at the size it is drawn.
+    -->
+    <dimen name="album_cover_height">132dp</dimen>
+</resources>

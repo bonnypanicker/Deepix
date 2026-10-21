@@ -1115,10 +1115,14 @@ class ImageAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(album: GalleryRepository.Album, showFolderSize: Boolean, cardWidthPx: Int) {
             val coverWidth = cardWidthPx.coerceAtLeast(160)
-            val coverHeight = (coverWidth * 3) / 4
-            binding.albumCoverContainer.layoutParams = binding.albumCoverContainer.layoutParams.apply {
-                height = coverHeight
-            }
+            // The cover's height is the album grid's own tile height, not a fraction of the
+            // card's width. Deriving it from the width tied the cover's shape to the photo
+            // grid's density setting: a third-width card got a 4:3 landscape cover where it
+            // had always been a square-ish tile, and the cover came out shorter than the
+            // design it was drawn to. The layout and the decode both read the height from
+            // the same dimension, so the picture is fetched at the size it is drawn.
+            val coverHeight = binding.albumCoverContainer.context.resources
+                .getDimensionPixelSize(R.dimen.album_cover_height)
             binding.albumName.text = album.name
             // Saved collections carry their member count like any other album, so one branch covers both.
             val countText = if (album.count == 1) "1 item" else "${album.count} items"
