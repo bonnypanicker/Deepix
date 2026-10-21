@@ -4808,7 +4808,10 @@ class MainActivity : AppCompatActivity() {
             binding.selectionCaption.visibility = if (inSearchBar) View.VISIBLE else View.GONE
             binding.selectionCaption.text = label
             binding.searchInput.visibility = if (inSearchBar) View.GONE else View.VISIBLE
-            binding.searchBox.visibility = if (inSearchBar) View.VISIBLE else View.GONE
+            // The search field stays where it is, on every page. It is the way out of a
+            // selection as well as the way into a search, and taking it away with the
+            // selection left the header with nothing in it.
+            binding.searchBox.visibility = View.VISIBLE
             binding.searchTrailingBtn.visibility = View.GONE
             binding.menuBtn.setImageResource(R.drawable.ic_fluent_back_24_regular)
             binding.menuBtn.alpha = 1f
@@ -5393,7 +5396,9 @@ class MainActivity : AppCompatActivity() {
         // Search keeps the box while multi-selecting: its caption carries the count in the query
         // field's slot, which is what holds the overlay at a constant height.
         val captionInSearchBox = !showSearchChrome && currentMode == Mode.Search
-        binding.searchBox.visibility = if (showSearchChrome || captionInSearchBox) View.VISIBLE else View.GONE
+        // The field is not part of the selection. It stays on every page, so a long-press
+        // never takes the header's search away.
+        binding.searchBox.visibility = View.VISIBLE
         binding.searchTrailingBtn.visibility = if (showSearchChrome) View.VISIBLE else View.GONE
         binding.selectionCaption.visibility = if (captionInSearchBox) View.VISIBLE else View.GONE
         binding.searchInput.visibility = if (captionInSearchBox) View.GONE else View.VISIBLE
