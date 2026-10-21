@@ -28,6 +28,22 @@
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
                 android:tint="@color/metroTextPrimary" />
+
+            <!-- The category's own actions live here, so the header below can hold the
+                 title and the sort control without either of them giving up room.
+                 Shown only while a category is open. -->
+            <ImageButton
+                android:id="@+id/overflowBtn"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end|center_vertical"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/metro_row_pressed"
+                android:contentDescription="@string/more"
+                android:padding="12dp"
+                android:src="@drawable/ic_fluent_more_24_regular"
+                android:tint="@color/metroTextPrimary"
+                android:visibility="gone" />
         </FrameLayout>
 
         <FrameLayout
@@ -238,58 +254,15 @@
                         android:textColor="@color/metroTextPrimary"
                         android:textSize="30sp" />
 
-                    <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="end|center_vertical"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:id="@+id/selectAllBtn"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:background="@drawable/metro_row_pressed"
-                            android:clickable="true"
-                            android:focusable="true"
-                            android:padding="8dp"
-                            android:text="@string/select_all"
-                            android:textColor="?attr/accentColor"
-                            android:textSize="14sp" />
-                    </LinearLayout>
-                </FrameLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:paddingStart="20dp"
-                    android:paddingEnd="16dp"
-                    android:paddingBottom="10dp">
-
-                    <TextView
-                        android:id="@+id/detailHint"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:includeFontPadding="false"
-                        android:textColor="@color/metroTextSecondary"
-                        android:textSize="13sp" />
-
-                    <!-- Weighted spacer: the hint is GONE on the compression lists, so without
-                         this the sort control would hug the left edge. -->
-                    <Space
-                        android:layout_width="0dp"
-                        android:layout_height="1dp"
-                        android:layout_weight="1" />
-
-                    <!-- Same flat sort affordance as the collections page: label + glyph,
-                         both accent-tinted, label kept current by updateCompressibleSortChip(). -->
+                    <!-- Same flat sort affordance as the collections page: label + glyph, both
+                         accent-tinted, label kept current by updateCompressibleSortChip(). It sits
+                         at the end of the header now; it used to sit in the row below, which on
+                         the compression list left that row holding nothing at all. -->
                     <LinearLayout
                         android:id="@+id/detailSortControl"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_gravity="end|center_vertical"
                         android:background="@drawable/metro_row_pressed"
                         android:clickable="true"
                         android:focusable="true"
@@ -316,6 +289,27 @@
                             android:src="@drawable/ic_fluent_arrow_sort_24_regular"
                             android:tint="?attr/accentColor" />
                     </LinearLayout>
+                </FrameLayout>
+
+                <!-- The hint line. The compression list has no hint, so the whole row goes away
+                     with it and the grid starts higher. -->
+                <LinearLayout
+                    android:id="@+id/detailHintRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:paddingStart="20dp"
+                    android:paddingEnd="20dp"
+                    android:paddingBottom="10dp">
+
+                    <TextView
+                        android:id="@+id/detailHint"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:includeFontPadding="false"
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="13sp" />
                 </LinearLayout>
 
                 <!-- Album filter for the COMPRESSIBLE "Choose other photos" mode only; hidden

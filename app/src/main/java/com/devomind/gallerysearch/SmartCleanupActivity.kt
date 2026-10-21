@@ -230,7 +230,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         }
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
-        binding.selectAllBtn.setOnClickListener { toggleSelectAll() }
+        binding.overflowBtn.setOnClickListener { showOverflowMenu(it) }
         compressibleSort = SortManager.optionFor(this, COMPRESSIBLE_SORT_SCOPE, SortOption.LargestFirst)
         binding.detailSortControl.setOnClickListener { showCompressibleSortMenu(it) }
         binding.deleteBar.setOnClickListener {
@@ -629,6 +629,8 @@ class SmartCleanupActivity : AppCompatActivity() {
         adapter.clearSelection()
         binding.detailView.visibility = View.GONE
         binding.overviewView.visibility = View.VISIBLE
+        // The overflow belongs to the category, so it goes with it.
+        binding.overflowBtn.visibility = View.GONE
         renderTiles()
     }
 
@@ -649,10 +651,13 @@ class SmartCleanupActivity : AppCompatActivity() {
         renderAlbumChips()
         binding.overviewView.visibility = View.GONE
         binding.detailView.visibility = View.VISIBLE
+        binding.overflowBtn.visibility = View.VISIBLE
         binding.detailTitle.text = categoryTitle(category)
         val isCompressible = category == CleanupAnalyzer.Category.COMPRESSIBLE
-        // The compression page has no hint line; that row holds the sort control instead.
+        // The compression page has no hint line. The row goes with it, so the grid starts
+        // higher instead of leaving a gap under the header.
         binding.detailHint.visibility = if (isCompressible) View.GONE else View.VISIBLE
+        binding.detailHintRow.visibility = binding.detailHint.visibility
         binding.detailHint.text = when (category) {
             CleanupAnalyzer.Category.DUPLICATES ->
                 "Copies measured identical to the kept file are pre-selected" + dedupCoverageSuffix()
@@ -866,6 +871,31 @@ class SmartCleanupActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * The category's overflow. "Select all" lives here rather than in the header: the header
+     * belongs to the category title, and on the compression list the sort control sits at its
+     * end. The menu is only reachable while a category is open.
+     */
+    private fun showOverflowMenu(anchor: View) {
+        MetroDropdownMenu.show(anchor, listOf(
+            MetroDropdownMenu.Item(label = selectAllLabel()) { toggleSelectAll() }
+        ))
+    }
+
+    /**
+     * "Select all" or "Deselect all", whichever the current selection makes true. Read when the
+     * menu opens rather than kept on a button, so it cannot fall out of step with the grid.
+     */
+    private fun selectAllLabel(): String {
+        val category = currentCategory ?: return getString(R.string.select_all)
+        val all = detailItems(category).map { it.uri }
+        return if (adapter.selectionCount >= all.size && all.isNotEmpty()) {
+            getString(R.string.deselect_all)
+        } else {
+            getString(R.string.select_all)
+        }
+    }
+
     /** Items backing the current detail grid for [category] (mode-aware for COMPRESSIBLE). */
     private fun detailItems(category: CleanupAnalyzer.Category): List<GalleryRepository.MediaItem> =
         if (category == CleanupAnalyzer.Category.COMPRESSIBLE) compressibleDetailItems()
@@ -873,8 +903,6 @@ class SmartCleanupActivity : AppCompatActivity() {
 
     private fun onSelectionChanged(count: Int) {
         val category = currentCategory
-        val all = category?.let { detailItems(it).size } ?: 0
-        binding.selectAllBtn.text = if (count > 0 && count >= all) "Deselect all" else "Select all"
 
         if (category == CleanupAnalyzer.Category.COMPRESSIBLE) {
             if (count == 0) {
