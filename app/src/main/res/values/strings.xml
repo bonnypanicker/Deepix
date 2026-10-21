@@ -401,7 +401,7 @@
 
     <string name="onboarding_perm_eyebrow">Before you start</string>
     <string name="onboarding_perm_title">A few things to get started</string>
-    <string name="onboarding_perm_body">Your library stays on this device. Choose the access Pixa needs; notifications and fingerprint unlock are optional.</string>
+    <string name="onboarding_perm_body">Your library stays on this device. Choose the access Pixa needs; notifications and all-files access are optional.</string>
     <string name="onboarding_perm_media">Photos &amp; videos</string>
     <string name="onboarding_perm_media_summary">So Pixa can show, search, and index your library</string>
     <string name="onboarding_perm_files">All files access</string>
