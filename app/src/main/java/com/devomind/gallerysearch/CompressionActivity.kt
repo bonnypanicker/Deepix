@@ -612,16 +612,17 @@ class CompressionActivity : AppCompatActivity() {
         val count = current.items.count { it.status == Status.READY }
         if (count == 0) return
         val replace = mode == CompressionBatchStore.CommitMode.REPLACE
-        val noun = if (count == 1) "1 photo" else "$count photos"
+        // The title says what will happen and how many photos it covers; the button just moves
+        // the decision on. A button that repeated the title gave the reader the same information
+        // twice and left them to work out which half was the button.
         MetroDialog.confirm(
             context = this,
-            title = if (replace) "Replace originals?" else "Save compressed copies?",
-            message = if (replace) {
-                "$noun will be replaced with the smaller compressed versions."
+            title = if (replace) {
+                if (count == 1) "Replace 1 original?" else "Replace $count originals?"
             } else {
-                "$noun will be saved as smaller copies next to the originals."
+                if (count == 1) "Save 1 compressed copy?" else "Save $count compressed copies?"
             },
-            positive = if (replace) "Replace originals" else "Save copies",
+            positive = "Proceed",
             iconRes = R.drawable.ic_fluent_image_24_regular
         ) { startCommit(mode) }
     }
@@ -678,8 +679,8 @@ class CompressionActivity : AppCompatActivity() {
         MetroDialog.confirm(
             context = this,
             title = "Cancel compression?",
-            message = "The compressed previews are discarded and the batch stops. " +
-                "Your original photos are never touched.",
+            // A destructive action keeps an explicit button: "Proceed" on a red pill is a worse
+            // invitation than the one it replaces.
             positive = "Cancel compression",
             negative = "Keep going",
             danger = true,
@@ -699,9 +700,8 @@ class CompressionActivity : AppCompatActivity() {
         if (isFinishing || isDestroyed) return
         MetroDialog.confirm(
             context = this,
-            title = "Compression already running",
-            message = "A batch of ${pending.activeCount} photos is still running in the background. " +
-                "Discard it and start compressing the ${pending.selected.size} newly selected photos instead?",
+            title = "Discard the running batch of ${pending.activeCount} photos?",
+            // Explicit label, same as the cancel above: this one throws work away.
             positive = "Discard and start new",
             negative = "Keep current",
             danger = true,

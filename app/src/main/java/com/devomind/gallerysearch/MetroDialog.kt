@@ -61,11 +61,17 @@ object MetroDialog {
         return dialog
     }
 
-    /** Two-choice confirmation. [danger] switches the primary pill to Metro red. */
+    /**
+     * Two-choice confirmation. [danger] switches the primary pill to Metro red.
+     *
+     * [message] is optional: a confirmation whose title already says what is about to happen does
+     * not need a second paragraph saying it again. Leaving it out drops the body, and the panel
+     * closes up around the title and the two buttons.
+     */
     fun confirm(
         context: Context,
         title: String,
-        message: CharSequence,
+        message: CharSequence? = null,
         positive: String,
         negative: String = "Cancel",
         danger: Boolean = false,
@@ -76,8 +82,10 @@ object MetroDialog {
         onPositive: () -> Unit
     ): AlertDialog {
         val v = inflate(context, title, iconRes)
-        v.body.visibility = View.VISIBLE
-        v.body.text = message
+        if (!message.isNullOrBlank()) {
+            v.body.visibility = View.VISIBLE
+            v.body.text = message
+        }
         val dialog = create(context, v.root, cancelable)
         v.positive.text = positive
         if (danger) v.positive.setBackgroundResource(R.drawable.dialog_danger_button_bg)
