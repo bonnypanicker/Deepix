@@ -679,9 +679,8 @@ class CompressionActivity : AppCompatActivity() {
         MetroDialog.confirm(
             context = this,
             title = "Cancel compression?",
-            // A destructive action keeps an explicit button: "Proceed" on a red pill is a worse
-            // invitation than the one it replaces.
-            positive = "Cancel compression",
+            // The title names the action; the button does not repeat it back.
+            positive = "Proceed",
             negative = "Keep going",
             danger = true,
             iconRes = R.drawable.ic_fluent_delete_24_regular
@@ -700,9 +699,14 @@ class CompressionActivity : AppCompatActivity() {
         if (isFinishing || isDestroyed) return
         MetroDialog.confirm(
             context = this,
-            title = "Discard the running batch of ${pending.activeCount} photos?",
-            // Explicit label, same as the cancel above: this one throws work away.
-            positive = "Discard and start new",
+            // The count only earns its place when there is more than one to count.
+            title = if (pending.activeCount == 1) {
+                "Discard the running batch?"
+            } else {
+                "Discard the running batch of ${pending.activeCount} photos?"
+            },
+            // The title names the action; the button does not repeat it back.
+            positive = "Proceed",
             negative = "Keep current",
             danger = true,
             iconRes = R.drawable.ic_fluent_image_24_regular
