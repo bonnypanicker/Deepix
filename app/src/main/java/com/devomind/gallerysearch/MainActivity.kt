@@ -668,7 +668,11 @@ class MainActivity : AppCompatActivity() {
         }
         binding.drawerTaskIndexing.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
-            onIndexDrawerAction()
+            // The row is a status, and the Indexing page is where the work is controlled: it
+            // carries the one pause/play toggle that covers pausing, resuming, starting and
+            // re-indexing. Tapping a row of the background list to pause what it was reporting
+            // was a surprise in a place the user was only reading.
+            startActivity(Intent(this, IndexingActivity::class.java))
         }
 
         binding.drawerSettings.setOnClickListener {
@@ -1186,25 +1190,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             enqueueBackgroundIndexing(showBanner = false)
         }
-    }
-
-    private fun onIndexDrawerAction() {
-        when {
-            indexRunning -> pauseIndexing()
-            IndexPreferences.isIndexPaused(this) -> resumeIndexing()
-            else -> enqueueBackgroundIndexing()
-        }
-    }
-
-    private fun pauseIndexing() {
-        // Shared lifecycle action: flips prefs, cancels work, and clears the notification panel.
-        IndexController.pause(this)
-        indexRunning = false
-        indexQueued = false
-        binding.searchSparkle.setIndexing(false)
-        updateIndexingRow()
-        refreshSearchEmptyStateIfVisible()
-        MetroBanner.show(this, "Indexing paused")
     }
 
     private fun resumeIndexing() {
