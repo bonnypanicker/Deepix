@@ -176,6 +176,16 @@ class CompressionBatchStore(context: Context) {
          */
         fun isCompressionActive(context: Context): Boolean =
             runCatching { CompressionBatchStore(context).load()?.isActive == true }.getOrDefault(false)
+
+        /**
+         * True only while compression is actively encoding or mutating files. Returns false during
+         * AWAITING_DECISION when the batch is parked waiting for user choice — safe to index then.
+         */
+        fun isCompressionProcessing(context: Context): Boolean =
+            runCatching {
+                val batch = CompressionBatchStore(context).load()
+                batch?.phase == Phase.PREPARING || batch?.phase == Phase.COMMITTING
+            }.getOrDefault(false)
     }
 }
 

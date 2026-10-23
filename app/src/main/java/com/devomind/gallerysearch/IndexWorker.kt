@@ -62,8 +62,8 @@ class IndexWorker(
         // Compression takes priority over CLIP encoding: while a batch is mid-flight (prepare,
         // review, commit) this worker waits and retries. Same constraint-wait semantics as the
         // charger gate below — never counts toward MaxRetryCount failure.
-        if (CompressionBatchStore.isCompressionActive(applicationContext)) {
-            Log.i(Tag, "Compression in progress — deferring index run.")
+        if (CompressionBatchStore.isCompressionProcessing(applicationContext)) {
+            Log.i(Tag, "Compression processing in progress — deferring index run.")
             IndexPreferences.setLastIndexWaitReason(
                 applicationContext,
                 IndexWaitReason.WaitingForCompression
@@ -173,7 +173,7 @@ class IndexWorker(
                 }
                 // Compression can start mid-pass (user kicked a batch off from Smart Cleanup):
                 // yield now and let the retry reconcile + resume without re-encoding.
-                if (CompressionBatchStore.isCompressionActive(applicationContext)) {
+                if (CompressionBatchStore.isCompressionProcessing(applicationContext)) {
                     throw IndexWaitingException(IndexWaitReason.WaitingForCompression)
                 }
                 // Same mid-pass yield for the foreground allowance, with the reserve stopping the pass

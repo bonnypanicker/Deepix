@@ -97,6 +97,13 @@ class CompressionWorker(
                 store.update(batchId) { b ->
                     b.items.forEach { if (it.status == CompressionBatchStore.ItemStatus.PREPARING) it.status = CompressionBatchStore.ItemStatus.FAILED }
                 }
+                // Remove foreground notification on failure too
+                try {
+                    val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    manager.cancel(NotificationId)
+                } catch (e: Exception) {
+                    Log.w(Tag, "Failed to cancel foreground notification", e)
+                }
             }
             Result.failure()
         } finally {
@@ -343,6 +350,13 @@ class CompressionWorker(
             if (item.status == CompressionBatchStore.ItemStatus.READY && item.entryId.isNotBlank()) {
                 findEntry(item.entryId)?.let { runCatching { CompressionEngine.discard(applicationContext, it) } }
             }
+        }
+        // Remove the foreground notification explicitly to prevent it from lingering
+        try {
+            val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.cancel(NotificationId)
+        } catch (e: Exception) {
+            Log.w(Tag, "Failed to cancel foreground notification", e)
         }
         store.update(batchId) { it.phase = CompressionBatchStore.Phase.CANCELLED }
         store.clear()

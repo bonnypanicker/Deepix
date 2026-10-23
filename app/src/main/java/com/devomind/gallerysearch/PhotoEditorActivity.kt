@@ -377,6 +377,10 @@ class PhotoEditorActivity : AppCompatActivity() {
         binding.drawView.visibility = View.GONE
         binding.drawView.clear()
         binding.editImage.clearColorFilter()
+        binding.panelCrop.visibility = View.GONE
+        binding.panelPerspective.visibility = View.GONE
+        binding.panelDraw.visibility = View.GONE
+        binding.panelAdjust.visibility = View.GONE
         binding.toolActionBar.visibility = View.GONE
         binding.toolBar.visibility = View.VISIBLE
     }
