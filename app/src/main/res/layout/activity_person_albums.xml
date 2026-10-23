@@ -5,10 +5,12 @@
     android:orientation="vertical"
     android:background="@color/metroBgPrimary">
 
-    <FrameLayout
+    <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
         android:paddingTop="14dp"
         android:paddingBottom="6dp">
 
@@ -16,27 +18,28 @@
             android:id="@+id/backBtn"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:layout_gravity="start|center_vertical"
             android:layout_marginStart="6dp"
             android:background="@drawable/metro_row_pressed"
             android:contentDescription="@string/back"
             android:padding="12dp"
             android:src="@drawable/ic_fluent_back_24_regular"
             android:tint="@color/metroTextPrimary" />
-    </FrameLayout>
 
-    <!-- The hero title every other secondary screen opens with (bin, indexing, settings). It sits
-         below topBar, which carries the status-bar inset, so it needs no inset handling of its own. -->
-    <TextView
-        android:id="@+id/screenTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="20dp"
-        android:fontFamily="sans-serif-light"
-        android:includeFontPadding="false"
-        android:text="@string/people_title_lower"
-        android:textColor="@color/metroTextPrimary"
-        android:textSize="40sp" />
+        <TextView
+            android:id="@+id/screenTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="12dp"
+            android:fontFamily="sans-serif-light"
+            android:includeFontPadding="false"
+            android:text="@string/people_title_lower"
+            android:textColor="@color/metroTextPrimary"
+            android:textSize="26sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </LinearLayout>
 
     <FrameLayout
         android:layout_width="match_parent"
