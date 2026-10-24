@@ -112,7 +112,7 @@
                 android:paddingStart="20dp"
                 android:paddingEnd="20dp"
                 android:textAllCaps="true"
-                android:textColor="@color/metroTextStrong"
+                android:textColor="@color/metroTextPrimary"
                 android:textSize="13sp"
                 android:visibility="gone" />
         </LinearLayout>

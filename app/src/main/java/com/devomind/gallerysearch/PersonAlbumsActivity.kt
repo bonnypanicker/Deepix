@@ -59,7 +59,9 @@ class PersonAlbumsActivity : AppCompatActivity() {
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         binding.emptyAction.setOnClickListener {
-            FaceIndexWorker.enqueue(this, replaceExisting = false)
+            // Face detection is independent of CLIP embedding indexing; user-initiated face search
+            // should always proceed, replacing any existing/future face work to start fresh.
+            FaceIndexWorker.enqueue(this, replaceExisting = true)
         }
 
         adapter = PersonAlbumsAdapter(
