@@ -12,7 +12,7 @@ import com.devomind.gallerysearch.db.TagEntity
 object AlbumRules {
 
     /** Every album folder the app itself makes lives inside this one. */
-    const val AlbumFolderParent: String = "Deepix Albums"
+    const val AlbumFolderParent: String = "Pixa Albums"
 
     /**
      * The folder a new album owns: `<storage root>/<parent>/<name>`.
@@ -38,8 +38,10 @@ object AlbumRules {
      * older album was pointed at. It is the difference between an empty album waiting to be filled and
      * a folder whose photos have all gone away — the first is what the user expects, the second is news.
      */
-    fun isAlbumFolderPath(path: String): Boolean =
-        path.substringBeforeLast('/', "").substringAfterLast('/') == AlbumFolderParent
+    fun isAlbumFolderPath(path: String): Boolean {
+        val parent = path.substringBeforeLast('/').substringAfterLast('/')
+        return parent == AlbumFolderParent || parent == "Deepix Albums"
+    }
 
     /**
      * The node for [path], or null when the library holds no such folder any more — which is what an

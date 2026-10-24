@@ -49,7 +49,7 @@ object AlbumFolderOps {
 
     /**
      * Copies [sources] into the album folder [relativePath] — a MediaStore-relative path such as
-     * `Pictures/Deepix Albums/Trips` — reporting each photo as it finishes so the host can say which
+     * `Pictures/Pixa Albums/Trips` — reporting each photo as it finishes so the host can say which
      * number it is on. Runs off the main thread; the caller is on Dispatchers.IO.
      */
     fun copyInto(
