@@ -44,6 +44,8 @@ class CompareFullscreenActivity : AppCompatActivity() {
     private var swipeStartY = Float.MIN_VALUE
     private var swipeDragging = false
     private var swipeDirection = 0
+    private var swapInProgress = false
+    private var lastSwapTime = 0L
 
     private val uri: String get() = intent.getStringExtra(ExtraOriginalUri).orEmpty()
     private val stagingPath: String get() = intent.getStringExtra(ExtraStagingPath).orEmpty()
@@ -98,6 +100,8 @@ class CompareFullscreenActivity : AppCompatActivity() {
         return super.dispatchTouchEvent(ev)
     }
 
+    private fun canProcessSwipe(): Boolean = !swapInProgress && System.currentTimeMillis() - lastSwapTime > 300L
+
     private fun observeGestures(ev: MotionEvent) {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -117,21 +121,23 @@ class CompareFullscreenActivity : AppCompatActivity() {
             }
             MotionEvent.ACTION_MOVE -> {
                 velocityTracker?.addMovement(ev)
-                if (swipeDragging) {
-                    translateTop(ev.x - swipeStartX)
-                } else if (ev.pointerCount == 1 && swipeStartX != Float.MIN_VALUE) {
-                    val dx = ev.x - swipeStartX
-                    val dy = ev.y - swipeStartY
-                    if (abs(dx) > swipeSlopPx && abs(dx) > abs(dy) * 1.5f && topView().isAtFitScale()) {
-                        swipeDragging = true
-                        swipeDirection = if (dx > 0f) 1 else -1
-                        // Revoke the in-flight gesture from the PhotoView: without the cancel the
-                        // attacher keeps acting on the photo while we slide the whole view.
-                        val cancel = MotionEvent.obtain(ev)
-                        cancel.action = MotionEvent.ACTION_CANCEL
-                        topView().dispatchTouchEvent(cancel)
-                        cancel.recycle()
-                        translateTop(dx)
+                if (canProcessSwipe()) {
+                    if (swipeDragging) {
+                        translateTop(ev.x - swipeStartX)
+                    } else if (ev.pointerCount == 1 && swipeStartX != Float.MIN_VALUE) {
+                        val dx = ev.x - swipeStartX
+                        val dy = ev.y - swipeStartY
+                        if (abs(dx) > swipeSlopPx && abs(dx) > abs(dy) * 1.5f && topView().isAtFitScale()) {
+                            swipeDragging = true
+                            swipeDirection = if (dx > 0f) 1 else -1
+                            // Revoke the in-flight gesture from the PhotoView: without the cancel the
+                            // attacher keeps acting on the photo while we slide the whole view.
+                            val cancel = MotionEvent.obtain(ev)
+                            cancel.action = MotionEvent.ACTION_CANCEL
+                            topView().dispatchTouchEvent(cancel)
+                            cancel.recycle()
+                            translateTop(dx)
+                        }
                     }
                 }
             }
@@ -139,9 +145,11 @@ class CompareFullscreenActivity : AppCompatActivity() {
                 velocityTracker?.addMovement(ev)
                 velocityTracker?.computeCurrentVelocity(1000, MAX_TRACKED_VELOCITY)
                 val vx = velocityTracker?.xVelocity ?: 0f
-                if (swipeDragging) {
+                if (canProcessSwipe() && swipeDragging) {
                     val dx = ev.x - swipeStartX
                     if (abs(dx) > width() / 4f || abs(vx) > flingVelocityPx) {
+                        swapInProgress = true
+                        lastSwapTime = System.currentTimeMillis()
                         commitSwap(dx)
                     } else {
                         springBack()
@@ -151,6 +159,7 @@ class CompareFullscreenActivity : AppCompatActivity() {
             }
             MotionEvent.ACTION_CANCEL -> {
                 if (swipeDragging) springBack()
+                swapInProgress = false
                 resetSwipe()
             }
             else -> velocityTracker?.addMovement(ev)
