@@ -1,5 +1,7 @@
 package com.devomind.gallerysearch
 
+import android.graphics.Color
+import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -294,6 +296,7 @@ class OnboardingPanelAdapter(
             b.panelEyebrow.text = context.getString(panel.eyebrow)
             b.panelTitle.text = context.getString(panel.title)
             b.panelBody.text = context.getString(panel.body)
+            b.panelLegalNotice.visibility = View.GONE
 
             if (panel.permissions.isNotEmpty()) bindPermissionsPage(panel)
             else if (panel.benefits.isNotEmpty()) bindBenefitsPage(panel)
@@ -427,6 +430,18 @@ class OnboardingPanelAdapter(
                 }
             b.permList.removeAllViews()
             panel.permissions.forEach { b.permList.addView(rowView(it)) }
+
+            val context = b.root.context
+            b.panelLegalNotice.visibility = View.VISIBLE
+            b.panelLegalNotice.setTextSize(metrics.textSp(11f))
+            b.panelLegalNotice.margin {
+                topMargin = metrics.units(10f)
+                bottomMargin = metrics.units(4f)
+            }
+            val accent = DesignTokens.accent(context)
+            b.panelLegalNotice.text = AppLegal.buildConsentSpannable(context, accent)
+            b.panelLegalNotice.movementMethod = LinkMovementMethod.getInstance()
+            b.panelLegalNotice.highlightColor = Color.TRANSPARENT
         }
 
         private fun rowView(row: OnboardingPermission): View {

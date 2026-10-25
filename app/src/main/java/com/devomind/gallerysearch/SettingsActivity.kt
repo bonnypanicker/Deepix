@@ -554,6 +554,14 @@ class SettingsActivity : AppCompatActivity() {
             IndexPreferences.setFirstRunDone(this, false)
             startActivity(FirstRunActivity.intent(this))
         }
+
+        binding.rowPrivacyPolicy.setOnClickListener {
+            AppLegal.openUrl(this, AppLegal.PRIVACY_POLICY_URL)
+        }
+
+        binding.rowTermsConditions.setOnClickListener {
+            AppLegal.openUrl(this, AppLegal.TERMS_CONDITIONS_URL)
+        }
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()

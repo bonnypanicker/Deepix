@@ -228,6 +228,10 @@
     <string name="section_about">ABOUT</string>
     <string name="replay_tour">Welcome tour</string>
     <string name="replay_tour_hint">See the introduction again</string>
+    <string name="privacy_policy">Privacy policy</string>
+    <string name="terms_and_conditions">Terms and conditions</string>
+    <string name="onboarding_legal_notice">By tapping Get started, you agree to the %1$s and %2$s.</string>
+    <string name="cannot_open_link">Couldn\'t open the link</string>
     <string name="smart_cleanup_title">smart cleanup</string>
     <string name="analyzing_library">Analyzing your library…</string>
     <string name="cleanup_indexing_unfinished">Indexing isn&#8217;t finished</string>
