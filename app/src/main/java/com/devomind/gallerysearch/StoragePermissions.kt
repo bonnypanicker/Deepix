@@ -27,7 +27,15 @@ object StoragePermissions {
     /** The runtime permissions that read the library on this API level. */
     fun requiredMediaPermissions(): Array<String> =
         if (Build.VERSION.SDK_INT >= 33) {
-            arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
+            arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO,
+                Manifest.permission.ACCESS_MEDIA_LOCATION
+            )
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.ACCESS_MEDIA_LOCATION)
+        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE)
         } else {
             arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
@@ -56,7 +64,9 @@ object StoragePermissions {
             // targeting API 29+ is in scoped storage whether or not the write permission was granted,
             // so claiming access there sends every direct path (delete, bin, vault) into a failure it
             // reports as its own.
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+                PackageManager.PERMISSION_GRANTED
         }
     }
 

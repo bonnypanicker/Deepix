@@ -398,6 +398,14 @@ class SafeActivity : AppCompatActivity() {
                         // An archive appeared since the choice was made — ask again.
                         offerExistingVaultChoice()
                     }
+                SafeManager.SetupOutcome.ARCHIVE_UNREADABLE -> MetroDialog.confirm(
+                    this@SafeActivity,
+                    title = "Safe file can't be read",
+                    message = "Pixa has not changed the Safe file. Keep a copy before attempting any recovery.",
+                    positive = "Close",
+                    cancelable = false,
+                    onPositive = { finish() }
+                )
                 SafeManager.SetupOutcome.ADOPTED -> {
                     MetroBanner.show(this@SafeActivity, "Safe unlocked")
                     showContent()
@@ -537,7 +545,14 @@ class SafeActivity : AppCompatActivity() {
     private fun loadItems() {
         showBusy()
         lifecycleScope.launch {
-            val items = withContext(Dispatchers.IO) { SafeManager.listItems(this@SafeActivity) }
+            val items = runCatching {
+                withContext(Dispatchers.IO) { SafeManager.listItems(this@SafeActivity) }
+            }.getOrElse {
+                hideBusy()
+                MetroBanner.show(this@SafeActivity, "Safe file can't be read")
+                showLock()
+                return@launch
+            }
             hideBusy()
             adapter.submit(items)
             binding.emptyState.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE

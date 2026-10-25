@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Context
 import android.util.Log
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Phase 3 memory budget enforcement.
@@ -63,6 +64,7 @@ class MemoryBudget(private val app: Application) {
 
     /** Register so trim callbacks propagate into the same enforcement. */
     fun attach() {
+        if (!attached.compareAndSet(false, true)) return
         app.registerComponentCallbacks(object : ComponentCallbacks2 {
             override fun onConfigurationChanged(newConfig: android.content.res.Configuration) = Unit
 
@@ -87,6 +89,7 @@ class MemoryBudget(private val app: Application) {
 
     companion object {
         private const val Tag = "MemoryBudget"
+        private val attached = AtomicBoolean(false)
 
         /** Background is stricter — closer to the system low-memory watermark. */
         private const val BackgroundMultiple = 1.3f

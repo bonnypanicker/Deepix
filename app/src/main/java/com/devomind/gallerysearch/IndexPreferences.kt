@@ -24,6 +24,7 @@ object IndexPreferences {
     private const val KeyRequireBatteryNotLow = "index_require_battery_not_low"
     private const val KeyRequireStorageNotLow = "index_require_storage_not_low"
     private const val KeyLastWaitReason = "index_last_wait_reason"
+    private const val KeyIndexErrorRetries = "index_error_retries"
     private const val KeySmartAlbumOnboardingDismissed = "smart_album_onboarding_dismissed"
     private const val KeyIndexProgressPercent = "index_progress_percent"
     private const val KeyBlurSensitive = "blur_sensitive_content"
@@ -252,6 +253,19 @@ object IndexPreferences {
                 else putString(KeyLastWaitReason, reason.name)
             }
             .apply()
+    }
+
+    /** Retry accounting for genuine worker failures only; hardware waits must not exhaust it. */
+    fun nextIndexErrorRetry(context: Context): Int {
+        val prefs = context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+        val next = prefs.getInt(KeyIndexErrorRetries, 0) + 1
+        prefs.edit().putInt(KeyIndexErrorRetries, next).apply()
+        return next
+    }
+
+    fun clearIndexErrorRetries(context: Context) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit().remove(KeyIndexErrorRetries).apply()
     }
 
     /** Whether the user dismissed the "Create a smart album" onboarding card. */

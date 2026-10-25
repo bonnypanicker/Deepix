@@ -46,7 +46,7 @@ object SafeManager {
 
     data class ImportResult(val imported: Int, val failed: Int, val importedSources: List<Uri>)
 
-    enum class SetupOutcome { CREATED, ADOPTED, WRONG_PASSWORD, NO_ACCESS }
+    enum class SetupOutcome { CREATED, ADOPTED, WRONG_PASSWORD, ARCHIVE_UNREADABLE, NO_ACCESS }
 
     private const val MasterName = "PixaSafe.zip"
     private const val VaultFolderName = "Pixa Safe"
@@ -230,8 +230,15 @@ object SafeManager {
         } else {
             runCatching {
                 oldZip.copyTo(newZip, overwrite = false)
-                oldZip.delete()
-                true
+                if (newZip.length() != oldZip.length()) {
+                    newZip.delete()
+                    false
+                } else if (oldZip.delete()) {
+                    true
+                } else {
+                    newZip.delete()
+                    false
+                }
             }.getOrDefault(false)
         }
     }
@@ -271,7 +278,7 @@ object SafeManager {
     /** True when an encrypted archive already exists on disk (recovery/adopt path). */
     fun archiveExists(context: Context): Boolean {
         val zip = masterZip(context)
-        return zip.exists() && SafeCrypto.listEntryNames(zip).isNotEmpty()
+        return (SafeCrypto.readArchive(zip) as? SafeCrypto.ArchiveRead.Ok)?.names?.isNotEmpty() == true
     }
 
     /**
@@ -282,7 +289,9 @@ object SafeManager {
     fun setUpVault(context: Context, password: String): SetupOutcome {
         if (!hasAccess(context)) return SetupOutcome.NO_ACCESS
         val zip = masterZip(context).also { it.parentFile?.mkdirs() }
-        val hasExisting = zip.exists() && SafeCrypto.listEntryNames(zip).isNotEmpty()
+        val archive = SafeCrypto.readArchive(zip)
+        if (archive is SafeCrypto.ArchiveRead.Unreadable) return SetupOutcome.ARCHIVE_UNREADABLE
+        val hasExisting = (archive as? SafeCrypto.ArchiveRead.Ok)?.names?.isNotEmpty() == true
         if (hasExisting && !SafeCrypto.verifyPassword(zip, password.toCharArray())) {
             return SetupOutcome.WRONG_PASSWORD
         }
@@ -296,6 +305,7 @@ object SafeManager {
      * otherwise against the archive itself (recovery), then (re)saves the verifier.
      */
     fun unlock(context: Context, password: String): Boolean {
+        if (SafeCrypto.readArchive(masterZip(context)) is SafeCrypto.ArchiveRead.Unreadable) return false
         val ok = if (SafeStore.isConfigured(context)) {
             SafeStore.verifyPassword(context, password)
         } else {
@@ -382,9 +392,19 @@ object SafeManager {
         onProgress: ((done: Int, total: Int) -> Unit)?
     ): ImportResult {
         val zip = masterZip(context).also { it.parentFile?.mkdirs() }
-        val existing = SafeCrypto.listEntryNames(zip).toMutableSet()
+        val archive = SafeCrypto.readArchive(zip)
+        if (archive is SafeCrypto.ArchiveRead.Unreadable) return ImportResult(0, sources.size, emptyList())
+        val existing = (archive as? SafeCrypto.ArchiveRead.Ok)?.names.orEmpty().toMutableSet()
         val originalDirs = originalPaths(context)
         val work = File(context.cacheDir, "safe_work").apply { mkdirs() }
+        val replacement = File(zip.parentFile, "${zip.name}.tmp")
+        replacement.delete()
+        try {
+            if (zip.exists()) zip.copyTo(replacement, overwrite = true)
+        } catch (_: Exception) {
+            replacement.delete()
+            return ImportResult(0, sources.size, emptyList())
+        }
         var imported = 0
         var failed = 0
         var originalDirsDirty = false
@@ -401,10 +421,10 @@ object SafeManager {
                 val staged = plain.length()
                 if (staged <= 0L) throw IllegalStateException("Nothing staged for $source")
 
-                SafeCrypto.addFileToZip(zip, plain, entryName, password.toCharArray())
+                SafeCrypto.addFileToZip(replacement, plain, entryName, password.toCharArray())
                 // Read the entry back before the source can be deleted: the archive is the only copy
                 // from here on, and an interrupted append looks exactly like a successful add.
-                if (SafeCrypto.readEntrySize(zip, entryName, password.toCharArray()) != staged) {
+                if (SafeCrypto.readEntrySize(replacement, entryName, password.toCharArray()) != staged) {
                     throw IllegalStateException("Entry $entryName did not read back whole")
                 }
                 existing.add(entryName)
@@ -421,6 +441,16 @@ object SafeManager {
             } finally {
                 plain.delete()
             }
+        }
+        if (imported > 0) {
+            try {
+                SafeCrypto.replaceAtomically(replacement, zip)
+            } catch (_: Exception) {
+                replacement.delete()
+                return ImportResult(0, sources.size, emptyList())
+            }
+        } else {
+            replacement.delete()
         }
         if (originalDirsDirty) saveOriginalPaths(context)
         return ImportResult(imported, failed, importedSources)

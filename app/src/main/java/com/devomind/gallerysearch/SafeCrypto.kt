@@ -11,6 +11,8 @@ import net.lingala.zip4j.model.enums.CompressionMethod
 import net.lingala.zip4j.model.enums.EncryptionMethod
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
@@ -40,6 +42,16 @@ object SafeCrypto {
      */
     const val ThumbMaxPx = 512
     const val VaultExtension = ".zip"
+
+    sealed interface ArchiveRead {
+        data object Missing : ArchiveRead
+        data class Ok(val names: List<String>) : ArchiveRead
+        data class Unreadable(val cause: Throwable) : ArchiveRead
+    }
+
+    class ArchiveUnreadableException(cause: Throwable) : IllegalStateException(
+        "Safe archive cannot be read", cause
+    )
 
     private val secureRandom = SecureRandom()
 
@@ -184,12 +196,41 @@ object SafeCrypto {
         }
     }.getOrNull()
 
-    /** Entry names in the archive (readable without the password — contents stay encrypted). */
-    fun listEntryNames(zip: File): List<String> {
-        if (!zip.exists()) return emptyList()
+    /** Reads the central directory without collapsing corruption into an empty Safe. */
+    fun readArchive(zip: File): ArchiveRead {
+        if (!zip.exists()) return ArchiveRead.Missing
         return runCatching {
-            ZipFile(zip).use { z -> z.fileHeaders.map { it.fileName } }
-        }.getOrDefault(emptyList())
+            ZipFile(zip).use { z -> ArchiveRead.Ok(z.fileHeaders.map { it.fileName }) }
+        }.getOrElse { ArchiveRead.Unreadable(it) }
+    }
+
+    /** Entry names in the archive. Callers that can recover must inspect [readArchive] directly. */
+    fun listEntryNames(zip: File): List<String> = when (val read = readArchive(zip)) {
+        ArchiveRead.Missing -> emptyList()
+        is ArchiveRead.Ok -> read.names
+        is ArchiveRead.Unreadable -> throw ArchiveUnreadableException(read.cause)
+    }
+
+    /** Atomically replaces [destination] with [replacement] in the same filesystem. */
+    fun replaceAtomically(replacement: File, destination: File) {
+        require(replacement.parentFile == destination.parentFile) { "Archive replacement must stay in one directory" }
+        try {
+            Files.move(
+                replacement.toPath(), destination.toPath(),
+                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING
+            )
+        } catch (atomicFailure: Exception) {
+            // Same-directory rename is still the least risky fallback on storage providers that do
+            // not expose atomic moves through java.nio. Never delete the authoritative archive first.
+            val backup = File(destination.parentFile, "${destination.name}.replace-backup")
+            if (destination.exists() && !destination.renameTo(backup)) throw atomicFailure
+            if (replacement.renameTo(destination)) {
+                backup.delete()
+            } else {
+                if (backup.exists()) backup.renameTo(destination)
+                throw atomicFailure
+            }
+        }
     }
 
     /** Extracts one entry into [destDir], returning the extracted file. */

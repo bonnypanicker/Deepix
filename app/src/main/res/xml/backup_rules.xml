@@ -25,6 +25,8 @@
     <exclude domain="file" path="safe_original_paths.json" />
     <!-- Encrypted grid thumbnails; regenerable from the archive with the password. -->
     <exclude domain="file" path="safe_thumbs" />
+    <exclude domain="file" path="bin" />
+    <exclude domain="file" path="compression" />
 
     <!-- CLIP embeddings for the photo library (plus their staging/journal siblings). -->
     <exclude domain="file" path="embedding_index.bin" />

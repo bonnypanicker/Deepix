@@ -349,6 +349,9 @@ class CleanupWorker(
          */
         fun buildWorkRequest(): androidx.work.OneTimeWorkRequest =
             androidx.work.OneTimeWorkRequestBuilder<CleanupWorker>()
+                .setConstraints(
+                    androidx.work.Constraints.Builder().setRequiresBatteryNotLow(true).build()
+                )
                 .setBackoffCriteria(
                     androidx.work.BackoffPolicy.LINEAR,
                     DesignTokens.INDEX_BACKOFF_SECONDS,

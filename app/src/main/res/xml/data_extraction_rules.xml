@@ -17,6 +17,8 @@
 
         <exclude domain="file" path="safe_original_paths.json" />
         <exclude domain="file" path="safe_thumbs" />
+        <exclude domain="file" path="bin" />
+        <exclude domain="file" path="compression" />
 
         <exclude domain="file" path="embedding_index.bin" />
         <exclude domain="file" path="embedding_index.bin.journal" />
@@ -36,6 +38,8 @@
 
         <exclude domain="file" path="safe_original_paths.json" />
         <exclude domain="file" path="safe_thumbs" />
+        <exclude domain="file" path="bin" />
+        <exclude domain="file" path="compression" />
 
         <exclude domain="file" path="embedding_index.bin" />
         <exclude domain="file" path="embedding_index.bin.journal" />

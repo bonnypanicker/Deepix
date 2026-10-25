@@ -3,10 +3,12 @@ package com.devomind.gallerysearch
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import java.io.OutputStream
+import java.io.File
 
 /**
  * Writes edited bitmaps back to MediaStore.
@@ -31,10 +33,37 @@ object MediaImageSaver {
     fun overwrite(context: Context, uri: Uri, bitmap: Bitmap) {
         // PNG keeps lossless/alpha sources lossless; everything else (JPEG, HEIC, WebP, BMP,
         // TIFF…) re-encodes as JPEG — never PNG, which would balloon photographic content.
-        val png = context.contentResolver.getType(uri).equals("image/png", ignoreCase = true)
-        context.contentResolver.openOutputStream(uri, "wt")?.use { out ->
-            compress(bitmap, out, jpeg = !png)
-        } ?: throw IllegalStateException("Could not open $uri for writing")
+        val resolver = context.contentResolver
+        val png = resolver.getType(uri).equals("image/png", ignoreCase = true)
+        val work = File(context.cacheDir, "editor_overwrite").apply { mkdirs() }
+        val encoded = File.createTempFile("edited_", if (png) ".png" else ".jpg", work)
+        val backup = File.createTempFile("original_", ".bak", work)
+        try {
+            encoded.outputStream().use { compress(bitmap, it, jpeg = !png) }
+            if (BitmapFactory.decodeFile(encoded.absolutePath) == null) {
+                throw IllegalStateException("Edited image could not be verified")
+            }
+            resolver.openInputStream(uri)?.use { input ->
+                backup.outputStream().use { output -> input.copyTo(output) }
+            }
+                ?: throw IllegalStateException("Could not back up $uri")
+            try {
+                resolver.openOutputStream(uri, "wt")?.use { output ->
+                    encoded.inputStream().use { input -> input.copyTo(output) }
+                }
+                    ?: throw IllegalStateException("Could not open $uri for writing")
+            } catch (writeFailure: Exception) {
+                runCatching {
+                    resolver.openOutputStream(uri, "wt")?.use { output ->
+                        backup.inputStream().use { input -> input.copyTo(output) }
+                    }
+                }
+                throw writeFailure
+            }
+        } finally {
+            encoded.delete()
+            backup.delete()
+        }
     }
 
     /** Inserts a new image next to the app's pictures. Returns the new content uri. */

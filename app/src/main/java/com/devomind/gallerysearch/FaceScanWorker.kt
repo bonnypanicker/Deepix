@@ -58,6 +58,8 @@ class FaceScanWorker(
             if (pendingResults.isNotEmpty()) store.merge(pendingResults, validUris)
             Result.success()
         }
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
     } catch (error: Throwable) {
         Log.w(Tag, "Face candidate scan failed on attempt $runAttemptCount", error)
         if (runAttemptCount < MaxRetries) Result.retry() else Result.success()

@@ -147,6 +147,11 @@ class IndexingActivity : AppCompatActivity() {
                 }
                 setToggle(R.drawable.ic_fluent_pause_24_regular, getString(R.string.pause))
             }
+            state == WorkInfo.State.FAILED -> {
+                binding.indexProgress.isIndeterminate = false
+                binding.indexStatus.text = "Indexing stopped because of an error"
+                setToggle(R.drawable.ic_fluent_play_24_regular, "Retry")
+            }
             paused -> {
                 binding.indexProgress.isIndeterminate = false
                 binding.indexStatus.text = "Indexing paused · $percent%"

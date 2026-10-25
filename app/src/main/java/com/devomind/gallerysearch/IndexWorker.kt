@@ -234,6 +234,7 @@ class IndexWorker(
                     BatchSizing.deviceBatchCeiling(applicationContext)
                 )
             }
+            IndexPreferences.clearIndexErrorRetries(applicationContext)
 
             Result.success()
         } catch (waiting: IndexWaitingException) {
@@ -251,10 +252,10 @@ class IndexWorker(
             // Ceiling, not override: the retry still steps down with the thermal profile, it just
             // can't go above this. A clean pass later heals it back up one step at a time.
             IndexPreferences.saveOomBatchCap(applicationContext, 2)
-            if (runAttemptCount < MaxRetryCount) Result.retry() else Result.failure()
+            if (IndexPreferences.nextIndexErrorRetry(applicationContext) < MaxRetryCount) Result.retry() else Result.failure()
         } catch (error: Throwable) {
             Log.w(Tag, "Index worker failed on attempt $runAttemptCount.", error)
-            if (runAttemptCount < MaxRetryCount) Result.retry() else Result.failure()
+            if (IndexPreferences.nextIndexErrorRetry(applicationContext) < MaxRetryCount) Result.retry() else Result.failure()
         }
     }
 

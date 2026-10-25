@@ -21,6 +21,7 @@ class GallerySearchApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        MemoryBudget(this).attach()
         // Play's binder is asked for on the main thread because the billing library delivers its
         // callbacks wherever startConnection ran. The bind itself is asynchronous and costs no
         // network; ownership verdicts are read from SharedPreferences by the features that gate.
@@ -48,8 +49,10 @@ class GallerySearchApp : Application() {
         thread(isDaemon = true, priority = Thread.MAX_PRIORITY) {
             val app = applicationContext
             runCatching { IndexPreferences.warmStartupKeys(app) }
+                .onFailure { Log.w("GallerySearchApp", "Couldn't warm startup preferences", it) }
             for (name in StartupSharedPreferences) {
                 runCatching { app.getSharedPreferences(name, Context.MODE_PRIVATE).all }
+                    .onFailure { Log.w("GallerySearchApp", "Couldn't warm $name", it) }
             }
         }
         // Resolve bin work an interruption left behind (a copy that finished but wasn't deleted, a
@@ -57,7 +60,9 @@ class GallerySearchApp : Application() {
         // the main thread on each cold start.
         thread(isDaemon = true) {
             runCatching { BinManager.reconcile(applicationContext) }
+                .onFailure { Log.w("GallerySearchApp", "Bin reconciliation failed", it) }
             runCatching { BinManager.purgeExpired(applicationContext) }
+                .onFailure { Log.w("GallerySearchApp", "Bin expiry purge failed", it) }
         }
         // Settle any compression interrupted by a crash/process death: originals that still exist
         // are kept, verified replacements are finalized, broken ones restored from backup. No-op
@@ -103,7 +108,7 @@ class GallerySearchApp : Application() {
                     androidx.work.ExistingWorkPolicy.KEEP,
                     request
                 )
-            }
+            }.onFailure { Log.w("GallerySearchApp", "Compression recovery failed", it) }
         }
     }
 

@@ -197,7 +197,7 @@ class FaceIndexWorker(
             throw cancelled
         } catch (oom: OutOfMemoryError) {
             Log.w(Tag, "OOM during face index.", oom)
-            return Result.retry()
+            return if (runAttemptCount < MaxRetries) Result.retry() else Result.failure()
         } catch (t: Throwable) {
             Log.e(Tag, "Face index failed attempt $runAttemptCount", t)
             return if (runAttemptCount < MaxRetries) Result.retry() else Result.failure()
@@ -592,7 +592,6 @@ class FaceIndexWorker(
 
     companion object {
         const val WorkName = "gallery_face_index"
-        private const val CandidateWorkName = "gallery_face_candidates"
         const val WorkTag = "gallery_face_index_work"
         private const val ModeKey = "face_index_mode"
         private object Mode {
@@ -634,8 +633,8 @@ class FaceIndexWorker(
         /** Starts promptly when CLIP finds person-like images, but only one photo is ever active. */
         fun enqueueCandidates(context: Context) {
             WorkManager.getInstance(context).enqueueUniqueWork(
-                CandidateWorkName,
-                ExistingWorkPolicy.KEEP,
+                WorkName,
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
                 buildRequest(context, Mode.CANDIDATES)
             )
         }

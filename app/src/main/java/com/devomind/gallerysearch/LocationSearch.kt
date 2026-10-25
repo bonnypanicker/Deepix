@@ -63,8 +63,12 @@ object LocationSearch {
     private suspend fun fillMissingExif(context: Context, db: DbRepository, libraryUris: List<Uri>) {
         if (libraryUris.isEmpty()) return
         val existing = db.existingExifUris(libraryUris.map { it.toString() })
+        // Older builds stored redacted GPS as a completed EXIF row. Revisit a bounded slice of
+        // those rows too so granting ACCESS_MEDIA_LOCATION repairs the cache without a destructive
+        // database migration or a one-shot full-library scan.
         val missing = libraryUris.asSequence()
             .filter { it.toString() !in existing }
+            .plus(libraryUris.asSequence().filter { it.toString() in existing })
             .take(MaxExifExtractionsPerSearch)
             .toList()
         for (uri in missing) {

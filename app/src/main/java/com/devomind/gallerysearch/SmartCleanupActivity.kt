@@ -1033,7 +1033,10 @@ class SmartCleanupActivity : AppCompatActivity() {
             val outcome = withContext(Dispatchers.IO) { DeleteCoordinator.delete(this@SmartCleanupActivity, uris) }
             when (outcome) {
                 is DeleteCoordinator.Outcome.NeedsSystemDelete -> deleteUris(uris)
-                is DeleteCoordinator.Outcome.Done -> onDeleted(uris)
+                is DeleteCoordinator.Outcome.Done -> {
+                    onDeleted(outcome.succeededUris)
+                    if (outcome.failed > 0) MetroBanner.show(this@SmartCleanupActivity, "${outcome.failed} failed")
+                }
             }
         }
     }
@@ -1053,8 +1056,10 @@ class SmartCleanupActivity : AppCompatActivity() {
                 deleteRequestLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
                 return
             }
-            uris.forEach { contentResolver.delete(it, null, null) }
-            onDeleted(uris)
+            val deleted = uris.filter { contentResolver.delete(it, null, null) > 0 }
+            if (deleted.isNotEmpty()) onDeleted(deleted)
+            val failed = uris.size - deleted.size
+            if (failed > 0) MetroBanner.show(this, "$failed failed")
         } catch (error: Throwable) {
             val recoverable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
                 error is RecoverableSecurityException && !afterApproval

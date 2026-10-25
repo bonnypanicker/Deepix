@@ -2,6 +2,8 @@ package com.devomind.gallerysearch
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import android.util.Log
 import androidx.exifinterface.media.ExifInterface
 import java.text.SimpleDateFormat
@@ -13,7 +15,10 @@ object ExifExtractor {
 
     fun extract(context: Context, uri: Uri): ExifData {
         return runCatching {
-            context.contentResolver.openInputStream(uri)?.use { stream ->
+            val original = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                MediaStore.setRequireOriginal(uri)
+            } else uri
+            context.contentResolver.openInputStream(original)?.use { stream ->
                 val exif = ExifInterface(stream)
                 ExifData(
                     make = exif.getAttribute(ExifInterface.TAG_MAKE)?.trim()?.takeIf { it.isNotBlank() },
