@@ -89,6 +89,7 @@ class MediaPagerAdapter(
         private var boundItem: GalleryRepository.MediaItem? = null
         private var boundPosition: Int = -1
         private var userScrubbing = false
+        private var imageScaleInitialized = false
 
         private val progressHandler = Handler(Looper.getMainLooper())
         private val progressRunnable = object : Runnable {
@@ -181,6 +182,7 @@ class MediaPagerAdapter(
             binding.photoView.visibility = View.VISIBLE
             binding.loadingSpinner.visibility = View.VISIBLE
             binding.photoView.resetRotation()
+            imageScaleInitialized = false
 
             if (transitionName != null) {
                 ViewCompat.setTransitionName(binding.photoView, transitionName)
@@ -220,6 +222,7 @@ class MediaPagerAdapter(
                         isFirstResource: Boolean
                     ): Boolean {
                         binding.loadingSpinner.visibility = View.GONE
+                        initializeImageScaleOnce()
                         if (isInitialSharedElement) onInitialImageLoaded()
                         return false
                     }
@@ -474,6 +477,22 @@ class MediaPagerAdapter(
             return binding.photoView.visibility == View.VISIBLE && binding.photoView.scale > 1.0f
         }
 
+        /** Restores PhotoView's fitted base scale after a bind or a shared-element hand-off. */
+        fun resetPhotoZoomToFit() {
+            if (binding.photoView.visibility != View.VISIBLE || binding.photoView.drawable == null) return
+            binding.photoView.post {
+                if (binding.photoView.visibility == View.VISIBLE && binding.photoView.drawable != null) {
+                    runCatching { binding.photoView.setScale(binding.photoView.minimumScale, false) }
+                }
+            }
+        }
+
+        private fun initializeImageScaleOnce() {
+            if (imageScaleInitialized) return
+            imageScaleInitialized = true
+            resetPhotoZoomToFit()
+        }
+
         fun cleanup() {
             stopProgressUpdates()
             userScrubbing = false
@@ -483,6 +502,7 @@ class MediaPagerAdapter(
             player = null
             boundUri = null
             boundTransitionName = null
+            imageScaleInitialized = false
             binding.playerView.player = null
             binding.videoControls.visibility = View.GONE
             binding.playPauseButton.visibility = View.GONE

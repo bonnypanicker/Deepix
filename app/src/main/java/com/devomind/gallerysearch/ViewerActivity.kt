@@ -16,7 +16,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.transition.ChangeBounds
-import android.transition.ChangeImageTransform
+import android.transition.Transition
 import android.transition.TransitionSet
 import android.util.Log
 import android.view.MotionEvent
@@ -317,11 +317,25 @@ class ViewerActivity : AppCompatActivity() {
         fun transition() = TransitionSet().apply {
             ordering = TransitionSet.ORDERING_TOGETHER
             addTransition(ChangeBounds())
-            addTransition(ChangeImageTransform())
             duration = SHARED_ELEMENT_DURATION_MS
             interpolator = DecelerateInterpolator()
         }
-        window.sharedElementEnterTransition = transition()
+        // The source is a center-cropped grid ImageView while the target is a PhotoView, whose
+        // matrix is owned by its zoom attacher. ChangeImageTransform writes the source crop matrix
+        // into that same target matrix and can leave the full-screen image at an apparent max zoom.
+        // Bounds are safe to animate; the photo's fit matrix must remain PhotoView's responsibility.
+        window.sharedElementEnterTransition = transition().also { enter ->
+            enter.addListener(object : Transition.TransitionListener {
+                override fun onTransitionStart(transition: Transition) = Unit
+                override fun onTransitionCancel(transition: Transition) = Unit
+                override fun onTransitionPause(transition: Transition) = Unit
+                override fun onTransitionResume(transition: Transition) = Unit
+
+                override fun onTransitionEnd(transition: Transition) {
+                    binding.viewPager.post { getCurrentPageViewHolder()?.resetPhotoZoomToFit() }
+                }
+            })
+        }
         window.sharedElementReturnTransition = transition()
     }
 
