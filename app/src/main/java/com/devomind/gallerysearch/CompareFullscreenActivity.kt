@@ -45,7 +45,6 @@ class CompareFullscreenActivity : AppCompatActivity() {
     private var swipeDragging = false
     private var swipeDirection = 0
     private var swapInProgress = false
-    private var lastSwapTime = 0L
 
     private val uri: String get() = intent.getStringExtra(ExtraOriginalUri).orEmpty()
     private val stagingPath: String get() = intent.getStringExtra(ExtraStagingPath).orEmpty()
@@ -100,7 +99,12 @@ class CompareFullscreenActivity : AppCompatActivity() {
         return super.dispatchTouchEvent(ev)
     }
 
-    private fun canProcessSwipe(): Boolean = !swapInProgress && System.currentTimeMillis() - lastSwapTime > 300L
+    /**
+     * A completed drag starts a short visual transition.  Ignore gestures only while that
+     * transition owns the two photo views; the end action always releases the guard so the
+     * original and compressed versions can be compared repeatedly.
+     */
+    private fun canProcessSwipe(): Boolean = !swapInProgress
 
     private fun observeGestures(ev: MotionEvent) {
         when (ev.actionMasked) {
@@ -148,8 +152,6 @@ class CompareFullscreenActivity : AppCompatActivity() {
                 if (canProcessSwipe() && swipeDragging) {
                     val dx = ev.x - swipeStartX
                     if (abs(dx) > width() / 4f || abs(vx) > flingVelocityPx) {
-                        swapInProgress = true
-                        lastSwapTime = System.currentTimeMillis()
                         commitSwap(dx)
                     } else {
                         springBack()
@@ -159,7 +161,6 @@ class CompareFullscreenActivity : AppCompatActivity() {
             }
             MotionEvent.ACTION_CANCEL -> {
                 if (swipeDragging) springBack()
-                swapInProgress = false
                 resetSwipe()
             }
             else -> velocityTracker?.addMovement(ev)
@@ -194,7 +195,7 @@ class CompareFullscreenActivity : AppCompatActivity() {
 
     /** Header tap: park the target off the edge of its header side, then run the pager slide. */
     private fun jumpTo(showCompressed: Boolean) {
-        if (showingCompressed == showCompressed) return
+        if (swapInProgress || showingCompressed == showCompressed) return
         // Compressed sits on the right of the header → slides in from the right; Original from
         // the left. Same revealDir convention as a drag of the matching direction.
         val revealDir = if (showCompressed) -1 else 1
@@ -208,7 +209,8 @@ class CompareFullscreenActivity : AppCompatActivity() {
      * translation 0. Resets both views and finalizes z-order once the incoming animation lands.
      */
     private fun swapTo(showCompressed: Boolean, revealDir: Int) {
-        if (showingCompressed == showCompressed) return
+        if (swapInProgress || showingCompressed == showCompressed) return
+        swapInProgress = true
         val w = width().toFloat()
         val top = topView()
         val incoming = incomingView()
@@ -227,12 +229,16 @@ class CompareFullscreenActivity : AppCompatActivity() {
                 showingCompressed = showCompressed
                 applyChromeZOrder()
                 renderHeader()
+                swapInProgress = false
             }
             .start()
     }
 
     /** Release (or cancel) without committing: both panes return to their pre-drag positions. */
     private fun springBack() {
+        // Settle the pair before another drag can take ownership.  This also prevents a cancelled
+        // drag from racing a fresh swipe while either photo is still returning to its home edge.
+        swapInProgress = true
         val dir = swipeDirection
         val w = width().toFloat()
         topView().animate()
@@ -243,6 +249,7 @@ class CompareFullscreenActivity : AppCompatActivity() {
         incomingView().animate()
             .translationX(-dir * w)
             .setDuration(SPRING_ANIM_MS)
+            .withEndAction { swapInProgress = false }
             .start()
     }
 
