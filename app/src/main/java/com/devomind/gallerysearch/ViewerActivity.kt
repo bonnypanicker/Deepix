@@ -429,7 +429,9 @@ class ViewerActivity : AppCompatActivity() {
         binding.infoPanel.translationY = infoHiddenY()
         binding.infoPanel.alpha = 1f
 
-        setControlsVisible(true)
+        // A swipe must not reveal the chrome: arriving on the next photo keeps whatever state the
+        // viewer was already in, so a fullscreen swipe stays fullscreen. Only a tap toggles it.
+        setControlsVisible(controlsVisible)
         scheduleAutoHide()
     }
 
