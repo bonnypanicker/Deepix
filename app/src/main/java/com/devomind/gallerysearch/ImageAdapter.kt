@@ -372,7 +372,17 @@ class ImageAdapter(
                 ::beginSelectionGesture,
                 ::isBlurred,
                 ::revealSensitive
-            )
+            ).also { holder ->
+                // Seed the ordinary grid size before this view is attached. Setting it for the
+                // first time from onBindViewHolder asks imageGrid to lay out while it is already
+                // computing its children, producing the "requestLayout() improperly called" warning.
+                if (!useCollageLayout) {
+                    holder.prepareGridHeight(
+                        gridColumnCount,
+                        widthOr(parent.width.takeIf { it > 0 } ?: parent.resources.displayMetrics.widthPixels)
+                    )
+                }
+            }
         }
     }
 
@@ -767,6 +777,37 @@ class ImageAdapter(
         private val onReveal: (Uri) -> Unit = {}
     ) : RecyclerView.ViewHolder(binding.root) {
 
+        /** Sizes a new ordinary-grid holder before RecyclerView attaches it. */
+        fun prepareGridHeight(gridColumnCount: Int, gridWidth: Int) {
+            val spacing = (DesignTokens.GRID_THUMBNAIL_SPACING_DP *
+                binding.root.resources.displayMetrics.density).toInt()
+            val height = ((gridWidth - spacing * (gridColumnCount - 1)) / gridColumnCount)
+                .coerceAtLeast(1)
+            setThumbnailHeight(height)
+        }
+
+        /**
+         * A binding may re-use a holder after a width or layout-mode change. Avoid layout work when
+         * its height is already correct; if RecyclerView is currently laying out, publish the one
+         * genuine resize just after that pass rather than request another pass from inside it.
+         */
+        private fun setThumbnailHeight(height: Int) {
+            if (binding.thumbnail.layoutParams.height == height) return
+            val applyHeight = Runnable {
+                val params = binding.thumbnail.layoutParams
+                if (params.height != height) {
+                    params.height = height
+                    binding.thumbnail.layoutParams = params
+                }
+            }
+            val recycler = binding.root.parent as? RecyclerView
+            if (recycler?.isComputingLayout == true) {
+                binding.root.post(applyHeight)
+            } else {
+                applyHeight.run()
+            }
+        }
+
         private fun loadThumbnail(
             context: android.content.Context,
             item: GalleryRepository.MediaItem,
@@ -828,9 +869,7 @@ class ImageAdapter(
                 binding.root.setBackgroundColor(ContextCompat.getColor(binding.root.context, R.color.metroBgPrimary))
                 binding.thumbnail.setBackgroundColor(ContextCompat.getColor(binding.root.context, R.color.metroBgCard))
                 binding.thumbnail.scaleType = ImageView.ScaleType.CENTER_CROP
-                binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
-                    this.height = cellSize
-                }
+                setThumbnailHeight(cellSize)
                 loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, cellSize, cellSize, blurred)
             } else {
                 // Justified-rows collage: height is precomputed per row so every
@@ -850,9 +889,7 @@ class ImageAdapter(
                 binding.root.setBackgroundColor(Color.TRANSPARENT)
                 binding.thumbnail.setBackgroundColor(Color.TRANSPARENT)
                 binding.thumbnail.scaleType = ImageView.ScaleType.FIT_CENTER
-                binding.thumbnail.layoutParams = binding.thumbnail.layoutParams.apply {
-                    this.height = imageHeight
-                }
+                setThumbnailHeight(imageHeight)
                 // fitCenter guarantees the whole photo is always shown (never cropped); the image
                 // area matches the aspect ratio within ~1px, so there is no visible letterbox.
                 loadThumbnail(binding.thumbnail.context, cell.item, binding.thumbnail, approxWidth, imageHeight, blurred, fitCenter = true)
