@@ -44,6 +44,7 @@ class ProActivity : AppCompatActivity() {
         applyResponsiveChrome()
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
+        binding.closeBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         binding.buyBtn.setOnClickListener {
             // Play's sheet opens on the user's word for it. When it cannot be opened the reason has to
             // appear on this page, because the button pressing it is the only feedback they get.
@@ -102,15 +103,13 @@ class ProActivity : AppCompatActivity() {
         binding.heroIllustration.layoutParams = params
     }
 
-    /** The free half of the offer, said in the same numbers the features enforce. */
+    /** The Pro-half of the offer, said in the same numbers the features enforce. */
     private fun renderLimits() {
         binding.proDetailAccents.text = getString(R.string.pro_add_accents_detail, FreeTier.FreeAccents)
         binding.proDetailSafe.text = getString(R.string.pro_add_safe_detail, FreeTier.FreeSafePhotos)
         binding.proDetailCompression.text =
             getString(R.string.pro_add_compression_detail, FreeTier.FreeCompressionPhotos)
         binding.proDetailAlbums.text = getString(R.string.pro_add_albums_detail, FreeTier.FreeSmartAlbums)
-        binding.proFreeCompression.text =
-            getString(R.string.pro_free_compression, FreeTier.FreeCompressionPhotos)
     }
 
     /** What the user reached for, when a gate sent them here rather than the drawer or the settings row. */

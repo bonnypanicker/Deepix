@@ -205,6 +205,7 @@ class ViewerActivity : AppCompatActivity() {
         currentPosition = savedInstanceState?.getInt(StatePosition)
             ?: intent.getIntExtra(ExtraPosition, 0)
         val transitionName = intent.getStringExtra(ExtraTransitionName)
+        val transitionPreview = ViewerTransitionPreview.take(transitionName)
 
         if (items.isEmpty() || currentPosition !in items.indices) {
             finish()
@@ -230,6 +231,7 @@ class ViewerActivity : AppCompatActivity() {
             items = items,
             initialPosition = currentPosition,
             initialTransitionName = transitionName,
+            initialTransitionPreview = transitionPreview,
             onInitialImageLoaded = {
                 startSharedElementEnterTransition()
             },

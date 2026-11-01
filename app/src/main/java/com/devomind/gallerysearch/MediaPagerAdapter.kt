@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.SeekBar
 import androidx.core.view.ViewCompat
+import androidx.core.view.doOnPreDraw
 import androidx.media3.common.MediaItem as Media3Item
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -29,6 +30,7 @@ class MediaPagerAdapter(
     private val items: List<GalleryRepository.MediaItem>,
     private val initialPosition: Int,
     private val initialTransitionName: String?,
+    initialTransitionPreview: Drawable?,
     private val onInitialImageLoaded: () -> Unit,
     private val onMediaTap: () -> Unit,
     private val onMediaLongClick: () -> Unit = {},
@@ -43,6 +45,7 @@ class MediaPagerAdapter(
 
     // Mute is a session-wide preference: muting one video keeps subsequent videos muted too.
     private var sessionMuted = false
+    private var initialTransitionPreview: Drawable? = initialTransitionPreview
 
     // ViewPager2 can select a prefetched page before its holder is attached. Keeping selection in
     // the adapter makes a later video bind inherit the correct autoplay state.
@@ -188,6 +191,21 @@ class MediaPagerAdapter(
                 ViewCompat.setTransitionName(binding.photoView, transitionName)
             }
 
+            // On a thumbnail launch this is a copy of the image the user just tapped. Draw it
+            // before the first frame, then let Glide replace it with the fit-sized resource. This
+            // lets the shared-element transition begin at pre-draw rather than after a cold decode.
+            val transitionPreview = if (isInitialSharedElement) {
+                initialTransitionPreview.also { initialTransitionPreview = null }
+            } else {
+                null
+            }
+            if (transitionPreview != null) {
+                binding.photoView.setImageDrawable(transitionPreview)
+                binding.photoView.doOnPreDraw {
+                    if (boundUri == item.uri) onInitialImageLoaded()
+                }
+            }
+
             val (overrideWidth, overrideHeight) = decodeOverridePx()
             Glide.with(binding.photoView)
                 .load(item.uri)
@@ -195,6 +213,7 @@ class MediaPagerAdapter(
                 .error(R.drawable.ic_fluent_image_24_regular)
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                 .override(overrideWidth, overrideHeight)
+                .placeholder(transitionPreview)
                 // The full-size decode is the slow part, and a page can arrive before it finishes —
                 // the user then sees this view's black background. A tenth-scale decode costs almost
                 // nothing and is small enough to survive the memory-cache pressure the full pages

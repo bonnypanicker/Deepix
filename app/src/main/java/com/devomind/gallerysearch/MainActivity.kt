@@ -4747,6 +4747,9 @@ class MainActivity : AppCompatActivity() {
         } else {
             null
         }
+        // The source thumbnail is already on screen. Give the viewer a distinct Drawable copy so
+        // its first frame is meaningful while Glide upgrades it to a full display-size image.
+        transitionName?.let { ViewerTransitionPreview.store(it, sharedView.drawable) }
         val intent = Intent(this, ViewerActivity::class.java).apply {
             putExtra(ViewerActivity.ExtraMarker, item.uri.toString())
             putExtra(ViewerActivity.ExtraPosition, position)

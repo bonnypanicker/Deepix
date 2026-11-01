@@ -158,35 +158,18 @@
     <string name="pro_buy">Buy</string>
     <string name="pro_buy_price">Buy %1$s</string>
     <string name="pro_restore">Restore</string>
-    <string name="pro_owned_body">Unlocked on this device. Purchases belong to the Google Play account that paid for them, so a new phone restores them at no cost.</string>
-    <!-- The Pro page. Section by section: the offer, the free half of it, and the money.
-         Every number here that describes a limit is a format argument filled in ProActivity from
+    <string name="pro_owned_body">Pixa Pro is unlocked on this device. Features stay active across reinstalls.</string>
+    <!-- The Pro page: the offer and the limits it lifts, in numbers ProActivity fills in from
          FreeTier, because a page that types "50" is a page that will still say "50" after the
          Safe moves to 80. -->
-    <string name="pro_hero_description">Eight flat tiles: four greyed, which are the features that stay free, and four in the accent color, which are the ones Pixa Pro adds.</string>
+    <string name="pro_hero_description">Eight flat tiles in the accent color, representing the features Pixa Pro adds.</string>
     <string name="pro_section_adds">What Pro adds</string>
-    <string name="pro_section_free">What stays free</string>
-    <string name="pro_section_how">How the purchase works</string>
     <string name="pro_add_people_detail">Free: the face clusters, unnamed</string>
     <string name="pro_add_accents_detail">Free: %1$d accent colors</string>
     <string name="pro_add_safe_detail">Free: %1$d photos in the Safe</string>
     <string name="pro_add_cleanup_detail">Free: every category but these two</string>
     <string name="pro_add_compression_detail">Free: %1$d photo per run</string>
     <string name="pro_add_albums_detail">Free: %1$d smart albums</string>
-    <string name="pro_free_gallery">Every photo and video on this phone, browsed and sorted</string>
-    <string name="pro_free_search">Semantic search by description, date, place, person or picture</string>
-    <string name="pro_free_cleanup">Duplicates, similar shots, clutter, screenshots, quality</string>
-    <string name="pro_free_compression">Compress %1$d photo at a time</string>
-    <string name="pro_free_editor">Crop, rotate, flip, filter, mark and share</string>
-    <string name="pro_free_albums">Folder and tag albums, as many as you like</string>
-    <string name="pro_how_once">One payment</string>
-    <string name="pro_how_once_body">Pixa Pro is not a subscription. There is no renewal, nothing to cancel, and no date the unlock expires.</string>
-    <string name="pro_how_play">Google Play charges you</string>
-    <string name="pro_how_play_body">Play sets the price in your currency and takes its own cut. The app only ever receives the answer — purchased, or not.</string>
-    <string name="pro_how_restore">Restored on a new phone</string>
-    <string name="pro_how_restore_body">The purchase belongs to the Play account that paid for it. Install Pixa and press RESTORE and the features come back at no cost.</string>
-    <string name="pro_how_refund">Reversible</string>
-    <string name="pro_how_refund_body">Refund or cancel the purchase in Google Play and the extra features lock again. Everything that was always free keeps working.</string>
     <!-- What the user reached for, said back to them inside the offer. Each gate passes its own limit from
          FreeTier rather than hard-coding the number here, so the sentence and the rule cannot drift apart. -->
     <string name="gate_accent">More accent colors are part of Pixa Pro.</string>

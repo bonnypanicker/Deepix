@@ -38,9 +38,6 @@ class OnboardingPanel(
     val benefits: List<OnboardingBenefit> = emptyList()
 )
 
-/** One line of the Pro page's list: the thing the purchase adds, said once. */
-class OnboardingBenefit(@StringRes val label: Int)
-
 /** Which runtime grant a row stands for, and therefore how the tour asks for it. */
 enum class OnboardingPermissionKind { Media, AllFiles, Notifications }
 
@@ -67,6 +64,11 @@ class OnboardingPermission(
     val required: Boolean
 )
 
+/** A benefit row shown in a tour page with a list of features or entitlements. */
+class OnboardingBenefit(
+    @StringRes val label: Int
+)
+
 /** One row's live readout: its state plus the short word drawn at the row's end. */
 data class OnboardingPermissionStatus(
     val state: OnboardingPermissionState,
@@ -82,23 +84,22 @@ interface OnboardingPermissionHost {
     fun request(kind: OnboardingPermissionKind)
 }
 
-/**
- * The reference draws each feature illustration to the full width of its panel and holds it at the
- * SVG's own 300 x 220 proportions, so the picture is the page's upper half rather than a small mark
- * floating in it. The panel column is 304 units wide, so a 300-unit illustration fills it without
- * touching the text gutter.
+/** The reference draws each feature illustration to the full width of its panel and holds it at the
+ *  SVG's own 300 x 220 proportions, so the picture is the page's upper half rather than a small mark
+ *  floating in it. The panel column is 304 units wide, so a 300-unit illustration fills it without
+ *  touching the text gutter.
  */
 private const val IllustrationWidth = 300f
 private const val IllustrationHeight = 220f
 
-/** The Pro page's glyph sits on a square accent tile, not on the wide feature illustration. */
-private const val ProTileSize = 84f
-
 /**
- * The tour's contents: what Pixa does, what costs extra, then what it needs. The permissions page stays
- * last because the tour's own chrome treats the final page specially — "Get started" and the blocked
- * finish both hang on it, and the dismiss button jumps to it. The Pro page therefore sits before it,
- * and lists the limits [FreeTier] actually enforces rather than a general idea of premium.
+ * The tour's contents: what Pixa does, then what it needs. The permissions page stays last because the
+ * tour's own chrome treats the final page specially — "Get started" and the blocked finish both hang on
+ * it, and the dismiss button jumps to it.
+ *
+ * Pro is not a page here. A purchase asked for in the middle of a tour the user has not finished is the
+ * fastest way to make them stop reading; [ProActivity] is offered once, after "Get started", where it
+ * can be dismissed without the tour having to wait on it.
  *
  * The permissions page lists what this build actually requests — media access gates every feature,
  * all-files access is what lets Safe and the recycle bin move or delete originals, and notifications
@@ -161,22 +162,6 @@ fun onboardingPanels(): List<OnboardingPanel> = listOf(
         eyebrow = R.string.onboarding_safe_eyebrow,
         title = R.string.onboarding_safe_title,
         body = R.string.onboarding_safe_body
-    ),
-    OnboardingPanel(
-        iconRes = R.drawable.ic_onboarding_pro,
-        iconWidth = ProTileSize,
-        iconHeight = ProTileSize,
-        eyebrow = R.string.onboarding_pro_eyebrow,
-        title = R.string.onboarding_pro_title,
-        body = R.string.onboarding_pro_body,
-        benefits = listOf(
-            OnboardingBenefit(R.string.onboarding_pro_benefit_people),
-            OnboardingBenefit(R.string.onboarding_pro_benefit_accents),
-            OnboardingBenefit(R.string.onboarding_pro_benefit_safe),
-            OnboardingBenefit(R.string.onboarding_pro_benefit_cleanup),
-            OnboardingBenefit(R.string.onboarding_pro_benefit_compression),
-            OnboardingBenefit(R.string.onboarding_pro_benefit_albums)
-        )
     ),
     OnboardingPanel(
         iconRes = 0,
