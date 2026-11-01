@@ -3,6 +3,7 @@ package com.devomind.gallerysearch
 import android.content.Context
 import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 import java.io.File
@@ -38,6 +39,35 @@ object MediaFileOps {
             }
         }.onFailure { Log.w(TAG, "resolvePath failed for $uri", it) }
         return null
+    }
+
+    /**
+     * The folder that holds [uri], so a new sibling (e.g. an edited copy) can be written beside it
+     * instead of into the app's own folder. On API 29+ this is a MediaStore `RELATIVE_PATH` like
+     * `Pictures/Camera/` (with a trailing slash, as MediaStore requires); on older releases it is
+     * an absolute directory path, since there is no `RELATIVE_PATH` column to write. Null when it
+     * can't be determined, so callers fall back to their default folder.
+     */
+    fun resolveParentFolder(context: Context, uri: Uri): String? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            runCatching {
+                context.contentResolver
+                    .query(uri, arrayOf(MediaStore.MediaColumns.RELATIVE_PATH), null, null, null)
+                    ?.use { c ->
+                        if (c.moveToFirst()) {
+                            val idx = c.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+                            if (idx >= 0) {
+                                val rel = c.getString(idx)
+                                if (!rel.isNullOrBlank()) {
+                                    return if (rel.endsWith("/")) rel else "$rel/"
+                                }
+                            }
+                        }
+                    }
+            }.onFailure { Log.w(TAG, "resolveParentFolder failed for $uri", it) }
+            return null
+        }
+        return resolvePath(context, uri)?.let { File(it).parent }
     }
 
     /** Deletes the underlying file directly and clears its MediaStore row. Returns true on success. */

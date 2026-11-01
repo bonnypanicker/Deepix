@@ -537,7 +537,11 @@ class PhotoEditorActivity : AppCompatActivity() {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val bmp = renderFullRes()
-                    val uri = MediaImageSaver.saveCopy(this@PhotoEditorActivity, bmp, displayName)
+                    // Write the copy beside the original rather than into the app's own folder, so it
+                    // shows up where the user expects. Falls back to Pictures/Deepix when the original's
+                    // folder can't be resolved.
+                    val destFolder = MediaFileOps.resolveParentFolder(this@PhotoEditorActivity, sourceUri)
+                    val uri = MediaImageSaver.saveCopy(this@PhotoEditorActivity, bmp, displayName, destFolder)
                     bmp.recycle()
                     uri
                 }

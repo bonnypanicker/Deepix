@@ -13,7 +13,7 @@ import java.io.File
 /**
  * Writes edited bitmaps back to MediaStore.
  *
- * - [saveCopy] always works (inserts a new image in Pictures/Deepix).
+ * - [saveCopy] always works (inserts a new image, by default in Pictures/Deepix).
  * - [overwrite] rewrites the original; on Android 10+ that can need the user's write consent, which
  *   surfaces as a [android.app.RecoverableSecurityException] the caller resolves via an IntentSender.
  */
@@ -66,16 +66,22 @@ object MediaImageSaver {
         }
     }
 
-    /** Inserts a new image next to the app's pictures. Returns the new content uri. */
-    fun saveCopy(context: Context, bitmap: Bitmap, baseName: String): Uri {
+    /**
+     * Inserts a new image and returns its content uri. [destFolder] is the original's folder, as
+     * returned by [MediaFileOps.resolveParentFolder]: a MediaStore `RELATIVE_PATH` on API 29+, or
+     * an absolute directory on older releases. When null the copy goes to Pictures/Deepix.
+     */
+    fun saveCopy(context: Context, bitmap: Bitmap, baseName: String, destFolder: String? = null): Uri {
         val resolver = context.contentResolver
         val name = "${baseName}_edited_${System.currentTimeMillis()}.jpg"
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, name)
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/$COPY_FOLDER")
+                put(MediaStore.Images.Media.RELATIVE_PATH, destFolder ?: "Pictures/$COPY_FOLDER")
                 put(MediaStore.Images.Media.IS_PENDING, 1)
+            } else if (destFolder != null) {
+                put(MediaStore.Images.Media.DATA, File(destFolder, name).absolutePath)
             }
         }
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

@@ -552,11 +552,16 @@ class VideoEditorActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
+                    // Write the copy beside the original rather than into the app's own folder, so it
+                    // shows up where the user expects. Falls back to Movies/Deepix when the original's
+                    // folder can't be resolved.
+                    val destFolder = MediaFileOps.resolveParentFolder(this@VideoEditorActivity, sourceUri)
                     MediaVideoSaver.saveCopy(
                         this@VideoEditorActivity,
                         file,
                         displayName,
-                        trimEndMs - trimStartMs
+                        trimEndMs - trimStartMs,
+                        destFolder
                     )
                 }
             }

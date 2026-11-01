@@ -9,7 +9,7 @@ import java.io.File
 
 /**
  * Writes exported video files back to MediaStore, mirroring [MediaImageSaver]:
- * - [saveCopy] always works (inserts a new video in Movies/Deepix).
+ * - [saveCopy] always works (inserts a new video, by default in Movies/Deepix).
  * - [overwrite] rewrites the original from the exported temp file; on Android 10+ that can need
  *   the user's write consent, which the caller resolves via an IntentSender and retries.
  */
@@ -29,8 +29,13 @@ object MediaVideoSaver {
         }, null, null)
     }
 
-    /** Inserts the exported file as a new video. Returns the new content uri. */
-    fun saveCopy(context: Context, source: File, baseName: String, durationMs: Long): Uri {
+    /**
+     * Inserts the exported file as a new video and returns its content uri. [destFolder] is the
+     * original's folder, as returned by [MediaFileOps.resolveParentFolder]: a MediaStore
+     * `RELATIVE_PATH` on API 29+, or an absolute directory on older releases. When null the copy
+     * goes to Movies/Deepix.
+     */
+    fun saveCopy(context: Context, source: File, baseName: String, durationMs: Long, destFolder: String? = null): Uri {
         val resolver = context.contentResolver
         val name = "${baseName.substringBeforeLast('.')}_edited_${System.currentTimeMillis()}.mp4"
         val values = ContentValues().apply {
@@ -39,8 +44,10 @@ object MediaVideoSaver {
             put(MediaStore.Video.Media.SIZE, source.length())
             put(MediaStore.Video.Media.DURATION, durationMs)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/$COPY_FOLDER")
+                put(MediaStore.Video.Media.RELATIVE_PATH, destFolder ?: "Movies/$COPY_FOLDER")
                 put(MediaStore.Video.Media.IS_PENDING, 1)
+            } else if (destFolder != null) {
+                put(MediaStore.Video.Media.DATA, File(destFolder, name).absolutePath)
             }
         }
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
