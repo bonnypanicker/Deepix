@@ -132,6 +132,9 @@ class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
 
     private fun complete() {
         IndexPreferences.setFirstRunDone(this, true)
+        // "Get started" hands the user to the Pro page, then leaves the tour. The page is a normal
+        // screen with its own close button, so declining is a tap away and the tour never waits on it.
+        ProPaywall.open(this)
         finish()
     }
 
