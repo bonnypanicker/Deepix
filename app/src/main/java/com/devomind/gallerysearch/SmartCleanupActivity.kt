@@ -1003,16 +1003,16 @@ class SmartCleanupActivity : AppCompatActivity() {
     private fun confirmMoveSelectedToSafe() {
         val selected = adapter.selectedUris()
         if (selected.isEmpty()) return
-        // Only still images can be locked; the Safe stores encrypted image zips.
-        val images = selected.filter { uri ->
+        // Photos and videos can both be locked; other types (audio, documents) cannot.
+        val media = selected.filter { uri ->
             val type = contentResolver.getType(uri)
-            type == null || type.startsWith("image/")
+            type == null || type.startsWith("image/") || type.startsWith("video/")
         }
-        if (images.isEmpty()) {
-            MetroBanner.show(this, "Only photos can be moved to the Safe")
+        if (media.isEmpty()) {
+            MetroBanner.show(this, "Only photos and videos can be moved to the Safe")
             return
         }
-        val noun = if (images.size == 1) "1 photo" else "${images.size} photos"
+        val noun = if (media.size == 1) "1 item" else "${media.size} items"
         MetroDialog.confirm(
             context = this,
             title = "Move to Safe?",
@@ -1023,7 +1023,7 @@ class SmartCleanupActivity : AppCompatActivity() {
             adapter.clearSelection()
             safeResultLauncher.launch(
                 Intent(this, SafeActivity::class.java)
-                    .putParcelableArrayListExtra(SafeActivity.ExtraImportUris, ArrayList(images))
+                    .putParcelableArrayListExtra(SafeActivity.ExtraImportUris, ArrayList(media))
             )
         }
     }

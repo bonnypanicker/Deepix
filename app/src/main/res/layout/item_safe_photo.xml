@@ -30,4 +30,16 @@
         android:src="@drawable/ic_fluent_checkmark_24_regular"
         android:tint="?attr/accentColor"
         android:visibility="gone" />
+
+    <!-- Marks a locked video, whose tile is a poster frame like any photo's. -->
+    <ImageView
+        android:id="@+id/videoBadge"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_gravity="bottom|start"
+        android:layout_margin="6dp"
+        android:contentDescription="@string/video"
+        android:src="@drawable/ic_fluent_play_24_regular"
+        android:tint="@color/metroTextPrimary"
+        android:visibility="gone" />
 </FrameLayout>

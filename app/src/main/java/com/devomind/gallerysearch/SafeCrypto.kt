@@ -3,6 +3,7 @@ package com.devomind.gallerysearch
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import net.lingala.zip4j.ZipFile
 import net.lingala.zip4j.model.ZipParameters
@@ -107,6 +108,45 @@ object SafeCrypto {
             BitmapFactory.Options().apply { inSampleSize = sample }
         ) ?: return null
         return scaleToThumbnailJpeg(decoded)
+    }
+
+    /**
+     * Poster-frame JPEG for a video in the gallery, or null when no frame can be read. The grid
+     * shows a video with a still, the same way it shows a photo.
+     */
+    fun makeVideoThumbnailJpeg(context: Context, source: Uri): ByteArray? = runCatching {
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, source)
+            retriever.getFrameAtTime()
+        } finally {
+            retriever.release()
+        }
+    }.getOrNull()?.let { scaleToThumbnailJpeg(it) }
+
+    /**
+     * Poster-frame JPEG for a video entry inside the vault archive. The frame extractor needs a
+     * real file, so the entry is decrypted into [workDir] first; that copy is removed again here.
+     * [workDir] must be a directory this call owns.
+     */
+    fun makeVideoThumbnailJpeg(
+        zip: File, innerName: String, password: CharArray, workDir: File
+    ): ByteArray? {
+        val extracted = runCatching { extractEntry(zip, innerName, password, workDir) }.getOrNull()
+            ?: return null
+        return try {
+            runCatching {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(extracted.absolutePath)
+                    retriever.getFrameAtTime()
+                } finally {
+                    retriever.release()
+                }
+            }.getOrNull()?.let { scaleToThumbnailJpeg(it) }
+        } finally {
+            workDir.deleteRecursively()
+        }
     }
 
     private fun decodeZipEntry(

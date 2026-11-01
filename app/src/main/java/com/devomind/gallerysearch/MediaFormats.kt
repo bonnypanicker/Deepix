@@ -53,8 +53,43 @@ object MediaFormats {
         "mpeg" to "video/mpeg"
     )
 
+    /**
+     * Preferred extension per MIME. Used to name an import that arrived without one, so a vault
+     * entry can still be told apart as image or video after it is written.
+     */
+    private val preferredExtensions = mapOf(
+        "image/jpeg" to "jpg",
+        "image/png" to "png",
+        "image/webp" to "webp",
+        "image/gif" to "gif",
+        "image/heic" to "heic",
+        "image/heif" to "heif",
+        "image/avif" to "avif",
+        "image/bmp" to "bmp",
+        "image/tiff" to "tiff",
+        "image/svg+xml" to "svg",
+        "video/mp4" to "mp4",
+        "video/quicktime" to "mov",
+        "video/webm" to "webm",
+        "video/x-matroska" to "mkv",
+        "video/3gpp" to "3gp",
+        "video/3gpp2" to "3g2",
+        "video/avi" to "avi",
+        "video/mpeg" to "mpeg"
+    )
+
     private fun extensionOf(name: String): String =
         name.substringAfterLast('.', "").lowercase()
+
+    /** Extension (no dot) to store a file under when its source name carries none. */
+    fun extensionForMime(mime: String?): String? {
+        val key = mime?.substringBefore(';')?.trim()?.lowercase() ?: return null
+        return preferredExtensions[key] ?: when {
+            key.startsWith("image/") -> "jpg"
+            key.startsWith("video/") -> "mp4"
+            else -> null
+        }
+    }
 
     /** MIME for any known image/video extension, or null when unrecognized. */
     fun mimeFor(fileName: String): String? {

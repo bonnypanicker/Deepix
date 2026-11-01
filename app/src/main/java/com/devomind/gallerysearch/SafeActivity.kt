@@ -179,6 +179,8 @@ class SafeActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+        // A video must not keep playing once the vault leaves the foreground and relocks.
+        if (binding.viewerOverlay.visibility == View.VISIBLE) closeViewer()
         // Nothing to relock before the vault is configured, and re-showing the lock UI mid-setup
         // would strand the flow (e.g. while the all-files settings screen is up).
         if (!SafeManager.isConfigured(this)) return
@@ -579,7 +581,7 @@ class SafeActivity : AppCompatActivity() {
         suppressRelock = true
         pickPhotosLauncher.launch(
             androidx.activity.result.PickVisualMediaRequest(
-                ActivityResultContracts.PickVisualMedia.ImageOnly
+                ActivityResultContracts.PickVisualMedia.ImageAndVideo
             )
         )
     }
@@ -627,7 +629,7 @@ class SafeActivity : AppCompatActivity() {
                 }
             }
             hideBusy()
-            val noun = if (result.imported == 1) "photo" else "photos"
+            val noun = if (result.imported == 1) "item" else "items"
             val msg = buildString {
                 append("${result.imported} $noun added to Safe")
                 if (result.failed > 0) append(" · ${result.failed} failed")
@@ -658,7 +660,7 @@ class SafeActivity : AppCompatActivity() {
 
     private fun updateSelectionUi(count: Int) {
         binding.selectionBar.visibility = if (count > 0) View.VISIBLE else View.GONE
-        binding.selectionCount.text = if (count == 1) "1 photo selected" else "$count photos selected"
+        binding.selectionCount.text = if (count == 1) "1 item selected" else "$count items selected"
     }
 
     /** Restores every selected photo back to the gallery, then drops the vault copies. */
@@ -683,7 +685,7 @@ class SafeActivity : AppCompatActivity() {
             adapter.clearSelection()
             hideBusy()
             MetroBanner.show(this@SafeActivity, buildString {
-                append("$restored ${if (restored == 1) "photo" else "photos"} saved back to gallery")
+                append("$restored ${if (restored == 1) "item" else "items"} saved back to gallery")
                 if (failed > 0) append(" · $failed failed")
             })
             loadItems()
@@ -693,7 +695,7 @@ class SafeActivity : AppCompatActivity() {
     private fun confirmRemoveSelected() {
         val targets = adapter.selectedItems()
         if (targets.isEmpty()) return
-        val noun = if (targets.size == 1) "photo" else "photos"
+        val noun = if (targets.size == 1) "item" else "items"
         MetroDialog.confirm(
             this,
             title = "Remove ${targets.size} $noun from Safe?",
@@ -727,20 +729,24 @@ class SafeActivity : AppCompatActivity() {
     private val viewerPageCallback = object : ViewPager2.OnPageChangeCallback() {
         override fun onPageSelected(position: Int) {
             viewerPosition = position
+            viewerAdapter?.setPrimaryPosition(position)
             updateViewerLabel()
         }
     }
 
     private fun openViewer(position: Int) {
         viewerPosition = position
-        viewerAdapter = SafeViewerPagerAdapter(
+        val open = SafeViewerPagerAdapter(
             items = adapter.snapshot(),
             cache = viewerCache,
             scope = lifecycleScope,
-            decrypt = { item -> SafeManager.decryptToBitmap(this, item) },
+            decryptImage = { item -> SafeManager.decryptToBitmap(this, item) },
+            decryptFile = { item -> runCatching { SafeManager.decryptToTemp(this, item) }.getOrNull() },
             onTap = ::toggleViewerChrome
         )
-        binding.viewerPager.adapter = viewerAdapter
+        viewerAdapter = open
+        open.setPrimaryPosition(position)
+        binding.viewerPager.adapter = open
         binding.viewerPager.setCurrentItem(position, false)
         binding.viewerBackBtn.visibility = View.VISIBLE
         binding.viewerPosition.visibility = View.VISIBLE
@@ -751,6 +757,7 @@ class SafeActivity : AppCompatActivity() {
     private fun closeViewer() {
         binding.viewerOverlay.visibility = View.GONE
         binding.viewerPager.adapter = null
+        viewerAdapter?.releaseAll()
         viewerAdapter = null
     }
 
@@ -770,7 +777,7 @@ class SafeActivity : AppCompatActivity() {
     private fun showOverflow() {
         val menu = PopupMenu(this, binding.overflowBtn)
         if (SafeManager.isUnlocked) menu.menu.add(0, 1, 0, "Show password")
-        menu.menu.add(0, 2, 1, "Add photos")
+        menu.menu.add(0, 2, 1, "Add photos & videos")
         if (biometricAvailable()) {
             if (SafeStore.isBiometricEnabled(this)) {
                 menu.menu.add(0, 3, 2, "Turn off fingerprint")

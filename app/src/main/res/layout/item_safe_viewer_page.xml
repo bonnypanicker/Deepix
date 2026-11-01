@@ -1,9 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One decrypted Safe photo per viewer page: pinch-zoom via PhotoView, swipe via the pager. -->
+<!-- One decrypted Safe item per viewer page: pinch-zoom images via PhotoView, videos via
+     ExoPlayer; swipe via the pager. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:visibility="gone"
+        app:surface_type="texture_view"
+        app:resize_mode="fit"
+        app:use_controller="false"
+        app:show_buffering="never" />
 
     <com.github.chrisbanes.photoview.PhotoView
         android:id="@+id/pagePhoto"
@@ -11,6 +24,20 @@
         android:layout_height="match_parent"
         android:background="#000000"
         android:contentDescription="@null" />
+
+    <!-- Play / pause / replay for video pages -->
+    <ImageButton
+        android:id="@+id/playPauseButton"
+        android:layout_width="68dp"
+        android:layout_height="68dp"
+        android:layout_gravity="center"
+        android:background="@drawable/video_center_button_bg"
+        android:contentDescription="@string/play"
+        android:padding="16dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_fluent_play_24_regular"
+        android:tint="@color/metroTextPrimary"
+        android:visibility="gone" />
 
     <ProgressBar
         android:id="@+id/pageSpinner"

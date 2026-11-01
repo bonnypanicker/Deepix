@@ -107,6 +107,8 @@ class SafeItemAdapter(
         holder.binding.thumbnail.setImageDrawable(null)
         holder.binding.thumbnail.tag = item.entryName
         bindThumb(item, holder.binding.thumbnail)
+        holder.binding.videoBadge.visibility =
+            if (MediaFormats.isVideoFileName(item.entryName)) View.VISIBLE else View.GONE
         val isSelected = item.entryName in selected
         holder.binding.selectionScrim.visibility = if (isSelected) View.VISIBLE else View.GONE
         holder.binding.selectionCheck.visibility = if (isSelected) View.VISIBLE else View.GONE

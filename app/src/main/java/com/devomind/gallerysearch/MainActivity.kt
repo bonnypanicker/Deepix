@@ -4851,20 +4851,20 @@ class MainActivity : AppCompatActivity() {
     private fun moveSelectedToSafe() {
         val selected = adapter.selectedUris()
         if (selected.isEmpty()) return
-        // Only still images can be locked; the Safe stores encrypted image zips.
-        val images = selected.filter { uri ->
+        // Photos and videos can both be locked; other types (audio, documents) cannot.
+        val media = selected.filter { uri ->
             val type = contentResolver.getType(uri)
-            type == null || type.startsWith("image/")
+            type == null || type.startsWith("image/") || type.startsWith("video/")
         }
-        if (images.isEmpty()) {
-            MetroBanner.show(this, "Only photos can be moved to the Safe")
+        if (media.isEmpty()) {
+            MetroBanner.show(this, "Only photos and videos can be moved to the Safe")
             return
         }
         adapter.clearSelection()
         // SafeActivity encrypts them, then returns the originals to delete via our consent flow.
         safeLauncher.launch(
             Intent(this, SafeActivity::class.java)
-                .putParcelableArrayListExtra(SafeActivity.ExtraImportUris, ArrayList(images))
+                .putParcelableArrayListExtra(SafeActivity.ExtraImportUris, ArrayList(media))
         )
     }
 

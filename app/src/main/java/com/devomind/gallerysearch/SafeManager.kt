@@ -413,7 +413,11 @@ object SafeManager {
             onProgress?.invoke(imported + failed, sources.size)
             val plain = File(work, "in_${System.nanoTime()}")
             try {
-                val display = queryDisplayName(context, source) ?: "photo_${System.nanoTime()}.jpg"
+                val mime = context.contentResolver.getType(source)
+                val displayName = queryDisplayName(context, source)
+                val isVideo = MediaFormats.isVideoMime(mime) ||
+                    displayName?.let { MediaFormats.isVideoFileName(it) } == true
+                val display = displayName ?: fallbackName(isVideo, mime)
                 val entryName = uniqueEntry(folderPath, display, existing)
                 context.contentResolver.openInputStream(source)?.use { input ->
                     plain.outputStream().use { input.copyTo(it) }
@@ -433,7 +437,12 @@ object SafeManager {
                     originalDirsDirty = true
                 }
 
-                SafeCrypto.makeThumbnailJpeg(context, source)?.let { writeThumb(context, entryName, it) }
+                val thumb = if (isVideo) {
+                    SafeCrypto.makeVideoThumbnailJpeg(context, source)
+                } else {
+                    SafeCrypto.makeThumbnailJpeg(context, source)
+                }
+                thumb?.let { writeThumb(context, entryName, it) }
                 imported++
                 importedSources.add(source)
             } catch (e: Exception) {
@@ -470,8 +479,13 @@ object SafeManager {
             cache.delete() // corrupt/stale — rebuild below
         }
         val password = sessionPassword ?: return null
-        val jpeg = SafeCrypto.makeThumbnailJpeg(masterZip(context), item.entryName, password.toCharArray())
-            ?: return null
+        val zip = masterZip(context)
+        val jpeg = if (MediaFormats.isVideoFileName(item.entryName)) {
+            val work = File(context.cacheDir, "safe_thumb_${System.nanoTime()}")
+            SafeCrypto.makeVideoThumbnailJpeg(zip, item.entryName, password.toCharArray(), work)
+        } else {
+            SafeCrypto.makeThumbnailJpeg(zip, item.entryName, password.toCharArray())
+        } ?: return null
         writeThumb(context, item.entryName, jpeg)
         return BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
     }
@@ -500,28 +514,32 @@ object SafeManager {
         return SafeCrypto.extractEntry(masterZip(context), item.entryName, password.toCharArray(), work)
     }
 
-    /** Decrypts back into the gallery — into the folder the photo originally came from when we
-     *  know it, else the Deepix folder. Returns the new media uri or null. */
+    /** Decrypts back into the gallery — into the folder the item originally came from when we
+     *  know it, else the Deepix folder. Videos go to the video collection / Movies, images to the
+     *  image collection / Pictures. Returns the new media uri or null. */
     fun restoreToGallery(context: Context, item: VaultItem): Uri? {
         val temp = runCatching { decryptToTemp(context, item) }.getOrNull() ?: return null
+        val isVideo = MediaFormats.isVideoFileName(temp.name)
         val originalDir = originalPaths(context)[item.entryName]
         val qPlus = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-        val target = if (qPlus) restoreTarget(context, originalDir) else null
+        val target = if (qPlus) restoreTarget(context, originalDir, isVideo) else null
         return try {
             val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, temp.name)
-                put(MediaStore.Images.Media.MIME_TYPE, mimeFor(temp.name))
+                put(MediaStore.MediaColumns.DISPLAY_NAME, temp.name)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeFor(temp.name))
                 if (qPlus) {
-                    put(MediaStore.Images.Media.RELATIVE_PATH, target!!.second)
-                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, target!!.second)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
                 } else if (originalDir != null) {
                     put(MediaStore.MediaColumns.DATA, File(originalDir, temp.name).absolutePath)
                 }
             }
             val collection = if (qPlus) {
-                MediaStore.Images.Media.getContentUri(target!!.first)
+                if (isVideo) MediaStore.Video.Media.getContentUri(target!!.first)
+                else MediaStore.Images.Media.getContentUri(target!!.first)
             } else {
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                if (isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
             }
             val out = context.contentResolver.insert(collection, values) ?: return null
             try {
@@ -530,12 +548,12 @@ object SafeManager {
                 } ?: throw java.io.IOException("No output stream for $out")
                 if (qPlus) {
                     values.clear()
-                    values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                    values.put(MediaStore.MediaColumns.IS_PENDING, 0)
                     context.contentResolver.update(out, values, null, null)
                 }
                 out
             } catch (e: Exception) {
-                // Never leave a broken 0-byte row behind looking like a restored photo.
+                // Never leave a broken 0-byte row behind looking like a restored file.
                 runCatching { context.contentResolver.delete(out, null, null) }
                 null
             }
@@ -546,11 +564,11 @@ object SafeManager {
 
     /**
      * Where [restoreToGallery] should write on Q+: the MediaStore volume plus its RELATIVE_PATH
-     * (relative to that volume's own root, not primary's). A photo imported from an SD card
+     * (relative to that volume's own root, not primary's). A file imported from an SD card
      * restores back onto that card; unknown, volume-root and unresolvable paths fall back to the
-     * primary Pictures/Deepix folder.
+     * primary Pictures/Deepix (images) or Movies/Deepix (videos) folder.
      */
-    private fun restoreTarget(context: Context, originalDir: String?): Pair<String, String> {
+    private fun restoreTarget(context: Context, originalDir: String?, isVideo: Boolean): Pair<String, String> {
         val primaryRoot = Environment.getExternalStorageDirectory().absolutePath.trimEnd('/')
         if (originalDir != null) {
             val dir = originalDir.trimEnd('/')
@@ -573,7 +591,7 @@ object SafeManager {
                 }
             }
         }
-        return MediaStore.VOLUME_EXTERNAL_PRIMARY to "Pictures/Deepix/"
+        return MediaStore.VOLUME_EXTERNAL_PRIMARY to if (isVideo) "Movies/Deepix/" else "Pictures/Deepix/"
     }
 
     fun removeItem(context: Context, item: VaultItem): Boolean {
@@ -635,6 +653,13 @@ object SafeManager {
         return if (dot > 0) displayName.substring(dot) else ".jpg"
     }
 
+    /** Name for an import whose source exposes no display name — the extension keeps the entry
+     *  recognizable as image or video when the vault later has only the name to go on. */
+    private fun fallbackName(isVideo: Boolean, mime: String?): String {
+        val ext = MediaFormats.extensionForMime(mime) ?: if (isVideo) "mp4" else "jpg"
+        return "${if (isVideo) "video" else "photo"}_${System.nanoTime()}.$ext"
+    }
+
     /** A collision-free entry path within [folderPath] of the archive. */
     private fun uniqueEntry(folderPath: String, displayName: String, taken: Set<String>): String {
         val base = baseName(displayName)
@@ -659,5 +684,5 @@ object SafeManager {
         return uri.lastPathSegment?.substringAfterLast('/')
     }
 
-    private fun mimeFor(name: String): String = MediaFormats.imageMimeFor(name)
+    private fun mimeFor(name: String): String = MediaFormats.mimeFor(name) ?: "image/jpeg"
 }
