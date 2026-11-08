@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings "fonts" test page: a live preview card plus one row per bundled typeface. The rows are
+     added at runtime from AppFont, each drawn in its own family. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/fontRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/metroBgPrimary">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:id="@+id/topBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp">
+
+            <ImageButton
+                android:id="@+id/backBtn"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/metro_row_pressed"
+                android:contentDescription="@string/back"
+                android:padding="12dp"
+                android:src="@drawable/ic_fluent_back_24_regular"
+                android:tint="@color/metroTextPrimary" />
+
+            <TextView
+                android:id="@+id/screenTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="12dp"
+                android:fontFamily="@font/inter_light"
+                android:includeFontPadding="false"
+                android:text="@string/fonts_title"
+                android:textColor="@color/metroTextPrimary"
+                android:textSize="26sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="20dp"
+                android:paddingEnd="20dp"
+                android:paddingBottom="32dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="4dp"
+                    android:text="@string/fonts_intro"
+                    android:textColor="@color/metroTextSecondary"
+                    android:textSize="13sp" />
+
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="@string/fonts_preview_section" />
+
+                <LinearLayout
+                    android:id="@+id/previewCard"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@color/metroBgCard"
+                    android:padding="20dp">
+
+                    <TextView
+                        android:id="@+id/previewTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:includeFontPadding="false"
+                        android:text="@string/font_preview_title"
+                        android:textColor="@color/metroTextPrimary"
+                        android:textSize="28sp" />
+
+                    <TextView
+                        android:id="@+id/previewBody"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingTop="10dp"
+                        android:text="@string/font_preview_body"
+                        android:textColor="@color/metroTextPrimary"
+                        android:textSize="15sp" />
+
+                    <TextView
+                        android:id="@+id/previewCaption"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingTop="8dp"
+                        android:includeFontPadding="false"
+                        android:text="@string/font_preview_caption"
+                        android:textColor="@color/metroTextSecondary"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <TextView
+                    style="@style/SettingsSectionHeader"
+                    android:text="@string/fonts_list_section" />
+
+                <LinearLayout
+                    android:id="@+id/fontList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </LinearLayout>
+        </ScrollView>
+    </LinearLayout>
+</FrameLayout>

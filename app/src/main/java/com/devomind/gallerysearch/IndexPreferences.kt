@@ -32,6 +32,7 @@ object IndexPreferences {
     private const val KeySkipDeleteConfirm = "skip_delete_confirm"
     private const val KeySafeStorageRoot = "safe_storage_root"
     private const val KeyAccentColor = "accent_color"
+    private const val KeyAppFont = "app_font"
     /** Last entitlement verdict Play could prove, by [Entitlement] name. */
     private const val KeyProEntitlement = "pro_entitlement"
     /** Set once the user takes the FirstRun onboarding path. */
@@ -523,6 +524,20 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putString(KeyAccentColor, key)
+            .apply()
+    }
+
+    /** The typeface picked on the Settings font test page; [AppFont.Default] until one is chosen. */
+    fun getAppFont(context: Context): AppFont =
+        AppFont.fromName(
+            context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+                .getString(KeyAppFont, null)
+        )
+
+    fun setAppFont(context: Context, font: AppFont) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KeyAppFont, font.name)
             .apply()
     }
 

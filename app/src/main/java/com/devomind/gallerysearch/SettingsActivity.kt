@@ -63,6 +63,7 @@ class SettingsActivity : AppCompatActivity() {
         bindToggles()
         bindThumbnailSize()
         bindAccentColor()
+        bindFont()
         bindPro()
         bindBottomBar()
         bindStorage()
@@ -83,6 +84,7 @@ class SettingsActivity : AppCompatActivity() {
             return
         }
         binding.accentColorSubtitle.text = AccentPalette.current(this).displayName
+        updateFontSubtitle()
         updateIndexedFoldersSubtitle()
         updateSafeSubtitles()
         BillingGateway.observe(billingListener)
@@ -163,6 +165,17 @@ class SettingsActivity : AppCompatActivity() {
     private fun bindAccentColor() {
         binding.accentColorSubtitle.text = AccentPalette.current(this).displayName
         binding.rowAccentColor.setOnClickListener { showAccentColorDialog() }
+    }
+
+    private fun bindFont() {
+        updateFontSubtitle()
+        binding.rowFont.setOnClickListener {
+            startActivity(Intent(this, FontTestActivity::class.java))
+        }
+    }
+
+    private fun updateFontSubtitle() {
+        binding.fontSubtitle.text = IndexPreferences.getAppFont(this).displayName
     }
 
     private fun bindPro() {

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One typeface on the Settings font test page: its name and a sample line, both drawn in that
+     family, with a check mark that appears on the selected one. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rowRoot"
+    style="@style/SettingsRow">
+
+    <LinearLayout style="@style/SettingsRowText">
+
+        <TextView
+            android:id="@+id/fontName"
+            style="@style/SettingsRowTitle" />
+
+        <TextView
+            android:id="@+id/fontSample"
+            style="@style/SettingsRowSubtitle"
+            android:text="@string/font_sample" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/fontCheck"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:contentDescription="@null"
+        android:src="@drawable/ic_fluent_checkmark_24_regular"
+        android:tint="?attr/accentColor" />
+</LinearLayout>

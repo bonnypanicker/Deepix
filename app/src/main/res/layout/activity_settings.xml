@@ -220,6 +220,30 @@
                         android:focusable="false" />
                 </LinearLayout>
 
+                <View style="@style/SettingsDivider" />
+
+                <LinearLayout
+                    android:id="@+id/rowFont"
+                    style="@style/SettingsRow">
+
+                    <LinearLayout style="@style/SettingsRowText">
+
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/font_row_title" />
+
+                        <TextView
+                            android:id="@+id/fontSubtitle"
+                            style="@style/SettingsRowSubtitle"
+                            android:text="@string/font_row_title" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@null"
+                        android:src="@drawable/ic_fluent_chevron_right_24_regular"
+                        android:tint="@color/metroTextTertiary" />
+                </LinearLayout>
+
                 <!-- ===================== NAVIGATION ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"

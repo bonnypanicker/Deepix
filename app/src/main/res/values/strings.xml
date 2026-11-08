@@ -188,6 +188,15 @@
     <string name="accent_azure">Azure</string>
     <string name="pinned_albums_in_collections">Pinned albums in Collections</string>
     <string name="album_folder_size">Album folder size</string>
+    <string name="font_row_title">Font</string>
+    <string name="fonts_title">fonts</string>
+    <string name="fonts_intro">Preview every typeface bundled in the app. Tap one to select it.</string>
+    <string name="fonts_preview_section">PREVIEW</string>
+    <string name="fonts_list_section">TYPEFACES</string>
+    <string name="font_preview_title">Pixa AI Gallery</string>
+    <string name="font_preview_body">The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs.</string>
+    <string name="font_preview_caption">Caption · 0123456789</string>
+    <string name="font_sample">The quick brown fox jumps over the lazy dog</string>
     <string name="section_navigation">NAVIGATION</string>
     <string name="bottom_bar_order">Bottom bar order</string>
     <string name="bottom_bar_order_subtitle">Arrange enabled destinations</string>
