@@ -4910,7 +4910,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 "Recycle Bin is off, so $noun will be deleted permanently. There's no undo."
             },
-            positive = if (toBin) "Move to Bin" else "Delete",
+            positive = "Proceed",
             danger = !toBin,
             iconRes = R.drawable.ic_fluent_delete_24_regular
         ) { performManagedDelete(uris) }

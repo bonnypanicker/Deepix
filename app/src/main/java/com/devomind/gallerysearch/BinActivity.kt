@@ -169,7 +169,7 @@ class BinActivity : AppCompatActivity() {
             this,
             title = "Delete forever?",
             message = "This permanently removes the item. It can't be recovered.",
-            positive = "Delete",
+            positive = "Proceed",
             danger = true
         ) {
             lifecycleScope.launch {
@@ -188,7 +188,7 @@ class BinActivity : AppCompatActivity() {
             this,
             title = "Delete ${targets.size} $noun forever?",
             message = "This permanently removes them. It can't be undone.",
-            positive = "Delete",
+            positive = "Proceed",
             danger = true
         ) {
             lifecycleScope.launch {
@@ -208,7 +208,7 @@ class BinActivity : AppCompatActivity() {
             this,
             title = "Empty recycle bin?",
             message = "Permanently deletes everything in the bin. This can't be undone.",
-            positive = "Empty",
+            positive = "Proceed",
             danger = true
         ) {
             lifecycleScope.launch {

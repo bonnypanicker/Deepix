@@ -1153,7 +1153,7 @@ class ViewerActivity : AppCompatActivity() {
             } else {
                 "Recycle Bin is off, so this item will be deleted permanently. There's no undo."
             },
-            positive = if (toBin) "Move to Bin" else "Delete",
+            positive = "Proceed",
             danger = !toBin,
             iconRes = R.drawable.ic_fluent_delete_24_regular
         ) { performDelete(uri) }
