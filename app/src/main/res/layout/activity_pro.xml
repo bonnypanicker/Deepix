@@ -103,16 +103,6 @@
                     android:textColor="@color/metroTextPrimary"
                     android:textSize="40sp" />
 
-                <TextView
-                    android:id="@+id/proBody"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="14dp"
-                    android:lineSpacingMultiplier="1.35"
-                    android:text="@string/pro_body"
-                    android:textColor="@color/metroTextSecondary"
-                    android:textSize="14sp" />
-
                 <!-- The gate that opened this page, kept where it can be answered rather than dismissed:
                      an accent rule down the left edge plus the same sentence the feature showed. -->
                 <TextView
