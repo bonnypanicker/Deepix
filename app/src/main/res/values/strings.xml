@@ -349,6 +349,7 @@
     <string name="person_identity_edit">Edit name</string>
     <string name="people_empty">No people yet</string>
     <string name="people_empty_hint">Faces from your photos will cluster here as indexing runs.</string>
+    <string name="people_find_faces">Find faces</string>
 
     <!-- First-run tour: a short product pass, Pro limits, then permissions. -->
     <string name="onboarding_next">Next</string>

@@ -111,6 +111,7 @@
                 android:minWidth="120dp"
                 android:paddingStart="20dp"
                 android:paddingEnd="20dp"
+                android:text="@string/people_find_faces"
                 android:textAllCaps="true"
                 android:textColor="@color/metroTextPrimary"
                 android:textSize="13sp"
