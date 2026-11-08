@@ -88,7 +88,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="4dp"
-            android:fontFamily="@font/montserrat_medium"
+            android:fontFamily="@font/inter_medium"
             android:includeFontPadding="false"
             android:textColor="@color/metroTextPrimary"
             android:textSize="11sp" />

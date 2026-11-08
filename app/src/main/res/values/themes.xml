@@ -1,6 +1,6 @@
 <resources>
     <style name="Theme.GallerySearch" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <item name="android:fontFamily">@font/montserrat</item>
+        <item name="android:fontFamily">@font/inter</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:navigationBarColor">@color/metroNavBar</item>
         <item name="android:statusBarColor">@color/metroStatusBar</item>
@@ -144,20 +144,20 @@
          The named Metro text roles. New text should reference one of these via
          android:textAppearance instead of raw textSize/fontFamily attributes. -->
     <style name="TextAppearance.Metro" parent="android:TextAppearance">
-        <item name="android:fontFamily">@font/montserrat</item>
+        <item name="android:fontFamily">@font/inter</item>
         <item name="android:textColor">@color/metroTextPrimary</item>
     </style>
 
     <!-- Large screen headline (Settings, Safe, Cleanup landing titles). -->
     <style name="TextAppearance.Metro.ScreenTitleLarge">
-        <item name="android:fontFamily">@font/montserrat_light</item>
+        <item name="android:fontFamily">@font/inter_light</item>
         <item name="android:textSize">40sp</item>
         <item name="android:letterSpacing">-0.02</item>
     </style>
 
     <!-- Main top-bar title ("collections", album names). -->
     <style name="TextAppearance.Metro.ScreenTitle">
-        <item name="android:fontFamily">@font/montserrat_light</item>
+        <item name="android:fontFamily">@font/inter_light</item>
         <item name="android:textSize">20sp</item>
         <item name="android:textAllCaps">true</item>
         <item name="android:letterSpacing">0.04</item>
@@ -165,14 +165,14 @@
 
     <!-- Month/date group headers in the browse timeline. -->
     <style name="TextAppearance.Metro.TimelineHeader">
-        <item name="android:fontFamily">@font/montserrat_light</item>
+        <item name="android:fontFamily">@font/inter_light</item>
         <item name="android:textSize">18sp</item>
         <item name="android:letterSpacing">-0.02</item>
     </style>
 
     <!-- Small all-caps section labels (PINNED ALBUMS, timeline subtitles). -->
     <style name="TextAppearance.Metro.SectionLabel">
-        <item name="android:fontFamily">@font/montserrat_medium</item>
+        <item name="android:fontFamily">@font/inter_medium</item>
         <item name="android:textSize">13sp</item>
         <item name="android:textAllCaps">true</item>
         <item name="android:letterSpacing">0.06</item>
@@ -181,7 +181,7 @@
 
     <!-- Dialog headline (thin uppercase, per dialog_smart_album.xml). -->
     <style name="TextAppearance.Metro.DialogTitle">
-        <item name="android:fontFamily">@font/montserrat_light</item>
+        <item name="android:fontFamily">@font/inter_light</item>
         <item name="android:textSize">18sp</item>
         <item name="android:textAllCaps">true</item>
         <item name="android:letterSpacing">0.06</item>
@@ -189,7 +189,7 @@
 
     <!-- Tiny accent field label above an input (NAME, PASSWORD). -->
     <style name="TextAppearance.Metro.FieldLabel">
-        <item name="android:fontFamily">@font/montserrat_medium</item>
+        <item name="android:fontFamily">@font/inter_medium</item>
         <item name="android:textSize">11sp</item>
         <item name="android:textAllCaps">true</item>
         <item name="android:letterSpacing">0.08</item>
@@ -212,7 +212,7 @@
 
     <!-- Labels paired with bottom action icons. Medium weight keeps 12sp text crisp on AMOLED. -->
     <style name="TextAppearance.Metro.IconAction">
-        <item name="android:fontFamily">@font/montserrat_medium</item>
+        <item name="android:fontFamily">@font/inter_medium</item>
         <item name="android:textSize">12sp</item>
         <item name="android:letterSpacing">0.02</item>
         <item name="android:textColor">@color/metroTextPrimary</item>
@@ -220,7 +220,7 @@
 
     <!-- Slightly smaller label used by the 4-across multi-select command bar. -->
     <style name="TextAppearance.Metro.SelectionAction">
-        <item name="android:fontFamily">@font/montserrat_medium</item>
+        <item name="android:fontFamily">@font/inter_medium</item>
         <item name="android:textSize">11sp</item>
         <item name="android:letterSpacing">0.03</item>
         <item name="android:textColor">@color/metroTextSecondary</item>
@@ -228,7 +228,7 @@
 
     <!-- Compact interactive labels such as the inline gallery sort control. -->
     <style name="TextAppearance.Metro.CompactAction">
-        <item name="android:fontFamily">@font/montserrat_medium</item>
+        <item name="android:fontFamily">@font/inter_medium</item>
         <item name="android:textSize">13sp</item>
         <item name="android:letterSpacing">0.01</item>
         <item name="android:textColor">?attr/accentColor</item>
@@ -236,7 +236,7 @@
 
     <!-- Flat footer button label (CANCEL / CREATE / DELETE). -->
     <style name="TextAppearance.Metro.ButtonLabel">
-        <item name="android:fontFamily">@font/montserrat_medium</item>
+        <item name="android:fontFamily">@font/inter_medium</item>
         <item name="android:textSize">13sp</item>
         <item name="android:textAllCaps">true</item>
         <item name="android:letterSpacing">0.04</item>
@@ -250,7 +250,7 @@
         <item name="android:paddingEnd">24dp</item>
         <item name="android:textColor">@color/metroTextPrimary</item>
         <item name="android:textSize">18sp</item>
-        <item name="android:fontFamily">@font/montserrat</item>
+        <item name="android:fontFamily">@font/inter</item>
         <item name="android:background">@drawable/drawer_item_bg</item>
     </style>
 
@@ -263,7 +263,7 @@
         <item name="android:paddingBottom">6dp</item>
         <item name="android:textColor">?attr/accentColor</item>
         <item name="android:textSize">12sp</item>
-        <item name="android:fontFamily">@font/montserrat_medium</item>
+        <item name="android:fontFamily">@font/inter_medium</item>
         <item name="android:letterSpacing">0.08</item>
         <item name="android:includeFontPadding">false</item>
     </style>
@@ -326,7 +326,7 @@
         <item name="android:paddingBottom">6dp</item>
         <item name="android:textColor">?attr/accentColor</item>
         <item name="android:textSize">12sp</item>
-        <item name="android:fontFamily">@font/montserrat_medium</item>
+        <item name="android:fontFamily">@font/inter_medium</item>
         <item name="android:letterSpacing">0.08</item>
         <item name="android:includeFontPadding">false</item>
     </style>
@@ -403,7 +403,7 @@
         <item name="android:windowMinWidthMinor">92%</item>
         <!-- Inherit the active accent overlay from the host activity instead of forcing Azure. -->
         <item name="android:textColorPrimary">@color/metroTextPrimary</item>
-        <item name="android:fontFamily">@font/montserrat</item>
+        <item name="android:fontFamily">@font/inter</item>
     </style>
 
     <!-- ===================== Popup windows =====================

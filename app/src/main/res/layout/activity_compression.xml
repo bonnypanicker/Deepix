@@ -31,7 +31,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:fontFamily="@font/montserrat_light"
+            android:fontFamily="@font/inter_light"
             android:includeFontPadding="false"
             android:textColor="@color/metroTextPrimary"
             android:textSize="22sp" />
@@ -54,7 +54,7 @@
             android:id="@+id/summaryText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/montserrat_light"
+            android:fontFamily="@font/inter_light"
             android:includeFontPadding="false"
             android:textColor="?attr/accentColor"
             android:textSize="24sp" />
@@ -187,7 +187,7 @@
         android:text="Cancel"
         android:textColor="@color/metroDanger"
         android:textSize="13sp"
-        android:fontFamily="@font/montserrat_medium"
+        android:fontFamily="@font/inter_medium"
         android:visibility="gone" />
 
     <TextView
@@ -204,7 +204,7 @@
         android:text="Keep both"
         android:textColor="?attr/accentColor"
         android:textSize="15sp"
-        android:fontFamily="@font/montserrat_medium" />
+        android:fontFamily="@font/inter_medium" />
 
     <TextView
         android:id="@+id/replaceBar"
@@ -220,5 +220,5 @@
         android:text="Replace originals"
         android:textColor="@color/metroTextPrimary"
         android:textSize="15sp"
-        android:fontFamily="@font/montserrat_medium" />
+        android:fontFamily="@font/inter_medium" />
 </LinearLayout>
