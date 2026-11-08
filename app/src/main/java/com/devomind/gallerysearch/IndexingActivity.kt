@@ -47,6 +47,15 @@ class IndexingActivity : AppCompatActivity() {
     /** Tracks the latest WorkManager state so button taps render immediately. */
     private var latestIndexState: WorkInfo.State? = null
 
+    /**
+     * The last progress the pass published, kept alongside [latestIndexState] so an optimistic
+     * re-render — a tap, or a constraint change — repeats the current reading instead of blanking
+     * the count line for a frame.
+     */
+    private var latestLivePercent: Int? = null
+    private var latestCurrent = -1
+    private var latestTotal = -1
+
     override fun onCreate(savedInstanceState: Bundle?) {
         AccentPalette.apply(this)
         super.onCreate(savedInstanceState)
@@ -87,7 +96,7 @@ class IndexingActivity : AppCompatActivity() {
                 else -> IndexController.start(this)
             }
             // Optimistic refresh; the observer will correct it as WorkManager transitions.
-            renderIndexing(latestIndexState, livePercent = null, current = -1, total = -1)
+            renderIndexing(latestIndexState, latestLivePercent, latestCurrent, latestTotal)
         }
 
         WorkManager.getInstance(this)
@@ -100,12 +109,16 @@ class IndexingActivity : AppCompatActivity() {
                 } else {
                     null
                 }
-                val current = if (work?.state == WorkInfo.State.RUNNING) {
-                    work.progress.getInt(IndexWorker.ProgressCurrentKey, -1).takeIf { it >= 0 } ?: -1
-                } else -1
-                val total = if (work?.state == WorkInfo.State.RUNNING) {
-                    work.progress.getInt(IndexWorker.ProgressTotalKey, -1).takeIf { it >= 0 } ?: -1
-                } else -1
+                // The count is read whatever the state: a paused pass keeps the progress it last
+                // published, so "N of M photos" stays on screen instead of vanishing on pause. Only
+                // a pass that has never reported (a fresh enqueue) comes back empty, and stays hidden.
+                val current = work?.progress?.getInt(IndexWorker.ProgressCurrentKey, -1) ?: -1
+                val total = work?.progress?.getInt(IndexWorker.ProgressTotalKey, -1) ?: -1
+                latestLivePercent = livePercent
+                if (current >= 0 && total > 0) {
+                    latestCurrent = current
+                    latestTotal = total
+                }
                 renderIndexing(work?.state, livePercent, current, total)
             }
     }
@@ -116,6 +129,10 @@ class IndexingActivity : AppCompatActivity() {
     private fun renderIndexing(state: WorkInfo.State?, livePercent: Int?, current: Int, total: Int) {
         val paused = IndexPreferences.isIndexPaused(this)
         val stopped = IndexPreferences.isIndexStopped(this)
+        // The stored percent is the last value a pass published, which is the right reading for a
+        // paused or idle screen. It is the wrong reading while a pass is live but has published
+        // nothing yet: that is the model still loading, and the stored value belongs to the previous
+        // pass — which is what flashed 100% at the start of a run.
         val percent = livePercent ?: IndexPreferences.getIndexProgressPercent(this)
         val chargingOnly = IndexPreferences.isChargingOnlyIndexing(this)
         val nightOnly = IndexPreferences.isNightChargingOnly(this)
@@ -123,19 +140,18 @@ class IndexingActivity : AppCompatActivity() {
 
         binding.indexProgress.progress = percent
 
-        // "N of M photos" count line — only while actively running with real totals.
-        if (state == WorkInfo.State.RUNNING && current >= 0 && total > 0) {
-            binding.indexCount.text = "$current of $total photos"
-            binding.indexCount.visibility = View.VISIBLE
-        } else {
-            binding.indexCount.visibility = View.GONE
-        }
-
         when {
             state == WorkInfo.State.RUNNING -> {
-                binding.indexProgress.isIndeterminate = false
-                binding.indexProgress.progress = percent
-                binding.indexStatus.text = "Indexing your photos… $percent%"
+                if (livePercent != null) {
+                    binding.indexProgress.isIndeterminate = false
+                    binding.indexProgress.progress = livePercent
+                    binding.indexStatus.text = "Indexing your photos… $livePercent%"
+                } else {
+                    // Live, but nothing reported yet — an honest indeterminate bar beats the
+                    // previous pass's percent, which read as a complete index that then walked back.
+                    binding.indexProgress.isIndeterminate = true
+                    binding.indexStatus.text = "Indexing your photos…"
+                }
                 setToggle(R.drawable.ic_fluent_pause_24_regular, getString(R.string.pause))
             }
             state == WorkInfo.State.ENQUEUED || state == WorkInfo.State.BLOCKED -> {
@@ -173,6 +189,18 @@ class IndexingActivity : AppCompatActivity() {
                 binding.indexStatus.text = "Indexing not started"
                 setToggle(R.drawable.ic_fluent_play_24_regular, "Start")
             }
+        }
+
+        // "N of M photos" while the pass is live, queued, paused or stopped: the count is the last
+        // one the pass published, and losing it on pause is exactly what this line is here to avoid.
+        // It is hidden only where it would be noise or a lie — nothing reported, finished, or failed.
+        val showCount = current >= 0 && total > 0 &&
+            state != WorkInfo.State.SUCCEEDED && state != WorkInfo.State.FAILED
+        if (showCount) {
+            binding.indexCount.text = "$current of $total photos"
+            binding.indexCount.visibility = View.VISIBLE
+        } else {
+            binding.indexCount.visibility = View.GONE
         }
     }
 
@@ -228,7 +256,7 @@ class IndexingActivity : AppCompatActivity() {
     private fun applyPowerChangeNow() {
         IndexController.applyPowerConstraintOnly(this)
         // Reflect the new constraint in the status line right away.
-        renderIndexing(latestIndexState, livePercent = null, current = -1, total = -1)
+        renderIndexing(latestIndexState, latestLivePercent, latestCurrent, latestTotal)
     }
 
     // ------------------------------------------------------------------

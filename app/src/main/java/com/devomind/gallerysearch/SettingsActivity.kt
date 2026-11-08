@@ -494,6 +494,13 @@ class SettingsActivity : AppCompatActivity() {
 
     private var latestIndexState: WorkInfo.State? = null
 
+    /**
+     * The percent the live pass has published, or null while it has published nothing yet (the model
+     * is still loading). Kept apart from the stored percent so a live-but-silent pass cannot borrow
+     * the previous pass's 100% for its first moments.
+     */
+    private var latestIndexPercent: Int? = null
+
     private fun bindIndexing() {
         binding.rowIndexing.setOnClickListener {
             startActivity(android.content.Intent(this, IndexingActivity::class.java))
@@ -502,7 +509,13 @@ class SettingsActivity : AppCompatActivity() {
         WorkManager.getInstance(this)
             .getWorkInfosForUniqueWorkLiveData(IndexWorker.WorkName)
             .observe(this) { infos ->
-                latestIndexState = infos.firstOrNull()?.state
+                val work = IndexWorker.pickRelevantWorkInfo(infos)
+                latestIndexState = work?.state
+                latestIndexPercent = if (work?.state == WorkInfo.State.RUNNING) {
+                    work.progress.getInt(IndexWorker.ProgressPercentKey, -1).takeIf { it >= 0 }
+                } else {
+                    null
+                }
                 binding.indexingSubtitle.text = indexSummary()
             }
     }
@@ -517,7 +530,7 @@ class SettingsActivity : AppCompatActivity() {
         val chargingOnly = IndexPreferences.isChargingOnlyIndexing(this)
         val waitReason = IndexPreferences.getLastIndexWaitReason(this)
         return when {
-            state == WorkInfo.State.RUNNING -> "Indexing… $percent%"
+            state == WorkInfo.State.RUNNING -> latestIndexPercent?.let { "Indexing… $it%" } ?: "Indexing…"
             state == WorkInfo.State.ENQUEUED || state == WorkInfo.State.BLOCKED -> when {
                 waitReason != null -> IndexRunPolicy.waitReasonLabel(waitReason)
                 nightOnly && chargingOnly -> "Waiting for night (10 PM – 7 AM)"
