@@ -36,11 +36,11 @@ class AlbumRulesTest {
     @Test
     fun anAlbumFolderSitsUnderTheChosenRootAndItsParent() {
         assertEquals(
-            "Pictures/Deepix Albums/Weekend trips",
+            "Pictures/Pixa Albums/Weekend trips",
             AlbumRules.albumFolderPath("Pictures", AlbumRules.AlbumFolderParent, "Weekend trips")
         )
         assertEquals(
-            "Documents/Deepix Albums/Weekend trips",
+            "Documents/Pixa Albums/Weekend trips",
             AlbumRules.albumFolderPath("Documents", AlbumRules.AlbumFolderParent, "Weekend trips")
         )
         // Whatever the app names a folder, the album that made it recognises it — otherwise a brand-new
