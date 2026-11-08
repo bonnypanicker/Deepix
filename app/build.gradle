@@ -113,8 +113,8 @@ dependencies {
 }
 
 // Git LFS smudge can fail quietly and leave a short text stub where a model's weights belong. That is
-// not a build error and not a runtime error: the session loads, YuNet returns zero faces, and the
-// People page is simply empty forever. A size floor cannot tell that apart — the detector is a
+// not a build error and not a runtime error: the session loads, the detector returns zero faces, and
+// the People page is simply empty forever. A size floor cannot tell that apart — the detector is a
 // legitimate 230 KB ONNX — so look for the pointer's own header.
 tasks.register("verifyModelAssets") {
     description = "Fails the build when a bundled model is an un-fetched Git LFS pointer."

@@ -161,7 +161,7 @@ sealed class GalleryCell {
         val onAction: (() -> Unit)? = null
     ) : GalleryCell()
 
-    /** Full-span search loading state shown while the CLIP pass is still running. */
+    /** Full-span search loading state shown while the indexing pass is still running. */
     data class Loading(val text: String) : GalleryCell()
 
     // ---- Pre-query search empty-state sections ----

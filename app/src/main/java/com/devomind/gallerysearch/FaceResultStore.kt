@@ -5,7 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-/** Private, lightweight cache of photos already inspected by YuNet and their face counts. */
+/** Private, lightweight cache of photos already inspected by the detector and their face counts. */
 class FaceResultStore(context: Context) {
     private val file = File(context.filesDir, FileName)
 

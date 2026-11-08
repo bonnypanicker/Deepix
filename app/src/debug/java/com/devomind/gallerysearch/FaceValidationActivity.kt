@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
-/** Phase 1 verification UI: pick a photo → YuNet detection + quality + pose + embedding.
+/** Phase 1 verification UI: pick a photo → face detection + quality + pose + embedding.
  * Lets you visually confirm bboxes and landmarks, inspect per-face crops, and test cross-photo
  * similarity between any two photos, without waiting for Phases 2–5. Now also surfaces the
  * Phase 2 people-index status (running stats + person/face counters). */
@@ -364,7 +364,7 @@ class FaceValidationActivity : AppCompatActivity() {
             canvas.drawRect(RectF(d.left, d.top, d.right, d.bottom), bboxPaint)
             // Labels are in canonical order: 0:LE 1:RE 2:N 3:LM 4:RM. If these sit on the wrong
             // physical feature, the detector's delivered landmark order is inverted — flip the
-            // reorder in YuNetDetector.decodeStride. (Embeddings stay correct either way: the
+            // reorder in FaceDetector.decodeStride. (Embeddings stay correct either way: the
             // aligner auto-detects the order that best fits the canonical template.)
             val lmLabels = arrayOf("0:LE", "1:RE", "2:N", "3:LM", "4:RM")
             d.landmarks.forEachIndexed { i, pt ->

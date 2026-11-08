@@ -16,7 +16,7 @@ import androidx.room.PrimaryKey
  *            capped at GalleryRepository.FaceDetectionMaxEdge with power-of-two inSampleSize),
  *            NOT full-resolution photo pixels. Callers rendering a crop must scale by the
  *            detection bitmap's dims — see PersonAlbumsActivity.resolvePhotoDimensions.
- * @param landmarksJson five (x, y) landmark pairs — YuNet semantic order.
+ * @param landmarksJson five (x, y) landmark pairs — detector semantic order.
  * @param embeddingJson face embedding (L2-normalized), null when not yet computed.
  *            Kept as JSON so Phase 2 can swap in a vector index without a DB migration.
  * @param embeddingModelVersion version tag of the model that produced [embeddingJson] — lets

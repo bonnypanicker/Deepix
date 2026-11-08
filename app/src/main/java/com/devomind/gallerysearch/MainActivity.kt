@@ -1088,7 +1088,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Loads the CLIP *text* encoder and the on-disk embedding caches exactly once, then wires them
+     * Loads the text encoder and the on-disk embedding caches exactly once, then wires them
      * into the repository. Safe to call from multiple entry points: returns the same in-flight
      * [CompletableDeferred] so callers can await readiness. On failure the guard is reset so the
      * next search can retry. [warmupDelayMs] lets the eager (indexing) path yield to the first
@@ -1140,7 +1140,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Loads the CLIP vision encoder — the only thing that needs it is image-to-image search, which
+     * Loads the vision encoder — the only thing that needs it is image-to-image search, which
      * awaits this call. Nothing on the text-search path starts it: its OrtSession is a second
      * 72 MB asset read plus graph parse, and paying that beside a query's scoring pass is exactly
      * the latency the text path is meant to avoid. Idempotent: returns the same in-flight deferred,
@@ -1155,7 +1155,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val sharedEncoders = (application as GallerySearchApp).sharedEncoders
             val image = withContext(Dispatchers.IO) {
-                // Acquired through the shared holder so a CLIP pass finishing at this moment can't
+                // Acquired through the shared holder so an indexing pass finishing at this moment can't
                 // release the session we're about to attach.
                 runCatching { sharedEncoders.acquireVisionEncoder() }.getOrNull()
             }
@@ -2088,11 +2088,11 @@ class MainActivity : AppCompatActivity() {
 
                 // Natural-language people: "photos of john", "me and my brother at a beach".
                 // Person mentions become a photo-pool constraint (AND across mentions) and leave a
-                // stripped text that CLIP/metadata actually rank ("john" has no visual embedding).
+                // stripped text that semantic/metadata actually rank ("john" has no visual embedding).
                 var personClause = withContext(Dispatchers.IO) { resolvePersonQueryClause(parsedQuery.textQuery) }
                 mark("person")
                 // A bare person word ("john", "me", "brother") is answered directly from the
-                // People index: the whole pool under the People pill, no CLIP pass (a name has no
+                // People index: the whole pool under the People pill, no semantic pass (a name has no
                 // visual embedding). Person found but pool empty → drop the person reading and run
                 // the word as a plain smart search instead.
                 val barePersonWord = personClause != null &&
@@ -2110,7 +2110,7 @@ class MainActivity : AppCompatActivity() {
                             score = (item.dateMillis / now).coerceIn(0.0, 1.0).toFloat()
                         )
                     }
-                    // A direct person lookup deliberately skips Smart/CLIP, but filename and
+                    // A direct person lookup deliberately skips Smart/semantic, but filename and
                     // other metadata matches remain their own unmodified section.
                     val metadataResults = if (sessionMode != SearchMode.AiOnly) {
                         val metadataHits = withContext(Dispatchers.Default) {
@@ -2184,7 +2184,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // Encoders may have been deferred at startup — load them on demand for AI search.
-                // The CLIP pass is the slow part: show a loading screen, but when the fast metadata
+                // The semantic pass is the slow part: show a loading screen, but when the fast metadata
                 // pass already found matches, keep them visible underneath (progressive results).
                 if (textEncoder == null) {
                     ensureEncodersLoaded().await()
@@ -2222,7 +2222,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     withContext(Dispatchers.Default) { repo.search(effectiveText) }
                 }
-                mark("clip")
+                mark("semantic")
                 val finalResults = withContext(Dispatchers.Default) {
                     buildMergedPhotoSearchResults(
                         baseItems = filteredItems,
@@ -2334,7 +2334,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Named/labeled people mentioned in the query (resolved by [PersonQueryResolver]) as a concrete
      * photo pool: AND across mentions ("me AND my brother"), OR within a mention (two "John"s).
-     * [strippedText] is the person-free remainder used for CLIP/metadata ranking.
+     * [strippedText] is the person-free remainder used for semantic/metadata ranking.
      */
     private data class PersonQueryClause(
         val strippedText: String,
@@ -3260,7 +3260,7 @@ class MainActivity : AppCompatActivity() {
         updateSearchResultCount()
     }
 
-    /** Image-to-image search across the whole library using the CLIP image embedding. */
+    /** Image-to-image search across the whole library using the image embedding. */
     private fun searchSimilarImage(uri: Uri, cropRect: FloatArray? = null) {
         val repo = repository ?: return
         val isRegion = cropRect != null && cropRect.size >= 4
@@ -3288,7 +3288,7 @@ class MainActivity : AppCompatActivity() {
 
         searchJob?.cancel()
         searchJob = lifecycleScope.launch {
-            // Image-to-image needs the CLIP vision encoder; load it on demand if it was deferred.
+            // Image-to-image needs the vision encoder; load it on demand if it was deferred.
             if (imageEncoder == null) loadVisionEncoder().await()
             if (!imageSearchActive || currentMode != Mode.Search) return@launch
             val pool = imageItems
@@ -3546,7 +3546,7 @@ class MainActivity : AppCompatActivity() {
         val db = dbRepository
         val explicitPeople = peopleResultUris?.mapNotNull(resultByUri::get).orEmpty()
         // Name-based sections (Albums/Tags/Locations) resolve through the current photo pool and
-        // stand on their own — they are never intersected with the CLIP/metadata result sets.
+        // stand on their own — they are never intersected with the semantic/metadata result sets.
         val pool = currentSearchPhotoItems()
         val itemsByUri = pool.associateBy { it.uri }
         return buildList {
@@ -3580,7 +3580,7 @@ class MainActivity : AppCompatActivity() {
                 add(SearchSectionResult(SearchSection.People, explicitPeople.size, explicitPeople))
             }
             // Locations match the query's place name against photo GPS (EXIF -> geocode radius) —
-            // independent of the CLIP/metadata result sets, like Albums. Fails soft (empty match).
+            // independent of the semantic/metadata result sets, like Albums. Fails soft (empty match).
             if (!text.isBlank() && db != null) {
                 val locationUris = LocationSearch.matchingUris(
                     this@MainActivity, text, db, pool.map { it.uri }
@@ -5292,7 +5292,7 @@ class MainActivity : AppCompatActivity() {
         lastProgressRefresh = current
 
         val repo = repository ?: return
-        // A user-driven search already snapshots the freshest index when its CLIP pass runs;
+        // A user-driven search already snapshots the freshest index when its indexing pass runs;
         // cancelling it here would flash the grid. The next progress step re-scores instead.
         if (searchJob?.isActive == true) return
         lifecycleScope.launch(Dispatchers.IO) {
@@ -5308,7 +5308,7 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * True when a background index pass should run now: consent given, work remaining, and neither
-     * paused nor stopped. Used both to enqueue the worker and to decide whether to warm the CLIP
+     * paused nor stopped. Used both to enqueue the worker and to decide whether to warm the
      * encoders eagerly at startup (only when indexing needs them). Runs on IO: it reads the whole
      * on-disk embedding index to find unindexed photos, which once blocked cold start for seconds.
      */
@@ -5892,7 +5892,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Beta: classifies indexed photos as sensitive/NSFW with the on-device CLIP encoders and tells
+     * Beta: classifies indexed photos as sensitive/NSFW with the on-device encoders and tells
      * the adapter which uris to blur. Runs off the main thread; reuses stored embeddings so it's
      * just dot products. Called on settings return and after the index loads.
      */

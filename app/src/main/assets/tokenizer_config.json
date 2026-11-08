@@ -21,8 +21,8 @@
   "errors": "replace",
   "model_max_length": 77,
   "pad_token": "!",
-  "processor_class": "CLIPProcessor",
-  "tokenizer_class": "CLIPTokenizer",
+  "processor_class": "TextProcessor",
+  "tokenizer_class": "BpeTokenizer",
   "unk_token": {
     "__type": "AddedToken",
     "content": "<|endoftext|>",

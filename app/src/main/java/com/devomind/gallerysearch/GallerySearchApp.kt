@@ -155,7 +155,7 @@ class SharedEncoders(private val context: android.content.Context) {
     @Volatile private var imageEncoder: ImageEncoder? = null
     @Volatile private var textEncoder: TextEncoder? = null
     @Volatile private var faceEmbedder: FaceEmbedder? = null
-    @Volatile private var faceDetector: YuNetDetector? = null
+    @Volatile private var faceDetector: FaceDetector? = null
     @Volatile private var visionHeldByForeground = false
 
     // Separate lock per encoder: constructing an ImageEncoder and a TextEncoder are independent
@@ -219,13 +219,13 @@ class SharedEncoders(private val context: android.content.Context) {
     }
 
     /**
-     * Shared YuNet session at the spec's default operating point. FaceScanWorker builds its own
-     * stricter-tuned instance; everything on the Phase 1/2 path shares this one so a per-photo
+     * Shared face detector session at the spec's default operating point. FaceScanWorker builds its
+     * own stricter-tuned instance; everything on the Phase 1/2 path shares this one so a per-photo
      * indexing loop doesn't re-read the model asset and rebuild an OrtSession for every image.
      */
-    fun getFaceDetector(): YuNetDetector {
+    fun getFaceDetector(): FaceDetector {
         return faceDetector ?: synchronized(detectorLock) {
-            faceDetector ?: YuNetDetector(context).also { faceDetector = it }
+            faceDetector ?: FaceDetector(context).also { faceDetector = it }
         }
     }
 
@@ -243,7 +243,7 @@ class SharedEncoders(private val context: android.content.Context) {
         }
     }
 
-    /** Symmetric to [closeFaceEmbedder] for the YuNet detector. */
+    /** Symmetric to [closeFaceEmbedder] for the face detector. */
     fun closeFaceDetector() {
         synchronized(detectorLock) {
             faceDetector?.let {

@@ -17,7 +17,7 @@ import kotlin.math.sqrt
 
 /**
  * Place-aware photo lookup for the search "Locations" section — deliberately independent of the
- * CLIP index: a photo matches because its EXIF GPS sits within [RadiusMeters] of the place the
+ * semantic index: a photo matches because its EXIF GPS sits within [RadiusMeters] of the place the
  * query names, not because of what the image looks like.
  *
  * Two Android-Geocoder lookups, each cached to disk so repeats work offline:

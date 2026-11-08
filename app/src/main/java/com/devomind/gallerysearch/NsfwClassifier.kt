@@ -1,7 +1,7 @@
 package com.devomind.gallerysearch
 
 /**
- * Zero-shot NSFW / sensitive-content detector built on the existing MobileCLIP encoders.
+ * Zero-shot NSFW / sensitive-content detector built on the existing shared encoders.
  *
  * It embeds a small set of "sensitive" and "safe" text prompts once (cached), then scores an
  * already-computed image embedding by comparing its cosine similarity to the closest prompt in each
@@ -14,8 +14,8 @@ package com.devomind.gallerysearch
  */
 class NsfwClassifier(private val textEncoder: TextEncoder) {
 
-    // Note: ClipTokenizer auto-prepends "a photo of ", so these read as "a photo of <prompt>".
-    // Prompt sets + margin were calibrated with tools/nsfw_calibration against the real MobileCLIP-S2
+    // Note: TextTokenizer auto-prepends "a photo of ", so these read as "a photo of <prompt>".
+    // Prompt sets + margin were calibrated with tools/nsfw_calibration against the real text/vision
     // ONNX model over 200 safe public photos. A broad, gallery-representative "safe" set is essential:
     // with only a few generic safe prompts, ~50% of normal photos scored as sensitive on this model.
     private val sensitivePrompts = listOf(
@@ -67,7 +67,7 @@ class NsfwClassifier(private val textEncoder: TextEncoder) {
         // category). Was temporarily OFF; re-enabled when the cleanup integration shipped.
         const val FEATURE_ENABLED = false
 
-        // Calibrated on MobileCLIP-S2 over 200 safe photos (tools/nsfw_calibration): safe photos have
+        // Calibrated on the shared encoders over 200 safe photos (tools/nsfw_calibration): safe photos have
         // median margin -0.012; ~0.5% exceed +0.05, ~0% exceed +0.07. 0.05 favors precision (few
         // false blurs), which is the right trade-off for a blur feature. More aggressive: ~0.04.
         // Note: recall (catching real NSFW) is not validated here — see tools/nsfw_calibration/README.

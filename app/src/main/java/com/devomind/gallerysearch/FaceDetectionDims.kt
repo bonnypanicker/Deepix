@@ -65,7 +65,7 @@ object FaceDetectionDims {
                     val tmp = w; w = h; h = tmp
                 }
                 // Mirror decodeOrientedBitmap's inSampleSize loop so dims describe the bitmap
-                // YuNet actually ran on, not the full-resolution file.
+                // the detector actually ran on, not the full-resolution file.
                 var sample = 1
                 while (maxOf(w, h) / sample > GalleryRepository.FaceDetectionMaxEdge) sample *= 2
                 out[uriStr] = intArrayOf(w / sample, h / sample)

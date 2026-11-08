@@ -9,7 +9,7 @@ import android.net.Uri
 
 /** Visual state of the indexing banner. */
 enum class IndexBannerStatus {
-    /** CLIP pass running with a known total — determinate "X / Y" bar. */
+    /** Indexing pass running with a known total — determinate "X / Y" bar. */
     Running,
 
     /** Work started but hasn't reported a total yet. */

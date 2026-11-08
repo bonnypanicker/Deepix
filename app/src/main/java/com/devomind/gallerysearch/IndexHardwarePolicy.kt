@@ -1,7 +1,7 @@
 package com.devomind.gallerysearch
 
 /**
- * Framework-free snapshot of the device state used to decide whether the CLIP indexer should
+ * Framework-free snapshot of the device state used to decide whether the indexer should
  * run, wait, or change how aggressively it uses CPU/RAM.
  */
 data class IndexHardwareState(

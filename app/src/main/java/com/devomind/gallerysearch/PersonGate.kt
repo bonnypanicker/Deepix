@@ -3,22 +3,22 @@ package com.devomind.gallerysearch
 import android.graphics.Bitmap
 
 /**
- * Implements the spec Phase 2 "CLIP person-gate": a permissive / recall-biased text-prompt gate
+ * Implements the spec Phase 2 "person-gate": a permissive / recall-biased text-prompt gate
  * deciding whether a photo plausibly contains a person. Calibrated as a cheap prefilter before
- * YuNet: photos that score below [PersonGateThreshold] skip the detector entirely; those scoring
- * in the grey zone [GreyBandLow, GreyBandHigh] run YuNet and their outcome is logged so we can
- * tune the threshold against real libraries.
+ * the detector: photos that score below [PersonGateThreshold] skip the detector entirely; those
+ * scoring in the grey zone [GreyBandLow, GreyBandHigh] run the detector and their outcome is
+ * logged so we can tune the threshold against real libraries.
  *
- * Gate score = max cosine between the photo's CLIP embedding and the "person" prompt pool minus
+ * Gate score = max cosine between the photo's image embedding and the "person" prompt pool minus
  * max cosine against the "non-person" pool. Ranges roughly [-1, 1]; >0 means more person-like.
  */
-object ClipPersonGate {
+object PersonGate {
 
     /** Default operating point: tuned roughly for ~95% person-recall in early benchmarks. */
     const val PersonGateThreshold = 0.05f
 
-    /** Between these scores we run YuNet anyway and log both the gate decision AND YuNet's
-     * answer — pure tuning telemetry for setting the true launch threshold later. */
+    /** Between these scores we run the detector anyway and log both the gate decision AND the
+     * detector's answer — pure tuning telemetry for setting the true launch threshold later. */
     const val GreyBandLow = -0.15f
     const val GreyBandHigh = 0.30f
 
@@ -56,7 +56,7 @@ object ClipPersonGate {
         val nonPersonScore: Float,
         /** Net gate score (personScore − nonPersonScore). */
         val gateScore: Float,
-        /** True when the photo crosses the operating threshold — run YuNet. */
+        /** True when the photo crosses the operating threshold — run the detector. */
         val hasPerson: Boolean,
         /** True when the outcome is in the grey band and worth logging. */
         val isGreyZone: Boolean
@@ -72,9 +72,9 @@ object ClipPersonGate {
 
     /**
      * Score one photo bitmap against the prompt pools. Encodes the bitmap live via the shared
-     * MobileCLIP [imageEncoder] — use this only as a fallback when no stored CLIP embedding is
-     * available (the normal Phase 2 path reuses the embedding IndexWorker already persisted via
-     * [scoreEmbedding] to avoid a second decode + second CLIP inference per photo).
+     * image encoder — use this only as a fallback when no stored image embedding is available
+     * (the normal Phase 2 path reuses the embedding IndexWorker already persisted via
+     * [scoreEmbedding] to avoid a second decode + second image inference per photo).
      */
     fun score(
         imageEncoder: ImageEncoder,
@@ -84,10 +84,10 @@ object ClipPersonGate {
     ): GateVerdict = scoreEmbedding(textEncoder, imageEncoder.encode(bitmap), photoUri)
 
     /**
-     * Score a *precomputed* MobileCLIP image embedding (already L2-normalized, e.g. read from
+     * Score a *precomputed* image embedding (already L2-normalized, e.g. read from
      * `embedding_index.bin`) against the prompt pools. This is the spec's "reuse existing
-     * MobileCLIP-S2 embeddings" path: no bitmap decode, no image-encoder inference — just the
-     * cached text-prompt embeddings vs. the stored image embedding.
+     * embeddings" path: no bitmap decode, no image-encoder inference — just the cached
+     * text-prompt embeddings vs. the stored image embedding.
      */
     fun scoreEmbedding(
         textEncoder: TextEncoder,

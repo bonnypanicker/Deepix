@@ -3,7 +3,7 @@ package com.devomind.gallerysearch
 /**
  * Decides which members of a suspected-duplicate group may be offered for deletion.
  *
- * CLIP grouping is cosine-based and therefore *transitive*: A matches B at 0.97 and B matches C at
+ * Semantic grouping is cosine-based and therefore *transitive*: A matches B at 0.97 and B matches C at
  * 0.97, so C joins the group even when A and C are two different moments in the same scene — and
  * cosine alone also rates a re-shot frame and a reposted image as near-identical. Deleting on that
  * evidence loses a photo. So a group earns nothing until each member is measured, pixel-wise, against

@@ -7,10 +7,10 @@ import android.util.Log
 import kotlin.math.sqrt
 
 /**
- * Least-squares Umeyama-style similarity transform mapping the five YuNet landmarks onto the
- * canonical 112x112 InsightFace/ArcFace layout, producing the aligned crop MobileFaceNet expects.
+ * Least-squares Umeyama-style similarity transform mapping the five detector landmarks onto the
+ * canonical 112x112 face-recognition layout, producing the aligned crop the embedder expects.
  *
- * YuNet emits landmarks (left eye, right eye, nose, mouth left, mouth right) in face space.
+ * The detector emits landmarks (left eye, right eye, nose, mouth left, mouth right) in face space.
  * This class computes (scale, rotation, tx, ty) aligning them to [CanonicalLandmarks], then
  * extracts the region from the source bitmap.
  */
@@ -18,7 +18,7 @@ object FaceAligner {
 
     /**
      * Target landmark locations for an upright 112x112 face crop, matching the reference points
-     * used in InsightFace's ArcFace preprocessing note.
+     * used in the standard face-recognition preprocessing convention.
      */
     private val CanonicalLandmarks: Array<FloatArray> = arrayOf(
         floatArrayOf(38.2946f, 51.6963f),
@@ -34,7 +34,7 @@ object FaceAligner {
     /**
      * Map [source] to an [AlignedSize]x[AlignedSize] bitmap via the similarity transform that best
      * fits [landmarks] to [CanonicalLandmarks]. The input landmarks must be in the order defined by
-     * [YuNetDetector.FaceDetection.landmarks].
+     * [FaceDetector.FaceDetection.landmarks].
      *
      * `Canvas.drawBitmap(src, matrix)` samples source at matrix⁻¹(dst) per destination pixel, so to
      * land detected landmarks on the canonical 112×112 points we hand over the FORWARD transform

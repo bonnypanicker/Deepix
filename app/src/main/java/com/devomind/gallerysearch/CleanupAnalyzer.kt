@@ -5,7 +5,7 @@ import kotlinx.coroutines.yield
 
 /**
  * Finds clutter the user probably wants to remove, using ONLY on-device signals:
- *  - existing MobileCLIP image embeddings (near-duplicate + burst + similar grouping, zero-shot
+ *  - existing image embeddings (near-duplicate + burst + similar grouping, zero-shot
  *    category guess, sensitive-content screen)
  *  - cheap filename / folder heuristics (screenshots, stickers)
  *  - one downscaled-bitmap pass for blur / brightness (supplied by the caller as [ImageStats])
@@ -108,7 +108,7 @@ object CleanupAnalyzer {
         "a photo of food", "a selfie", "a nature photo"
     )
 
-    private enum class ClipClass(val category: Category?, val prompts: List<String>) {
+    private enum class SceneClass(val category: Category?, val prompts: List<String>) {
         PHOTO(null, emptyList()),
         SCREENSHOT(Category.SCREENSHOTS, listOf(
             "a screenshot", "a screenshot of a phone screen", "a screenshot of an app",
@@ -139,7 +139,7 @@ object CleanupAnalyzer {
         encodeText: (String) -> FloatArray?,
         imageStats: (Uri) -> ImageStats?,
         // dHash for one photo, when the caller can supply one: the only evidence that promotes a
-        // CLIP look-alike to a duplicate worth pre-selecting for deletion.
+        // semantic look-alike to a duplicate worth pre-selecting for deletion.
         dhashOf: (Uri) -> Long? = { null },
         onProgress: (done: Int, total: Int) -> Unit,
         onPartial: (Report) -> Unit = {},
@@ -232,7 +232,7 @@ object CleanupAnalyzer {
             for (item in group) {
                 duplicateUris.add(item.uri.toString())
                 categoryItems[Category.DUPLICATES]!!.add(item)
-                // The tile lists the whole CLIP group; only a member measured as a copy of the file
+                // The tile lists the whole similarity group; only a member measured as a copy of the file
                 // that stays is pre-selected, and the rest wait for a human to judge them.
                 if (item.uri in confirmedUris) suggested[Category.DUPLICATES]!!.add(item.uri)
             }
@@ -249,7 +249,7 @@ object CleanupAnalyzer {
 
         // 3) Zero-shot class vectors.
         val photoVec = averagedPromptVector(PHOTO_PROMPTS, encodeText)
-        val classVecs = ClipClass.entries.filter { it != ClipClass.PHOTO }
+        val classVecs = SceneClass.entries.filter { it != SceneClass.PHOTO }
             .associateWith { averagedPromptVector(it.prompts, encodeText) }
 
         // Classify each item into at most one content category; collect "real photos" for the pixel pass.
@@ -266,12 +266,12 @@ object CleanupAnalyzer {
                 }
             }
             val forcedClass = when {
-                looksLikeScreenshot(item) -> ClipClass.SCREENSHOT
-                looksLikeSticker(item) -> ClipClass.STICKER
+                looksLikeScreenshot(item) -> SceneClass.SCREENSHOT
+                looksLikeSticker(item) -> SceneClass.STICKER
                 else -> null
             }
 
-            val cls = forcedClass ?: classifyByClip(embedding, photoVec, classVecs)
+            val cls = forcedClass ?: classifyByScene(embedding, photoVec, classVecs)
             val category = cls?.category
             if (category != null) {
                 categoryItems[category]!!.add(item)
@@ -334,14 +334,14 @@ object CleanupAnalyzer {
         return snapshot()
     }
 
-    private fun classifyByClip(
+    private fun classifyByScene(
         embedding: FloatArray?,
         photoVec: FloatArray?,
-        classVecs: Map<ClipClass, FloatArray?>
-    ): ClipClass? {
+        classVecs: Map<SceneClass, FloatArray?>
+    ): SceneClass? {
         if (embedding == null || photoVec == null) return null
         val photoScore = EmbeddingUtils.cosineSimilarity(embedding, photoVec)
-        var bestClass: ClipClass? = null
+        var bestClass: SceneClass? = null
         var bestScore = -1f
         for ((cls, vec) in classVecs) {
             if (vec == null) continue
@@ -394,7 +394,7 @@ object CleanupAnalyzer {
      * Bursts = time-cluster then similarity-group. Photos are sorted by capture time and split
      * into clusters where consecutive shots are ≤[BURST_TIME_GAP_MS] apart — equal timestamps
      * chain too, since rapid bursts frequently share the same second — and a longer gap starts a
-     * new moment. Within each cluster, shots whose CLIP cosine is ≥[BURST_SIMILARITY] union into
+     * new moment. Within each cluster, shots whose embedding cosine is ≥[BURST_SIMILARITY] union into
      * groups of ≥[BURST_MIN_PHOTOS]. Clusters beyond [MAX_BURST_CLUSTER] photos are timelapse-
      * style deliberate runs, not accidental bursts, and are skipped.
      */

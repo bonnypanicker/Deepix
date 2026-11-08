@@ -198,7 +198,7 @@ object IndexPreferences {
         return hourOfDay >= NIGHT_CHARGE_START_HOUR || hourOfDay < NIGHT_CHARGE_END_HOUR
     }
 
-    /** Optional future gate: require screen-off/device-idle before the heavy CLIP pass runs. */
+    /** Optional future gate: require screen-off/device-idle before the heavy indexing pass runs. */
     fun isUserIdleRequiredForIndexing(context: Context): Boolean {
         return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .getBoolean(KeyRequiresUserIdle, false)

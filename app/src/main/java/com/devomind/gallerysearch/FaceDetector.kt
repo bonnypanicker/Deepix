@@ -14,11 +14,11 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
-/** Minimal ONNX Runtime implementation of OpenCV Zoo's YuNet face detector. */
-class YuNetDetector(
+/** Minimal ONNX Runtime implementation of the face detector. */
+class FaceDetector(
     context: Context,
     /** Confidence floor for accepting a detection. Caller-tunable because the existing
-     * CLIP-gated scan pipeline in FaceScanWorker is tuned with a stricter 0.85 default. */
+     * gated scan pipeline in FaceScanWorker is tuned with a stricter 0.85 default. */
     private val confidenceThreshold: Float = ConfidenceThreshold,
     /** Minimum face side (px) on the detector's internal scale. Smaller values increase recall
      * for tiny/blurry faces at the cost of more false positives inside texture. */
@@ -37,14 +37,14 @@ class YuNetDetector(
             "$ModelAsset is only ${model.size} bytes; expected a real ONNX binary (>= $MinModelBytes)"
         }
         session = environment.createSession(model, OnnxSessionOptions.create(Tag, ThreadCount))
-        inputName = session.inputNames.firstOrNull() ?: error("YuNet model has no input")
-        Log.d(Tag, "YuNet inputs=${session.inputNames}, outputs=${session.outputNames}")
+        inputName = session.inputNames.firstOrNull() ?: error("Face detector has no input")
+        Log.d(Tag, "Face detector inputs=${session.inputNames}, outputs=${session.outputNames}")
     }
 
     fun detectFaceCount(bitmap: Bitmap): Int = detectFaces(bitmap).size
 
     /**
-     * Full decode: bounding box, confidence, and the five semantic landmarks YuNet exposes
+     * Full decode: bounding box, confidence, and the five semantic landmarks the model exposes
      * (left eye, right eye, nose, left mouth corner, right mouth corner). Coordinates are in
      * the space of the caller-supplied [bitmap]. Returns at most [MaxDetections] results,
      * post-NMS, ordered by confidence.
@@ -101,7 +101,7 @@ class YuNetDetector(
         }
     }
 
-    /** A single YuNet detection, in pixel coordinates of the source bitmap. */
+    /** A single face detection, in pixel coordinates of the source bitmap. */
     data class FaceDetection(
         val left: Float,
         val top: Float,
@@ -139,7 +139,7 @@ class YuNetDetector(
         max(StrideAlignment, (value + StrideAlignment / 2) / StrideAlignment * StrideAlignment)
 
     private fun output(result: OrtSession.Result, name: String): FloatArray =
-        result.get(name).orElseThrow { IllegalStateException("YuNet did not return '$name'; outputs=${session.outputNames}") }
+        result.get(name).orElseThrow { IllegalStateException("Face detector did not return '$name'; outputs=${session.outputNames}") }
             .value
             .let(OnnxOutput::flattenFloatArray)
 
@@ -245,8 +245,8 @@ class YuNetDetector(
     )
 
     companion object {
-        private const val Tag = "YuNetDetector"
-        private const val ModelAsset = "face_detection_yunet_2026may.onnx"
+        private const val Tag = "FaceDetector"
+        private const val ModelAsset = "s3.onnx"
         private const val MinModelBytes = 50_000
         /**
          * Long-edge cap for the detector's internal resolution. Pairs with
@@ -291,12 +291,12 @@ class YuNetDetector(
         const val MinFaceSize = 40f
 
         /**
-         * Tuned for the existing FaceScanWorker CLIP pre-filter pass — keeps spotty tiny-face recall
+         * Tuned for the existing FaceScanWorker pre-filter pass — keeps spotty tiny-face recall
          * in the background scan without letting them flood the foreground pipeline. The min-face
          * floor is expressed at detector-input scale; set conservatively below the spec's 40px so
          * the scan worker continues counting medium-small faces the older 480px tuning missed.
          */
-        fun forScanWorker(context: Context): YuNetDetector = YuNetDetector(
+        fun forScanWorker(context: Context): FaceDetector = FaceDetector(
             context = context,
             confidenceThreshold = 0.85f,
             minFaceSize = 18f

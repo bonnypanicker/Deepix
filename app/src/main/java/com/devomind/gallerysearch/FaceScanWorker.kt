@@ -14,8 +14,8 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 /**
- * Quietly verifies likely people photos with YuNet after CLIP has started indexing. This is a
- * separate unique worker, deliberately has no foreground service, notification, or UI progress.
+ * Quietly verifies likely people photos with the face detector after indexing has started. This is
+ * a separate unique worker, deliberately has no foreground service, notification, or UI progress.
  */
 class FaceScanWorker(
     appContext: Context,
@@ -38,11 +38,11 @@ class FaceScanWorker(
             }
             if (candidates.isEmpty()) return@withContext Result.success()
 
-            Log.i(Tag, "Scanning ${candidates.size} CLIP-selected face candidates")
+            Log.i(Tag, "Scanning ${candidates.size} gated face candidates")
             val pendingResults = LinkedHashMap<String, Int>()
             // The scan worker preserves its original tuning (higher confidence, lower min-face-size)
-            // since it was tuned for the CLIP prefilter; Phase 1 defaults apply elsewhere.
-            YuNetDetector.forScanWorker(applicationContext).use { detector ->
+            // since it was tuned for the prefilter; Phase 1 defaults apply elsewhere.
+            FaceDetector.forScanWorker(applicationContext).use { detector ->
                 candidates.forEachIndexed { index, item ->
                     ensureActive()
                     val count = runCatching {
@@ -90,7 +90,7 @@ class FaceScanWorker(
 
         fun enqueue(context: Context) {
             val request = androidx.work.OneTimeWorkRequestBuilder<FaceScanWorker>()
-                // Let CLIP save its first embeddings and keep the face pass subordinate on cold start.
+                // Let the indexer save its first embeddings and keep the face pass subordinate on cold start.
                 .setInitialDelay(45, TimeUnit.SECONDS)
                 .setBackoffCriteria(BackoffPolicy.LINEAR, DesignTokens.INDEX_BACKOFF_SECONDS, TimeUnit.SECONDS)
                 .setInputData(workDataOf())

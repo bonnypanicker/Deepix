@@ -27,7 +27,7 @@ object OnnxSessionOptions {
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
             if (modelFormat == ModelFormat.ORT) {
                 // The byte-array API can detect ORT models from their header, but declaring the
-                // format makes the CLIP model contract explicit and prevents an accidental ONNX
+                // format makes the model contract explicit and prevents an accidental ONNX
                 // asset fallback from silently changing the production load path.
                 addConfigEntry("session.load_model_format", "ORT")
             }

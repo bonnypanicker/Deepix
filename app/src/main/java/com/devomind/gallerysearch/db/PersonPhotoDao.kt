@@ -15,7 +15,7 @@ interface PersonPhotoDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(photos: List<PersonPhotoEntity>)
 
-    /** Creates a processing claim without replacing a candidate created by the CLIP pass. */
+    /** Creates a processing claim without replacing a candidate created by the indexing pass. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIfAbsent(photo: PersonPhotoEntity): Long
 
@@ -85,7 +85,7 @@ interface PersonPhotoDao {
     @Query("UPDATE person_photos SET status = :status WHERE uri = :uri")
     suspend fun setStatus(uri: String, status: String)
 
-    /** Keep the photo inventory but force the pipeline to derive fresh MobileFaceNet state. */
+    /** Keep the photo inventory but force the pipeline to derive fresh face-embedding state. */
     @Query(
         "UPDATE person_photos SET status = 'unprocessed', faceCount = 0, exemplarQuality = 0, " +
             "exemplarPhotoUri = NULL, lastAnalyzedAt = 0"

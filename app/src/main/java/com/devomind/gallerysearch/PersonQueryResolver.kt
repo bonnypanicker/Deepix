@@ -11,7 +11,7 @@ import java.util.Locale
  * name/label (duplicates happen), and the caller ANDs the mentions together (a photo must contain
  * every mentioned person) while OR-ing duplicates within one mention.
  *
- * Matched person words are removed from the text that CLIP/metadata then rank over — CLIP has no
+ * Matched person words are removed from the text that semantic/metadata then rank over — the encoder has no
  * meaningful "john" visual embedding, and metadata matching would otherwise hit filenames/tags.
  */
 object PersonQueryResolver {

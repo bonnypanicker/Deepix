@@ -59,7 +59,7 @@ class PersonAlbumsActivity : AppCompatActivity() {
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         binding.emptyAction.setOnClickListener {
-            // Face detection is independent of CLIP embedding indexing; user-initiated face search
+            // Face detection is independent of embedding indexing; user-initiated face search
             // should always proceed, replacing any existing/future face work to start fresh.
             FaceIndexWorker.enqueue(this, replaceExisting = true)
         }
@@ -396,7 +396,7 @@ class PersonAlbumsActivity : AppCompatActivity() {
         // The card's own minimum: a 92dp cover, its padding, and room for a name under it.
         private const val PeopleCardMinWidthDp = 112f
         private const val MaxPeopleColumns = 6
-        // Display-only quality; this does not change the detector or MobileFaceNet input.
+        // Display-only quality; this does not change the detector or face-embedder input.
         private const val CoverDecodePx = 512
         private const val CoverSourceEdge = 768
         private const val CoverCacheKb = 12 * 1024

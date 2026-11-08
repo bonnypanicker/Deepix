@@ -24,7 +24,7 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
     // Both ORT sessions are shared process-wide via SharedEncoders: the Phase 1 spec asks for a
     // single OrtEnvironment with 2–4 intra-op threads, and the Phase 2 indexing loop constructs a
     // FaceAnalyzer per photo — a per-instance session would re-read the model asset every image.
-    private val detector: YuNetDetector
+    private val detector: FaceDetector
         get() = (appContext as GallerySearchApp).sharedEncoders.getFaceDetector()
     private val embedder: FaceEmbedder
         get() = (appContext as GallerySearchApp).sharedEncoders.getFaceEmbedder()
@@ -32,7 +32,7 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
     /** One face bundled for the UI — detection + derived metadata + optionally the aligned crop.
      * [detection] is always in the original (EXIF-upright) photo's coordinate space. */
     data class AnalyzedFace(
-        val detection: YuNetDetector.FaceDetection,
+        val detection: FaceDetector.FaceDetection,
         val quality: Float,
         val pose: FacePoseEstimator.Pose,
         /** Whether the detection is eligible to contribute an identity embedding / person match. */
@@ -59,17 +59,17 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
      * the aligned crops exist.
      */
     private data class ResolvedFace(
-        val original: YuNetDetector.FaceDetection,
+        val original: FaceDetector.FaceDetection,
         val source: Bitmap,
-        val oriented: YuNetDetector.FaceDetection,
+        val oriented: FaceDetector.FaceDetection,
         val ownedSource: Bitmap?,
         /** Clockwise quarter-turn of [source] relative to the original (0 = upright pass). */
         val rotationDegCw: Int
     )
 
     /**
-     * Apply the acceptance policy to [bitmap]: faces at or above [YuNetDetector.AcceptConfidence]
-     * are taken as-is; faces in [YuNetDetector.RotationRetryFloor, [YuNetDetector.AcceptConfidence])
+     * Apply the acceptance policy to [bitmap]: faces at or above [FaceDetector.AcceptConfidence]
+     * are taken as-is; faces in [FaceDetector.RotationRetryFloor, [FaceDetector.AcceptConfidence])
      * are re-detected in every quarter-turn (+90°, −90°, 180°) and kept only when some rotation
      * clears the accept confidence — when several do, the sighting with the highest confidence
      * wins and its frame feeds alignment and the embedding; everything else is dropped.
@@ -79,11 +79,11 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
      * exactly the one upright pass they cost today.
      */
     private fun resolveDetections(bitmap: Bitmap): List<ResolvedFace> {
-        val primary = detector.detectFaces(bitmap, YuNetDetector.RotationRetryFloor)
+        val primary = detector.detectFaces(bitmap, FaceDetector.RotationRetryFloor)
         val resolved = ArrayList<ResolvedFace>(primary.size)
-        val retry = ArrayList<YuNetDetector.FaceDetection>()
+        val retry = ArrayList<FaceDetector.FaceDetection>()
         for (det in primary) {
-            if (det.confidence >= YuNetDetector.AcceptConfidence) {
+            if (det.confidence >= FaceDetector.AcceptConfidence) {
                 resolved += ResolvedFace(
                     original = det,
                     source = bitmap,
@@ -102,12 +102,12 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
         for (rotation in RetryRotations) {
             val rotated = rotate(bitmap, rotation)
             rotatedBitmaps[rotation] = rotated
-            val rotatedDetections = detector.detectFaces(rotated, YuNetDetector.AcceptConfidence)
-            val claimed = HashSet<YuNetDetector.FaceDetection>()
+            val rotatedDetections = detector.detectFaces(rotated, FaceDetector.AcceptConfidence)
+            val claimed = HashSet<FaceDetector.FaceDetection>()
             retry.forEachIndexed { index, candidate ->
                 val expected = mapDetection(candidate, bitmap.width, bitmap.height, rotation, inverse = false)
-                var best: YuNetDetector.FaceDetection? = null
-                var bestIou = YuNetDetector.RotationMatchIoU
+                var best: FaceDetector.FaceDetection? = null
+                var bestIou = FaceDetector.RotationMatchIoU
                 for (rotatedDetection in rotatedDetections) {
                     if (rotatedDetection in claimed) continue
                     val iou = intersectionOverUnion(expected, rotatedDetection)
@@ -145,7 +145,7 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
 
     /** A pending face's sighting in one quarter-turn frame, qualified at or above accept confidence. */
     private data class RotatedSighting(
-        val detection: YuNetDetector.FaceDetection,
+        val detection: FaceDetector.FaceDetection,
         val rotationDegCw: Int
     )
 
@@ -161,12 +161,12 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
      * stays axis-aligned under quarter-turns, so mapping two corners suffices.
      */
     private fun mapDetection(
-        det: YuNetDetector.FaceDetection,
+        det: FaceDetector.FaceDetection,
         srcW: Int,
         srcH: Int,
         degreesCw: Int,
         inverse: Boolean
-    ): YuNetDetector.FaceDetection {
+    ): FaceDetector.FaceDetection {
         fun mapX(x: Float, y: Float): Float = when (degreesCw) {
             90 -> if (inverse) y else srcH - y
             270 -> if (inverse) srcW - y else y
@@ -182,7 +182,7 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
         val top = mapY(det.left, det.top)
         val right = mapX(det.right, det.bottom)
         val bottom = mapY(det.right, det.bottom)
-        return YuNetDetector.FaceDetection(
+        return FaceDetector.FaceDetection(
             left = min(left, right),
             top = min(top, bottom),
             width = abs(right - left),
@@ -198,8 +198,8 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
     }
 
     private fun intersectionOverUnion(
-        first: YuNetDetector.FaceDetection,
-        second: YuNetDetector.FaceDetection
+        first: FaceDetector.FaceDetection,
+        second: FaceDetector.FaceDetection
     ): Float {
         val left = max(first.left, second.left)
         val top = max(first.top, second.top)
@@ -214,8 +214,8 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
      * Run the full Phase 1 pipeline for one photo. If [persist] is true the faces are written to
      * Room (with their embeddings). [includeAlignedCrops] keeps the 112×112 bitmaps for UI display.
      *
-     * Detection filtering: only faces at or above [YuNetDetector.AcceptConfidence] survive the
-     * upright pass; faces in [YuNetDetector.RotationRetryFloor, [YuNetDetector.AcceptConfidence])
+     * Detection filtering: only faces at or above [FaceDetector.AcceptConfidence] survive the
+     * upright pass; faces in [FaceDetector.RotationRetryFloor, [FaceDetector.AcceptConfidence])
      * survive only if a quarter-turn re-detection (+90°/−90°/180°) reaches the accept confidence —
      * those are aligned and embedded from the rotated frame, while their stored box and landmarks
      * stay in the original photo's coordinate space.
@@ -248,7 +248,7 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
         val entities = ArrayList<FaceEntity>(resolved.size)
 
         for (face in resolved) {
-            // Alignment, quality, pose and the MobileFaceNet embedding all run in the frame the
+            // Alignment, quality, pose and the face embedding all run in the frame the
             // face cleared the accept confidence in — a sideways face becomes upright there.
             val aligned = FaceAligner.align(face.source, face.oriented.landmarks)
             val qualityRaw = FaceQualityScorer.score(face.source, face.oriented)
@@ -320,11 +320,11 @@ class FaceAnalyzer(context: Context) : AutoCloseable {
     }
 
     override fun close() {
-        // Both the YuNet detector and the FaceEmbedder are shared via SharedEncoders — leave them
+        // Both the face detector and the FaceEmbedder are shared via SharedEncoders — leave them
         // open for other callers. FaceAnalyzer itself holds no per-instance native resources.
     }
 
-    private fun bboxToJson(det: YuNetDetector.FaceDetection): String =
+    private fun bboxToJson(det: FaceDetector.FaceDetection): String =
         JSONArray().apply {
             put(det.left); put(det.top); put(det.width); put(det.height)
         }.toString()

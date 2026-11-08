@@ -10,10 +10,10 @@ import ai.onnxruntime.TensorInfo
 import java.nio.FloatBuffer
 
 /**
- * Runs InsightFace MobileFaceNet (w600k_mbf / ArcFace) on a five-point-aligned 112×112 crop.
+ * Runs the face embedding model on a five-point-aligned 112×112 crop.
  *
  * The model expects NCHW RGB pixels normalized to [-1, 1] (see [FaceNormalizer]) and produces a
- * 512-D ArcFace feature. Outputs are L2-normalized so cosine similarity is their dot product.
+ * 512-D feature. Outputs are L2-normalized so cosine similarity is their dot product.
  *
  * The session is shared process-wide by [GallerySearchApp.sharedEncoders].
  */
@@ -46,20 +46,20 @@ class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.Defau
         check(embeddingDim == EmbeddingDim) {
             "$ModelAsset returned $embeddingDim-dim embeddings; expected $EmbeddingDim"
         }
-        Log.i(Tag, "MobileFaceNet session up: input=$inputName output=$outputName dim=$embeddingDim")
+        Log.i(Tag, "Face embedder session up: input=$inputName output=$outputName dim=$embeddingDim")
     }
 
-    /** Embed an aligned face crop and return a L2-normalized 512-D ArcFace feature. */
+    /** Embed an aligned face crop and return a L2-normalized 512-D feature. */
     fun embed(aligned: Bitmap): FloatArray {
         val tensor = FaceNormalizer.toTensor(aligned)
         val shape = longArrayOf(1, 3, FaceNormalizer.InputSize.toLong(), FaceNormalizer.InputSize.toLong())
         OnnxTensor.createTensor(environment, FloatBuffer.wrap(tensor), shape).use { input ->
             session.run(mapOf(inputName to input)).use { result ->
                 val raw = result.get(outputName).orElseThrow {
-                    IllegalStateException("MobileFaceNet did not return '$outputName'")
+                    IllegalStateException("Face embedder did not return '$outputName'")
                 }.value.let(OnnxOutput::flattenFloatArray)
                 check(raw.size == embeddingDim) {
-                    "MobileFaceNet returned ${raw.size} values; expected $embeddingDim"
+                    "Face embedder returned ${raw.size} values; expected $embeddingDim"
                 }
                 return EmbeddingUtils.l2Normalize(raw)
             }
@@ -68,14 +68,14 @@ class FaceEmbedder(context: Context, threadCount: Int = OnnxSessionOptions.Defau
 
     companion object {
         const val Tag = "FaceEmbedder"
-        const val ModelAsset = "mobilefacenet_w600k_mbf.onnx"
+        const val ModelAsset = "s4.onnx"
         // RGB preprocessing is not comparable to the earlier BGR embedding space. Changing this
         // value makes FaceEmbeddingModelMigration discard and rebuild those stale embeddings.
         // Includes the detector-input orientation and recognizability contracts. Advancing the
         // value rebuilds assignments whenever the eligibility policy changes.
         const val ModelVersion = "w600k_mbf_rgb_oriented_recognizability_v12"
         const val EmbeddingDim = 512
-        /** Cross-photo same-person label threshold validated in the working ArcFace pipeline. */
+        /** Cross-photo same-person label threshold validated in the working embedding pipeline. */
         const val MatchThresholdCosine = 0.30f
         const val MinModelBytes = 1_000_000
 

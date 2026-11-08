@@ -59,7 +59,7 @@ class IndexWorker(
             return Result.success()
         }
 
-        // Compression takes priority over CLIP encoding: while a batch is mid-flight (prepare,
+        // Compression takes priority over embedding encoding: while a batch is mid-flight (prepare,
         // review, commit) this worker waits and retries. Same constraint-wait semantics as the
         // charger gate below — never counts toward MaxRetryCount failure.
         if (CompressionBatchStore.isCompressionProcessing(applicationContext)) {
@@ -103,7 +103,7 @@ class IndexWorker(
 
         // Don't begin an intra-pass face worker here — that creates two in-flight WorkSpecs and
         // the cancellation of one would leak into the other via unique-work-name interaction. The
-        // post-pass chain schedules FaceIndexWorker once this CLIP pass *succeeds*.
+        // post-pass chain schedules FaceIndexWorker once this encoding pass *succeeds*.
 
         return try {
             val (imageEncoder, _) = coroutineScope {
@@ -216,11 +216,11 @@ class IndexWorker(
 
             dbRepository.upsertMedia(allImages)
 
-            // Chain the Phase 2 face-index worker: it runs battery-gated on the same photos CLIP
-            // just worked through, so detection has fresh CLIP artifacts to reuse. Uses
+            // Chain the Phase 2 face-index worker: it runs battery-gated on the same photos the
+            // encoder just worked through, so detection has fresh embeddings to reuse. Uses
             // APPEND_OR_REPLACE on this worker's unique name so it runs *behind* us instead of
             // competing (and never cancels this pass mid-flight).
-            FaceIndexWorker.enqueueRemainderAfterClip(applicationContext)
+            FaceIndexWorker.enqueueRemainderAfterGate(applicationContext)
 
             // Save timestamp so next run only processes new photos
             IndexPreferences.saveLastIndexedTime(applicationContext)

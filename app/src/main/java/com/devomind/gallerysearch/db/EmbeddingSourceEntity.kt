@@ -4,7 +4,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 
 /**
- * Records what each stored CLIP embedding was encoded *from*, so an edited photo can be told apart
+ * Records what each stored embedding was encoded *from*, so an edited photo can be told apart
  * from an unvisited one.
  *
  * The embedding index is keyed by URI and URIs survive an in-place edit, which used to make an edited

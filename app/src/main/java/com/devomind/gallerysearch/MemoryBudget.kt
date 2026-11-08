@@ -12,8 +12,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * The spec asks that a WorkManager (background) run treat the RSS threshold more conservatively
  * than a foreground activity: the OS is more willing to kill a process with no visible UI under
- * memory pressure, and the CLIP+YuNet+MobileFaceNet pile is often the biggest memory contribution
- * on a mid-range device. We therefore unload the heavyweight MobileFaceNet session when available
+ * memory pressure, and the encoder+detector+embedder pile is often the biggest memory contribution
+ * on a mid-range device. We therefore unload the heavyweight face-embedder session when available
  * memory dips below the threshold specific to the caller's context.
  *
  * Foreground policy: unload at FREE < 0.7× device's lowMemory threshold.

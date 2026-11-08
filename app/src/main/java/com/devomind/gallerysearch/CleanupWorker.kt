@@ -22,7 +22,7 @@ import kotlinx.coroutines.CancellationException
  * Runs the full Smart Cleanup analysis in the background and persists results to
  * [CleanupResultStore] incrementally so the screen can show and grow them live.
  *
- * Reuses the existing CLIP embeddings + text encoder; never touches the image encoder or indexing.
+ * Reuses the existing embeddings + text encoder; never touches the image encoder or indexing.
  * Yields to compression: while a compression batch is active (prepare / review / commit) this
  * worker defers and retries, then resumes from its persisted scanned-uris checkpoint.
  */
@@ -82,15 +82,15 @@ class CleanupWorker(
             var lastDone = scanned.size
             var lastTotal = 0
             // Face photos are excluded from compression RECOMMENDATIONS (lossy re-encoding degrades
-            // face detail first) but stay in the category for manual selection. YuNet's cached
-            // face counts decide; photos it hasn't scanned yet fall back to the CLIP person gate.
+            // face detail first) but stay in the category for manual selection. The detector's cached
+            // face counts decide; photos it hasn't scanned yet fall back to the person gate.
             val faceCounts = FaceResultStore(app).load().faceCounts
             val hasFace: (Uri) -> Boolean = { uri ->
                 val uriStr = uri.toString()
                 faceCounts[uriStr]?.let { it > 0 }
                     ?: (textEncoder?.let { encoder ->
                         embeddings[uriStr]?.let { embedding ->
-                            ClipPersonGate.scoreEmbedding(encoder, embedding, uriStr).hasPerson
+                            PersonGate.scoreEmbedding(encoder, embedding, uriStr).hasPerson
                         }
                     } ?: false)
             }

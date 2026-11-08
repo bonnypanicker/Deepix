@@ -148,7 +148,7 @@ abstract class GalleryDatabase : RoomDatabase() {
         }
 
         /**
-         * v8 → v9: adds embedding_source, the per-photo record of what its stored CLIP embedding was
+         * v8 → v9: adds embedding_source, the per-photo record of what its stored embedding was
          * encoded from. The table starts empty and every existing embedding is signed from its current
          * MediaItem on the next pass — backfill, not re-encode, so updating the app doesn't put the
          * whole library back through the encoder.

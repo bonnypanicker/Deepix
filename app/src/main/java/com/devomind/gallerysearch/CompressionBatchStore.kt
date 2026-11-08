@@ -171,7 +171,7 @@ class CompressionBatchStore(context: Context) {
 
         /**
          * True while a compression batch is mid-flight (preparing, awaiting the user's keep
-         * decision, or committing). CLIP indexing and Smart Cleanup both yield to compression:
+         * decision, or committing). Embedding indexing and Smart Cleanup both yield to compression:
          * they retry cheaply and resume from persisted progress once the batch settles.
          */
         fun isCompressionActive(context: Context): Boolean =

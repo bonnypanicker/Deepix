@@ -21,7 +21,7 @@ object FaceQualityScorer {
     private const val ConfFloor = 0.6f
 
     /** Compute the composite quality for [detection] within [bitmap]. */
-    fun score(bitmap: Bitmap, detection: YuNetDetector.FaceDetection): Float {
+    fun score(bitmap: Bitmap, detection: FaceDetector.FaceDetection): Float {
         val sizeScore = (minOf(detection.width, detection.height) / SizeFloorPx).coerceIn(0f, 1f)
         val blurScore = blurScore(bitmap, detection)
         val confScore = ((detection.confidence - ConfFloor) / (1f - ConfFloor)).coerceIn(0f, 1f)
@@ -31,7 +31,7 @@ object FaceQualityScorer {
         return if (composite.isNaN()) confScore else composite.coerceIn(0f, 1f)
     }
 
-    private fun blurScore(bitmap: Bitmap, d: YuNetDetector.FaceDetection): Float {
+    private fun blurScore(bitmap: Bitmap, d: FaceDetector.FaceDetection): Float {
         val left = d.left.toInt().coerceIn(0, bitmap.width - 1)
         val top = d.top.toInt().coerceIn(0, bitmap.height - 1)
         val right = d.right.toInt().coerceIn(left + 1, bitmap.width)
@@ -97,7 +97,7 @@ object FaceQualityScorer {
 }
 
 /**
- * Cheap geometric pose estimate from the five YuNet landmarks. Sufficient for cover-ranking —
+ * Cheap geometric pose estimate from the five face landmarks. Sufficient for cover-ranking —
  * deliberately avoids pulling in OpenCV's solvePnP dependency per spec's "coarse" guideline.
  *
  * - yaw: left/right eye offset relative to nose (nose between eyes = frontal).
@@ -110,8 +110,8 @@ object FacePoseEstimator {
 
     data class Pose(val yaw: Float, val pitch: Float, val roll: Float)
 
-    /** Estimate head pose from YuNet's 5-point landmarks. */
-    fun estimate(detection: YuNetDetector.FaceDetection): Pose {
+    /** Estimate head pose from the detector's 5-point landmarks. */
+    fun estimate(detection: FaceDetector.FaceDetection): Pose {
         val leftEye = detection.landmarks[0]
         val rightEye = detection.landmarks[1]
         val nose = detection.landmarks[2]
@@ -142,12 +142,12 @@ object FacePoseEstimator {
     }
 
     /** Approximate face width/height aspect (square ~1.0). */
-    fun aspectRatio(detection: YuNetDetector.FaceDetection): Float =
+    fun aspectRatio(detection: FaceDetector.FaceDetection): Float =
         if (detection.height > 1e-6f) detection.width / detection.height else 1f
 }
 
 /**
- * Decides whether a YuNet detection carries enough visible facial structure for identity matching.
+ * Decides whether a face detection carries enough visible facial structure for identity matching.
  *
  * Inspired by Ente's clustering policy: retain weak detections for display/debugging, but do not
  * let only clearly unusable or geometrically implausible samples create a Person. This is a
@@ -167,7 +167,7 @@ object FaceRecognizabilityGate {
     private const val MaxPitchDegrees = 36f
 
     fun isEligible(
-        detection: YuNetDetector.FaceDetection,
+        detection: FaceDetector.FaceDetection,
         quality: Float,
         pose: FacePoseEstimator.Pose
     ): Boolean {

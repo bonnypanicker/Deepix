@@ -64,12 +64,12 @@ class GalleryRepository(
 
     data class SemanticSearchHit(val uri: Uri, val score: Float)
 
-    /** A newly persisted CLIP vector, plus the burst-duplicate hash taken from the same decode, so
+    /** A newly persisted image vector, plus the burst-duplicate hash taken from the same decode, so
      *  the face side-bench never has to decode this photo a second time. */
     data class IndexedEmbedding(val uri: Uri, val vector: FloatArray, val dhash: Long = 0L)
 
     /**
-     * Attaches the MobileCLIP encoders as they finish loading on a background thread. Either may be
+     * Attaches the shared encoders as they finish loading on a background thread. Either may be
      * null: a text query only needs [text], and the vision session loads separately for
      * image-to-image search. A null argument leaves that slot untouched, so the two loads can't
      * overwrite each other when they finish out of order.
@@ -457,9 +457,9 @@ class GalleryRepository(
     fun loadBitmap(uri: Uri): Bitmap? = decodeOrientedBitmap(uri, MaxBitmapEdge)
 
     /**
-     * Decodes [uri] for face detection. Faces need far more resolution than CLIP indexing:
+     * Decodes [uri] for face detection. Faces need far more resolution than semantic indexing:
      * at the 512px [MaxBitmapEdge] cap a face must span ~40px of a 512px frame (~8% of the
-     * photo) to clear YuNet's minimum size, which silently drops distant/group faces. The
+     * photo) to clear the detector's minimum size, which silently drops distant/group faces. The
      * higher [FaceDetectionMaxEdge] cap keeps small faces above the detector's floor while
      * inSampleSize decoding still avoids full-resolution intermediates.
      */
@@ -659,7 +659,7 @@ class GalleryRepository(
         saveIndex(snapshotIndex())
     }
 
-    /** The pass's own throughput line: the face worker has had one all along, the CLIP pass hadn't, so
+    /** The pass's own throughput line: the face worker has had one all along, the encoding pass hadn't, so
      *  a 33k-photo first run could only be timed by hand from other log lines. */
     private fun logPassThroughput(encoded: Int, elapsedMs: Long, plannedCount: Int) {
         val perMinute = encoded * 60_000f / elapsedMs
@@ -835,7 +835,7 @@ class GalleryRepository(
      *  background indexing run has written a newer file than this instance last loaded. */
     fun allEmbeddings(): Map<String, FloatArray> = snapshotIndex()
 
-    /** Encode arbitrary text to a normalized CLIP embedding, or null if the text encoder isn't ready. */
+    /** Encode arbitrary text to a normalized text embedding, or null if the text encoder isn't ready. */
     fun encodeText(text: String): FloatArray? = textEncoder?.encode(text)
 
     /** The stored image embedding for a uri, or encode it on demand if the encoder is available. */
@@ -882,7 +882,7 @@ class GalleryRepository(
     /**
      * Decodes the [region] of [uri] as an upright (EXIF-applied) bitmap. Decodes the whole image at
      * a capped resolution, applies orientation, then crops — so the crop rect maps 1:1 onto the
-     * displayed photo and the resulting crop is upright (best input for CLIP).
+     * displayed photo and the resulting crop is upright (best input for the encoder).
      */
     private fun decodeRegionBitmap(uri: Uri, region: android.graphics.RectF, maxEdge: Int): Bitmap? {
         val oriented = decodeOrientedBitmap(uri, maxEdge) ?: return null
@@ -1375,15 +1375,15 @@ class GalleryRepository(
         private const val MetadataIndexMagic = 0x474d4458
         private const val MetadataIndexVersion = 1
         private const val MaxBitmapEdge = 512
-        // Face detection decodes at a higher cap than CLIP indexing (see
+        // Face detection decodes at a higher cap than semantic indexing (see
         // loadBitmapForFaceDetection). Because inSampleSize is a power of two, the decoded long
         // edge lands anywhere in (FaceDetectionMaxEdge/2, FaceDetectionMaxEdge]; setting the cap
-        // to 2x YuNetDetector.MaxLongEdge (1280) guarantees the decode is never *below* the
+        // to 2x FaceDetector.MaxLongEdge (1280) guarantees the decode is never *below* the
         // detector's cap, so every photo with enough native pixels runs detection at the full
         // 1280 internal resolution instead of a sample-size-dependent 768-1280.
         internal const val FaceDetectionMaxEdge = 2560
         // Region crops decode at higher resolution than the 512px index bitmaps so small
-        // selections still carry enough detail for the 256px CLIP encoder.
+        // selections still carry enough detail for the 256px image encoder.
         private const val RegionDecodeMaxEdge = 2048
         private const val RegionThumbnailMaxEdge = 256
         /** Keep each MediaStore IN query safely below SQLite's bind-parameter limit. */

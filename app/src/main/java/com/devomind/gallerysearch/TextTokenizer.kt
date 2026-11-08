@@ -9,7 +9,7 @@ data class TokenizedText(
     val attentionMask: LongArray
 )
 
-class ClipTokenizer(context: Context) {
+class TextTokenizer(context: Context) {
     private val vocab: Map<String, Int>
     private val bpeRanks: Map<Pair<String, String>, Int>
     private val byteEncoder: Map<Int, Char> = buildByteEncoder()

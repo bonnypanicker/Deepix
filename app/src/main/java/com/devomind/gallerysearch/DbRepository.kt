@@ -246,7 +246,7 @@ class DbRepository(context: Context) {
     }
 
     /**
-     * What each stored CLIP embedding was encoded from, keyed by URI. Read once per indexing pass —
+     * What each stored embedding was encoded from, keyed by URI. Read once per indexing pass —
      * one small row per indexed photo, and the pass needs all of them to spot the changed few.
      */
     suspend fun embeddingSignatures(): Map<String, MediaSignature> = withContext(Dispatchers.IO) {
@@ -267,7 +267,7 @@ class DbRepository(context: Context) {
     /**
      * Everything the app must forget when an editor replaces a photo's bytes under its original URI.
      *
-     * The CLIP side is a marker rather than a deletion: the stored vector still describes the same
+     * The semantic side is a marker rather than a deletion: the stored vector still describes the same
      * scene, and removing it would make the photo unfindable until a pass re-encodes it — which is
      * exactly what the marker schedules. The face side is a real deletion, because re-detection inserts
      * new rows and the pre-edit face would otherwise sit in the cluster beside the new one.

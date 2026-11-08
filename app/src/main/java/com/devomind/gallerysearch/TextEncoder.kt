@@ -16,7 +16,7 @@ class TextEncoder(
     private val inputIdsName: String
     private val attentionMaskName: String?
     private val outputName: String
-    val tokenizer = ClipTokenizer(context)
+    val tokenizer = TextTokenizer(context)
 
     init {
         val modelBytes = AssetUtils.readAssetBytes(context, resolveTextModelAssetName(context))
@@ -37,7 +37,7 @@ class TextEncoder(
 
     fun encode(query: String): FloatArray {
         val tokenized = tokenizer.encode(query)
-        val shape = longArrayOf(1, ClipTokenizer.ContextLength.toLong())
+        val shape = longArrayOf(1, TextTokenizer.ContextLength.toLong())
 
         OnnxTensor.createTensor(environment, LongBuffer.wrap(tokenized.inputIds), shape).use { inputIds ->
             val tensors = LinkedHashMap<String, OnnxTensor>()
@@ -68,8 +68,8 @@ class TextEncoder(
     }
 
     companion object {
-        private const val Tag = "CLIP"
-        private const val TextModelAsset = "text_model_int8.ort"
+        private const val Tag = "TextEncoder"
+        private const val TextModelAsset = "s2.ort"
 
         internal fun resolveTextModelAssetName(context: Context): String {
             val available = context.assets.list("")?.toSet().orEmpty()
