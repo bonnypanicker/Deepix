@@ -408,8 +408,8 @@
 
                 <ImageView
                     android:id="@+id/bottomCollectionsIcon"
-                    android:layout_width="26dp"
-                    android:layout_height="26dp"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
                     android:contentDescription="@string/tab_collection"
                     android:src="@drawable/ic_deepix_collections_24_regular"
                     android:tint="?attr/accentColor" />
@@ -426,8 +426,8 @@
 
                 <ImageView
                     android:id="@+id/bottomVideosIcon"
-                    android:layout_width="26dp"
-                    android:layout_height="26dp"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
                     android:contentDescription="@string/tab_videos"
                     android:src="@drawable/ic_deepix_video_24_regular"
                     android:tint="@color/metroTextSecondary" />
@@ -444,8 +444,8 @@
 
                 <ImageView
                     android:id="@+id/bottomAlbumsIcon"
-                    android:layout_width="26dp"
-                    android:layout_height="26dp"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
                     android:contentDescription="@string/tab_albums"
                     android:src="@drawable/ic_deepix_albums_24_regular"
                     android:tint="@color/metroTextSecondary" />
@@ -462,8 +462,8 @@
 
                 <ImageView
                     android:id="@+id/bottomFavoritesIcon"
-                    android:layout_width="26dp"
-                    android:layout_height="26dp"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
                     android:contentDescription="@string/tab_favorites"
                     android:src="@drawable/ic_deepix_favorite_24_regular"
                     android:tint="@color/metroTextSecondary" />
@@ -481,8 +481,8 @@
 
                 <ImageView
                     android:id="@+id/bottomFoldersIcon"
-                    android:layout_width="26dp"
-                    android:layout_height="26dp"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
                     android:contentDescription="@string/tab_folders"
                     android:src="@drawable/ic_deepix_folders_24_regular"
                     android:tint="@color/metroTextSecondary" />
@@ -500,8 +500,8 @@
 
                 <ImageView
                     android:id="@+id/bottomSafeIcon"
-                    android:layout_width="26dp"
-                    android:layout_height="26dp"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
                     android:contentDescription="@string/safe_title"
                     android:src="@drawable/ic_deepix_safe_nav_24_regular"
                     android:tint="@color/metroTextSecondary" />
