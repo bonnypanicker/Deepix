@@ -45,7 +45,13 @@ object CleanupAnalyzer {
         val sizeByUri: Map<String, Long>,
         /** Photos the pairwise pass compared, and the photos it was capped away from. */
         val dedupAnalyzed: Int = 0,
-        val dedupEligible: Int = 0
+        val dedupEligible: Int = 0,
+        /**
+         * One uri per burst group: the shot that leads its group in the flat BURSTS list. Bursts
+         * are never pre-selected, so this is the selection-independent marker the UI splits the
+         * list on to rebuild the per-burst sections.
+         */
+        val burstHeads: Set<Uri> = emptySet()
     ) {
         fun count(category: Category): Int = categoryItems[category]?.size ?: 0
 
@@ -156,12 +162,14 @@ object CleanupAnalyzer {
         // passes (pairwise dedup) to finish.
         var dedupAnalyzed = 0
         var dedupEligible = 0
+        val burstHeads = LinkedHashSet<Uri>()
         fun snapshot() = Report(
             categoryItems = categoryItems.mapValues { it.value.toList() },
             suggestedDeleteUris = suggested.mapValues { it.value.toSet() },
             sizeByUri = sizeByUri,
             dedupAnalyzed = dedupAnalyzed,
-            dedupEligible = dedupEligible
+            dedupEligible = dedupEligible,
+            burstHeads = burstHeads.toSet()
         )
 
         // 0) Compression candidates: large JPEG/PNG/WebP/BMP stills that HEIC shrinks a lot.
@@ -193,6 +201,7 @@ object CleanupAnalyzer {
             // The kept shot leads its group in the flat category list; SmartCleanupActivity splits
             // the list back into per-burst sections at these kept items when rendering headers.
             val keep = group.maxByOrNull { sizeByUri[it.uri.toString()] ?: 0L } ?: continue
+            burstHeads.add(keep.uri)
             categoryItems[Category.BURSTS]!!.add(keep)
             for (item in group) {
                 if (item.uri == keep.uri) continue

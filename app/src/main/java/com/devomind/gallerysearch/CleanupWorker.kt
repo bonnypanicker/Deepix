@@ -186,6 +186,7 @@ class CleanupWorker(
                 total = total,
                 dedupAnalyzed = report.dedupAnalyzed,
                 dedupEligible = report.dedupEligible,
+                burstHeads = report.burstHeads.map { it.toString() },
                 complete = complete,
                 updatedAt = now
             )

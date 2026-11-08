@@ -26,6 +26,8 @@ class CleanupResultStore(context: Context) {
         /** How far the pairwise duplicate pass reached, against how far it would have gone. */
         val dedupAnalyzed: Int = 0,
         val dedupEligible: Int = 0,
+        /** One uri per burst group: the shot leading that group in the BURSTS list. */
+        val burstHeads: List<String> = emptyList(),
         val complete: Boolean,
         val updatedAt: Long
     )
@@ -40,6 +42,7 @@ class CleanupResultStore(context: Context) {
             root.put("dedupEligible", result.dedupEligible)
             root.put("complete", result.complete)
             root.put("scanned", JSONArray(result.scannedUris))
+            root.put("burstHeads", JSONArray(result.burstHeads))
 
             val categories = JSONObject()
             val suggested = JSONObject()
@@ -79,6 +82,7 @@ class CleanupResultStore(context: Context) {
                 total = root.optInt("total", 0),
                 dedupAnalyzed = root.optInt("dedupAnalyzed", 0),
                 dedupEligible = root.optInt("dedupEligible", 0),
+                burstHeads = root.optJSONArray("burstHeads").toStringList(),
                 complete = root.optBoolean("complete", false),
                 updatedAt = root.optLong("updatedAt", 0L)
             )

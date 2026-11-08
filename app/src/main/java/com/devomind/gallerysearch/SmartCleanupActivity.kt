@@ -42,6 +42,9 @@ class SmartCleanupActivity : AppCompatActivity() {
     // Mutable working copy of the analysis so counts update as items are deleted.
     private val categoryItems = linkedMapOf<CleanupAnalyzer.Category, MutableList<GalleryRepository.MediaItem>>()
     private val suggested = linkedMapOf<CleanupAnalyzer.Category, MutableSet<Uri>>()
+    /** Burst group leaders: the shot heading each group in the flat BURSTS list. Marks the section
+     *  boundaries for rendering — independent of selection, since bursts are never pre-selected. */
+    private var burstHeads: Set<Uri> = emptySet()
     private var sizeByUri: Map<String, Long> = emptyMap()
     /** How far the duplicate pass reached, from the last stored scan; 0 until a scan reports it. */
     private var dedupAnalyzed = 0
@@ -482,6 +485,7 @@ class SmartCleanupActivity : AppCompatActivity() {
     private fun applyStored(result: CleanupResultStore.Result) {
         dedupAnalyzed = result.dedupAnalyzed
         dedupEligible = result.dedupEligible
+        burstHeads = result.burstHeads.mapTo(LinkedHashSet()) { Uri.parse(it) }
         for (category in CleanupAnalyzer.Category.entries) {
             categoryItems[category]!!.apply {
                 clear()
@@ -538,6 +542,7 @@ class SmartCleanupActivity : AppCompatActivity() {
                 total = prior?.total ?: 0,
                 dedupAnalyzed = prior?.dedupAnalyzed ?: 0,
                 dedupEligible = prior?.dedupEligible ?: 0,
+                burstHeads = burstHeads.map { it.toString() },
                 complete = prior?.complete ?: true,
                 updatedAt = System.currentTimeMillis()
             )
@@ -842,6 +847,7 @@ class SmartCleanupActivity : AppCompatActivity() {
                 categoryItems[category]!!.removeAll { it.uri in replacedSet }
                 suggested[category]!!.removeAll(replacedSet)
             }
+            burstHeads = burstHeads - replacedSet
         }
         categoryItems[CleanupAnalyzer.Category.COMPRESSIBLE]!!.removeAll { it.uri in compressedSet }
         suggested[CleanupAnalyzer.Category.COMPRESSIBLE]!!.removeAll(compressedSet)
@@ -1085,6 +1091,7 @@ class SmartCleanupActivity : AppCompatActivity() {
             categoryItems[category]!!.removeAll { it.uri in removed }
             suggested[category]!!.removeAll(removed)
         }
+        burstHeads = burstHeads - removed
         // Keep the in-memory library in sync too — the custom compression grid filters from it,
         // so deleted photos must not reappear there.
         if (items.any { it.uri in removed }) {
@@ -1112,25 +1119,24 @@ class SmartCleanupActivity : AppCompatActivity() {
 
     /**
      * Detail cells for a category. Bursts persist as a flat list built group-by-group with each
-     * group's kept shot leading it, so splitting at every kept (unselected) item rebuilds the
-     * per-burst sections, rendered here as full-span headers.
+     * group's kept shot leading it, so splitting the list at those kept shots ([burstHeads])
+     * rebuilds the per-burst sections, rendered here as full-span headers.
      */
     private fun detailCells(category: CleanupAnalyzer.Category): List<GalleryCell> {
         val list = detailItems(category)
         if (category != CleanupAnalyzer.Category.BURSTS) return list.map { GalleryCell.Photo(it) }
-        val extras = suggested[category]!!
         val cells = mutableListOf<GalleryCell>()
         var index = 0
         while (index < list.size) {
-            if (list[index].uri in extras) {
-                // Boundary lost (a kept shot was deleted earlier) — render as a standalone photo.
+            if (list[index].uri !in burstHeads) {
+                // Orphan member (its burst lead was deleted earlier) — render as a standalone photo.
                 cells.add(GalleryCell.Photo(list[index]))
                 index++
                 continue
             }
             val group = mutableListOf(list[index])
             index++
-            while (index < list.size && list[index].uri in extras) {
+            while (index < list.size && list[index].uri !in burstHeads) {
                 group.add(list[index])
                 index++
             }
