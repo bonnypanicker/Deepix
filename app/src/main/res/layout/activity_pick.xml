@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The photo picker another app lands in when it asks for an image and the user chooses Pixa. One
+  grid, one decision: the photos are picked here and Done hands them back to the caller.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pickRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/metroBgPrimary">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:id="@+id/pickTopBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp">
+
+            <ImageButton
+                android:id="@+id/pickBackBtn"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/metro_row_pressed"
+                android:contentDescription="@string/back"
+                android:padding="12dp"
+                android:src="@drawable/ic_fluent_back_24_regular"
+                android:tint="@color/metroTextPrimary" />
+
+            <TextView
+                android:id="@+id/pickTitle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="@font/inter_light"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="@string/pick_title"
+                android:textColor="@color/metroTextPrimary"
+                android:textSize="26sp" />
+
+            <TextView
+                android:id="@+id/pickSelectAllBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="12dp"
+                android:background="@drawable/metro_row_pressed"
+                android:clickable="true"
+                android:focusable="true"
+                android:includeFontPadding="false"
+                android:letterSpacing="0.04"
+                android:padding="8dp"
+                android:text="@string/select_all_lower"
+                android:textAllCaps="true"
+                android:textColor="?attr/accentColor"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/pickGrid"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingTop="8dp"
+                android:paddingBottom="12dp"
+                android:scrollbars="none" />
+
+            <LinearLayout
+                android:id="@+id/pickEmpty"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingStart="40dp"
+                android:paddingEnd="40dp"
+                android:visibility="gone">
+
+                <ImageView
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:alpha="0.5"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_fluent_image_24_regular"
+                    android:tint="@color/metroTextSecondary" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:includeFontPadding="false"
+                    android:text="@string/pick_empty"
+                    android:textColor="@color/metroTextPrimary"
+                    android:textSize="17sp" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- The one decision this screen exists for: hand the picked photos back to the caller. -->
+        <LinearLayout
+            android:id="@+id/pickBottomBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/metroBgPrimary"
+            android:orientation="vertical">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/metroBgSurface" />
+
+            <TextView
+                android:id="@+id/pickDoneBtn"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/onboarding_button_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:letterSpacing="0.04"
+                android:text="@string/done"
+                android:textAllCaps="true"
+                android:textColor="@color/metroTextPrimary"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

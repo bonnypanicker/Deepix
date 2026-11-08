@@ -130,6 +130,37 @@
             </intent-filter>
         </activity>
 
+        <!-- Android resolver entry for picking a photo. GET_CONTENT, PICK and OPEN_DOCUMENT are the
+             actions an app (or a website's file input) uses to ask for an image, so this is what
+             lists Pixa as a picker: choosing it opens the app, the photos are picked there, and
+             Done hands the selection back to the caller. It is deliberately not a
+             DOCUMENTS_PROVIDER root — a root is enumerated inside the system picker's drawer, where
+             a tap browses the library in there instead of opening this app. -->
+        <activity
+            android:name=".PickActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.GallerySearch">
+            <intent-filter>
+                <action android:name="android.intent.action.GET_CONTENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PICK" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.OPEN_DOCUMENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity>
+
         <!-- Encrypted photo locker. excludeFromRecents + no launch icon; screenshots
              blocked at runtime via FLAG_SECURE inside the activity. -->
         <activity
@@ -185,21 +216,6 @@
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_provider_paths" />
-        </provider>
-
-        <!-- Publishes the library to the Storage Access Framework, which is what makes Pixa appear in
-             the system file picker's drawer next to the built-in "Images" root. The picker enumerates
-             DOCUMENTS_PROVIDER roots only, and MANAGE_DOCUMENTS is a signature permission held by that
-             picker alone, so the library stays unreadable by ordinary apps. -->
-        <provider
-            android:name=".PixaDocumentsProvider"
-            android:authorities="${applicationId}.documents"
-            android:exported="true"
-            android:grantUriPermissions="true"
-            android:permission="android.permission.MANAGE_DOCUMENTS">
-            <intent-filter>
-                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
-            </intent-filter>
         </provider>
 
         <service

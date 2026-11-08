@@ -40,6 +40,39 @@ class ExternalMediaEntryTest {
         assertTrue("the resolver entry needs its own label", "@string/open_with_pixa" in block)
     }
 
+    @Test
+    fun thePickEntryOpensTheAppForTheActionsThatAskForAPhoto() {
+        val block = activityBlock(".PickActivity")
+        listOf(
+            "android.intent.action.GET_CONTENT",
+            "android.intent.action.PICK",
+            "android.intent.action.OPEN_DOCUMENT"
+        ).forEach { action ->
+            assertTrue("the pick entry should answer $action", action in block)
+        }
+        assertTrue(
+            "a resolver entry needs the DEFAULT category to be offered at all",
+            "android.intent.category.DEFAULT" in block
+        )
+        assertTrue("the pick entry should offer photos", "image/*" in block)
+    }
+
+    /**
+     * The library used to be published as a DOCUMENTS_PROVIDER root. A root is enumerated in the
+     * system picker's drawer and browsed in place, so a tap on the app's name showed its photos
+     * inside another app's file dialog instead of opening the app — which is what the pick entry
+     * above is for. Nothing but this test would notice the root coming back.
+     */
+    @Test
+    fun theLibraryIsNotOfferedAsASourceInsideTheSystemPicker() {
+        val manifest = File(moduleDir(), "src/main/AndroidManifest.xml").readText()
+        assertFalse(
+            "the library is a DOCUMENTS_PROVIDER root again: the system picker browses it there " +
+                "instead of opening the app",
+            "android.content.action.DOCUMENTS_PROVIDER" in manifest
+        )
+    }
+
     /**
      * The activity element that declares [name], up to its own close. A comment written above the
      * *next* activity belongs to that entry's author, not this one, so it must stay out of the block

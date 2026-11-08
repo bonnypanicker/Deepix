@@ -290,6 +290,9 @@
     <string name="selection_info_size">%1$s in %2$s</string>
     <string name="your_library">your library</string>
     <string name="album_pick_count">%1$d selected</string>
+    <!-- The picker another app opens when it asks this app for a photo. -->
+    <string name="pick_title">Select photos</string>
+    <string name="pick_empty">No photos to choose</string>
     <string name="album_copy_here">Copy here</string>
     <string name="album_move_here">Move here</string>
     <string name="album_copy_progress">Copying %1$d of %2$d…</string>
