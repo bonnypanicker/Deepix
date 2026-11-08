@@ -187,6 +187,21 @@
                 android:resource="@xml/file_provider_paths" />
         </provider>
 
+        <!-- Publishes the library to the Storage Access Framework, which is what makes Pixa appear in
+             the system file picker's drawer next to the built-in "Images" root. The picker enumerates
+             DOCUMENTS_PROVIDER roots only, and MANAGE_DOCUMENTS is a signature permission held by that
+             picker alone, so the library stays unreadable by ordinary apps. -->
+        <provider
+            android:name=".PixaDocumentsProvider"
+            android:authorities="${applicationId}.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:exported="false"
