@@ -176,15 +176,13 @@ class PersonDetailActivity : AppCompatActivity() {
 
             // Faces → unique source photos → MediaItems (date-sorted). A photo with two faces of
             // the same person collapses to a single tile here.
-            val (items, faceCount) = withContext(Dispatchers.IO) {
+            val items = withContext(Dispatchers.IO) {
                 val repo = GalleryRepository(applicationContext)
-                val faceDao = db.faceDao()
-                repo.getImageItemsForUris(faceDao.distinctPhotoUrisByPerson(pid)) to
-                    faceDao.countByPerson(pid)
+                repo.getImageItemsForUris(db.faceDao().distinctPhotoUrisByPerson(pid))
             }
             personPhotos.clear()
             personPhotos.addAll(items)
-            binding.personCountLabel.text = collectionCountText(items.size, faceCount)
+            binding.personCountLabel.text = photoCountText(items.size)
 
             if (items.isEmpty()) {
                 adapter.replaceCells(
@@ -208,11 +206,8 @@ class PersonDetailActivity : AppCompatActivity() {
         binding.facesGrid.scrollToPosition(0)
     }
 
-    private fun collectionCountText(photoCount: Int, faceCount: Int): String {
-        val photos = if (photoCount == 1) "1 photo" else "$photoCount photos"
-        val faces = if (faceCount == 1) "1 face" else "$faceCount faces"
-        return "$photos · $faces"
-    }
+    private fun photoCountText(count: Int): String =
+        if (count == 1) "1 photo" else "$count photos"
 
     private fun paginateNext() {
         val from = pagedDisplayedCount
