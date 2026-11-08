@@ -545,6 +545,7 @@
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:background="@color/metroBgSecondary"
+        android:clickable="true"
         android:orientation="vertical"
         android:paddingTop="0dp">
 
