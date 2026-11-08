@@ -57,10 +57,13 @@ class FreeTierTest {
     }
 
     @Test
-    fun onlyTheTwoWorkDoingCleanupCategoriesAreLocked() {
+    fun onlyTheClassifierBackedCleanupCategoriesAreLocked() {
         listOf(
             CleanupAnalyzer.Category.BURSTS,
-            CleanupAnalyzer.Category.NSFW
+            CleanupAnalyzer.Category.NSFW,
+            CleanupAnalyzer.Category.DOCUMENTS,
+            CleanupAnalyzer.Category.RECEIPTS,
+            CleanupAnalyzer.Category.QR_CODES
         ).forEach { assertTrue("$it is paid", FreeTier.cleanupLocked(it, false)) }
         // Compression is metered rather than locked, so its tile has to open for a free user, who then
         // meets the batch cap inside it instead of at the door.

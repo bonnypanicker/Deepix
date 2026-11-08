@@ -168,7 +168,7 @@
     <string name="pro_add_people_detail">Free: the face clusters, unnamed</string>
     <string name="pro_add_accents_detail">Free: %1$d accent colors</string>
     <string name="pro_add_safe_detail">Free: %1$d photos in the Safe</string>
-    <string name="pro_add_cleanup_detail">Free: every category but these two</string>
+    <string name="pro_add_cleanup_detail">Free: duplicates, similar shots, screenshots &amp; quality checks</string>
     <string name="pro_add_compression_detail">Free: %1$d photo per run</string>
     <string name="pro_add_albums_detail">Free: %1$d smart albums</string>
     <!-- What the user reached for, said back to them inside the offer. Each gate passes its own limit from
@@ -393,7 +393,7 @@
     <string name="onboarding_pro_benefit_people">Name people and label relationships</string>
     <string name="onboarding_pro_benefit_accents">Every accent color, including your device\'s own</string>
     <string name="onboarding_pro_benefit_safe">Unlimited photos in the Safe</string>
-    <string name="onboarding_pro_benefit_cleanup">Burst and sensitive-content review</string>
+    <string name="onboarding_pro_benefit_cleanup">Bursts, documents, receipts, QR &amp; sensitive review</string>
     <string name="onboarding_pro_benefit_compression">Compress a whole batch at once</string>
     <string name="onboarding_pro_benefit_albums">Unlimited smart albums</string>
 

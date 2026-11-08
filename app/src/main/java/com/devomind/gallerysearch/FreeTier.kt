@@ -29,13 +29,17 @@ object FreeTier {
     const val FreeSmartAlbums = 5
 
     /**
-     * Cleanup categories that need the unlock: the two whose lists only exist because the scan did work
-     * past metadata (bursts is the O(n²) grouping pass, sensitive runs the classifier). Duplicates,
-     * similar, clutter, screenshots, the quality buckets and compression stay free.
+     * Cleanup categories that need the unlock: the ones whose lists only exist because the scan did work
+     * past metadata — bursts is the O(n²) grouping pass, and sensitive content, documents, receipts and
+     * QR codes all come out of the zero-shot classifier. Duplicates, similar, clutter, screenshots, the
+     * quality buckets and compression stay free.
      */
     val PaidCleanupCategories = setOf(
         CleanupAnalyzer.Category.BURSTS,
-        CleanupAnalyzer.Category.NSFW
+        CleanupAnalyzer.Category.NSFW,
+        CleanupAnalyzer.Category.DOCUMENTS,
+        CleanupAnalyzer.Category.RECEIPTS,
+        CleanupAnalyzer.Category.QR_CODES
     )
 
     /** Photos one free compression run may take. Multi-photo compression is the paid workflow. */
