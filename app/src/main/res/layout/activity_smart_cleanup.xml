@@ -37,7 +37,7 @@
                 android:layout_weight="1"
                 android:layout_marginStart="4dp"
                 android:layout_marginEnd="12dp"
-                android:fontFamily="sans-serif-light"
+                android:fontFamily="@font/noto_sans_light"
                 android:includeFontPadding="false"
                 android:text="@string/smart_cleanup_title"
                 android:textColor="@color/metroTextPrimary"
@@ -117,7 +117,7 @@
                                 android:text="@string/pause"
                                 android:textColor="?attr/accentColor"
                                 android:textSize="13sp"
-                                android:fontFamily="sans-serif-medium" />
+                                android:fontFamily="@font/noto_sans_medium" />
 
                             <TextView
                                 android:id="@+id/stopBtn"
@@ -131,7 +131,7 @@
                                 android:text="@string/stop"
                                 android:textColor="@color/metroTextSecondary"
                                 android:textSize="13sp"
-                                android:fontFamily="sans-serif-medium" />
+                                android:fontFamily="@font/noto_sans_medium" />
                         </LinearLayout>
 
                         <ProgressBar
@@ -161,7 +161,7 @@
                             android:text="@string/cleanup_indexing_unfinished"
                             android:textColor="@color/metroWarning"
                             android:textSize="14sp"
-                            android:fontFamily="sans-serif-medium" />
+                            android:fontFamily="@font/noto_sans_medium" />
 
                         <TextView
                             android:id="@+id/indexingBannerText"
@@ -198,7 +198,7 @@
                             android:id="@+id/summaryAmount"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:fontFamily="sans-serif-light"
+                            android:fontFamily="@font/noto_sans_light"
                             android:includeFontPadding="false"
                             android:paddingTop="2dp"
                             android:textColor="?attr/accentColor"
@@ -255,7 +255,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="start|center_vertical"
-                        android:fontFamily="sans-serif-light"
+                        android:fontFamily="@font/noto_sans_light"
                         android:includeFontPadding="false"
                         android:textColor="@color/metroTextPrimary"
                         android:textSize="30sp" />
@@ -362,7 +362,7 @@
                     android:text="@string/move_to_safe"
                     android:textColor="@color/metroTextPrimary"
                     android:textSize="15sp"
-                    android:fontFamily="sans-serif-medium"
+                    android:fontFamily="@font/noto_sans_medium"
                     android:visibility="gone" />
 
                 <TextView
@@ -380,7 +380,7 @@
                     android:text="@string/delete"
                     android:textColor="@color/metroTextPrimary"
                     android:textSize="15sp"
-                    android:fontFamily="sans-serif-medium" />
+                    android:fontFamily="@font/noto_sans_medium" />
             </LinearLayout>
         </FrameLayout>
     </LinearLayout>

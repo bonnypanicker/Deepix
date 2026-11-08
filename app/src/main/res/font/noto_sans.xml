@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Noto Sans — Google's open-source (SIL OFL 1.1) sans-serif, bundled so the app always renders
+  its own typography and never inherits the phone's font or font scale on a given device.
+  Weights: 300 Light, 400 Regular, 500 Medium, 700 Bold.
+-->
+<font-family xmlns:app="http://schemas.android.com/apk/res-auto">
+    <font
+        app:font="@font/noto_sans_light"
+        app:fontStyle="normal"
+        app:fontWeight="300" />
+    <font
+        app:font="@font/noto_sans_regular"
+        app:fontStyle="normal"
+        app:fontWeight="400" />
+    <font
+        app:font="@font/noto_sans_medium"
+        app:fontStyle="normal"
+        app:fontWeight="500" />
+    <font
+        app:font="@font/noto_sans_bold"
+        app:fontStyle="normal"
+        app:fontWeight="700" />
+</font-family>

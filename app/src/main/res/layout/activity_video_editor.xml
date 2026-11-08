@@ -58,7 +58,7 @@
                 android:text="@string/save"
                 android:textColor="@color/metroTextPrimary"
                 android:textSize="14sp"
-                android:fontFamily="sans-serif-medium" />
+                android:fontFamily="@font/noto_sans_medium" />
         </LinearLayout>
 
         <!-- Preview + crop overlay -->
@@ -222,7 +222,7 @@
                     android:text="@string/cancel_caps"
                     android:textColor="@color/metroTextSecondary"
                     android:textSize="14sp"
-                    android:fontFamily="sans-serif-medium" />
+                    android:fontFamily="@font/noto_sans_medium" />
 
                 <TextView
                     android:id="@+id/toolApply"
@@ -236,7 +236,7 @@
                     android:text="@string/apply_caps"
                     android:textColor="?attr/accentColor"
                     android:textSize="14sp"
-                    android:fontFamily="sans-serif-medium" />
+                    android:fontFamily="@font/noto_sans_medium" />
             </LinearLayout>
         </FrameLayout>
     </LinearLayout>
@@ -267,7 +267,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:fontFamily="sans-serif-light"
+            android:fontFamily="@font/noto_sans_light"
             android:includeFontPadding="false"
             android:letterSpacing="0.08"
             android:text="@string/saving_video"
@@ -290,6 +290,6 @@
             android:text="@string/cancel_caps"
             android:textColor="@color/metroTextSecondary"
             android:textSize="13sp"
-            android:fontFamily="sans-serif-medium" />
+            android:fontFamily="@font/noto_sans_medium" />
     </LinearLayout>
 </FrameLayout>

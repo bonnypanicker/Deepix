@@ -75,7 +75,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
-                android:fontFamily="sans-serif-medium"
+                android:fontFamily="@font/noto_sans_medium"
                 android:includeFontPadding="false"
                 android:letterSpacing="0.01"
                 android:singleLine="true"
@@ -89,7 +89,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
-                android:fontFamily="sans-serif"
+                android:fontFamily="@font/noto_sans"
                 android:includeFontPadding="false"
                 android:letterSpacing="0.02"
                 android:paddingTop="3dp"
@@ -401,6 +401,6 @@
             android:text="@string/search"
             android:textColor="@color/metroTextPrimary"
             android:textSize="14sp"
-            android:fontFamily="sans-serif-medium" />
+            android:fontFamily="@font/noto_sans_medium" />
     </LinearLayout>
 </FrameLayout>

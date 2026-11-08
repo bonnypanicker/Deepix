@@ -8,6 +8,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import androidx.core.content.res.ResourcesCompat
 
 /**
  * Flat Metro feedback banner — the replacement for Toast on screens that stay alive after the
@@ -61,7 +62,7 @@ object MetroBanner {
                 isAllCaps = true
                 textSize = 13f
                 letterSpacing = 0.06f
-                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                typeface = ResourcesCompat.getFont(ctx, R.font.noto_sans_medium)
                 setTextColor(DesignTokens.accent(ctx))
                 background = ContextCompat.getDrawable(ctx, R.drawable.metro_row_pressed)
                 includeFontPadding = false

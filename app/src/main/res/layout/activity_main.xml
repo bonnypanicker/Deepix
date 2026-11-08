@@ -529,7 +529,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:fontFamily="sans-serif-light"
+                android:fontFamily="@font/noto_sans_light"
                 android:includeFontPadding="false"
                 android:letterSpacing="0.08"
                 android:text="@string/loading_gallery"
@@ -668,20 +668,21 @@
                         android:id="@+id/drawerTaskCompressionProgress"
                         style="@style/MetroDrawerTaskProgress" />
                 </LinearLayout>
-
-                <!-- The one promotional row, and the last thing in the drawer: the tap opens the
-                     offer, and MainActivity.updateDrawerState relabels and re-glyphs it from the
-                     stored verdict. It is styled as an accent row because the drawer's only other
-                     accent text is a section header — this reads as an offer, not a place. -->
-                <TextView
-                    android:id="@+id/drawerPro"
-                    style="@style/MetroDrawerItem"
-                    android:drawableEnd="@drawable/ic_fluent_lock_closed_24_regular"
-                    android:drawablePadding="12dp"
-                    android:drawableTint="?attr/accentColor"
-                    android:text="@string/drawer_pro"
-                    android:textColor="?attr/accentColor" />
             </LinearLayout>
         </ScrollView>
+
+        <!-- The one promotional row is pinned below the scrolling list, so it stays put at the
+             bottom of the drawer no matter how the list scrolls. The tap opens the offer, and
+             MainActivity.updateDrawerState relabels and re-glyphs it from the stored verdict. It
+             is styled as an accent row because the drawer's only other accent text is a section
+             header — this reads as an offer, not a place. -->
+        <TextView
+            android:id="@+id/drawerPro"
+            style="@style/MetroDrawerItem"
+            android:drawableEnd="@drawable/ic_fluent_lock_closed_24_regular"
+            android:drawablePadding="12dp"
+            android:drawableTint="?attr/accentColor"
+            android:text="@string/drawer_pro"
+            android:textColor="?attr/accentColor" />
     </LinearLayout>
 </androidx.drawerlayout.widget.DrawerLayout>
