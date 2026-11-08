@@ -191,7 +191,8 @@
     <string name="section_navigation">NAVIGATION</string>
     <string name="bottom_bar_order">Bottom bar order</string>
     <string name="bottom_bar_order_subtitle">Arrange enabled destinations</string>
-    <string name="bottom_bar_order_help">Use the arrows to arrange destinations. Tick boxes show or hide the optional tabs.</string>
+    <string name="bottom_bar_order_help">Use the arrows to arrange pages. Tick a box to show a page in the bottom bar — at least three must stay ticked.</string>
+    <string name="bottom_bar_min_pages">At least %1$d pages must stay in the bottom bar</string>
     <string name="move_up">Move %1$s up</string>
     <string name="move_down">Move %1$s down</string>
     <string name="default_page">Default page</string>

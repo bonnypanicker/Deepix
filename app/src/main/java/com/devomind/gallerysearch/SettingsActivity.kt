@@ -224,21 +224,15 @@ class SettingsActivity : AppCompatActivity() {
                 row.findViewById<ImageView>(R.id.orderIcon).setImageResource(destination.iconRes)
                 row.findViewById<TextView>(R.id.orderTitle).text = getString(destination.labelRes)
                 val check = row.findViewById<AppCompatCheckBox>(R.id.orderCheck)
-                if (destination.optional) {
-                    check.visibility = View.VISIBLE
-                    // State before listener, so the initial sync can't write a spurious enable.
-                    check.isChecked = when (destination) {
-                        BottomBarDestination.Albums -> BottomBarConfig.isAlbumsEnabled(this)
-                        BottomBarDestination.Folders -> BottomBarConfig.isFoldersEnabled(this)
-                        else -> BottomBarConfig.isSafeEnabled(this)
-                    }
-                    check.setOnCheckedChangeListener { _, checked ->
-                        when (destination) {
-                            BottomBarDestination.Albums -> BottomBarConfig.setAlbumsEnabled(this, checked)
-                            BottomBarDestination.Folders -> BottomBarConfig.setFoldersEnabled(this, checked)
-                            else -> BottomBarConfig.setSafeEnabled(this, checked)
-                        }
+                // State before listener, so the initial sync can't write a spurious enable.
+                check.isChecked = BottomBarConfig.isEnabled(this, destination)
+                check.setOnCheckedChangeListener { button, checked ->
+                    if (BottomBarConfig.setEnabled(this, destination, checked)) {
                         updateBottomBarSettings()
+                    } else {
+                        // Refused: the bar must keep at least MinEnabled pages. Snap the box back.
+                        button.isChecked = true
+                        MetroBanner.show(this, getString(R.string.bottom_bar_min_pages, BottomBarConfig.MinEnabled))
                     }
                 }
                 row.findViewById<ImageButton>(R.id.orderUp).apply {
