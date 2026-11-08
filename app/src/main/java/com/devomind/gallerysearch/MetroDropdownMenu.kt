@@ -254,6 +254,6 @@ object MetroDropdownMenu {
     private const val MenuMinWidthDp = 200
     private const val FlyoutMinWidthDp = 130
     private const val FlyoutMaxWidthDp = 170
-    private const val FlyoutGapDp = 6
+    private const val FlyoutGapDp = 0
     private const val EnterTranslationDp = -8f
 }
