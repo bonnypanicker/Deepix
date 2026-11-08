@@ -394,7 +394,7 @@
 
                     <LinearLayout style="@style/SettingsRowText">
 
-                        <TextView style="@style/SettingsRowTitle" android:text="@string/app_name" />
+                        <TextView style="@style/SettingsRowTitle" android:text="@string/brand_name" />
 
                         <TextView
                             android:id="@+id/aboutVersion"

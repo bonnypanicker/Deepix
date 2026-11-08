@@ -1,7 +1,7 @@
 <resources>
     <!-- App -->
-    <string name="app_name">Pixa AI Gallery</string>
-    <string name="launcher_name">Pixa</string>
+    <string name="app_name">Pixa</string>
+    <string name="brand_name">Pixa AI Gallery</string>
     <string name="today">Today</string>
     <string name="yesterday">Yesterday</string>
     <string name="back">Back</string>
