@@ -529,7 +529,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:fontFamily="@font/noto_sans_light"
+                android:fontFamily="@font/montserrat_light"
                 android:includeFontPadding="false"
                 android:letterSpacing="0.08"
                 android:text="@string/loading_gallery"

@@ -37,7 +37,7 @@
                 android:id="@+id/permRowTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:fontFamily="@font/noto_sans_medium"
+                android:fontFamily="@font/montserrat_medium"
                 android:textColor="@color/metroTextPrimary"
                 android:textSize="14sp" />
 
@@ -55,7 +55,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
-            android:fontFamily="@font/noto_sans_medium"
+            android:fontFamily="@font/montserrat_medium"
             android:letterSpacing="0.04"
             android:textColor="@color/metroTextTertiary"
             android:textSize="11sp" />

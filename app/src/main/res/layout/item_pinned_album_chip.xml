@@ -19,7 +19,7 @@
         android:layout_width="100dp"
         android:layout_height="wrap_content"
         android:ellipsize="end"
-        android:fontFamily="@font/noto_sans"
+        android:fontFamily="@font/montserrat"
         android:includeFontPadding="false"
         android:maxLines="1"
         android:paddingTop="6dp"

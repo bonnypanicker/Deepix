@@ -47,7 +47,7 @@
                     android:id="@+id/screenTitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:fontFamily="@font/noto_sans_light"
+                    android:fontFamily="@font/montserrat_light"
                     android:includeFontPadding="false"
                     android:text="@string/indexed_folders_title"
                     android:textColor="@color/metroTextPrimary"

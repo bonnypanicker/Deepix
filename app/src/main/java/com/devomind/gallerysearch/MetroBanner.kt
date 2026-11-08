@@ -62,7 +62,7 @@ object MetroBanner {
                 isAllCaps = true
                 textSize = 13f
                 letterSpacing = 0.06f
-                typeface = ResourcesCompat.getFont(ctx, R.font.noto_sans_medium)
+                typeface = ResourcesCompat.getFont(ctx, R.font.montserrat_medium)
                 setTextColor(DesignTokens.accent(ctx))
                 background = ContextCompat.getDrawable(ctx, R.drawable.metro_row_pressed)
                 includeFontPadding = false

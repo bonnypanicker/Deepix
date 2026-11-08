@@ -37,7 +37,7 @@
                 android:layout_weight="1"
                 android:layout_marginStart="4dp"
                 android:layout_marginEnd="12dp"
-                android:fontFamily="@font/noto_sans_light"
+                android:fontFamily="@font/montserrat_light"
                 android:includeFontPadding="false"
                 android:text="@string/settings_lower"
                 android:textColor="@color/metroTextPrimary"
@@ -145,7 +145,7 @@
                             android:text="@string/size_medium"
                             android:textColor="?attr/accentColor"
                             android:textSize="13sp"
-                            android:fontFamily="@font/noto_sans_medium" />
+                            android:fontFamily="@font/montserrat_medium" />
                     </LinearLayout>
 
                     <SeekBar
