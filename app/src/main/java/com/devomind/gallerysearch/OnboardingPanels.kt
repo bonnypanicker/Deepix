@@ -1,5 +1,6 @@
 package com.devomind.gallerysearch
 
+import android.content.Context
 import android.graphics.Color
 import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
@@ -7,6 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
@@ -242,6 +244,57 @@ class OnboardingPanelAdapter(
         }
     }
 
+    /** Height in pixels of the tallest feature-page copy at [OnboardingMetrics.factor]'s scale. */
+    private var copyFloorFactor = Float.NaN
+    private var copyFloorPx = 0
+
+    /**
+     * The tallest feature page's copy block, in pixels. Every feature page pins its copy to this
+     * height so the eyebrow and headline sit at one place across the tour; without it, a page whose
+     * headline or body wraps to an extra line lifts its own header, and the block jumps as the user
+     * swipes. Measured from the real copy views rather than guessed, and re-measured when the tour is
+     * rescaled for a new window shape.
+     */
+    private fun copyFloor(context: Context): Int {
+        if (copyFloorFactor == metrics.factor) return copyFloorPx
+        val scaffold = ItemOnboardingPanelBinding.inflate(LayoutInflater.from(context))
+        // The pager is edge-to-edge, so a panel is the window's width less the root's own 28-unit
+        // gutter on each side; that is the width the copy wraps against.
+        val contentWidth = context.resources.displayMetrics.widthPixels - 2 * metrics.units(28f)
+        val widthSpec = View.MeasureSpec.makeMeasureSpec(contentWidth, View.MeasureSpec.EXACTLY)
+        val heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        var tallest = 0
+        panels.filter { it.permissions.isEmpty() && it.benefits.isEmpty() }.forEach { panel ->
+            bindCopy(scaffold.panelEyebrow, scaffold.panelTitle, scaffold.panelBody, panel)
+            scaffold.panelCopy.measure(widthSpec, heightSpec)
+            tallest = max(tallest, scaffold.panelCopy.measuredHeight)
+        }
+        copyFloorPx = tallest
+        copyFloorFactor = metrics.factor
+        return copyFloorPx
+    }
+
+    /**
+     * The eyebrow / headline / body of one page, styled and worded. Shared by [PanelVH.bind] and
+     * [copyFloor]'s measurement pass, so both see the same text at the same sizes.
+     */
+    private fun bindCopy(
+        eyebrow: TextView, title: TextView, body: TextView, panel: OnboardingPanel
+    ) {
+        val context = eyebrow.context
+        // The reference's own type: a 14-unit eyebrow with a 12-unit gap under it, a 38-unit light
+        // headline, and a 14-unit body under a 16-unit gap.
+        eyebrow.setTextSize(metrics.textSp(14f))
+        eyebrow.margin { bottomMargin = metrics.units(12f) }
+        title.setTextSize(metrics.textSp(38f))
+        body.setTextSize(metrics.textSp(14f))
+        body.margin { topMargin = metrics.units(16f) }
+        body.maxWidth = metrics.units(295f)
+        eyebrow.text = context.getString(panel.eyebrow)
+        title.text = context.getString(panel.title)
+        body.text = context.getString(panel.body)
+    }
+
     /** ViewPager2 hands out pages from its inner RecyclerView, which is the only way to reach it. */
     private var pager: RecyclerView? = null
 
@@ -266,21 +319,10 @@ class OnboardingPanelAdapter(
         }
 
         fun bind(panel: OnboardingPanel) {
-            val context = b.root.context
             b.panelRoot.setPadding(metrics.units(28f), 0, metrics.units(28f), metrics.units(8f))
-
-            // The reference's own type: an 11-unit eyebrow with a 12-unit gap under it, a
-            // 38-unit light headline, and a 14-unit body under a 16-unit gap.
-            b.panelEyebrow.setTextSize(metrics.textSp(14f))
-            b.panelEyebrow.margin { bottomMargin = metrics.units(12f) }
-            b.panelTitle.setTextSize(metrics.textSp(38f))
-            b.panelBody.setTextSize(metrics.textSp(14f))
-            b.panelBody.margin { topMargin = metrics.units(16f) }
-            b.panelBody.maxWidth = metrics.units(295f)
-
-            b.panelEyebrow.text = context.getString(panel.eyebrow)
-            b.panelTitle.text = context.getString(panel.title)
-            b.panelBody.text = context.getString(panel.body)
+            bindCopy(b.panelEyebrow, b.panelTitle, b.panelBody, panel)
+            // Only the feature pages pin their copy; the list-bearing pages lay themselves out.
+            b.panelCopy.minimumHeight = 0
             b.panelLegalNotice.visibility = View.GONE
 
             if (panel.permissions.isNotEmpty()) bindPermissionsPage(panel)
@@ -290,6 +332,9 @@ class OnboardingPanelAdapter(
 
         /** The illustration in the larger share of the spare height, copy settled above a gap below it. */
         private fun bindFeaturePage(panel: OnboardingPanel) {
+            // Pin the header: hold the copy at the tour's tallest so the eyebrow and headline land in
+            // one place on every feature page instead of riding up and down with this page's line count.
+            b.panelCopy.minimumHeight = copyFloor(b.root.context)
             b.panelIconArea.visibility = View.VISIBLE
             b.panelIcon.visibility = View.VISIBLE
             b.panelIcon.setImageResource(panel.iconRes)

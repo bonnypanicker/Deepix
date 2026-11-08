@@ -29,36 +29,43 @@
             android:contentDescription="@null" />
     </FrameLayout>
 
-    <TextView
-        android:id="@+id/panelEyebrow"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="10dp"
-        android:fontFamily="@font/montserrat_medium"
-        android:letterSpacing="0.04"
-        android:textAllCaps="true"
-        android:textColor="?attr/accentColor"
-        android:textSize="14sp" />
-
-    <TextView
-        android:id="@+id/panelTitle"
+    <LinearLayout
+        android:id="@+id/panelCopy"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:fontFamily="@font/montserrat_light"
-        android:letterSpacing="-0.045"
-        android:lineSpacingMultiplier="1.05"
-        android:textColor="@color/metroTextPrimary"
-        android:textSize="38sp" />
+        android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/panelBody"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:lineSpacingMultiplier="1.55"
-        android:maxWidth="295dp"
-        android:textColor="@color/onboardingTextBody"
-        android:textSize="14sp" />
+        <TextView
+            android:id="@+id/panelEyebrow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:fontFamily="@font/montserrat_medium"
+            android:letterSpacing="0.04"
+            android:textAllCaps="true"
+            android:textColor="?attr/accentColor"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/panelTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/montserrat_light"
+            android:letterSpacing="-0.045"
+            android:lineSpacingMultiplier="1.05"
+            android:textColor="@color/metroTextPrimary"
+            android:textSize="38sp" />
+
+        <TextView
+            android:id="@+id/panelBody"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:lineSpacingMultiplier="1.55"
+            android:maxWidth="295dp"
+            android:textColor="@color/onboardingTextBody"
+            android:textSize="14sp" />
+    </LinearLayout>
 
     <View
         android:id="@+id/permTopDivider"
