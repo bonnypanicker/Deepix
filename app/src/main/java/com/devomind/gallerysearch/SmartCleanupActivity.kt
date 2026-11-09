@@ -634,8 +634,10 @@ class SmartCleanupActivity : AppCompatActivity() {
         adapter.clearSelection()
         binding.detailView.visibility = View.GONE
         binding.overviewView.visibility = View.VISIBLE
-        // The overflow belongs to the category, so it goes with it.
+        // The overflow belongs to the category, so it goes with it. The title comes back to the screen's
+        // own name now that no category is open.
         binding.overflowBtn.visibility = View.GONE
+        binding.screenTitle.text = getString(R.string.smart_cleanup_title)
         renderTiles()
     }
 
@@ -657,7 +659,9 @@ class SmartCleanupActivity : AppCompatActivity() {
         binding.overviewView.visibility = View.GONE
         binding.detailView.visibility = View.VISIBLE
         binding.overflowBtn.visibility = View.VISIBLE
-        binding.detailTitle.text = categoryTitle(category)
+        // The category's name is the page title, and this screen has one header line: the top bar's,
+        // beside the back button. A second title below it said the same thing twice.
+        binding.screenTitle.text = categoryTitle(category)
         val isCompressible = category == CleanupAnalyzer.Category.COMPRESSIBLE
         // The compression page has no hint line. The row goes with it, so the grid starts
         // higher instead of leaving a gap under the header.
@@ -687,8 +691,9 @@ class SmartCleanupActivity : AppCompatActivity() {
             else getColor(R.color.metroDanger)
         )
         // Sorting is wired only for the compression lists; other categories have semantic order
-        // (burst grouping, scan order) that a sort would break.
-        binding.detailSortControl.visibility = if (isCompressible) View.VISIBLE else View.GONE
+        // (burst grouping, scan order) that a sort would break. Its row goes with it, so the other
+        // categories start their grid straight under the top bar.
+        binding.detailHeaderRow.visibility = if (isCompressible) View.VISIBLE else View.GONE
         if (isCompressible) updateCompressibleSortChip()
 
         adapter.replaceCells(detailCells(category))
