@@ -280,10 +280,10 @@
                         android:tint="@color/metroTextTertiary" />
                 </LinearLayout>
 
-                <!-- ===================== INDEXING ===================== -->
+                <!-- ===================== AI ===================== -->
                 <TextView
                     style="@style/SettingsSectionHeader"
-                    android:text="@string/section_indexing" />
+                    android:text="@string/section_ai" />
 
                 <!-- Link to the dedicated Indexing page (status, folders, power, info) -->
                 <LinearLayout

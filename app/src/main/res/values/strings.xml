@@ -205,7 +205,7 @@
     <string name="move_up">Move %1$s up</string>
     <string name="move_down">Move %1$s down</string>
     <string name="default_page">Default page</string>
-    <string name="section_indexing">INDEXING</string>
+    <string name="section_ai">AI</string>
     <string name="indexing_label">Indexing</string>
     <string name="manage_indexing">Manage indexing</string>
     <string name="section_privacy">PRIVACY</string>
