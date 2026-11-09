@@ -1378,6 +1378,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun navigateToSection(section: Section) {
         if (currentMode == Mode.Search) {
+            // Leaving search for a section abandons what was typed — the back gesture already empties
+            // the box, and a query left behind would reappear the next time search opens.
+            suppressSearchInput = true
+            binding.searchInput.text?.clear()
+            suppressSearchInput = false
             closeSearch(clearQuery = false)
         }
         switchSection(section)
