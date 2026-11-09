@@ -292,6 +292,7 @@
     <string name="album_options">Album options</string>
     <string name="album_pick_none">Nothing selected</string>
     <string name="selection_options">Selection options</string>
+    <string name="selection_preview_hint">Tip: long-press a selected photo to preview it</string>
     <string name="move_to">Move to</string>
     <string name="set_as_album_cover">Set as album cover</string>
     <string name="move_to_folder_title">Move the selected photos to which folder?</string>

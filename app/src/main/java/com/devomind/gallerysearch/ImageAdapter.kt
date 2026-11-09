@@ -217,7 +217,13 @@ class ImageAdapter(
     private val onFolderExpandClick: (FolderNode) -> Unit = {},
     private val onCreateSmartAlbum: () -> Unit = {},
     private val onDismissSmartAlbumOnboarding: () -> Unit = {},
-    private val onSortClick: (View) -> Unit = {}
+    private val onSortClick: (View) -> Unit = {},
+    /**
+     * Multi-select only: a long-press on a tile that is already selected opens the full-screen
+     * preview instead of starting the drag-select gesture. Null on hosts that never preview — they
+     * keep the gesture on every tile.
+     */
+    private val onSelectedLongClick: ((GalleryRepository.MediaItem, ImageView) -> Unit)? = null
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     var cells = mutableListOf<GalleryCell>()
@@ -341,7 +347,8 @@ class ImageAdapter(
                 ItemCollageBinding.inflate(inflater, parent, false),
                 onPhotoClick,
                 ::handleSelectionTap,
-                ::beginSelectionGesture
+                ::beginSelectionGesture,
+                onSelectedLongClick
             )
             ViewTypeAlbum -> AlbumViewHolder(ItemAlbumBinding.inflate(inflater, parent, false), onAlbumClick, onAlbumLongClick)
             ViewTypeFolder -> FolderViewHolder(ItemFolderBinding.inflate(inflater, parent, false), onFolderClick, onFolderExpandClick)
@@ -370,6 +377,7 @@ class ImageAdapter(
                 onPhotoClick,
                 ::handleSelectionTap,
                 ::beginSelectionGesture,
+                onSelectedLongClick,
                 ::isBlurred,
                 ::revealSensitive
             ).also { holder ->
@@ -773,6 +781,7 @@ class ImageAdapter(
         private val onPhotoClick: (GalleryRepository.MediaItem, ImageView) -> Unit,
         private val onSelectionTap: (Uri) -> Unit,
         private val onSelectionGestureStart: (Uri) -> Unit,
+        private val onSelectedLongClick: ((GalleryRepository.MediaItem, ImageView) -> Unit)? = null,
         private val isBlurred: (GalleryRepository.MediaItem) -> Boolean = { false },
         private val onReveal: (Uri) -> Unit = {}
     ) : RecyclerView.ViewHolder(binding.root) {
@@ -940,7 +949,17 @@ class ImageAdapter(
                 }
             }
             binding.root.setOnLongClickListener {
-                onSelectionGestureStart(cell.item.uri)
+                // In a selection, a long-press on a tile that is already picked opens the
+                // full-screen preview; anywhere else it still begins the drag-select gesture.
+                // Only stills preview — a video tile would have no frame to show. Blurred tiles are
+                // excluded too: the preview would show what the blur is hiding.
+                val previewable = onSelectedLongClick != null && selectionMode && isSelected &&
+                    !blurred && cell.item.mediaType == GalleryRepository.MediaType.Image
+                if (previewable) {
+                    onSelectedLongClick?.invoke(cell.item, binding.thumbnail)
+                } else {
+                    onSelectionGestureStart(cell.item.uri)
+                }
                 true
             }
         }
@@ -955,7 +974,8 @@ class ImageAdapter(
         private val binding: ItemCollageBinding,
         private val onPhotoClick: (GalleryRepository.MediaItem, ImageView) -> Unit,
         private val onSelectionTap: (Uri) -> Unit,
-        private val onSelectionGestureStart: (Uri) -> Unit
+        private val onSelectionGestureStart: (Uri) -> Unit,
+        private val onSelectedLongClick: ((GalleryRepository.MediaItem, ImageView) -> Unit)? = null
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(cell: GalleryCell.Collage, selected: Set<Uri>, gridWidth: Int) {
@@ -1126,7 +1146,15 @@ class ImageAdapter(
                 if (selectionMode) onSelectionTap(item.uri) else onPhotoClick(item, thumbnail)
             }
             container.setOnLongClickListener {
-                onSelectionGestureStart(item.uri)
+                // Same rule as the ordinary grid: a picked still previews, every other tile
+                // starts (or extends) the drag-select gesture.
+                val previewable = onSelectedLongClick != null && selectionMode && isSelected &&
+                    item.mediaType == GalleryRepository.MediaType.Image
+                if (previewable) {
+                    onSelectedLongClick?.invoke(item, thumbnail)
+                } else {
+                    onSelectionGestureStart(item.uri)
+                }
                 true
             }
         }

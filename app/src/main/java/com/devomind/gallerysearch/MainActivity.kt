@@ -339,6 +339,14 @@ class MainActivity : AppCompatActivity() {
         if (changed) refreshVisibleItems()
     }
 
+    private val selectionPreviewLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        // The preview changes nothing, but the grid underneath has been idle the whole time it was
+        // covered — drop any input it was holding so the next tap lands on the tile it points at.
+        binding.imageGrid.cancelPendingInputEvents()
+    }
+
     private val settingsLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -470,7 +478,8 @@ class MainActivity : AppCompatActivity() {
                 IndexPreferences.setSmartAlbumOnboardingDismissed(this)
                 if (activeSection == Section.Albums && currentMode == Mode.Browse) renderAlbums()
             },
-            onSortClick = { anchor -> onHeaderSortClick(anchor) }
+            onSortClick = { anchor -> onHeaderSortClick(anchor) },
+            onSelectedLongClick = { item, view -> openSelectionPreview(item, view) }
         )
         adapter.useCollageLayout = IndexPreferences.isCollageLayout(this)
         applyDensityPreferences()
@@ -4776,6 +4785,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Full-screen preview of an already-selected still, opened by long-pressing its tile during a
+     * selection. It is deliberately not the viewer: one image, no chrome, no paging, no actions —
+     * pinch/double-tap to zoom, tap or back to leave. The shared-element hand-off mirrors
+     * [openMedia] so the tile under the finger appears to expand into the preview.
+     */
+    private fun openSelectionPreview(item: GalleryRepository.MediaItem, sharedView: ImageView) {
+        val transitionName = "media_${item.uri}".takeIf {
+            sharedView.isAttachedToWindow && sharedView.width > 0 && sharedView.height > 0
+        }
+        transitionName?.let {
+            ViewCompat.setTransitionName(sharedView, it)
+            ViewerTransitionPreview.store(it, sharedView.drawable)
+        }
+        val intent = Intent(this, SelectionPreviewActivity::class.java).apply {
+            putExtra(SelectionPreviewActivity.ExtraUri, item.uri.toString())
+            transitionName?.let { putExtra(SelectionPreviewActivity.ExtraTransitionName, it) }
+        }
+        if (transitionName != null) {
+            val options = ActivityOptionsCompat.makeSceneTransitionAnimation(this, sharedView, transitionName)
+            selectionPreviewLauncher.launch(intent, options)
+        } else {
+            selectionPreviewLauncher.launch(intent)
+        }
+    }
+
     private fun currentViewerItems(): List<GalleryRepository.MediaItem> {
         return when {
             currentAlbum != null -> albumDetailItems
@@ -4800,6 +4835,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderSelectionState(count: Int) {
         val selecting = count > 0
+        // Entering a selection (0 → n) is the one moment worth announcing the long-press preview:
+        // once the user is picking, repeating the hint on every added tile would just chatter.
+        val enteringSelection = selecting && !selectionActive
         selectionActive = selecting
         // Selection swaps in the command bar and re-titles the header — both bars must be visible.
         showBars()
@@ -4831,6 +4869,16 @@ class MainActivity : AppCompatActivity() {
             binding.searchBox.visibility = View.VISIBLE
             binding.searchTrailingBtn.visibility = View.VISIBLE
             updateTopBarForMode(currentTopTitle())
+        }
+
+        if (enteringSelection) {
+            // Lifted above the selection bar so the hint doesn't land on the command row.
+            MetroBanner.show(
+                this,
+                getString(R.string.selection_preview_hint),
+                durationMs = 4000,
+                bottomMarginDp = 96
+            )
         }
     }
 

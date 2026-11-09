@@ -44,6 +44,13 @@
             android:exported="false"
             android:theme="@style/Theme.GallerySearch.Viewer" />
 
+        <!-- Long-press preview during multi-select: one zoomable photo, no chrome. -->
+        <activity
+            android:name=".SelectionPreviewActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:exported="false"
+            android:theme="@style/Theme.GallerySearch.Viewer" />
+
         <activity
             android:name=".SmartCleanupActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
