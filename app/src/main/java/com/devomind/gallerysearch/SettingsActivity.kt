@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.view.View
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -454,7 +455,7 @@ class SettingsActivity : AppCompatActivity() {
         if (root == IndexPreferences.SAFE_ROOT_DOCUMENTS) "Documents" else "Pictures"
 
     // ------------------------------------------------------------------
-    // Album folders: which public folder a new album's own folder is made under
+    // Album folders: which folder a new album's own folder is made under
     // ------------------------------------------------------------------
 
     private fun bindAlbums() {
@@ -463,37 +464,73 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     /**
-     * Pictures or Documents rather than the Safe's free folder picker. An album's folder is a MediaStore
-     * one, and keeping it inside a public collection is what lets a photo be copied in and later deleted
-     * on any device, with or without all-files access.
+     * Pictures, Documents, or a folder the user picks — the same picker the Safe offers.
+     *
+     * The two public folders are what an album's folder can always be written into; the picker covers
+     * the folders a user keeps albums in that are neither, and MediaStore's RELATIVE_PATH reaches them
+     * just as well.
      *
      * The choice applies to albums made after it. Following it for albums that already exist would mean
      * moving the user's photos, which is not what a setting is for.
      */
     private fun showAlbumLocationDialog() {
         val options = listOf(
+            getString(R.string.album_location_choose_folder),
             getString(R.string.pictures),
             getString(R.string.album_location_documents)
         )
-        val current = if (IndexPreferences.getAlbumFolderRoot(this) == IndexPreferences.SAFE_ROOT_DOCUMENTS) 1 else 0
+        val custom = IndexPreferences.getAlbumFolderDir(this)
+        val checked = when {
+            custom != null -> 0
+            IndexPreferences.getAlbumFolderRoot(this) == IndexPreferences.SAFE_ROOT_DOCUMENTS -> 2
+            else -> 1
+        }
         MetroDialog.singleChoice(
             this,
             title = getString(R.string.album_location_dialog_title),
             options = options,
-            checkedIndex = current
+            checkedIndex = checked
         ) { which ->
-            if (which == current) return@singleChoice
-            IndexPreferences.setAlbumFolderRoot(
-                this,
-                if (which == 1) IndexPreferences.SAFE_ROOT_DOCUMENTS else IndexPreferences.SAFE_ROOT_PICTURES
-            )
-            updateAlbumLocationSubtitle()
-            MetroBanner.show(this, getString(R.string.album_location_changed, options[which]))
+            when (which) {
+                0 -> runCatching {
+                    albumFolderPicker.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
+                }.onFailure {
+                    MetroBanner.show(this, "Couldn't open the folder picker")
+                }
+                1 -> setAlbumFolderPreset(IndexPreferences.SAFE_ROOT_PICTURES, options[which])
+                2 -> setAlbumFolderPreset(IndexPreferences.SAFE_ROOT_DOCUMENTS, options[which])
+            }
         }
     }
 
+    private fun setAlbumFolderPreset(root: String, label: String) {
+        IndexPreferences.setAlbumFolderRoot(this, root)
+        // A preset replaces any picked folder, so the two can never disagree in the subtitle.
+        IndexPreferences.setAlbumFolderDir(this, null)
+        updateAlbumLocationSubtitle()
+        MetroBanner.show(this, getString(R.string.album_location_changed, label))
+    }
+
+    private val albumFolderPicker = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val treeUri: Uri? = result.data?.data
+        if (result.resultCode != RESULT_OK || treeUri == null) return@registerForActivityResult
+        val docId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
+        val dir = AlbumRules.albumRootFromTreeDocId(docId)
+        if (dir == null) {
+            MetroBanner.show(this, getString(R.string.album_location_pick_failed))
+            return@registerForActivityResult
+        }
+        IndexPreferences.setAlbumFolderDir(this, dir)
+        updateAlbumLocationSubtitle()
+        MetroBanner.show(this, getString(R.string.album_location_changed, dir))
+    }
+
     private fun updateAlbumLocationSubtitle() {
-        binding.albumLocationSubtitle.text = rootLabel(IndexPreferences.getAlbumFolderRoot(this))
+        val custom = IndexPreferences.getAlbumFolderDir(this)
+        binding.albumLocationSubtitle.text =
+            custom?.substringAfterLast('/') ?: rootLabel(IndexPreferences.getAlbumFolderRoot(this))
     }
 
     private fun updateIndexedFoldersSubtitle() {

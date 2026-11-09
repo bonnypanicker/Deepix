@@ -469,6 +469,26 @@ object IndexPreferences {
             .apply()
     }
 
+    private const val KeyAlbumFolderDir = "album_folder_dir"
+
+    /**
+     * A folder the user picked for new album folders, storage-relative (the form MediaStore's
+     * RELATIVE_PATH takes). Null/blank means no custom folder — [getAlbumFolderRoot] applies instead.
+     *
+     * Same reach as [getAlbumFolderRoot]: only albums made after the change, never the ones already made.
+     */
+    fun getAlbumFolderDir(context: Context): String? {
+        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getString(KeyAlbumFolderDir, null)?.takeIf { it.isNotBlank() }
+    }
+
+    fun setAlbumFolderDir(context: Context, dir: String?) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KeyAlbumFolderDir, dir ?: "")
+            .apply()
+    }
+
     private const val KeySafeVaultDir = "safe_vault_dir"
 
     /**

@@ -121,6 +121,19 @@ class AlbumRulesTest {
     }
 
     @Test
+    fun aPickedFolderBecomesTheRootAlbumFoldersSitUnder() {
+        // A tree id is the volume and the path; MediaStore's RELATIVE_PATH is the path alone.
+        assertEquals("Pictures/Trips", AlbumRules.albumRootFromTreeDocId("primary:Pictures/Trips"))
+        assertEquals("Pictures/Trips", AlbumRules.albumRootFromTreeDocId("primary:Pictures/Trips/"))
+        assertEquals("DCIM", AlbumRules.albumRootFromTreeDocId("primary:DCIM"))
+        // The volume itself names no folder, and another volume is not the one RELATIVE_PATH addresses.
+        assertNull(AlbumRules.albumRootFromTreeDocId("primary:"))
+        assertNull(AlbumRules.albumRootFromTreeDocId("1A2B-3C4D:Pictures"))
+        assertNull(AlbumRules.albumRootFromTreeDocId("no-colon"))
+        assertNull(AlbumRules.albumRootFromTreeDocId(null))
+    }
+
+    @Test
     fun everyIdCarriesItsKind() {
         // A folder album is keyed by the folder, which is also why one folder cannot yield two.
         assertEquals("folder:DCIM/Camera", CollectionAlbumStore.folderIdFor("DCIM/Camera"))

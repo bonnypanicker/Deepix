@@ -44,6 +44,20 @@ object AlbumRules {
     }
 
     /**
+     * The storage-relative root a picked document tree points at, or null when it is not on primary
+     * storage or is the whole volume.
+     *
+     * A tree's id arrives as `primary:Pictures/Trips`, and MediaStore's RELATIVE_PATH wants exactly the
+     * part after the colon — so the folder the user picked becomes the parent [albumFolderPath] makes
+     * the album's own folder under.
+     */
+    fun albumRootFromTreeDocId(docId: String?): String? {
+        val parts = docId?.split(":", limit = 2) ?: return null
+        if (parts.size != 2 || parts[0] != "primary") return null
+        return parts[1].trim('/').takeIf { it.isNotEmpty() }
+    }
+
+    /**
      * The node for [path], or null when the library holds no such folder any more — which is what an
      * emptied folder's album renders as.
      */

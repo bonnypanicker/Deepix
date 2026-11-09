@@ -217,6 +217,8 @@
     <string name="album_location_dialog_title">Where new album folders are made</string>
     <string name="album_location_documents">Documents</string>
     <string name="album_location_changed">New albums will be created in %1$s</string>
+    <string name="album_location_choose_folder">Choose a folder…</string>
+    <string name="album_location_pick_failed">Please choose a folder on internal storage</string>
     <string name="section_storage">STORAGE</string>
     <string name="recycle_bin_label">Recycle bin</string>
     <string name="section_about">ABOUT</string>

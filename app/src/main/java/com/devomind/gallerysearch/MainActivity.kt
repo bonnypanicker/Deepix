@@ -4074,11 +4074,12 @@ class MainActivity : AppCompatActivity() {
 
     /** The public folder new album folders are made under, as the path segment MediaStore writes. */
     private fun albumFolderRootSegment(): String =
-        if (IndexPreferences.getAlbumFolderRoot(this) == IndexPreferences.SAFE_ROOT_DOCUMENTS) {
-            "Documents"
-        } else {
-            "Pictures"
-        }
+        IndexPreferences.getAlbumFolderDir(this)
+            ?: if (IndexPreferences.getAlbumFolderRoot(this) == IndexPreferences.SAFE_ROOT_DOCUMENTS) {
+                "Documents"
+            } else {
+                "Pictures"
+            }
 
     /**
      * Opens the tag album dialog — a new one, or [existing] to edit it. Tags come from the same cache
