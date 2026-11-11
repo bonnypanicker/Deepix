@@ -3815,8 +3815,8 @@ class MainActivity : AppCompatActivity() {
             buildList {
                 // A folder album owns its folder, so putting photos in it is the one thing worth offering
                 // from inside. The other kinds are read out of the library or a search, so nothing the user
-                // adds by hand would survive the next render. Album folder move/copy is gated off in this
-                // release (move deletes originals via direct file I/O).
+                // adds by hand would survive the next render. Move/copy runs on scoped storage now: the
+                // copies land through a MediaStore insert and a move's originals leave via the delete policy.
                 if (record.kind == AlbumKind.Folder && FeatureFlags.ALBUM_FOLDER_OPS_ENABLED) {
                     add(MetroDropdownMenu.Item(getString(R.string.album_add_photos)) {
                         showAlbumAddPhotosDialog(record)

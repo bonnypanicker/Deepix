@@ -23,7 +23,8 @@ object FeatureFlags {
     const val COMPRESSION_REPLACE_ENABLED = false
 
     /** Album folder copy/move writes photos into a folder album's own folder and deletes originals on
-     *  move. Copy uses MediaStore insert (keep-both style) and stays usable; move deletes originals, so
-     *  the whole entry point is hidden until the move half is rebuilt on scoped storage. */
-    const val ALBUM_FOLDER_OPS_ENABLED = false
+     *  move. Both halves now run on scoped storage: the copy goes through a MediaStore insert
+     *  ([AlbumFolderOps]), and the originals a move removes go through the delete policy
+     *  ([DeleteCoordinator] → createTrashRequest), so nothing touches a shared-storage File handle. */
+    const val ALBUM_FOLDER_OPS_ENABLED = true
 }
