@@ -83,11 +83,6 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false" />
 
-        <activity
-            android:name=".FontTestActivity"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
-            android:exported="false" />
-
         <!-- Phase 1 face-recognition verification harness; declared in src/debug, where its class lives. -->
 
         <activity

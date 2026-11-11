@@ -18,7 +18,7 @@ enum class AppFont(
     Lato("Lato", R.font.lato_regular);
 
     companion object {
-        val Default = Inter
+        val Default = OpenSans
 
         /** Resolves a stored [name], falling back to [Default] for anything unknown. */
         fun fromName(stored: String?): AppFont =

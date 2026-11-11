@@ -37,7 +37,7 @@
                 android:layout_weight="1"
                 android:layout_marginStart="4dp"
                 android:layout_marginEnd="12dp"
-                android:fontFamily="@font/inter_light"
+                android:fontFamily="@font/open_sans_regular"
                 android:includeFontPadding="false"
                 android:text="@string/settings_lower"
                 android:textColor="@color/metroTextPrimary"
@@ -145,7 +145,7 @@
                             android:text="@string/size_medium"
                             android:textColor="?attr/accentColor"
                             android:textSize="13sp"
-                            android:fontFamily="@font/inter_medium" />
+                            android:fontFamily="@font/open_sans_regular" />
                     </LinearLayout>
 
                     <SeekBar
@@ -218,30 +218,6 @@
                         android:layout_height="wrap_content"
                         android:clickable="false"
                         android:focusable="false" />
-                </LinearLayout>
-
-                <View style="@style/SettingsDivider" />
-
-                <LinearLayout
-                    android:id="@+id/rowFont"
-                    style="@style/SettingsRow">
-
-                    <LinearLayout style="@style/SettingsRowText">
-
-                        <TextView style="@style/SettingsRowTitle" android:text="@string/font_row_title" />
-
-                        <TextView
-                            android:id="@+id/fontSubtitle"
-                            style="@style/SettingsRowSubtitle"
-                            android:text="@string/font_row_title" />
-                    </LinearLayout>
-
-                    <ImageView
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:contentDescription="@null"
-                        android:src="@drawable/ic_fluent_chevron_right_24_regular"
-                        android:tint="@color/metroTextTertiary" />
                 </LinearLayout>
 
                 <!-- ===================== NAVIGATION ===================== -->

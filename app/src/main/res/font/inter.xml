@@ -1,25 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Inter — Rasmus Andersson's open-source (SIL OFL 1.1) screen-optimized neutral sans, bundled so the
-  app always renders its own typography and never inherits the phone's font or font scale on a given
-  device. Drawn for UI text: a tall x-height and open counters keep small sizes crisp on black.
-  Weights: 300 Light, 400 Regular, 500 Medium, 700 Bold (static instances at opsz 14).
+  Compatibility alias for legacy Inter references. The app uses its bundled Open Sans face for every
+  weight so the visual typeface stays fixed regardless of any saved legacy font preference.
 -->
 <font-family xmlns:app="http://schemas.android.com/apk/res-auto">
     <font
-        app:font="@font/inter_light"
+        app:font="@font/open_sans_regular"
         app:fontStyle="normal"
         app:fontWeight="300" />
     <font
-        app:font="@font/inter_regular"
+        app:font="@font/open_sans_regular"
         app:fontStyle="normal"
         app:fontWeight="400" />
     <font
-        app:font="@font/inter_medium"
+        app:font="@font/open_sans_regular"
         app:fontStyle="normal"
         app:fontWeight="500" />
     <font
-        app:font="@font/inter_bold"
+        app:font="@font/open_sans_regular"
         app:fontStyle="normal"
         app:fontWeight="700" />
 </font-family>

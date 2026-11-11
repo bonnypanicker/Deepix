@@ -67,7 +67,7 @@
                 android:text="@string/save"
                 android:textColor="@color/metroTextPrimary"
                 android:textSize="14sp"
-                android:fontFamily="@font/inter_medium" />
+                android:fontFamily="@font/open_sans_regular" />
         </LinearLayout>
 
         <!-- Image + overlays -->

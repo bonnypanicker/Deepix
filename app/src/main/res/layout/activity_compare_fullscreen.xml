@@ -60,7 +60,7 @@
                 android:text="Original"
                 android:textColor="@color/metroTextPrimary"
                 android:textSize="14sp"
-                android:fontFamily="@font/inter_medium" />
+                android:fontFamily="@font/open_sans_regular" />
 
             <TextView
                 android:id="@+id/headerOriginalSize"
@@ -105,7 +105,7 @@
                 android:text="Compressed"
                 android:textColor="@color/metroTextPrimary"
                 android:textSize="14sp"
-                android:fontFamily="@font/inter_medium" />
+                android:fontFamily="@font/open_sans_regular" />
 
             <TextView
                 android:id="@+id/headerCompressedSize"
@@ -162,7 +162,7 @@
             android:text="Keep original"
             android:textColor="@color/metroTextPrimary"
             android:textSize="15sp"
-            android:fontFamily="@font/inter_medium" />
+            android:fontFamily="@font/open_sans_regular" />
 
         <TextView
             android:id="@+id/keepCompressedBtn"
@@ -180,6 +180,6 @@
             android:text="Keep compressed"
             android:textColor="@color/metroTextPrimary"
             android:textSize="15sp"
-            android:fontFamily="@font/inter_medium" />
+            android:fontFamily="@font/open_sans_regular" />
     </LinearLayout>
 </FrameLayout>
