@@ -28,7 +28,7 @@ android {
         applicationId "com.devomind.gallerysearch"
         minSdk 26
         targetSdk 36
-        versionCode 4
+        versionCode 5
         versionName "1.2"
     }
 
@@ -102,6 +102,10 @@ dependencies {
     // AVIF decode on API < 31 (31+ decodes natively). Registered by its @GlideModule, which the
     // kapt compiler picks up even though manifest parsing is disabled in GalleryGlideModule.
     implementation "com.github.bumptech.glide:avif-integration:4.16.0"
+    // Glide pins avif 0.11.1, whose libavif_android.so is only 4 KB aligned on the two 64-bit ABIs
+    // Play's 16 KB page-size check inspects — the app is rejected on that alone. 1.3.0 rebuilds
+    // arm64-v8a and x86_64 at 16 KB while keeping the AvifDecoder API the integration above uses.
+    implementation "org.aomedia.avif.android:avif:1.3.0.841110fd"
     // SVG decode; wired into Glide in GalleryGlideModule.
     implementation "com.caverock:androidsvg-aar:1.4"
     implementation "com.github.chrisbanes:PhotoView:2.3.0"
