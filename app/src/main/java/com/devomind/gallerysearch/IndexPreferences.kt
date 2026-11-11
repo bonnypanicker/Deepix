@@ -30,7 +30,6 @@ object IndexPreferences {
     private const val KeyBlurSensitive = "blur_sensitive_content"
     private const val KeyRecycleBinEnabled = "recycle_bin_enabled"
     private const val KeySkipDeleteConfirm = "skip_delete_confirm"
-    private const val KeySafeStorageRoot = "safe_storage_root"
     private const val KeyAccentColor = "accent_color"
     private const val KeyAppFont = "app_font"
     /** Last entitlement verdict Play could prove, by [Entitlement] name. */
@@ -38,7 +37,7 @@ object IndexPreferences {
     /** Set once the user takes the FirstRun onboarding path. */
     private const val KeyFirstRunDone = "first_run_done"
 
-    /** Public directory the encrypted Safe zip lives under. */
+    /** Public directory a new album's own folder is created under. */
     const val SAFE_ROOT_PICTURES = "pictures"
     const val SAFE_ROOT_DOCUMENTS = "documents"
 
@@ -435,19 +434,6 @@ object IndexPreferences {
             .apply()
     }
 
-    /** Which public folder the Safe vault is stored under (see [SAFE_ROOT_*]). */
-    fun getSafeStorageRoot(context: Context): String {
-        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .getString(KeySafeStorageRoot, SAFE_ROOT_PICTURES)!!
-    }
-
-    fun setSafeStorageRoot(context: Context, root: String) {
-        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KeySafeStorageRoot, root)
-            .apply()
-    }
-
     private const val KeyAlbumFolderRoot = "album_folder_root"
 
     /**
@@ -486,24 +472,6 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putString(KeyAlbumFolderDir, dir ?: "")
-            .apply()
-    }
-
-    private const val KeySafeVaultDir = "safe_vault_dir"
-
-    /**
-     * Custom vault directory (absolute path) chosen via the Settings folder picker. Null/blank
-     * means "no custom folder" — [getSafeStorageRoot] (Pictures/Documents) applies instead.
-     */
-    fun getSafeVaultDir(context: Context): String? {
-        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .getString(KeySafeVaultDir, null)?.takeIf { it.isNotBlank() }
-    }
-
-    fun setSafeVaultDir(context: Context, path: String?) {
-        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KeySafeVaultDir, path ?: "")
             .apply()
     }
 

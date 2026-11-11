@@ -16,15 +16,13 @@ import javax.crypto.SecretKey
 /**
  * Session + storage orchestration for the encrypted photo locker.
  *
- * All safe photos live inside ONE standard AES-256 zip — the encrypted "folder" — stored at a fixed
- * public path (`Pictures/Pixa Safe/PixaSafe.zip`). With All-files access the app reads/writes
- * that file directly (zip4j needs a real path), so there is no folder picker and no session mirror:
- * the archive *is* the storage. It survives uninstall and opens in any zip tool with the password.
+ * All safe photos live inside ONE standard AES-256 zip — the encrypted "folder". Where that zip
+ * lives is [VaultStorage]'s business, not this class's: app storage by default, or a folder the user
+ * picked through the system picker. Either way this class only ever touches the local [File] that
+ * storage exposes, because zip4j rewrites the whole archive to add or drop a single entry.
  *
- * The path is resolved, not assumed: [masterZip] takes the first archive that actually exists among
- * the current names and the `Deepix Safe`/`DeepixSafe.zip` ones every vault predating the rename was
- * written under. A vault the app fails to find is not an empty Safe — it is the only copy of the
- * photos already removed from the gallery, so discovery, not a rename, is what carries them over.
+ * An archive the app fails to find is not an empty Safe — it is the only copy of the photos already
+ * removed from the gallery, so discovery, not a rename, is what carries a vault over to a new home.
  *
  * Sub-folders are modelled as path prefixes inside the archive (`Trip/beach.jpg`); an empty folder
  * keeps a `.dpixkeep` marker entry so it still lists. Extracted plaintext previews go to cache temp
@@ -48,15 +46,6 @@ object SafeManager {
 
     enum class SetupOutcome { CREATED, ADOPTED, WRONG_PASSWORD, ARCHIVE_UNREADABLE, NO_ACCESS }
 
-    private const val MasterName = "PixaSafe.zip"
-    private const val VaultFolderName = "Pixa Safe"
-
-    /** What every vault created before the app was Pixa is named. Nothing is created under them, but
-     *  an archive already sitting there is opened and appended to — it is the only copy those photos
-     *  have. Settings › SAFE location is the one path that renames it. */
-    private const val LegacyMasterName = "DeepixSafe.zip"
-    private const val LegacyVaultFolderName = "Deepix Safe"
-    private val zipNames = listOf(MasterName, LegacyMasterName)
     private const val FolderMarker = ".dpixkeep"
 
     @Volatile private var sessionPassword: String? = null
@@ -153,114 +142,63 @@ object SafeManager {
         return null
     }
 
-    // ---- Storage location (public folder, direct file I/O) ----
+    // ---- Storage location ----
 
-    /** Roots the vault can live under; the folder survives uninstall and opens in any zip tool. */
-    private val knownRoots = listOf(IndexPreferences.SAFE_ROOT_PICTURES, IndexPreferences.SAFE_ROOT_DOCUMENTS)
-
-    private fun baseDir(root: String, folderName: String = VaultFolderName): File =
-        File(
-            Environment.getExternalStoragePublicDirectory(
-                if (root == IndexPreferences.SAFE_ROOT_DOCUMENTS) Environment.DIRECTORY_DOCUMENTS
-                else Environment.DIRECTORY_PICTURES
-            ),
-            folderName
-        )
+    /** The vault's current home — app storage by default, or the folder the user picked. */
+    private fun storage(context: Context): VaultStorage = VaultStores.of(context)
 
     /**
-     * The folders the vault could live in, current name first. Both names are then searched *inside*
-     * each one, because the folder the user picked is theirs: a `DeepixSafe.zip` that sits in a custom
-     * directory is still the vault, and inventing an empty `PixaSafe.zip` beside it would make the app
-     * forget every photo it already holds.
+     * The local archive [SafeCrypto] works on, refreshed from its storage location first. A read
+     * uses this directly; a mutation follows it with [VaultStorage.commit], which is also what
+     * decides when the gallery originals may be deleted.
      */
-    private fun vaultDirs(context: Context): List<File> {
-        val custom = IndexPreferences.getSafeVaultDir(context)
-        if (!custom.isNullOrBlank()) return listOf(File(custom))
-        val root = IndexPreferences.getSafeStorageRoot(context)
-        return listOf(baseDir(root), baseDir(root, LegacyVaultFolderName))
+    private fun archive(context: Context): File {
+        val storage = storage(context)
+        storage.refresh()
+        return storage.localFile()
     }
 
-    /** The folder a *new* vault is created in — the current name, never the legacy one. */
-    private fun newVaultDir(context: Context): File = vaultDirs(context).first()
-
     /**
-     * The archive itself: the first candidate [vaultDirs] offers that exists, so a vault written under
-     * the old names keeps opening. When nothing exists this is the creation path — the current names,
-     * in the current folder or the custom one the user chose.
+     * Moves the vault to [treeUri] (or back to app storage when null) and persists the choice. The
+     * archive is copied first and the old copy dropped only once the new one is verified, so a
+     * failed move leaves the vault exactly where it was. Returns false only when the target already
+     * holds a vault — nothing is ever overwritten.
      */
-    private fun masterZip(context: Context): File {
-        for (dir in vaultDirs(context)) {
-            for (name in zipNames) {
-                val candidate = File(dir, name)
-                if (candidate.exists()) return candidate
-            }
+    fun relocateVault(context: Context, treeUri: Uri?): Boolean {
+        if (SafeStore.getTreeUri(context) == treeUri) return true
+        val old = storage(context).also { it.refresh() }
+        val oldFile = old.localFile()
+        val target: VaultStorage =
+            treeUri?.let { SafVaultStorage(context, it) } ?: AppPrivateVaultStorage(context)
+        if (!oldFile.exists()) {
+            SafeStore.setTreeUri(context, treeUri)
+            return true
         }
-        return File(newVaultDir(context), MasterName)
-    }
-
-    /** Public root the vault falls back to when no custom folder is set (the default). */
-    fun defaultVaultDir(context: Context): File = baseDir(IndexPreferences.SAFE_ROOT_PICTURES)
-
-    /**
-     * Converts a SAF tree Uri into a real directory on primary storage — the app already requires
-     * All-files access for the Safe, so once the user picks a folder we can keep using direct file
-     * I/O (zip4j needs a real path). Trees on other volumes are rejected.
-     */
-    fun customDirFromTreeUri(uri: Uri): File? {
-        val docId = try {
-            android.provider.DocumentsContract.getTreeDocumentId(uri)
-        } catch (e: Exception) {
-            return null
-        }
-        val parts = docId.split(":", limit = 2)
-        if (parts.size != 2 || parts[0] != "primary") return null
-        return File(Environment.getExternalStorageDirectory(), parts[1].trim('/'))
-    }
-
-    /** Moves the vault zip to [newDir] (created as needed). Returns false only when an existing
-     *  vault couldn't be moved or the target already holds one. */
-    fun moveVaultToDir(context: Context, newDir: File): Boolean {
-        val oldZip = masterZip(context)
-        if (!oldZip.exists() || oldZip.parentFile == newDir) return true
-        newDir.mkdirs()
-        val newZip = File(newDir, MasterName)
-        if (newZip.exists()) return false // don't clobber a vault already at the target
-        return if (oldZip.renameTo(newZip)) {
+        if (target.exists()) return false
+        val targetFile = target.localFile()
+        val moved = runCatching {
+            oldFile.copyTo(targetFile, overwrite = true)
+            if (targetFile.length() != oldFile.length()) return@runCatching false
+            target.commit()
             true
-        } else {
-            runCatching {
-                oldZip.copyTo(newZip, overwrite = false)
-                if (newZip.length() != oldZip.length()) {
-                    newZip.delete()
-                    false
-                } else if (oldZip.delete()) {
-                    true
-                } else {
-                    newZip.delete()
-                    false
-                }
-            }.getOrDefault(false)
+        }.getOrDefault(false)
+        if (!moved) {
+            runCatching { targetFile.delete() }
+            return false
         }
+        SafeStore.setTreeUri(context, treeUri)
+        runCatching { old.delete() }
+        return true
     }
 
     /**
-     * Hard reset: deletes the encrypted vault everywhere it could live — every known root, under both
-     * the current and the legacy names, plus the custom folder — along with app config and the
-     * thumbnail cache. Use only when the password is lost — everything inside the vault is erased.
+     * Hard reset: deletes the encrypted vault from wherever it lives, plus every app-private copy,
+     * app config and the thumbnail cache. Use only when the password is lost — everything inside
+     * the vault is erased.
      */
     fun purgeVault(context: Context) {
-        // The old names are erased as thoroughly as the new ones: this is the forgotten-password
-        // escape, and a DeepixSafe.zip left on disk would be found again by archiveExists, offering
-        // the same locked vault the user just chose to wipe.
-        val dirs = knownRoots.flatMap { listOf(baseDir(it), baseDir(it, LegacyVaultFolderName)) } +
-            IndexPreferences.getSafeVaultDir(context)?.let { listOf(File(it)) }.orEmpty()
-        dirs.distinct().forEach { dir ->
-            zipNames.forEach { name -> runCatching { File(dir, name).delete() } }
-            // Remove the folder only if our vault was its sole content; never wipes a shared
-            // folder (File.delete() on a non-empty dir would fail anyway).
-            runCatching { dir.takeIf { it.list()?.isEmpty() == true }?.delete() }
-        }
-        IndexPreferences.setSafeVaultDir(context, null)
+        runCatching { storage(context).delete() }
+        VaultStores.purgeLocal(context)
         runCatching { File(context.filesDir, OriginalPathsFile).delete() }
         originalPathsCache = null
         SafeStore.reset(context)
@@ -271,31 +209,32 @@ object SafeManager {
     // ---- Configuration ----
 
     /**
-     * Safe is gated behind [FeatureFlags.SAFE_ENABLED] in this release: the vault lives in a public
-     * folder and needs raw file I/O that All-files access used to provide. Phase 2 rebuilds it on SAF.
+     * Safe is gated behind [FeatureFlags.SAFE_ENABLED] so this release ships it only once the
+     * storage rebuild has been verified. The vault no longer needs All-files access: it is a file
+     * in app storage, or a document in a folder the user picked.
      */
     val hasAccess: Boolean get() = FeatureFlags.SAFE_ENABLED
 
     fun isConfigured(context: Context): Boolean =
         SafeStore.isConfigured(context) && hasAccess
 
-    /** True when an encrypted archive already exists on disk (recovery/adopt path). */
+    /** True when an encrypted archive already exists at the vault's location (recovery/adopt path). */
     fun archiveExists(context: Context): Boolean {
-        val zip = masterZip(context)
+        val zip = archive(context)
         return (SafeCrypto.readArchive(zip) as? SafeCrypto.ArchiveRead.Ok)?.names?.isNotEmpty() == true
     }
 
     /**
-     * First-time setup / recovery. Requires the Safe to be enabled. Creates the fixed vault folder
-     * and, if an archive is already present (reinstall or a copied vault), verifies the password
-     * against it and adopts it; otherwise starts fresh. Nothing is persisted on a wrong password.
+     * First-time setup / recovery. Requires the Safe to be enabled. Creates the vault archive and,
+     * if one is already present (reinstall or a copied vault), verifies the password against it and
+     * adopts it; otherwise starts fresh. Nothing is persisted on a wrong password.
      */
     fun setUpVault(context: Context, password: String): SetupOutcome {
         if (!hasAccess) return SetupOutcome.NO_ACCESS
-        val zip = masterZip(context).also { it.parentFile?.mkdirs() }
-        val archive = SafeCrypto.readArchive(zip)
-        if (archive is SafeCrypto.ArchiveRead.Unreadable) return SetupOutcome.ARCHIVE_UNREADABLE
-        val hasExisting = (archive as? SafeCrypto.ArchiveRead.Ok)?.names?.isNotEmpty() == true
+        val zip = archive(context)
+        val read = SafeCrypto.readArchive(zip)
+        if (read is SafeCrypto.ArchiveRead.Unreadable) return SetupOutcome.ARCHIVE_UNREADABLE
+        val hasExisting = (read as? SafeCrypto.ArchiveRead.Ok)?.names?.isNotEmpty() == true
         if (hasExisting && !SafeCrypto.verifyPassword(zip, password.toCharArray())) {
             return SetupOutcome.WRONG_PASSWORD
         }
@@ -309,11 +248,12 @@ object SafeManager {
      * otherwise against the archive itself (recovery), then (re)saves the verifier.
      */
     fun unlock(context: Context, password: String): Boolean {
-        if (SafeCrypto.readArchive(masterZip(context)) is SafeCrypto.ArchiveRead.Unreadable) return false
+        val zip = archive(context)
+        if (SafeCrypto.readArchive(zip) is SafeCrypto.ArchiveRead.Unreadable) return false
         val ok = if (SafeStore.isConfigured(context)) {
             SafeStore.verifyPassword(context, password)
         } else {
-            SafeCrypto.verifyPassword(masterZip(context), password.toCharArray())
+            SafeCrypto.verifyPassword(zip, password.toCharArray())
         }
         if (!ok) return false
         if (!SafeStore.isConfigured(context)) SafeStore.savePasswordVerifier(context, password)
@@ -333,7 +273,7 @@ object SafeManager {
     /** Lists the immediate sub-folders and photos under [folderPath] ("" = root). */
     fun listFolder(context: Context, folderPath: String = ""): FolderListing {
         val prefix = folderPath
-        val names = SafeCrypto.listEntryNames(masterZip(context))
+        val names = SafeCrypto.listEntryNames(archive(context))
         val folders = linkedSetOf<String>()
         val photos = mutableListOf<VaultItem>()
         for (name in names) {
@@ -355,7 +295,7 @@ object SafeManager {
 
     /** Flat list of every photo in the vault (used where folders don't matter). */
     fun listItems(context: Context): List<VaultItem> =
-        SafeCrypto.listEntryNames(masterZip(context))
+        SafeCrypto.listEntryNames(archive(context))
             .filterNot { it.substringAfterLast('/') == FolderMarker }
             .sortedDescending()
             .map { VaultItem(it) }
@@ -369,8 +309,9 @@ object SafeManager {
             runCatching {
                 val work = File(context.cacheDir, "safe_work").apply { mkdirs() }
                 val marker = File(work, FolderMarker).apply { writeText("") }
-                SafeCrypto.addFileToZip(masterZip(context), marker, markerEntry, password.toCharArray())
+                SafeCrypto.addFileToZip(archive(context), marker, markerEntry, password.toCharArray())
                 marker.delete()
+                storage(context).commit()
                 true
             }.getOrDefault(false)
         }
@@ -395,10 +336,10 @@ object SafeManager {
         password: String,
         onProgress: ((done: Int, total: Int) -> Unit)?
     ): ImportResult {
-        val zip = masterZip(context).also { it.parentFile?.mkdirs() }
-        val archive = SafeCrypto.readArchive(zip)
-        if (archive is SafeCrypto.ArchiveRead.Unreadable) return ImportResult(0, sources.size, emptyList())
-        val existing = (archive as? SafeCrypto.ArchiveRead.Ok)?.names.orEmpty().toMutableSet()
+        val zip = archive(context)
+        val read = SafeCrypto.readArchive(zip)
+        if (read is SafeCrypto.ArchiveRead.Unreadable) return ImportResult(0, sources.size, emptyList())
+        val existing = (read as? SafeCrypto.ArchiveRead.Ok)?.names.orEmpty().toMutableSet()
         val originalDirs = originalPaths(context)
         val work = File(context.cacheDir, "safe_work").apply { mkdirs() }
         val replacement = File(zip.parentFile, "${zip.name}.tmp")
@@ -458,6 +399,9 @@ object SafeManager {
         if (imported > 0) {
             try {
                 SafeCrypto.replaceAtomically(replacement, zip)
+                // Nothing is settled on the originals until the archive is safely at its location:
+                // a commit that fails reports nothing imported, so the sources stay in the gallery.
+                storage(context).commit()
             } catch (_: Exception) {
                 replacement.delete()
                 return ImportResult(0, sources.size, emptyList())
@@ -483,7 +427,7 @@ object SafeManager {
             cache.delete() // corrupt/stale — rebuild below
         }
         val password = sessionPassword ?: return null
-        val zip = masterZip(context)
+        val zip = archive(context)
         val jpeg = if (MediaFormats.isVideoFileName(item.entryName)) {
             val work = File(context.cacheDir, "safe_thumb_${System.nanoTime()}")
             SafeCrypto.makeVideoThumbnailJpeg(zip, item.entryName, password.toCharArray(), work)
@@ -515,7 +459,7 @@ object SafeManager {
     fun decryptToTemp(context: Context, item: VaultItem): File {
         val password = sessionPassword ?: error("Safe is locked")
         val work = File(context.cacheDir, "safe_view_${System.nanoTime()}").apply { mkdirs() }
-        return SafeCrypto.extractEntry(masterZip(context), item.entryName, password.toCharArray(), work)
+        return SafeCrypto.extractEntry(archive(context), item.entryName, password.toCharArray(), work)
     }
 
     /** Decrypts back into the gallery — into the folder the item originally came from when we
@@ -604,7 +548,9 @@ object SafeManager {
         // not be allowed to stand on top of.
         val removed = guarded(context) {
             runCatching {
-                SafeCrypto.removeEntry(masterZip(context), item.entryName, password.toCharArray())
+                SafeCrypto.removeEntry(archive(context), item.entryName, password.toCharArray())
+                // Settled at the vault's location before the thumbnail that mirrors it is dropped.
+                storage(context).commit()
                 thumbFile(context, item.entryName).delete()
                 true
             }.getOrDefault(false)

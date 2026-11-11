@@ -18,7 +18,8 @@
 | `SmartCleanupActivity` | Dedicated Metro screen: CLIP-detected clutter tiles + storage summary, per-category selectable grid, MediaStore delete. Reads `CleanupResultStore`, observes `CleanupWorker`; progress bar + pause/resume/stop |
 | `SettingsActivity` | Metro preferences screen: Collage layout, **Collage thumbnail size**, Grid columns, Pinned-in-collections, Index-only-while-charging, Safe storage location, **Albums › folder location** (where a *new* album's own folder is made), Clear cleanup cache, About. Writes `IndexPreferences`; MainActivity re-applies on return |
 | `SafeActivity` | Encrypted photo locker ("Safe"). Lock screen (biometric-first, password fallback) → grid of decrypted thumbnails → overflow (Show password / Add photos / fingerprint toggle / Lock / Remove Safe). `FLAG_SECURE`, relocks on background. Launched with `ExtraImportUris` to move gallery photos in; returns `ExtraImportedUris` for the caller to delete originals |
-| `SafeManager` | Session + storage orchestration for the Safe — **off in this release** (`FeatureFlags.SAFE_ENABLED = false`; the direct path I/O zip4j needs is not possible without the removed All-files access). Holds the unlocked password in-memory; reads/writes the single AES-256 archive (`PixaSafe.zip`) at a **configurable** public path (`Pictures/Pixa Safe/` or `Documents/Pixa Safe/`, via `IndexPreferences.getSafeStorageRoot`) — no session mirror: `setUpVault` (create/adopt), `unlock`, `listItems`/`listFolder`, `importPhotos`, `decryptToBitmap`/`decryptToTemp`, `restoreToGallery`, `removeItem`, `lock`; `moveVault` (relocate on root change), `purgeVault` (hard delete — forgotten-password escape), `archiveExists`, `vaultLocationLabel`; `thumbnail` decodes straight from the encrypted entry stream |
+| `SafeManager` | Session + storage orchestration for the Safe — **on again** (`FeatureFlags.SAFE_ENABLED = true`): the vault is a file in app storage or a document in a folder the user picked, so no All-files access is needed (see `VaultStorage`). Holds the unlocked password in-memory; reads/writes the single AES-256 archive (`PixaSafe.zip`) through whatever `VaultStorage` hands it (`archive` refreshes first; a mutation follows with `storage.commit`); `setUpVault` (create/adopt), `unlock`, `listItems`/`listFolder`, `importPhotos`, `decryptToBitmap`/`decryptToTemp`, `restoreToGallery`, `removeItem`, `lock`; `relocateVault` (relocate to a picked folder / back to app storage), `purgeVault` (hard delete — forgotten-password escape), `archiveExists`; `thumbnail` decodes straight from the encrypted entry stream |
+| `VaultStorage` | Where the vault archive physically lives: `AppPrivateVaultStorage` (app storage, default) and `SafVaultStorage` (a picked folder, mirrored into `filesDir`, `refresh()` before reads / `commit()` after mutations — write `.tmp`, verify, swap). `VaultStores.of` picks one from the stored tree Uri |
 | `SafeCrypto` | Crypto/format: zip4j **AES-256 password zip** add/list/extract/remove/verify (the vault is one standard archive, openable in any zip tool with the password); PBKDF2; AES-GCM thumbnail-cache encryption; downscaled thumbnail JPEGs |
 | `SafeKeystore` | Android Keystore AES/GCM key gated by `setUserAuthenticationRequired(true)`; encrypts/decrypts the vault password behind `BiometricPrompt` (fingerprint-in, no typing). Invalidated by new biometric enrollment |
 | `SafeStore` | SharedPrefs for the Safe: PBKDF2 salt + password verifier, biometric-enabled flag + Keystore-encrypted password blob/iv. Holds no photos/keys — the vault is recoverable from the password alone |
@@ -211,18 +212,18 @@ kinds have nothing stored to refresh, so the sheet does not offer it.
 ```
 
 ### Safe (encrypted photo locker) Flow
-> **Off in this release** — `FeatureFlags.SAFE_ENABLED = false`. Every entry point (drawer "safe",
-> multi-select "safe", the Safe tab, Settings › SAFE) is hidden and
-> `SafeManager.setUpVault`/`isConfigured` answer `NO_ACCESS`. The code below is kept, not deleted.
+> Rebuilt on scoped storage and **on again** — `FeatureFlags.SAFE_ENABLED = true`. The vault no longer
+> needs All-files access (it lives in app storage, or in a folder the user picked), so the drawer
+> "safe", multi-select "safe", the Safe tab and Settings › SAFE are all live.
 ```
 Drawer "safe" (or multi-select "safe" command) → SafeActivity
-  Not configured → setup dialog (password + confirm + "keep it safe" warning; shows resolved storage
-    path)
-    → SafeManager.setUpVault(password):           [NO_ACCESS — Safe is off in this release, no all-files access]
+  Not configured → setup dialog (password + confirm + "keep it safe" warning)
+    → SafeManager.setUpVault(password):
         CREATED  (no archive yet)    → savePasswordVerifier + open session
         ADOPTED  (archive present)   → verify password against the zip, then save verifier + open
         WRONG_PASSWORD               → offerResetOrphanedVault: "Delete & start over" (SafeManager.purgeVault
-                                       wipes the zip across all roots + config + thumbs) or "Try another
+                                       wipes the vault at its current location + every app-private copy +
+                                       config + thumbs) or "Try another
                                        password"  [escape from the reinstall/orphaned-zip deadlock]
     → offer to enable fingerprint (BiometricPrompt + Keystore-wrapped password)
   Configured → lock screen: BiometricPrompt first (recovers password from Keystore blob),
@@ -230,18 +231,21 @@ Drawer "safe" (or multi-select "safe" command) → SafeActivity
                "Forgot password?" link → offerResetOrphanedVault (same hard-delete escape).
 
 Storage model (all safe photos in ONE encrypted "folder"):
-  - The vault is a single standard AES-256 password zip `PixaSafe.zip` at a CONFIGURABLE public path
-    (`Pictures/Pixa Safe/` default, or `Documents/Pixa Safe/` — chosen in Settings › Safe via
-    `IndexPreferences.getSafeStorageRoot`). Survives uninstall; openable in any zip tool with the
-    password. SafeManager reads/writes it directly via java.io.File (zip4j needs a real path) — access
-    the app no longer holds now that `MANAGE_EXTERNAL_STORAGE` is gone, which is why Safe is flagged
-    off; no session mirror. The path is **resolved, not assumed**: `masterZip` takes the first archive that exists
-    among `Pixa Safe`/`PixaSafe.zip` and the `Deepix Safe`/`DeepixSafe.zip` names every vault predating
-    the rename was written under (the same search inside a custom folder), and `purgeVault` erases both
-    names so the forgotten-password escape cannot leave a locked vault to be found again. Nothing new is
-    created under the old names; Settings › SAFE location is the one move that renames one.
-    Switching root in Settings moves the existing vault (`SafeManager.moveVault`); the pref
-    lives in `index_prefs` so `SafeStore.reset` (soft "Remove Safe") doesn't revert the choice.
+  - The vault is a single standard AES-256 password zip `PixaSafe.zip`, openable in any zip tool with
+    the password. **Where it lives is `VaultStorage`'s business**: `AppPrivateVaultStorage` keeps it in
+    app storage (`filesDir/safe_vault/`, the default — survives lock, dies with the app), and
+    `SafVaultStorage` keeps it as a document in a folder the user picked through
+    `ACTION_OPEN_DOCUMENT_TREE` (persistable permission). Neither needs All-files access, so there is
+    no public vault folder and nothing to resolve: `VaultStores.of` picks the storage from
+    `SafeStore.getTreeUri`, and Settings › SAFE location is the one move (`SafeManager.relocateVault`,
+    which copies first and drops the old copy only once the new one is verified; a target that already
+    holds a vault is refused, never overwritten).
+  - `SafeCrypto` still only understands a real `File` (zip4j rewrites the whole archive to add or drop
+    one entry), so a picked folder is mirrored into `filesDir/safe_vault_mirror/<tree-hash>/`:
+    `refresh()` pulls the document down before a read, `commit()` pushes it back after a mutation —
+    write a `.tmp` transfer, verify the byte count landed, drop the old archive, rename. Gallery
+    originals are deleted only once `commit()` has returned.
+  - Legacy `DeepixSafe.zip` is still recognised by name when an archive is discovered.
   - Sub-folders are path prefixes inside the archive (`Trip/beach.jpg`); empty folders keep a
     `.dpixkeep` marker. Extracted plaintext previews go to cacheDir temp dirs wiped after use.
   - Grid thumbnails: app-private AES-GCM cache in filesDir/safe_thumbs (key = PBKDF2(password, salt)).
@@ -413,6 +417,8 @@ SAF tree grant (`takePersistableUriPermission`). `SafeActivity` is `excludeFromR
 
 46. **Album folder copy/move is back on scoped storage** — Phase 1 had hidden the folder album's "Add photos" row (#44) because the **move** half deleted originals with direct file I/O. That half now goes through the ordinary delete policy (`DeleteCoordinator` → `MediaStore.createTrashRequest`), so nothing in the flow touches a shared-storage `File` handle, and `FeatureFlags.ALBUM_FOLDER_OPS_ENABLED` is back **on**. The copy half is unchanged and was always scoped: `AlbumFolderOps.copyOne` inserts a row through MediaStore (`RELATIVE_PATH` + `IS_PENDING` on API 29+, `DATA` on 26–28), stream-copies, `forceToDisk`, then reads the copy back and counts it — only a byte-for-byte match is reported as landed, and a move hands exactly those originals to `performManagedDelete`, so the move stays undoable in the Bin. Note the flag only ever hid that one row: the multi-select **"Move to"** (`moveSelectionInto`) and the device-folder overflow's **"Add photos"** (`showAddPhotosToFolderDialog`) were never gated and behaved the same before and after. The pre-Q branch (`publicDirFor`/`uniqueIn`, absolute `DATA` under `WRITE_EXTERNAL_STORAGE` capped at 29) is deliberately left as is. Safe and compression-replace remain off.
 
+47. **The Safe gets a storage seam instead of a public folder** — Phase 1 had turned the Safe off (#44) because its vault was a zip at a **public path** written through `java.io.File`, and the All-files access that needed is gone. The vault no longer has to be public, so the fix is a seam rather than a rewrite of `SafeCrypto`: `VaultStorage` answers *where the archive lives* and hands out a **local** `File` either way, because zip4j rewrites the whole archive to add or drop one entry. `AppPrivateVaultStorage` (default) is a plain file under `filesDir/safe_vault/` — needs no permission and no dialog, but goes with the app. `SafVaultStorage` is a folder the user picked through `ACTION_OPEN_DOCUMENT_TREE` (permission taken persistable in `SettingsActivity.safeFolderPicker`); since a document cannot be rewritten in place, it keeps a mirror in `filesDir/safe_vault_mirror/<tree-hash>/`, pulls the document down in `refresh()` before a read, and pushes it back in `commit()` — write a `.tmp` transfer, verify the byte count landed, drop the old archive, then rename. `VaultStores.of` picks the storage from `SafeStore.getTreeUri`. Every mutation (`createFolder`, `importIntoVault`, `removeItem`) follows its archive edit with `commit()`, and the gallery originals are deleted **only after** that returns — a failed commit reports nothing imported, so the sources stay put. Settings › SAFE location is the one move (`SafeManager.relocateVault`): it copies first and drops the old copy only once the new one is verified, and refuses a target that already holds a vault, so nothing is ever overwritten. The public-path machinery is deleted (`masterZip`/`vaultDirs`/`newVaultDir`/`defaultVaultDir`/`customDirFromTreeUri`/`moveVaultToDir`, plus `IndexPreferences.getSafeStorageRoot`/`getSafeVaultDir` and their keys); `DeepixSafe.zip` is still recognised by name when an archive is discovered. `FeatureFlags.SAFE_ENABLED` is back **on**. Only compression-replace's Q-below caveat aside, no Phase-2 feature now depends on All-files access, and the Safe is the one that never held a public path to begin with.
+
 ---
 
 ## Active Roadmap Phase (as of last commit)
@@ -432,12 +438,14 @@ SAF tree grant (`takePersistableUriPermission`). `SafeActivity` is `excludeFromR
 
 **Lazy encoder warm-up — complete.** The ~135 MB CLIP encoders are no longer loaded on every launch. `loadEncodersInBackground` now only warms them eagerly when a background index pass will actually run (`shouldRunBackgroundIndexing()`); otherwise they load lazily on the first search via `ensureEncodersLoaded()` (idempotent, returns a `CompletableDeferred<Boolean>` that `submitSearch`/`searchSimilarImage` await). Fixes the symptom where a paused-indexing cold start opened slower than a running-indexing (warm-process) reopen — the models used to reload against the first frames even when nothing needed them.
 
-**Safe (encrypted photo locker) — complete.** New `SafeActivity` reached via drawer "safe" or the multi-select "safe" command. All safe photos live inside a single standard AES-256 password zip (`PixaSafe.zip`, found under the old `Deepix Safe`/`DeepixSafe.zip` names too) at a **configurable** public path (`Pictures/Pixa Safe/` default, or `Documents/Pixa Safe/` — Settings › Safe storage location; switching moves the existing vault and renames it) via All-files access that survives uninstall and opens in any zip tool with the password (not app-dependent). Biometric-first lock screen (`BiometricPrompt` + Keystore-wrapped password) with password fallback; "Show password" in the overflow after fingerprint login. **Forgotten-password escape:** on `WRONG_PASSWORD` during setup (orphaned zip after reinstall) and via a lock-screen "Forgot password?" link, `SafeManager.purgeVault` deletes the vault across all roots + app config + thumbnails so a fresh Safe can be created. Moving photos in deletes the originals via the normal delete-consent flow. `FLAG_SECURE`, relocks on background. Recoverable after reinstall by re-entering the password (archive stays at the configured path). Thumbnails decode straight from the encrypted entry stream (cache + rebuild-on-failure). See `SafeManager`/`SafeCrypto`/`SafeKeystore`/`SafeStore`. Adds deps `zip4j` + `androidx.biometric`. **Currently off** — `FeatureFlags.SAFE_ENABLED = false`; the All-files access the vault's direct file I/O needs was removed (see #44).
+**Safe (encrypted photo locker) — complete.** New `SafeActivity` reached via drawer "safe" or the multi-select "safe" command. All safe photos live inside a single standard AES-256 password zip (`PixaSafe.zip`, openable in any zip tool with the password), and **where it lives is `VaultStorage`'s business**: app storage (`filesDir/safe_vault/`, the default) or a folder picked through `ACTION_OPEN_DOCUMENT_TREE` (Settings › Safe storage location; switching the location moves the vault and never overwrites an existing one). No All-files access is needed either way. Biometric-first lock screen (`BiometricPrompt` + Keystore-wrapped password) with password fallback; "Show password" in the overflow after fingerprint login. **Forgotten-password escape:** on `WRONG_PASSWORD` during setup (orphaned zip after reinstall) and via a lock-screen "Forgot password?" link, `SafeManager.purgeVault` deletes the vault at its current location + every app-private copy + app config + thumbnails so a fresh Safe can be created. Moving photos in deletes the originals via the normal delete-consent flow. `FLAG_SECURE`, relocks on background. Thumbnails decode straight from the encrypted entry stream (cache + rebuild-on-failure). See `SafeManager`/`VaultStorage`/`SafeCrypto`/`SafeKeystore`/`SafeStore`. Adds deps `zip4j` + `androidx.biometric`. **Live** — `FeatureFlags.SAFE_ENABLED = true` (see #47).
 
 **Indexing performance & robustness pass — complete.** `ThreadBenchmark` is now wired end-to-end (one-time tuned intra-op thread count, cached in prefs, consumed by both encoders via `SharedEncoders`); index batching scales to device capability (2/4/6 + OOM-persisted fallback); `loadBitmap` does an EXIF-aware two-pass decode (embedding index bumped to v3); OOM during indexing degrades (batch=2 + retry) instead of failing permanently.
 
 **Recycle Bin on the system trash — complete.** The Bin is no longer app-private on API 30+: `BinStore` queries the platform's trashed media and drives Restore / Delete-forever / Empty through MediaStore consent requests, so the feature runs without All-files access. Below API 30 it keeps the app-private `BinManager`/`BinLedger` bin. `FeatureFlags.RECYCLE_BIN_ENABLED` is back on.
 
-**Album folder copy/move on scoped storage — complete.** The folder album's "Add photos" row is back (`FeatureFlags.ALBUM_FOLDER_OPS_ENABLED` on): `AlbumFolderOps` copies through a MediaStore insert and a move's originals leave via the ordinary delete policy (`createTrashRequest`), so no shared-storage `File` handle is involved. Safe and compression-replace remain off.
+**Album folder copy/move on scoped storage — complete.** The folder album's "Add photos" row is back (`FeatureFlags.ALBUM_FOLDER_OPS_ENABLED` on): `AlbumFolderOps` copies through a MediaStore insert and a move's originals leave via the ordinary delete policy (`createTrashRequest`), so no shared-storage `File` handle is involved.
 
-**Last commit:** Album folder copy/move re-enabled (MediaStore insert copy + trash-delete move); Recycle Bin on the MediaStore system trash (API 30+), app-private bin kept below 30
+**Safe storage seam (VaultStorage) — complete.** The Safe vault is no longer a public-folder zip: `AppPrivateVaultStorage` (app storage, default) and `SafVaultStorage` (a user-picked folder, mirrored into `filesDir` with `refresh()`/`commit()`) hand `SafeCrypto` a local `File` either way, so nothing needs All-files access. Settings › SAFE location relocates the vault without ever overwriting one. `FeatureFlags.SAFE_ENABLED` is back on (see #47).
+
+**Last commit:** Safe vault moved onto `VaultStorage` (app storage by default, user-picked folder via SAF) — `FeatureFlags.SAFE_ENABLED` back on

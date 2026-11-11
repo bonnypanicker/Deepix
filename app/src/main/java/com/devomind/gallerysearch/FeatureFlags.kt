@@ -16,8 +16,11 @@ object FeatureFlags {
      *  app-private bin. See [BinStore]. */
     const val RECYCLE_BIN_ENABLED = true
 
-    /** Safe vault writes an AES zip to a public folder via direct file I/O. Phase 2: SAF-backed storage. */
-    const val SAFE_ENABLED = false
+    /** Safe vault. Rebuilt on scoped storage: the AES zip is a file in app storage by default, or a
+     *  document in a folder the user picked through the system picker
+     *  (ACTION_OPEN_DOCUMENT_TREE, persisted) — see [VaultStorage]. No public vault folder, so no
+     *  All-files access. */
+    const val SAFE_ENABLED = true
 
     /** Compression "Replace originals". Rebuilt on scoped storage: the original's own MediaStore row
      *  is overwritten in place through `openOutputStream` under the user's `createWriteRequest`

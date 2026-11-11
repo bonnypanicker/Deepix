@@ -27,7 +27,6 @@ import com.devomind.gallerysearch.databinding.ActivitySettingsBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /**
  * Metro-styled preferences screen. All toggles write to [IndexPreferences] immediately; MainActivity
@@ -366,7 +365,7 @@ class SettingsActivity : AppCompatActivity() {
         MetroDialog.items(
             this,
             title = "Safe storage location",
-            options = listOf("Choose folder…", "Reset to Pictures (default)")
+            options = listOf("Choose folder…", "Use app storage (default)")
         ) { which ->
             when (which) {
                 0 -> {
@@ -381,63 +380,67 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * The folder picker result. The persisted permission has to be taken here, while the grant this
+     * result carries is still live — after this callback the Uri is only a string, and the vault
+     * would lose its folder on the next launch.
+     */
     private val safeFolderPicker = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val treeUri: Uri? = result.data?.data
         if (result.resultCode != RESULT_OK || treeUri == null) return@registerForActivityResult
-        val dir = SafeManager.customDirFromTreeUri(treeUri)
-        if (dir == null) {
-            MetroBanner.show(this, "Please choose a folder on internal storage")
+        if (!DocumentsContract.isTreeUri(treeUri)) {
+            MetroBanner.show(this, "Please choose a folder, not a file")
             return@registerForActivityResult
         }
-        changeSafeVaultDir(dir)
+        val flags = result.data?.flags ?: 0
+        if (flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION == 0) {
+            MetroBanner.show(this, "That folder can't be written to")
+            return@registerForActivityResult
+        }
+        val granted = runCatching {
+            contentResolver.takePersistableUriPermission(treeUri, flags)
+            true
+        }.getOrDefault(false)
+        if (!granted) {
+            MetroBanner.show(this, "Couldn't keep access to that folder")
+            return@registerForActivityResult
+        }
+        changeSafeVaultDir(treeUri)
     }
 
     /**
-     * Moves the vault to a custom folder (or back to the Pictures default when [newDir] is null)
-     * and persists the choice. The vault only moves when the target has no Safe file, so nothing
-     * can be overwritten or lost.
+     * Moves the vault to [treeUri] (or back to app storage when null) and persists the choice. The
+     * vault only moves when the target holds no Safe file, so nothing can be overwritten or lost.
      */
-    private fun changeSafeVaultDir(newDir: File?) {
-        val target = newDir ?: SafeManager.defaultVaultDir(this)
-        if (SafeStore.isConfigured(this)) {
-            lifecycleScope.launch {
-                val moved = withContext(Dispatchers.IO) {
-                    SafeManager.moveVaultToDir(this@SettingsActivity, target)
-                }
-                if (!moved) {
-                    MetroBanner.show(this@SettingsActivity, "The chosen folder already has a Safe file")
-                    return@launch
-                }
-                IndexPreferences.setSafeVaultDir(this@SettingsActivity, newDir?.absolutePath)
-                // Reset to default also clears the legacy Pictures/Documents choice, so a stale
-                // root can't point the vault at the folder we just moved the zip out of.
-                if (newDir == null) IndexPreferences.setSafeStorageRoot(
-                    this@SettingsActivity,
-                    IndexPreferences.SAFE_ROOT_PICTURES
-                )
-                updateSafeSubtitles()
-                MetroBanner.show(this@SettingsActivity, "Safe moved to ${target.name}")
+    private fun changeSafeVaultDir(treeUri: Uri?) {
+        lifecycleScope.launch {
+            val moved = withContext(Dispatchers.IO) {
+                SafeManager.relocateVault(this@SettingsActivity, treeUri)
             }
-        } else {
-            IndexPreferences.setSafeVaultDir(this, newDir?.absolutePath)
-            // No vault yet: keep the default root clean too, so the next Safe is created in Pictures
-            // even if a legacy Documents choice predates the folder picker.
-            if (newDir == null) IndexPreferences.setSafeStorageRoot(
-                this,
-                IndexPreferences.SAFE_ROOT_PICTURES
-            )
+            if (!moved) {
+                MetroBanner.show(this@SettingsActivity, "The chosen folder already has a Safe file")
+                return@launch
+            }
             updateSafeSubtitles()
-            MetroBanner.show(this, "New Safe will be created in ${target.name}")
+            MetroBanner.show(this@SettingsActivity, "Safe location updated")
         }
     }
 
     private fun updateSafeSubtitles() {
-        val custom = IndexPreferences.getSafeVaultDir(this)
-        binding.safeLocationSubtitle.text =
-            if (!custom.isNullOrBlank()) java.io.File(custom).name
-            else rootLabel(IndexPreferences.getSafeStorageRoot(this))
+        binding.safeLocationSubtitle.text = safeLocationLabel()
+    }
+
+    /** The vault's home as the row subtitle: the picked folder's name, or app storage. */
+    private fun safeLocationLabel(): String {
+        val tree = SafeStore.getTreeUri(this) ?: return "App storage"
+        val name = runCatching { DocumentsContract.getTreeDocumentId(tree) }
+            .getOrNull()
+            ?.substringAfterLast(':')
+            ?.substringAfterLast('/')
+            ?.takeIf { it.isNotBlank() }
+        return name ?: "Picked folder"
     }
 
     private fun rootLabel(root: String): String =

@@ -200,20 +200,23 @@ consent. Below API 30 there is no system trash, so the app-private BinManager re
 
 ### Safe (encrypted photo locker) Pipeline
 ```
-[OFF in this release — FeatureFlags.SAFE_ENABLED = false; entry points hidden, setUpVault → NO_ACCESS]
 MainActivity drawer "safe" / multi-select "safe" → SafeActivity (safeLauncher, StartActivityForResult)
-  ├── SafeManager  (session password in-memory; single-archive vault orchestration)
-  │     ├── SafeStore  (SharedPrefs: salt+verifier, biometric blob/iv)
+  ├── SafeManager  (session password in-memory; single-archive vault orchestration) — FeatureFlags.SAFE_ENABLED
+  │     ├── SafeStore  (SharedPrefs: salt+verifier, biometric blob/iv, vault tree uri)
   │     ├── SafeCrypto (zip4j AES-256 add/list/extract/remove/verify; PBKDF2; AES-GCM thumbs;
   │     │              thumbnail decode straight from encrypted entry stream)
   │     ├── SafeKeystore (biometric-gated Keystore key → wraps password)
-  │     ├── IndexPreferences.getSafeStorageRoot (pictures|documents) → vaultDir/masterZip path
-  │     └── java.io.File  (PixaSafe.zip at Pictures|Documents /Pixa Safe/ — direct path I/O the app
-  │          no longer has permission for, hence the feature flag; masterZip resolves the first name
-  │          that exists, legacy Deepix Safe/DeepixSafe.zip included)
+  │     └── VaultStorage  (where the zip lives — this class only ever holds a local File)
+  │           ├── AppPrivateVaultStorage  (default: filesDir/safe_vault/PixaSafe.zip)
+  │           ├── SafVaultStorage  (folder the user picked via ACTION_OPEN_DOCUMENT_TREE, persisted;
+  │           │     working copy in filesDir/safe_vault_mirror/<tree-hash>/, refresh() before a read,
+  │           │     commit() after a mutation — .tmp → verify length → delete old → rename)
+  │           └── VaultStores.of(context)  → reads SafeStore.getTreeUri; refresh()/commit() are what
+  │                decide when the gallery originals may be dropped (only after commit() returns)
   ├── WRONG_PASSWORD (orphaned zip / forgotten pw) → offerResetOrphanedVault → SafeManager.purgeVault
-  │     (deletes zip across all roots + SafeStore.reset + thumbs) → fresh CREATED setup
-  ├── Settings › Safe storage location → SafeManager.moveVault (relocate existing vault on root change)
+  │     (deletes the storage's archive + both local roots + SafeStore.reset + thumbs) → fresh CREATED setup
+  ├── Settings › SAFE location → changeSafeVaultDir → SafeManager.relocateVault (SAF folder picker or
+  │     app storage; never overwrites an archive already at the target)
   ├── BiometricPrompt (CryptoObject) → recover password → unlock
   ├── SafeItemAdapter (grid of decrypted thumbnails; async bindThumb)
   └── returns ExtraImportedUris → MainActivity.deleteUris() (delete originals = "move")
@@ -337,10 +340,9 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | `OnnxSessionOptions.DefaultThreadCount` (4) | Fallback only — `SharedEncoders` prefers the cached `ThreadBenchmark` result; benchmark trigger points are `MainActivity.ensureEncodersLoaded` + `IndexWorker.doWork` |
 | `ImageEncoder.resolveVisionModelAssetName` | Also used by `ThreadBenchmark` — priority order must match the shipped assets |
 | `ViewerActivity` gesture logic | Test all 6 gesture scenarios: diagonal swipes, info panel tap-close, fast swiping captions, panel drag smoothness, paging disabled while panel open |
-| `SafeManager` MasterName (`PixaSafe.zip`) / VaultFolderName (`Pixa Safe`) | The archive's name and folder; root dir is `IndexPreferences.getSafeStorageRoot` (pictures\|documents). Changing the root via Settings **moves** the existing vault (`moveVault`); `purgeVault` wipes it across all roots. Renaming either constant is survivable **only while the old pair stays in `zipNames`/`vaultDirs`** — `masterZip` resolves the first name that exists, and dropping that lookup re-orphans every vault created before the rename, which is the only copy of the photos already removed from the gallery. Add a name to both lists, or `purgeVault` leaves a locked archive that `archiveExists` will offer again |
+| `VaultStorage.VAULT_ARCHIVE_NAME` (`PixaSafe.zip`) / `LEGACY_VAULT_ARCHIVE_NAME` (`DeepixSafe.zip`) | The archive name, wherever its storage puts it (`filesDir/safe_vault/` by default, or the picked folder's mirror). Renaming is survivable **only while the old name stays in `ArchiveNames`** — `remoteArchive` resolves the first name that exists, and dropping the legacy name re-orphans every vault created before the rename, which is the only copy of the photos already removed from the gallery. `purgeVault` deletes the storage's archive plus both local roots |
 | `AlbumRules.AlbumFolderParent` (`Deepix Albums`) | Every album folder the app makes lives under this one segment, inside `IndexPreferences.getAlbumFolderRoot` (pictures\|documents, Settings › ALBUMS). Unlike the Safe the root is **not** followed for albums that already exist — their `folderPath` is stored, so changing the setting moves no photos. `isAlbumFolderPath(path)` reads the parent segment back, which is how an empty album knows whether it is unfilled or abandoned |
-| `IndexPreferences` safe_storage_root (`pictures`\|`documents`) | Stored in `index_prefs` (survives `SafeStore.reset`); drives `SafeManager.vaultDir`/`masterZip`/`archiveExists`/`vaultLocationLabel` |
-| `SafeStore` SharedPrefs keys / `SafeKeystore` KeyAlias | Stored on device — renaming breaks existing Safe config + biometric unlock |
+| `SafeStore` SharedPrefs keys / `SafeKeystore` KeyAlias | Stored on device — renaming breaks existing Safe config + biometric unlock. `vault_tree_uri` is the one that picks `SafVaultStorage` over `AppPrivateVaultStorage`; clearing it (not just the file) is what `purgeVault` must do, or `VaultStores.of` keeps resolving to a folder the user no longer means |
 | `SafeCrypto` zip params (AES-256 / STORE) | Interop contract — the vault must stay a standard AES zip openable by external tools |
 | `GestureDirection` enum values | Update `handleViewerTouch()` classification logic and `onMediaTap` callback |
 | `Responsive.CRAMPED_HEIGHT_DP` / `MAX_GRID_COLUMNS` | Every screen that trims chrome or counts columns: `MainActivity.applyChromeForHeight`, hero titles through `applyTitleText`, and `gridColumns` — the span canvas is shared with card rows, so a cap re-sizes album cards too. `ResponsiveTest` holds the boundaries |
@@ -354,7 +356,7 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | a manifest `android:name` | `ManifestClassTest` parses `src/main` (+ `src/debug`) against those source sets. A component whose class lives in `src/debug` must be declared in `src/debug/AndroidManifest.xml`, or release builds carry a ghost that crashes on the tap that reaches it |
 | an exported filter's action | `ExternalMediaEntryTest` — the resolver names an entry after the activity answering it, so `ACTION_VIEW` (`.OpenDispatchActivity`) and `ACTION_EDIT` (`.EditDispatchActivity`) cannot share one activity. Merging them reintroduces the bug the split fixed: a view request landing in the editor, whose Save overwrites the original |
 | `MediaFileOps.copyToFile` | `BinManager.moveToBin`'s copy → verify → **fsync** → ledger → delete ordering (below-API-30 bin path) — the `flush()` must stay before `fd.sync()`, and the sync before `close()`; move either and a crash can leave a ledger entry pointing at a zero-length copy |
-| A `FeatureFlags` kill switch | One object. **On:** `RECYCLE_BIN_ENABLED` (`DeleteCoordinator.usesBin`, `BinStore`, drawer/tile + `SearchShortcut.RecentlyDeleted` — the bin rides the platform trash) and `ALBUM_FOLDER_OPS_ENABLED` (the album "Add photos" row + `AlbumFolderOps` — the copy is a MediaStore insert and a move's delete is `createTrashRequest`). **Off** in this release: `SAFE_ENABLED` (`SafeManager.hasAccess`/`isConfigured` + every Safe entry point) and `COMPRESSION_REPLACE_ENABLED` (`CompressionEngine.commitReplace`). Each still-off flag covers a path that used direct `File` I/O on shared storage, so flipping one on without re-establishing write access re-opens an operation that can only fail |
+| A `FeatureFlags` kill switch | One object. All four are **on** in this release: `RECYCLE_BIN_ENABLED` (`DeleteCoordinator.usesBin`, `BinStore`, drawer/tile + `SearchShortcut.RecentlyDeleted` — the bin rides the platform trash), `ALBUM_FOLDER_OPS_ENABLED` (the album "Add photos" row + `AlbumFolderOps` — the copy is a MediaStore insert and a move's delete is `createTrashRequest`), `COMPRESSION_REPLACE_ENABLED` (`CompressionEngine.commitReplace`) and `SAFE_ENABLED` (`SafeManager.hasAccess`/`isConfigured` + every Safe entry point — the vault is a file in app storage or a document in a picked folder, see `VaultStorage`). Each flag covers a path that once did direct `File` I/O on shared storage; turning one off hides its entry points without disabling the storage seam behind it |
 | the backup rule XMLs | Both `backup_rules.xml` (API ≤30) and `data_extraction_rules.xml`, and inside the latter **every** section (`cloud-backup` *and* `device-transfer`): a `domain="database"` exclude listed in one only restores the DB through the other door |
 | `AccentPalette.Choice` | the picker (`SettingsActivity.showAccentColorDialog` via `choicesFor`), every activity's `AccentPalette.apply(this)`, the Canvas-paint callers of `solid()`/`light()` — and `Accent.System`, which exists twice: `values/themes.xml` (Azure, so pre-31 resolves) and `values-v31/themes.xml` (framework tones). A new choice needs both halves, or the overlay style is missing where the OS cannot supply one. **Declaration order is also pricing**: `FreeTier.accentLocked` counts from the front of `choices`, so inserting a swatch before the fourth silently makes a paid color free (or a free one paid) for everyone already looking at the picker |
 | `BillingGateway.ProProductId` | the product must exist in Play Console as a one-time INAPP with exactly this id, or every catalogue query answers OK with an empty list (the gateway reports it as `Play does not know the product …`). Renaming strands purchases already made against the old id — nothing here can migrate them |
