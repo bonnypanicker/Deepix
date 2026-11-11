@@ -3,13 +3,16 @@ package com.devomind.gallerysearch
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -100,6 +103,19 @@ class CompressionActivity : AppCompatActivity() {
         if (entryId == null) return@registerForActivityResult
         if (result.resultCode == CompareFullscreenActivity.ResultKeepOriginal) {
             keepOriginal(entryId)
+        }
+    }
+
+    /** "Replace originals" overwrites each original's own row, which on API 30+ needs the user's
+     *  write consent. Only an Activity can raise that system dialog — the worker that performs the
+     *  overwrite cannot — so the consent is collected here, right before the commit is enqueued. */
+    private val writeConsentLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            startCommit(CompressionBatchStore.CommitMode.REPLACE)
+        } else {
+            MetroBanner.show(this, "Replacing originals needs permission to modify them")
         }
     }
 
@@ -588,7 +604,29 @@ class CompressionActivity : AppCompatActivity() {
             },
             positive = "Proceed",
             iconRes = R.drawable.ic_fluent_image_24_regular
-        ) { startCommit(mode) }
+        ) { beginCommit(mode) }
+    }
+
+    /** Runs the commit, collecting first the write consent a replacement needs. Saving copies writes
+     *  through MediaStore inserts, which need no consent, so it goes straight through. */
+    private fun beginCommit(mode: CompressionBatchStore.CommitMode) {
+        val current = batch ?: return
+        if (mode != CompressionBatchStore.CommitMode.REPLACE || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            startCommit(mode)
+            return
+        }
+        // The worker that overwrites the originals cannot raise the system consent dialog, so the
+        // write access to every original is asked for here, in one dialog, before the pass starts.
+        val uris = current.items
+            .filter { it.status == Status.READY }
+            .mapNotNull { runCatching { Uri.parse(it.uri) }.getOrNull() }
+        val request = uris.takeIf { it.isNotEmpty() }
+            ?.let { runCatching { MediaStore.createWriteRequest(contentResolver, it) }.getOrNull() }
+        if (request == null) {
+            startCommit(mode)
+            return
+        }
+        writeConsentLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
     }
 
     private fun startCommit(mode: CompressionBatchStore.CommitMode) {

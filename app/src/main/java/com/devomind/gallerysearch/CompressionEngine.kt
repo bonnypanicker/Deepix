@@ -24,14 +24,16 @@ import java.util.Locale
  * each step:
  *
  *   PREPARED          compressed copy exists in [stagingDir]; original untouched
- *   BACKED_UP         original verified-copied to [backupDir]; original still in place
- *   DEST_WRITTEN      verified compressed file sits next to the original; original still in place
- *   ORIGINAL_REMOVED  original deleted; only cleanup + MediaStore rescan remain
+ *   BACKED_UP         original verified-copied to [backupDir]; overwrite not yet confirmed
+ *   DEST_WRITTEN      the original's own MediaStore row was overwritten with the compressed bytes
+ *   ORIGINAL_REMOVED  (legacy) the original was removed rather than overwritten
  *
- * [recover] runs on app start and settles any interrupted entry: originals that still exist keep
- * the photo (temp artifacts are removed); if the original is gone the destination is validated and
- * either finalized or restored from the backup. The destructive step (deleting the original) only
- * ever runs once TWO good copies exist on disk (backup + verified destination).
+ * [recover] runs on app start and settles any interrupted entry. A replacement never deletes the
+ * original — it overwrites the original's own row, so the photo keeps its place in the library —
+ * which makes "did the overwrite land?" a question about that row's byte count: the original's size
+ * means it never landed, the compressed size means it did, and anything else is a torn write whose
+ * only remaining copy is the app-private backup (written back over the original, so the photo is
+ * whole again).
  *
  * Output is HEIC via androidx HeifWriter on API 28+; devices without an HEVC encoder (or where the
  * encode fails) transparently fall back to lossy WebP, which the platform can always decode.
@@ -267,44 +269,50 @@ object CompressionEngine {
     // ----------------------------------------------------------------------------------
 
     /**
-     * Replaces the original photo with the staged compressed file. Every intermediate state is
-     * journaled BEFORE the next step runs, so a crash at any point is recoverable by [recover].
+     * Replaces the original photo with the staged compressed file by overwriting it where it already
+     * is, so the photo keeps its path, its MediaStore row and its URI — callers that track the
+     * original URI (Smart Cleanup's lists, the batch's `replacedUris`) stay valid.
      *
-     * Replace needs raw write/delete on the original, which this release no longer has (the UI hides
-     * the mode behind [FeatureFlags.COMPRESSION_REPLACE_ENABLED]). The flag is re-checked here so a
-     * batch persisted by an older build can never resume into a direct-file overwrite. Returns false
-     * without changing anything when the original can't be resolved or verified.
+     * On API 30+ the overwrite goes through the original's own row via `openOutputStream`, which
+     * needs the user's write consent (`MediaStore.createWriteRequest`). That consent is collected by
+     * the review screen before it enqueues this pass, because the background worker that runs it
+     * cannot raise the system dialog. Below API 30 the legacy write permission still covers a direct
+     * overwrite in place, so no consent is involved.
+     *
+     * Every intermediate state is journaled BEFORE the next step runs, so a crash at any point is
+     * recoverable by [recover]. The original is never deleted: a verified byte backup is taken into
+     * app-private storage first, and if the overwrite does not read back as the compressed size that
+     * backup is what the photo is repaired from. The flag is re-checked here so a batch persisted by
+     * an older build can never resume into an overwrite. Returns false when the flag is off, the
+     * staged file is gone, or the overwrite could not be verified.
      */
     fun commitReplace(context: Context, entry: Entry): Boolean {
         if (!FeatureFlags.COMPRESSION_REPLACE_ENABLED) return false
-        if (entry.originalPath.isBlank()) return false
-        val original = File(entry.originalPath)
         val staging = File(entry.stagingPath)
-        if (!original.exists() || !staging.exists()) return false
+        if (!staging.exists()) return false
+        val originalUri = Uri.parse(entry.originalUri)
 
-        // 1) Verified backup of the original inside app-private storage.
+        // 1) Verified byte backup of the original in app-private storage. This is the copy the photo
+        //    is rebuilt from if the overwrite tears, so it is checked, not assumed.
         val backup = File(entry.backupPath)
-        backup.parentFile?.mkdirs()
-        if (!copyFile(original, backup) || backup.length() != original.length()) {
+        backup.delete()
+        if (!backupOriginal(context, originalUri, backup)) {
             backup.delete()
             return false
         }
         upsertEntry(context, entry.withState(State.BACKED_UP))
 
-        // 2) Verified compressed copy next to the original (original still untouched).
-        val dest = File(entry.destPath)
-        if (!writeVerifiedDest(staging, dest, original.lastModified())) {
-            return false  // recovery or the caller's retry settles via BACKED_UP
+        // 2) Overwrite the original in place, then confirm the new bytes actually landed.
+        if (!overwriteOriginal(context, entry, originalUri, staging)) {
+            // The write may have torn. Repair immediately rather than leaving a half-written photo
+            // in the library until the next app start.
+            repairOriginal(context, entry, backup)
+            return false
         }
         upsertEntry(context, entry.withState(State.DEST_WRITTEN))
 
-        // 3) Only now remove the original (two good copies exist: backup + dest).
-        val removed = MediaFileOps.deleteFileDirect(context, Uri.parse(entry.originalUri)) || !original.exists()
-        if (!removed) return false
-        upsertEntry(context, entry.withState(State.ORIGINAL_REMOVED))
-
-        // 4) Publish + clean up.
-        MediaFileOps.rescan(context, entry.destPath)
+        // 3) Publish + clean up. The URI never changed, so only the index needs to catch up.
+        if (entry.originalPath.isNotBlank()) MediaFileOps.rescan(context, entry.originalPath)
         staging.delete()
         backup.delete()
         removeEntry(context, entry.id)
@@ -344,15 +352,24 @@ object CompressionEngine {
 
     /**
      * Resume helper for a commit interrupted by a crash. When the final on-disk result already
-     * exists — a verified destination and, for a replacement, the original already gone — this
-     * finishes the operation (rescan + drop temp artifacts + remove the journal entry) and returns
-     * true, so the caller records success instead of re-running the destructive commit (which would
-     * otherwise fail because the original no longer exists). Returns false when a real commit is
-     * still needed. Never deletes an original or a good destination.
+     * exists — for a replacement, the original's own row already holding the compressed bytes; for a
+     * copy, a verified destination — this finishes the operation (rescan + drop temp artifacts +
+     * remove the journal entry) and returns true, so the caller records success instead of re-running
+     * the commit. Returns false when a real commit is still needed. Never deletes an original or a
+     * good destination.
      */
     fun completeIfFinished(context: Context, entry: Entry, replace: Boolean): Boolean {
+        if (replace) {
+            if (entry.sizeAfter <= 0L || onDiskSize(context, Uri.parse(entry.originalUri)) != entry.sizeAfter) {
+                return false
+            }
+            if (entry.originalPath.isNotBlank()) MediaFileOps.rescan(context, entry.originalPath)
+            File(entry.stagingPath).delete()
+            File(entry.backupPath).delete()
+            removeEntry(context, entry.id)
+            return true
+        }
         if (entry.destPath.isBlank() || !verifies(File(entry.destPath))) return false
-        if (replace && (entry.originalPath.isBlank() || File(entry.originalPath).exists())) return false
         MediaFileOps.rescan(context, entry.destPath)
         File(entry.stagingPath).delete()
         File(entry.backupPath).delete()
@@ -362,14 +379,24 @@ object CompressionEngine {
 
     /**
      * Narrower resume case: the journal entry was already removed by a completed run, but the batch
-     * store hadn't recorded the outcome before the crash. Confirms the recorded destination is a
-     * verified image (and, for a replacement, that the original is gone), rescans it, and reports
-     * whether the photo is already committed on disk. Read-only — deletes nothing.
+     * store hadn't recorded the outcome before the crash. Confirms the recorded result is really on
+     * disk — for a replacement, the original's row now holding the compressed size; for a copy, a
+     * verified destination — and reports whether the photo is already committed. Read-only.
      */
-    fun resultAlreadyOnDisk(context: Context, destPath: String, originalPath: String, replace: Boolean): Boolean {
-        if (destPath.isBlank() || !verifies(File(destPath))) return false
-        if (replace && (originalPath.isBlank() || File(originalPath).exists())) return false
-        MediaFileOps.rescan(context, destPath)
+    fun resultAlreadyOnDisk(
+        context: Context,
+        originalUri: String,
+        destPath: String,
+        sizeAfter: Long,
+        replace: Boolean
+    ): Boolean {
+        if (replace) {
+            if (sizeAfter <= 0L || onDiskSize(context, Uri.parse(originalUri)) != sizeAfter) return false
+        } else if (destPath.isBlank() || !verifies(File(destPath))) {
+            return false
+        }
+        val path = if (replace) MediaFileOps.resolvePath(context, Uri.parse(originalUri)) else destPath
+        if (!path.isNullOrBlank()) MediaFileOps.rescan(context, path)
         return true
     }
 
@@ -400,90 +427,127 @@ object CompressionEngine {
     }
 
     private fun settle(context: Context, entry: Entry) {
-        val original = File(entry.originalPath)
         val staging = File(entry.stagingPath)
         val backup = File(entry.backupPath)
         val dest = File(entry.destPath)
         when (entry.state) {
-            // Nothing destructive happened: the original is the photo. Remove temp artifacts.
-            State.PREPARED -> {
-                staging.delete()
-                if (dest.exists()) dest.delete()
-                removeEntry(context, entry.id)
-            }
-            // Backup existed but the destination may be a partial write — delete it; the original
-            // is still the user's photo.
-            State.BACKED_UP -> {
-                if (dest.exists()) {
-                    dest.delete()
-                    if (entry.destPath.isNotBlank()) MediaFileOps.rescan(context, entry.destPath)
-                }
-                staging.delete()
-                backup.delete()
-                removeEntry(context, entry.id)
-            }
-            State.DEST_WRITTEN -> when {
-                // Original still there: safest outcome is keeping it and dropping the compressed copy.
-                original.exists() -> {
-                    dest.delete()
-                    if (entry.destPath.isNotBlank()) MediaFileOps.rescan(context, entry.destPath)
-                    staging.delete()
-                    backup.delete()
-                    removeEntry(context, entry.id)
-                }
-                // Original gone: finish the replacement if the destination is good…
-                verifies(dest) -> {
-                    if (entry.destPath.isNotBlank()) MediaFileOps.rescan(context, entry.destPath)
-                    staging.delete()
-                    backup.delete()
-                    removeEntry(context, entry.id)
-                }
-                // …otherwise restore the photo from its backup.
-                else -> restoreFromBackup(context, entry, staging, backup, dest)
-            }
-            State.ORIGINAL_REMOVED -> when {
-                verifies(dest) -> {
-                    if (entry.destPath.isNotBlank()) MediaFileOps.rescan(context, entry.destPath)
-                    staging.delete()
-                    backup.delete()
-                    removeEntry(context, entry.id)
-                }
-                else -> restoreFromBackup(context, entry, staging, backup, dest)
-            }
-            State.COPY_WRITTEN -> {
-                // Copy flow never destroys anything; a broken partial dest is simply removed.
-                if (dest.exists() && !verifies(dest)) {
-                    dest.delete()
-                    if (entry.destPath.isNotBlank()) MediaFileOps.rescan(context, entry.destPath)
-                } else if (verifies(dest) && entry.destPath.isNotBlank()) {
-                    MediaFileOps.rescan(context, entry.destPath)
-                }
-                staging.delete()
-                removeEntry(context, entry.id)
-            }
+            State.PREPARED -> settlePrepared(context, entry, staging, dest)
+            State.BACKED_UP -> settleBackedUp(context, entry, staging, backup, dest)
+            State.DEST_WRITTEN -> settleDestWritten(context, entry, staging, backup)
+            State.ORIGINAL_REMOVED -> settleOriginalRemoved(context, entry, staging, backup, dest)
+            State.COPY_WRITTEN -> settleCopyWritten(context, entry, staging, dest)
         }
     }
 
-    /** Last-resort path: the original was removed but the destination is missing/corrupt. */
-    private fun restoreFromBackup(context: Context, entry: Entry, staging: File, backup: File, dest: File) {
-        val original = File(entry.originalPath)
-        var restored = false
-        if (backup.exists() && entry.originalPath.isNotBlank()) {
-            original.parentFile?.mkdirs()
-            restored = copyFile(backup, original) && original.length() == backup.length()
-        }
-        if (restored) {
-            MediaFileOps.rescan(context, entry.originalPath)
-        } else {
-            // Couldn't put the file back — KEEP the backup and the journal entry so the photo
-            // bytes survive in app-private storage and a later recovery (or support) can retry.
-            Log.e(TAG, "Backup restore failed for ${entry.originalUri}; keeping backup at ${backup.absolutePath}")
-            return
-        }
+    /** Nothing destructive happened: the original is the photo. Remove temp artifacts. */
+    private fun settlePrepared(context: Context, entry: Entry, staging: File, dest: File) {
+        staging.delete()
         if (dest.exists()) dest.delete()
+        removeEntry(context, entry.id)
+    }
+
+    /**
+     * The backup is taken, but the original may or may not have been overwritten before the crash,
+     * so its own row decides: its pre-replacement size means untouched, and anything else is settled
+     * by [repairOriginal] (which restores from the backup if the write tore).
+     */
+    private fun settleBackedUp(context: Context, entry: Entry, staging: File, backup: File, dest: File) {
+        val landed = onDiskSize(context, Uri.parse(entry.originalUri))
+        if (entry.sizeBefore > 0L && landed == entry.sizeBefore) {
+            // A legacy entry may have left a sibling copy beside the original; drop it.
+            if (dest.exists()) {
+                dest.delete()
+                if (entry.destPath.isNotBlank()) MediaFileOps.rescan(context, entry.destPath)
+            }
+            dropJournal(context, entry, staging, backup)
+        } else {
+            repairOriginal(context, entry, backup)
+        }
+    }
+
+    /**
+     * The overwrite was verified when it was journaled; re-confirm and, if the bytes are no longer
+     * there, put the original back from the backup.
+     */
+    private fun settleDestWritten(context: Context, entry: Entry, staging: File, backup: File) {
+        val landed = onDiskSize(context, Uri.parse(entry.originalUri))
+        if (entry.sizeAfter > 0L && landed == entry.sizeAfter) {
+            if (entry.originalPath.isNotBlank()) MediaFileOps.rescan(context, entry.originalPath)
+            dropJournal(context, entry, staging, backup)
+        } else {
+            repairOriginal(context, entry, backup)
+        }
+    }
+
+    /**
+     * Legacy entry from the direct-file build: the original had been removed and the compressed copy
+     * written beside it. Keep the copy when it is good, otherwise put the original back.
+     */
+    private fun settleOriginalRemoved(
+        context: Context,
+        entry: Entry,
+        staging: File,
+        backup: File,
+        dest: File
+    ) {
+        if (verifies(dest)) {
+            if (entry.destPath.isNotBlank()) MediaFileOps.rescan(context, entry.destPath)
+            dropJournal(context, entry, staging, backup)
+        } else if (restoreOriginal(context, entry, backup)) {
+            dropJournal(context, entry, staging, backup)
+        } else {
+            // Couldn't put the file back — KEEP the backup and the journal entry so the photo bytes
+            // survive in app-private storage for a later recovery.
+            Log.e(TAG, "Backup restore failed for ${entry.originalUri}; keeping backup at ${backup.absolutePath}")
+        }
+    }
+
+    /** Copy flow never destroys anything; a broken partial destination is simply removed. */
+    private fun settleCopyWritten(context: Context, entry: Entry, staging: File, dest: File) {
+        if (dest.exists() && !verifies(dest)) {
+            dest.delete()
+            if (entry.destPath.isNotBlank()) MediaFileOps.rescan(context, entry.destPath)
+        } else if (verifies(dest) && entry.destPath.isNotBlank()) {
+            MediaFileOps.rescan(context, entry.destPath)
+        }
+        staging.delete()
+        removeEntry(context, entry.id)
+    }
+
+    /** Drops a settled entry's journal record and its app-private temp artifacts. */
+    private fun dropJournal(context: Context, entry: Entry, staging: File, backup: File) {
         staging.delete()
         backup.delete()
         removeEntry(context, entry.id)
+    }
+
+    /**
+     * Settles an interrupted replacement by looking at the original's byte count: the pre-replacement
+     * size means the overwrite never landed, the compressed size means it landed after all, and
+     * anything else is a torn write whose only good copy is the app-private [backup] — written back
+     * over the original so the photo is whole again. If even that fails, the backup and the journal
+     * entry are kept, so the bytes survive for a later recovery instead of being thrown away.
+     */
+    private fun repairOriginal(context: Context, entry: Entry, backup: File) {
+        val landed = onDiskSize(context, Uri.parse(entry.originalUri))
+        val intact = (entry.sizeBefore > 0L && landed == entry.sizeBefore) ||
+            (entry.sizeAfter > 0L && landed == entry.sizeAfter)
+        if (intact || restoreOriginal(context, entry, backup)) {
+            if (entry.originalPath.isNotBlank()) MediaFileOps.rescan(context, entry.originalPath)
+            dropJournal(context, entry, File(entry.stagingPath), backup)
+            return
+        }
+        Log.e(TAG, "Restore failed for ${entry.originalUri}; keeping the backup at ${backup.absolutePath}")
+    }
+
+    /** Writes [backup]'s bytes back over the original, whichever way this device allows. */
+    private fun restoreOriginal(context: Context, entry: Entry, backup: File): Boolean {
+        if (backup.length() <= 0L) return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            overwriteRow(context, Uri.parse(entry.originalUri), backup)
+        } else {
+            entry.originalPath.isNotBlank() && overwriteFile(backup, File(entry.originalPath))
+        }
     }
 
     /** Removes staged files that have no journal entry (e.g. written just before a crash). */
@@ -621,6 +685,62 @@ object CompressionEngine {
         }
         return true
     }
+
+    /** Overwrites [dest] with [staging]'s bytes and verifies the result. Unlike [writeVerifiedDest]
+     *  this never deletes [dest] on failure: [dest] may BE the user's original, and a failed
+     *  overwrite is repaired from the backup, not by deleting the photo. */
+    private fun overwriteFile(staging: File, dest: File): Boolean {
+        val lastModified = dest.lastModified()
+        if (!copyFile(staging, dest)) return false
+        dest.setLastModified(if (lastModified > 0L) lastModified else System.currentTimeMillis())
+        return dest.length() == staging.length() && verifies(dest)
+    }
+
+    /** Verified byte copy of the original into [backup] (app-private). Reads through MediaStore, so
+     *  it needs neither a filesystem path nor write access to the original. */
+    private fun backupOriginal(context: Context, uri: Uri, backup: File): Boolean {
+        val expected = onDiskSize(context, uri)
+        if (expected <= 0L) return false
+        if (!MediaFileOps.copyToFile(context, uri, backup)) return false
+        return backup.length() == expected && verifies(backup)
+    }
+
+    /** Overwrites the original in place. On API 30+ that is the original's own MediaStore row (under
+     *  the user's write consent); below API 30 the legacy write permission still covers a direct
+     *  overwrite of the file. */
+    private fun overwriteOriginal(context: Context, entry: Entry, uri: Uri, staging: File): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            overwriteRow(context, uri, staging)
+        } else {
+            entry.originalPath.isNotBlank() && overwriteFile(staging, File(entry.originalPath))
+        }
+
+    /** Writes [source]'s bytes over the media row at [uri], flushes them, and confirms by reading
+     *  the row's length back. "wt" truncates, so a smaller file does not leave the old tail behind. */
+    private fun overwriteRow(context: Context, uri: Uri, source: File): Boolean {
+        val expected = source.length()
+        if (expected <= 0L) return false
+        val written = runCatching {
+            context.contentResolver.openOutputStream(uri, "wt")?.use { out ->
+                source.inputStream().use { it.copyTo(out) }
+                out.flush()
+            } ?: return false
+            true
+        }.getOrElse {
+            Log.w(TAG, "Overwrite of $uri failed; recovery settles it from the backup.", it)
+            return false
+        }
+        if (!written) return false
+        // Push the bytes to disk: "the overwrite landed" must not be just a page-cache claim.
+        runCatching { context.contentResolver.openFileDescriptor(uri, "rw")?.use { it.fileDescriptor.sync() } }
+            .onFailure { Log.w(TAG, "Sync of $uri refused; the overwrite stands unforced", it) }
+        return onDiskSize(context, uri) == expected
+    }
+
+    /** The bytes actually on disk for [uri], read through MediaStore. -1 when it can't be resolved. */
+    private fun onDiskSize(context: Context, uri: Uri): Long = runCatching {
+        context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
+    }.getOrDefault(-1L)
 
     private fun copyFile(from: File, to: File): Boolean = runCatching {
         to.parentFile?.mkdirs()

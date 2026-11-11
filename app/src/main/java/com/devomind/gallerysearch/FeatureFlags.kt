@@ -19,8 +19,11 @@ object FeatureFlags {
     /** Safe vault writes an AES zip to a public folder via direct file I/O. Phase 2: SAF-backed storage. */
     const val SAFE_ENABLED = false
 
-    /** Compression "Replace originals" overwrites the source file directly. Phase 2: createWriteRequest. */
-    const val COMPRESSION_REPLACE_ENABLED = false
+    /** Compression "Replace originals". Rebuilt on scoped storage: the original's own MediaStore row
+     *  is overwritten in place through `openOutputStream` under the user's `createWriteRequest`
+     *  consent, so the photo keeps its URI and the mode needs no direct file access. Below API 30 the
+     *  legacy write permission still covers a direct overwrite. See [CompressionEngine]. */
+    const val COMPRESSION_REPLACE_ENABLED = true
 
     /** Album folder copy/move writes photos into a folder album's own folder and deletes originals on
      *  move. Both halves now run on scoped storage: the copy goes through a MediaStore insert

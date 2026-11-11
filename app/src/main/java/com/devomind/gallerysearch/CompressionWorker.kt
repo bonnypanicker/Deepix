@@ -210,11 +210,13 @@ class CompressionWorker(
 
             // A prior run may have finished this photo but crashed before recording the outcome
             // (window between the destructive step and the store write). Detect and finalize it
-            // instead of re-committing: re-running commitReplace would fail because the original is
-            // already gone, mis-reporting a successful replacement. Never touches a good photo.
+            // instead of re-committing: for a replace the original's row already holds the
+            // compressed size, and re-running would re-encode a photo that is already done.
             val alreadyDone =
                 if (entry != null) CompressionEngine.completeIfFinished(applicationContext, entry, replace)
-                else CompressionEngine.resultAlreadyOnDisk(applicationContext, item.destPath, item.originalPath, replace)
+                else CompressionEngine.resultAlreadyOnDisk(
+                    applicationContext, item.uri, item.destPath, item.sizeAfter, replace
+                )
             if (alreadyDone) {
                 if (!recordOutcome(batchId, index, replace, committed = true)) return
                 publishProgress(batchId, position + 1, total)
