@@ -269,10 +269,14 @@ object CompressionEngine {
     /**
      * Replaces the original photo with the staged compressed file. Every intermediate state is
      * journaled BEFORE the next step runs, so a crash at any point is recoverable by [recover].
-     * Requires All-files access (direct file operations); returns false without changing anything
-     * when the original can't be resolved or verified.
+     *
+     * Replace needs raw write/delete on the original, which this release no longer has (the UI hides
+     * the mode behind [FeatureFlags.COMPRESSION_REPLACE_ENABLED]). The flag is re-checked here so a
+     * batch persisted by an older build can never resume into a direct-file overwrite. Returns false
+     * without changing anything when the original can't be resolved or verified.
      */
     fun commitReplace(context: Context, entry: Entry): Boolean {
+        if (!FeatureFlags.COMPRESSION_REPLACE_ENABLED) return false
         if (entry.originalPath.isBlank()) return false
         val original = File(entry.originalPath)
         val staging = File(entry.stagingPath)
@@ -307,20 +311,23 @@ object CompressionEngine {
         return true
     }
 
-    /** Keeps the original and saves the compressed copy next to it (or into Pictures/Deepix via
-     *  MediaStore when the file path isn't accessible). Nothing destructive happens here. */
+    /** Keeps the original and saves the compressed copy. On API 26-28 the copy is written next to the
+     *  original via direct file I/O (WRITE_EXTERNAL_STORAGE covers it). API 29+ enforces scoped
+     *  storage, so the copy goes through MediaStore insert into Pictures/Deepix with RELATIVE_PATH. */
     fun commitCopy(context: Context, entry: Entry): Boolean {
         val staging = File(entry.stagingPath)
         if (!staging.exists()) return false
 
-        if (entry.originalPath.isNotBlank() && entry.destPath.isNotBlank()) {
+        // Direct file write to shared storage only works on API 26-28. API 29+ enforces scoped
+        // storage, so insert through MediaStore instead of trying (and failing) to write the file.
+        val canWriteDirect = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
+        if (canWriteDirect && entry.originalPath.isNotBlank() && entry.destPath.isNotBlank()) {
             val original = File(entry.originalPath)
             val dest = File(entry.destPath)
             if (!writeVerifiedDest(staging, dest, original.lastModified())) return false
             upsertEntry(context, entry.withState(State.COPY_WRITTEN))
             MediaFileOps.rescan(context, entry.destPath)
         } else {
-            // No direct file access: insert through MediaStore into the app's pictures folder.
             if (!insertViaMediaStore(context, staging, entry)) return false
         }
         staging.delete()

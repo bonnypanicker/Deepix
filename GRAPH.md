@@ -148,6 +148,7 @@ Album-detail (any kind): Mode.CollectionAlbumDetail
 Refresh (Smart only — the live kinds have nothing stale to refresh)
 
 Putting photos into a Folder album  [the one kind that can be written; the other two are rules, not files]
+  [OFF in this release — FeatureFlags.ALBUM_FOLDER_OPS_ENABLED = false; the "Add photos" row is hidden]
   folderOptionsBtn on Mode.CollectionAlbumDetail (nothing selected) → showCollectionAlbumMenu(record, anchor)
   └── "Add photos" → showAlbumAddPhotosDialog(album)
         ├── alreadyInAlbum = collectionAlbumItems(album) uris → candidates = imageItems - those
@@ -159,8 +160,8 @@ Putting photos into a Folder album  [the one kind that can be written; the other
                     ├── BinLedger.hasRoomFor(usableSpace, Σ sizeOf) — the whole batch refused before a byte
                     └── copyOne() per photo: MediaStore insert (Q+: RELATIVE_PATH + IS_PENDING;
                           pre-Q: absolute DATA via publicDirFor + uniqueIn) → stream copy →
-                          forceToDisk (MediaFileOps.resolvePath, only with StoragePermissions
-                          .hasAllFilesAccess) → countBytes read-back → AlbumFolderOps.copyVerified
+                          forceToDisk (AlbumFolderOps.forceToDisk — openFileDescriptor("rw") +
+                          fd.sync(); no storage path) → countBytes read-back → AlbumFolderOps.copyVerified
                           (written == expected && expected > 0) → publish IS_PENDING = 0
                           [any step that fails → discard() the row and count the photo as failed]
               → applyAlbumAddPhotos(result, move)
@@ -174,6 +175,7 @@ Putting photos into a Folder album  [the one kind that can be written; the other
 
 ### Safe (encrypted photo locker) Pipeline
 ```
+[OFF in this release — FeatureFlags.SAFE_ENABLED = false; entry points hidden, setUpVault → NO_ACCESS]
 MainActivity drawer "safe" / multi-select "safe" → SafeActivity (safeLauncher, StartActivityForResult)
   ├── SafeManager  (session password in-memory; single-archive vault orchestration)
   │     ├── SafeStore  (SharedPrefs: salt+verifier, biometric blob/iv)
@@ -181,8 +183,9 @@ MainActivity drawer "safe" / multi-select "safe" → SafeActivity (safeLauncher,
   │     │              thumbnail decode straight from encrypted entry stream)
   │     ├── SafeKeystore (biometric-gated Keystore key → wraps password)
   │     ├── IndexPreferences.getSafeStorageRoot (pictures|documents) → vaultDir/masterZip path
-  │     └── java.io.File  (PixaSafe.zip at Pictures|Documents /Pixa Safe/ via All-files access —
-  │          masterZip resolves the first name that exists, legacy Deepix Safe/DeepixSafe.zip included)
+  │     └── java.io.File  (PixaSafe.zip at Pictures|Documents /Pixa Safe/ — direct path I/O the app
+  │          no longer has permission for, hence the feature flag; masterZip resolves the first name
+  │          that exists, legacy Deepix Safe/DeepixSafe.zip included)
   ├── WRONG_PASSWORD (orphaned zip / forgotten pw) → offerResetOrphanedVault → SafeManager.purgeVault
   │     (deletes zip across all roots + SafeStore.reset + thumbs) → fresh CREATED setup
   ├── Settings › Safe storage location → SafeManager.moveVault (relocate existing vault on root change)
@@ -322,7 +325,7 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | a manifest `android:name` | `ManifestClassTest` parses `src/main` (+ `src/debug`) against those source sets. A component whose class lives in `src/debug` must be declared in `src/debug/AndroidManifest.xml`, or release builds carry a ghost that crashes on the tap that reaches it |
 | an exported filter's action | `ExternalMediaEntryTest` — the resolver names an entry after the activity answering it, so `ACTION_VIEW` (`.OpenDispatchActivity`) and `ACTION_EDIT` (`.EditDispatchActivity`) cannot share one activity. Merging them reintroduces the bug the split fixed: a view request landing in the editor, whose Save overwrites the original |
 | `MediaFileOps.copyToFile` | `BinManager.moveToBin`'s copy → verify → **fsync** → ledger → delete ordering — the `flush()` must stay before `fd.sync()`, and the sync before `close()`; move either and a crash can leave a ledger entry pointing at a zero-length copy |
-| `StoragePermissions.hasAllFilesAccess`'s API floor | Every direct-file path reads it: `DeleteCoordinator.shouldAskForStorageAccess` (the three delete entry points), `usesBin`, `BinManager.moveToBin`/restore, `SafeManager.hasAccess`/`isConfigured`, `CompressionActivity`'s commit gates, `AlbumFolderOps.forceToDisk`, the tour's All-files row. Answering `true` where the OS will not honor it makes a failing operation look like the app's own bug (that was Android 10); answering `false` where no setting exists strands the user in Settings, which is why `allFilesAccessRequestable` is the second half of the rule — delete falls back to per-item consent there, the Safe and compression say "needs Android 11" |
+| A `FeatureFlags` kill switch | One object, every flag `false` in this release: `RECYCLE_BIN_ENABLED` (`DeleteCoordinator.usesBin`, `BinManager.moveToBin`/restore), `SAFE_ENABLED` (`SafeManager.hasAccess`/`isConfigured` + every Safe entry point), `COMPRESSION_REPLACE_ENABLED` (`CompressionEngine.commitReplace`), `ALBUM_FOLDER_OPS_ENABLED` (the album "Add photos" row + `AlbumFolderOps`). They stand in for the removed `MANAGE_EXTERNAL_STORAGE` access: each covers a path that used direct `File` I/O on shared storage, so flipping one on without re-establishing write access re-opens an operation that can only fail |
 | the backup rule XMLs | Both `backup_rules.xml` (API ≤30) and `data_extraction_rules.xml`, and inside the latter **every** section (`cloud-backup` *and* `device-transfer`): a `domain="database"` exclude listed in one only restores the DB through the other door |
 | `AccentPalette.Choice` | the picker (`SettingsActivity.showAccentColorDialog` via `choicesFor`), every activity's `AccentPalette.apply(this)`, the Canvas-paint callers of `solid()`/`light()` — and `Accent.System`, which exists twice: `values/themes.xml` (Azure, so pre-31 resolves) and `values-v31/themes.xml` (framework tones). A new choice needs both halves, or the overlay style is missing where the OS cannot supply one. **Declaration order is also pricing**: `FreeTier.accentLocked` counts from the front of `choices`, so inserting a swatch before the fourth silently makes a paid color free (or a free one paid) for everyone already looking at the picker |
 | `BillingGateway.ProProductId` | the product must exist in Play Console as a one-time INAPP with exactly this id, or every catalogue query answers OK with an empty list (the gateway reports it as `Play does not know the product …`). Renaming strands purchases already made against the old id — nothing here can migrate them |

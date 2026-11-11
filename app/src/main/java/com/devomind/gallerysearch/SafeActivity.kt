@@ -40,8 +40,8 @@ import kotlinx.coroutines.withContext
  * The encrypted photo locker ("Safe").
  *
  * Lifecycle:
- *  - Not configured → storage-access request → existing-vault choice (adopt the found archive with
- *    its password, or delete it and start over) → password → [SafeManager.setUpVault].
+ *  - Not configured → existing-vault choice (adopt the found archive with its password, or delete
+ *    it and start over) → password → [SafeManager.setUpVault].
  *  - Configured     → lock screen (biometric first, password fallback) → grid of decrypted thumbs.
  * The activity is [WindowManager.LayoutParams.FLAG_SECURE] (no screenshots / recents preview) and
  * relocks whenever it goes to the background. Moving photos in from the gallery works even before
@@ -78,14 +78,6 @@ class SafeActivity : AppCompatActivity() {
     private val pickPhotosLauncher = registerForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris -> if (uris.isNotEmpty()) runImport(uris, isMove = false) }
-
-    private val storageAccessLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        // The settings screen returns no useful result code — re-check the actual access state.
-        // Re-prompt on denial instead of relaunching settings in a loop.
-        if (StoragePermissions.hasAllFilesAccess(this)) beginSetupFlow() else promptStorageAccess()
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AccentPalette.apply(this)
@@ -182,7 +174,7 @@ class SafeActivity : AppCompatActivity() {
         // A video must not keep playing once the vault leaves the foreground and relocks.
         if (binding.viewerOverlay.visibility == View.VISIBLE) closeViewer()
         // Nothing to relock before the vault is configured, and re-showing the lock UI mid-setup
-        // would strand the flow (e.g. while the all-files settings screen is up).
+        // would strand the flow.
         if (!SafeManager.isConfigured(this)) return
         if (!suppressRelock && !isChangingConfigurations) {
             SafeManager.lock(this)
@@ -238,55 +230,16 @@ class SafeActivity : AppCompatActivity() {
     }
 
     /**
-     * Setup chain: storage access first (the archive check reads the vault's public folder, so
-     * nothing can be detected before it's granted), then an adopt-or-delete choice when an
-     * encrypted Safe file already exists on disk, then the password step.
+     * Setup chain: check whether an encrypted Safe archive already exists on disk, then offer an
+     * adopt-or-delete choice, then the password step. Safe is gated behind [FeatureFlags.SAFE_ENABLED]
+     * in this release; when the flag is off the drawer entry is hidden so this screen is not reached.
      */
     private fun beginSetupFlow() {
-        if (!StoragePermissions.hasAllFilesAccess(this)) {
-            promptStorageAccess()
-            return
-        }
         showBusy()
         lifecycleScope.launch {
             val hasExisting = withContext(Dispatchers.IO) { SafeManager.archiveExists(this@SafeActivity) }
             hideBusy()
             if (hasExisting) offerExistingVaultChoice() else showPasswordSetupDialog(adoptMode = false)
-        }
-    }
-
-    private fun promptStorageAccess() {
-        if (!StoragePermissions.allFilesAccessRequestable()) {
-            // Android 10: the vault is a real file in a public folder, which scoped storage forbids an
-            // app targeting API 29+ to create, and there is no All-files switch to turn on. Say so
-            // instead of opening a Settings screen with nothing in it.
-            MetroDialog.message(
-                context = this,
-                title = "Safe needs Android 11 or newer",
-                message = "Safe keeps your photos in one encrypted file in its own folder on disk. " +
-                    "Android 10 doesn't let apps create that folder, and it has no All-files access " +
-                    "switch to turn on.",
-                iconRes = R.drawable.ic_fluent_lock_closed_24_regular,
-                positive = "Close",
-                cancelable = false,
-                onPositive = { finish() }
-            )
-            return
-        }
-        MetroDialog.confirm(
-            this,
-            title = "Storage access needed",
-            message = "Safe keeps your photos in one encrypted file in its own folder on disk. " +
-                "All-files access lets the app create and protect that folder.",
-            positive = "Grant access",
-            negative = "Cancel",
-            iconRes = R.drawable.ic_fluent_lock_closed_24_regular,
-            cancelable = false,
-            onNegative = { finish() },
-            onCancel = { finish() }
-        ) {
-            suppressRelock = true
-            storageAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this))
         }
     }
 
@@ -374,12 +327,6 @@ class SafeActivity : AppCompatActivity() {
     }
 
     private fun createOrAdoptVault(password: String, adoptMode: Boolean) {
-        // beginSetupFlow re-checks access and shows the matching dialog, so a denial here doesn't need
-        // its own wording — on Android 10 it would promise a switch that device doesn't have.
-        if (!StoragePermissions.hasAllFilesAccess(this)) {
-            beginSetupFlow()
-            return
-        }
         showBusy()
         lifecycleScope.launch {
             val outcome = withContext(Dispatchers.IO) {
@@ -388,8 +335,8 @@ class SafeActivity : AppCompatActivity() {
             hideBusy()
             when (outcome) {
                 SafeManager.SetupOutcome.NO_ACCESS -> {
-                    MetroBanner.show(this@SafeActivity, "All-files access is required for Safe")
-                    beginSetupFlow()
+                    MetroBanner.show(this@SafeActivity, "Safe is not available in this release")
+                    finish()
                 }
                 SafeManager.SetupOutcome.WRONG_PASSWORD ->
                     if (adoptMode) {

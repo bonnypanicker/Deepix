@@ -41,7 +41,7 @@ class OnboardingPanel(
 )
 
 /** Which runtime grant a row stands for, and therefore how the tour asks for it. */
-enum class OnboardingPermissionKind { Media, AllFiles, Notifications }
+enum class OnboardingPermissionKind { Media, Notifications }
 
 /** What can still be done about a permission, as of the last time the page was drawn. */
 enum class OnboardingPermissionState {
@@ -179,13 +179,6 @@ fun onboardingPanels(): List<OnboardingPanel> = listOf(
                 R.string.onboarding_perm_media_summary,
                 OnboardingPermissionKind.Media,
                 required = true
-            ),
-            OnboardingPermission(
-                R.drawable.ic_onboarding_perm_files,
-                R.string.onboarding_perm_files,
-                R.string.onboarding_perm_files_summary,
-                OnboardingPermissionKind.AllFiles,
-                required = false
             ),
             OnboardingPermission(
                 R.drawable.ic_onboarding_perm_notifications,

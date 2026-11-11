@@ -4,22 +4,24 @@ import android.content.Context
 import android.net.Uri
 
 /**
- * Single decision point for "the user wants to delete these photos", shared by [MainActivity] and
- * [SmartCleanupActivity]. It resolves the destination from user settings:
+ * Single decision point for "the user wants to delete these photos", shared by [MainActivity],
+ * [SmartCleanupActivity] and [ViewerActivity].
  *
- *  - Recycle Bin on  → soft-delete into [BinManager] (30-day restore).
- *  - Recycle Bin off → permanent direct file delete via [MediaFileOps].
+ * All-files access (MANAGE_EXTERNAL_STORAGE) was removed for Play policy compliance, so the app can
+ * no longer delete a file it doesn't own directly. Every delete therefore hands off to the platform's
+ * MediaStore consent flow — [Outcome.NeedsSystemDelete] — which the caller turns into a
+ * `MediaStore.createTrashRequest` (API 30+, recoverable system trash) or `createDeleteRequest`.
  *
- * Both direct paths require All-files access. Without it, this returns [Outcome.NeedsSystemDelete]
- * and the caller falls back to the platform `MediaStore.createDeleteRequest` consent flow (which
- * only removes files permanently — the bin needs direct access). Runs off the main thread.
+ * The Recycle Bin (app-private storage) is gated behind [FeatureFlags.RECYCLE_BIN_ENABLED] and is off
+ * in this release, so [usesBin] is always false. The bin code stays in place for the Phase 2 rebuild
+ * on the system trash.
  */
 object DeleteCoordinator {
 
     sealed class Outcome {
         /**
-         * Handled here. [toBin] distinguishes soft-delete from permanent for the confirmation copy;
-         * when true, [binnedIds] identifies the created bin entries so the caller can offer UNDO.
+         * Handled here (kept for the bin rebuild; never produced while the bin is flagged off).
+         * [toBin] distinguishes soft-delete from permanent for the confirmation copy.
          */
         data class Done(
             val succeeded: Int,
@@ -29,52 +31,18 @@ object DeleteCoordinator {
             val succeededUris: List<Uri> = emptyList()
         ) : Outcome()
 
-        /** No All-files access — caller should launch the system delete request. */
+        /** No direct delete available — caller should launch the system MediaStore delete/trash request. */
         data object NeedsSystemDelete : Outcome()
     }
 
-    /** True when we can delete directly (bin move or permanent) without a system dialog. */
-    fun canDeleteDirectly(context: Context): Boolean =
-        StoragePermissions.hasAllFilesAccess(context)
-
-    /** Whether deletes currently route through the Recycle Bin. */
+    /** The Recycle Bin is off in this release (no all-files access to move originals). */
     fun usesBin(context: Context): Boolean =
-        IndexPreferences.isRecycleBinEnabled(context) && StoragePermissions.hasAllFilesAccess(context)
+        FeatureFlags.RECYCLE_BIN_ENABLED && IndexPreferences.isRecycleBinEnabled(context)
 
-    /**
-     * Whether a delete should be parked while the user goes to turn on All-files access. Android 10
-     * has no such switch, so there it is false and the delete continues into [Outcome.NeedsSystemDelete]
-     * — the per-item consent dialog can delete a photo on Q even though the bin never can.
-     */
-    fun shouldAskForStorageAccess(context: Context): Boolean =
-        !canDeleteDirectly(context) && StoragePermissions.allFilesAccessRequestable()
-
-    /** Blocking; call from a background dispatcher. */
+    /** Blocking; call from a background dispatcher. Always routes to system consent. */
     fun delete(context: Context, uris: List<Uri>): Outcome {
         if (uris.isEmpty()) return Outcome.Done(0, 0, usesBin(context))
-        if (!StoragePermissions.hasAllFilesAccess(context)) return Outcome.NeedsSystemDelete
-
-        return if (IndexPreferences.isRecycleBinEnabled(context)) {
-            val result = BinManager.moveToBin(context, uris)
-            Outcome.Done(
-                result.binned,
-                result.failed,
-                toBin = true,
-                binnedIds = result.binnedIds,
-                succeededUris = result.binnedUris
-            )
-        } else {
-            val succeededUris = mutableListOf<Uri>()
-            var failed = 0
-            for (uri in uris) {
-                if (MediaFileOps.deleteFileDirect(context, uri)) succeededUris += uri else failed++
-            }
-            Outcome.Done(
-                succeededUris.size,
-                failed,
-                toBin = false,
-                succeededUris = succeededUris
-            )
-        }
+        // No all-files access: hand every delete to the platform MediaStore flow.
+        return Outcome.NeedsSystemDelete
     }
 }

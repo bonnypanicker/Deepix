@@ -270,10 +270,14 @@ object SafeManager {
 
     // ---- Configuration ----
 
-    fun hasAccess(context: Context): Boolean = StoragePermissions.hasAllFilesAccess(context)
+    /**
+     * Safe is gated behind [FeatureFlags.SAFE_ENABLED] in this release: the vault lives in a public
+     * folder and needs raw file I/O that All-files access used to provide. Phase 2 rebuilds it on SAF.
+     */
+    val hasAccess: Boolean get() = FeatureFlags.SAFE_ENABLED
 
     fun isConfigured(context: Context): Boolean =
-        SafeStore.isConfigured(context) && hasAccess(context)
+        SafeStore.isConfigured(context) && hasAccess
 
     /** True when an encrypted archive already exists on disk (recovery/adopt path). */
     fun archiveExists(context: Context): Boolean {
@@ -282,12 +286,12 @@ object SafeManager {
     }
 
     /**
-     * First-time setup / recovery. Requires All-files access. Creates the fixed vault folder and,
-     * if an archive is already present (reinstall or a copied vault), verifies the password against
-     * it and adopts it; otherwise starts fresh. Nothing is persisted on a wrong password.
+     * First-time setup / recovery. Requires the Safe to be enabled. Creates the fixed vault folder
+     * and, if an archive is already present (reinstall or a copied vault), verifies the password
+     * against it and adopts it; otherwise starts fresh. Nothing is persisted on a wrong password.
      */
     fun setUpVault(context: Context, password: String): SetupOutcome {
-        if (!hasAccess(context)) return SetupOutcome.NO_ACCESS
+        if (!hasAccess) return SetupOutcome.NO_ACCESS
         val zip = masterZip(context).also { it.parentFile?.mkdirs() }
         val archive = SafeCrypto.readArchive(zip)
         if (archive is SafeCrypto.ArchiveRead.Unreadable) return SetupOutcome.ARCHIVE_UNREADABLE

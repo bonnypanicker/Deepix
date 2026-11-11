@@ -310,6 +310,7 @@
 
                 <!-- ===================== SAFE ===================== -->
                 <TextView
+                    android:id="@+id/safeHeader"
                     style="@style/SettingsSectionHeader"
                     android:text="@string/section_safe" />
 

@@ -91,26 +91,6 @@ class CompressionActivity : AppCompatActivity() {
         val activeCount: Int
     )
 
-    /** Commit mode to resume after the all-files-access settings screen returns. */
-    private var pendingCommitMode = CompressionBatchStore.CommitMode.REPLACE
-
-    private val allFilesLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        if (StoragePermissions.hasAllFilesAccess(this)) {
-            confirmBatch(pendingCommitMode)
-        } else {
-            MetroBanner.show(
-                this,
-                if (pendingCommitMode == CompressionBatchStore.CommitMode.REPLACE) {
-                    "All-files access is required to replace originals"
-                } else {
-                    "All-files access is required to save copies"
-                }
-            )
-        }
-    }
-
     /** Full-screen compare result: "Keep original" discards the staged entry for that row. */
     private val compareResultLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -573,32 +553,16 @@ class CompressionActivity : AppCompatActivity() {
     // ---------------------------------------------------------------------------------------------
 
     private fun onReplaceClicked() {
-        pendingCommitMode = CompressionBatchStore.CommitMode.REPLACE
-        if (!StoragePermissions.hasAllFilesAccess(this)) {
-            if (!StoragePermissions.allFilesAccessRequestable()) {
-                MetroBanner.show(this, "Replacing originals needs Android 11 or newer")
-                return
-            }
-            runCatching { allFilesLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
-                .onFailure { MetroBanner.show(this, "Couldn't open storage access settings") }
+        if (!FeatureFlags.COMPRESSION_REPLACE_ENABLED) {
+            MetroBanner.show(this, "Replace originals is not available in this release")
             return
         }
         confirmBatch(CompressionBatchStore.CommitMode.REPLACE)
     }
 
-    /** Saving copies writes the compressed files next to the originals — the same shared-storage
-     *  access replacing needs, so gate it identically instead of failing per item in the worker. */
+    /** Saving copies writes the compressed files through MediaStore, so no special storage access
+     *  is needed and the flow runs directly. */
     private fun onKeepBothClicked() {
-        pendingCommitMode = CompressionBatchStore.CommitMode.COPY
-        if (!StoragePermissions.hasAllFilesAccess(this)) {
-            if (!StoragePermissions.allFilesAccessRequestable()) {
-                MetroBanner.show(this, "Saving copies needs Android 11 or newer")
-                return
-            }
-            runCatching { allFilesLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
-                .onFailure { MetroBanner.show(this, "Couldn't open storage access settings") }
-            return
-        }
         confirmBatch(CompressionBatchStore.CommitMode.COPY)
     }
 

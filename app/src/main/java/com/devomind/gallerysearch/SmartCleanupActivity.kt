@@ -53,7 +53,6 @@ class SmartCleanupActivity : AppCompatActivity() {
     private var currentCategory: CleanupAnalyzer.Category? = null
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
-    private var pendingAllFilesDeleteUris: List<Uri> = emptyList()
     private var pendingSafeMove = false
     /** COMPRESSIBLE detail only: grid shows every compressible photo instead of the recommendations. */
     private var showingAllPhotos = false
@@ -109,34 +108,16 @@ class SmartCleanupActivity : AppCompatActivity() {
     }
 
     /**
-     * Removes the gallery copies of photos now encrypted in the Safe. The direct pass deletes
-     * permanently (the vault copy replaces them); per-URI results are tracked so anything it
-     * couldn't remove (unresolvable file path, locked file) is retried through the system consent
-     * flow instead of being silently left behind. Only verifiably-deleted items leave the cleanup
+     * Removes the gallery copies of photos now encrypted in the Safe. The vault copy replaces them;
+     * without all-files access the platform consent flow performs the removal (system trash on
+     * API 30+), so every original goes through it. Only verifiably-deleted items leave the cleanup
      * lists — a photo is never dropped from review while it still exists on disk.
      */
     private fun deleteSafeOriginals(imported: List<Uri>) {
         lifecycleScope.launch {
-            val deleted = mutableListOf<Uri>()
-            val needsConsent = mutableListOf<Uri>()
-            if (DeleteCoordinator.canDeleteDirectly(this@SmartCleanupActivity)) {
-                withContext(Dispatchers.IO) {
-                    imported.forEach { uri ->
-                        (if (MediaFileOps.deleteFileDirect(this@SmartCleanupActivity, uri)) deleted else needsConsent)
-                            .add(uri)
-                    }
-                }
-            } else {
-                needsConsent.addAll(imported)
-            }
-            if (deleted.isNotEmpty()) {
-                pendingSafeMove = true
-                onDeleted(deleted)
-            }
-            if (needsConsent.isNotEmpty()) {
-                pendingSafeMove = true
-                deleteUris(needsConsent)
-            }
+            if (imported.isEmpty()) return@launch
+            pendingSafeMove = true
+            deleteUris(imported)
         }
     }
 
@@ -161,19 +142,6 @@ class SmartCleanupActivity : AppCompatActivity() {
         pendingDeleteNeedsRetry = false
         if (result.resultCode != RESULT_OK || uris.isEmpty()) return@registerForActivityResult
         if (needsRetry) deleteUris(uris, afterApproval = true) else onDeleted(uris)
-    }
-
-    private val allFilesAccessLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        val uris = pendingAllFilesDeleteUris
-        pendingAllFilesDeleteUris = emptyList()
-        if (uris.isEmpty()) return@registerForActivityResult
-        if (StoragePermissions.hasAllFilesAccess(this)) {
-            performManagedDelete(uris)
-        } else {
-            MetroBanner.show(this, "All-files access is required to delete items")
-        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -956,7 +924,7 @@ class SmartCleanupActivity : AppCompatActivity() {
         }
 
         // Lock-away action only exists for the categories where keeping (not deleting) makes sense.
-        if (category in safeCapableCategories) {
+        if (FeatureFlags.SAFE_ENABLED && category in safeCapableCategories) {
             binding.safeBar.visibility = View.VISIBLE
             // Action bar: accent, restored explicitly since the compressible toggle above leaves
             // the neutral card background on the shared view.
@@ -983,15 +951,6 @@ class SmartCleanupActivity : AppCompatActivity() {
     private fun confirmDeleteSelected() {
         val selected = adapter.selectedUris()
         if (selected.isEmpty()) return
-        if (DeleteCoordinator.shouldAskForStorageAccess(this)) {
-            pendingAllFilesDeleteUris = selected
-            runCatching { allFilesAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
-                .onFailure {
-                    pendingAllFilesDeleteUris = emptyList()
-                    MetroBanner.show(this, "Couldn't open storage access settings")
-                }
-            return
-        }
         // Cleanup batches are large — always confirm, and be explicit about permanence when the
         // Recycle Bin is off. On Android 10 the consent path asks a second time in the system dialog.
         val toBin = DeleteCoordinator.usesBin(this)
@@ -1063,7 +1022,7 @@ class SmartCleanupActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !afterApproval) {
                 pendingDeleteUris = uris
                 pendingDeleteNeedsRetry = false
-                val request = MediaStore.createDeleteRequest(contentResolver, uris)
+                val request = MediaStore.createTrashRequest(contentResolver, uris, true)
                 deleteRequestLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
                 return
             }

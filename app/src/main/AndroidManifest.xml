@@ -18,13 +18,16 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
-    <!-- Recycle bin + Safe move originals into an app-managed store, then delete the source file
-         directly (the app shows its own confirmation, no per-item system delete dialog). On R+ that
-         requires All-files access (requested at runtime); pre-Q needs the legacy write permission. -->
+    <!-- Pre-Q devices need the legacy write permission for MediaStore insert/delete of media rows
+         the app does not own. API 30+ handles all writes through MediaStore consent. -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <!-- All-files access is not a core feature and is not allowed by Play policy. No library may
+         merge it back in. -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:node="remove" />
 
     <application
         android:name=".GallerySearchApp"

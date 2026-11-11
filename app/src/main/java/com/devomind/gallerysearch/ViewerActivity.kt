@@ -75,7 +75,6 @@ class ViewerActivity : AppCompatActivity() {
     private var velocityTracker: VelocityTracker? = null
     private var pendingDeleteUri: Uri? = null
     private var pendingDeleteNeedsRetry = false
-    private var pendingAllFilesDeleteUri: Uri? = null
     private var currentExif: ExifData? = null
     private var currentTags: List<com.devomind.gallerysearch.db.TagEntity> = emptyList()
     private var gestureDirection = GestureDirection.UNDETERMINED
@@ -102,19 +101,6 @@ class ViewerActivity : AppCompatActivity() {
             deletePhoto(targetUri, afterApproval = true)
         } else {
             onDeleteCompleted(targetUri)
-        }
-    }
-
-    private val allFilesAccessLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        val uri = pendingAllFilesDeleteUri
-        pendingAllFilesDeleteUri = null
-        if (uri == null) return@registerForActivityResult
-        if (StoragePermissions.hasAllFilesAccess(this)) {
-            requestDelete(uri)
-        } else {
-            MetroBanner.show(this, "All-files access is required to delete items")
         }
     }
 
@@ -1134,15 +1120,6 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     private fun requestDelete(uri: Uri) {
-        if (DeleteCoordinator.shouldAskForStorageAccess(this)) {
-            pendingAllFilesDeleteUri = uri
-            runCatching { allFilesAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
-                .onFailure {
-                    pendingAllFilesDeleteUri = null
-                    MetroBanner.show(this, "Couldn't open storage access settings")
-                }
-            return
-        }
         // Every delete confirms first — see MainActivity.requestDelete.
         val toBin = DeleteCoordinator.usesBin(this)
         MetroDialog.confirm(

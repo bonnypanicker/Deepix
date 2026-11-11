@@ -9,7 +9,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import java.io.File
-import java.io.FileInputStream
 
 /**
  * Writes copies of library photos into a folder album's own folder.
@@ -143,13 +142,14 @@ object AlbumFolderOps {
      * Forces the copy's bytes onto the storage before they are counted, because the move path deletes
      * the original on the strength of this copy — bytes that only reached the page cache are not a copy
      * once the power goes. Same posture as [MediaFileOps.copyToFile]: a refused force is logged, not
-     * fatal. Needs the path, which only All-files access can see; without it the copy stands unforced.
+     * fatal. Uses the MediaStore file descriptor directly so it works without all-files access.
      */
     private fun forceToDisk(context: Context, uri: Uri) {
-        if (!StoragePermissions.hasAllFilesAccess(context)) return
-        val path = MediaFileOps.resolvePath(context, uri) ?: return
-        runCatching { FileInputStream(File(path)).use { it.fd.sync() } }
-            .onFailure { Log.w(TAG, "Sync of $path refused; the copy stands unforced", it) }
+        runCatching {
+            context.contentResolver.openFileDescriptor(uri, "rw")?.use { pfd ->
+                pfd.fileDescriptor.sync()
+            }
+        }.onFailure { Log.w(TAG, "Sync of $uri refused; the copy stands unforced", it) }
     }
 
     /** Reads the whole copy back and counts it — the check that makes deleting the original allowed. */

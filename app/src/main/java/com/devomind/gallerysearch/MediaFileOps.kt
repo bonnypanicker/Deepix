@@ -10,12 +10,15 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * Direct-filesystem helpers used by the Recycle Bin and Safe once the app holds All-files access.
+ * Direct-filesystem helpers used by the Recycle Bin and Safe while those features hold direct file
+ * access.
  *
- * With that permission the app can read a media item's real path from MediaStore and then operate on
- * the [File] directly — copy it into the bin, delete it, or write a restored copy back — with no
- * per-item system consent dialog. Callers must confirm [StoragePermissions.hasAllFilesAccess] first;
- * everything here degrades to `false`/no-op if the file can't be resolved.
+ * With direct file access the app can read a media item's real path from MediaStore and then operate
+ * on the [File] directly — copy it into the bin, delete it, or write a restored copy back — with no
+ * per-item system consent dialog. Both the bin and Safe are gated behind [FeatureFlags] in this
+ * release (All-files access was removed for Play policy compliance), so these helpers only run when
+ * the corresponding flag is on; everything here degrades to `false`/no-op if the file can't be
+ * resolved.
  */
 object MediaFileOps {
 

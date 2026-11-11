@@ -164,7 +164,6 @@ class MainActivity : AppCompatActivity() {
     private var settingsLaunchAccent: AccentPalette.Choice? = null
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
-    private var pendingAllFilesDeleteUris: List<Uri> = emptyList()
     private val hiddenDeletedUris = linkedSetOf<Uri>()
     private var topInsetPx = 0
     private var bottomSystemInsetPx = 0
@@ -367,31 +366,13 @@ class MainActivity : AppCompatActivity() {
     private val safeLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        // Photos successfully moved into the Safe: remove the originals. They're already encrypted in
-        // the vault, so delete permanently (not to the bin) — silently when we have direct access.
-        // Direct-delete failures fall back to the system consent flow so originals never linger.
+        // Photos successfully moved into the Safe: remove the originals. They're already encrypted
+        // in the vault, so delete them. Without all-files access this always goes through the
+        // platform MediaStore consent flow.
         @Suppress("DEPRECATION")
         val imported = result.data?.getParcelableArrayListExtra<Uri>(SafeActivity.ExtraImportedUris)
         if (result.resultCode == RESULT_OK && !imported.isNullOrEmpty()) {
-            lifecycleScope.launch {
-                val deleted = mutableListOf<Uri>()
-                val needsConsent = mutableListOf<Uri>()
-                if (DeleteCoordinator.canDeleteDirectly(this@MainActivity)) {
-                    withContext(Dispatchers.IO) {
-                        imported.forEach { uri ->
-                            (if (MediaFileOps.deleteFileDirect(this@MainActivity, uri)) deleted else needsConsent)
-                                .add(uri)
-                        }
-                    }
-                } else {
-                    needsConsent.addAll(imported)
-                }
-                if (deleted.isNotEmpty()) {
-                    hideDeletingUris(deleted)
-                    refreshVisibleItems(reRender = false)
-                }
-                if (needsConsent.isNotEmpty()) deleteUris(needsConsent)
-            }
+            deleteUris(imported)
         }
     }
 
@@ -408,19 +389,6 @@ class MainActivity : AppCompatActivity() {
             deleteUris(uris, afterApproval = true)
         } else {
             onDeleteCompleted(uris)
-        }
-    }
-
-    private val allFilesAccessLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        val uris = pendingAllFilesDeleteUris
-        pendingAllFilesDeleteUris = emptyList()
-        if (uris.isEmpty()) return@registerForActivityResult
-        if (StoragePermissions.hasAllFilesAccess(this)) {
-            requestDelete(uris)
-        } else {
-            MetroBanner.show(this, "All-files access is required to delete items")
         }
     }
 
@@ -656,6 +624,7 @@ class MainActivity : AppCompatActivity() {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             openSafe()
         }
+        binding.drawerSafe.visibility = if (FeatureFlags.SAFE_ENABLED) View.VISIBLE else View.GONE
         binding.drawerPeople.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             startActivity(Intent(this, PersonAlbumsActivity::class.java))
@@ -664,6 +633,7 @@ class MainActivity : AppCompatActivity() {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             startActivity(Intent(this, BinActivity::class.java))
         }
+        binding.drawerBin.visibility = if (FeatureFlags.RECYCLE_BIN_ENABLED) View.VISIBLE else View.GONE
         binding.drawerSmartCleanup.setOnClickListener {
             binding.drawerLayout.closeDrawer(GravityCompat.START)
             startSmartCleanup()
@@ -2981,7 +2951,8 @@ class MainActivity : AppCompatActivity() {
                 .distinctBy { it.lowercase() }
                 .take(MaxRecentSearchesShown)
             searchBinShortcutVisible = withContext(Dispatchers.IO) {
-                IndexPreferences.isRecycleBinEnabled(applicationContext) &&
+                FeatureFlags.RECYCLE_BIN_ENABLED &&
+                    IndexPreferences.isRecycleBinEnabled(applicationContext) &&
                     BinManager.count(applicationContext) > 0
             }
             searchEmptyDataLoaded = true
@@ -3844,8 +3815,9 @@ class MainActivity : AppCompatActivity() {
             buildList {
                 // A folder album owns its folder, so putting photos in it is the one thing worth offering
                 // from inside. The other kinds are read out of the library or a search, so nothing the user
-                // adds by hand would survive the next render.
-                if (record.kind == AlbumKind.Folder) {
+                // adds by hand would survive the next render. Album folder move/copy is gated off in this
+                // release (move deletes originals via direct file I/O).
+                if (record.kind == AlbumKind.Folder && FeatureFlags.ALBUM_FOLDER_OPS_ENABLED) {
                     add(MetroDropdownMenu.Item(getString(R.string.album_add_photos)) {
                         showAlbumAddPhotosDialog(record)
                     })
@@ -4844,6 +4816,8 @@ class MainActivity : AppCompatActivity() {
         // Metro pattern: the selection command bar takes over the bottom nav's slot.
         binding.selectionBar.visibility = if (selecting) View.VISIBLE else View.GONE
         binding.bottomPanel.visibility = if (selecting) View.GONE else View.VISIBLE
+        binding.safeSelectionBtn.visibility =
+            if (selecting && FeatureFlags.SAFE_ENABLED) View.VISIBLE else View.GONE
 
         if (selecting) {
             val label = resources.getQuantityString(R.plurals.selected_count, count, count)
@@ -4939,21 +4913,11 @@ class MainActivity : AppCompatActivity() {
         requestDelete(selected)
     }
 
-    /** Requests storage access on the first delete, then routes through the selected delete policy. */
+    /** Confirms the delete and routes it through the platform MediaStore consent flow. */
     private fun requestDelete(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        if (DeleteCoordinator.shouldAskForStorageAccess(this)) {
-            pendingAllFilesDeleteUris = uris
-            runCatching { allFilesAccessLauncher.launch(StoragePermissions.manageAllFilesIntent(this)) }
-                .onFailure {
-                    pendingAllFilesDeleteUris = emptyList()
-                    MetroBanner.show(this, "Couldn't open storage access settings")
-                }
-            return
-        }
-        // Every delete confirms first. Bin moves are undoable for 30 days; direct deletes are
-        // permanent — the copy makes the difference explicit. On Android 10 the consent path asks a
-        // second time in the system dialog, which is the price of deleting there at all.
+        // Every delete confirms first. Without all-files access the platform handles the actual
+        // removal (system trash on API 30+, permanent consent on older releases).
         val toBin = DeleteCoordinator.usesBin(this)
         val noun = if (uris.size == 1) "this photo" else "${uris.size} photos"
         MetroDialog.confirm(
@@ -4962,7 +4926,7 @@ class MainActivity : AppCompatActivity() {
             message = if (toBin) {
                 "$noun will move to the Recycle Bin. You can restore them for 30 days."
             } else {
-                "Recycle Bin is off, so $noun will be deleted permanently. There's no undo."
+                "$noun will be deleted. You can restore them from the system trash for 30 days on Android 11+."
             },
             positive = "Proceed",
             danger = !toBin,
@@ -5161,7 +5125,8 @@ class MainActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !afterApproval) {
                 pendingDeleteUris = uris
                 pendingDeleteNeedsRetry = false
-                val request = MediaStore.createDeleteRequest(contentResolver, uris)
+                // API 30+: route deletes through the system trash so they stay recoverable.
+                val request = MediaStore.createTrashRequest(contentResolver, uris, true)
                 deleteRequestLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
                 return
             }
@@ -6028,14 +5993,18 @@ class MainActivity : AppCompatActivity() {
             BottomBarDestination.Folders to binding.bottomFolders,
             BottomBarDestination.Safe to binding.bottomSafe
         )
+        // Safe is flagged off in this release (no all-files access to back the vault). A user who
+        // previously enabled the Safe tab must not see it until the SAF-backed rebuild ships.
+        val visibleDestinations = BottomBarConfig.enabledOrder(this)
+            .filter { it != BottomBarDestination.Safe || FeatureFlags.SAFE_ENABLED }
         binding.bottomPanel.removeAllViews()
-        BottomBarConfig.enabledOrder(this).forEach { destination ->
+        visibleDestinations.forEach { destination ->
             tabs.getValue(destination).let { tab ->
                 tab.visibility = View.VISIBLE
                 binding.bottomPanel.addView(tab)
             }
         }
-        tabs.filterKeys { it !in BottomBarConfig.enabledOrder(this) }.values.forEach {
+        tabs.filterKeys { it !in visibleDestinations }.values.forEach {
             it.visibility = View.GONE
         }
         updateBottomPanelState()

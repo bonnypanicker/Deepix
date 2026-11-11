@@ -154,17 +154,6 @@ class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
             else -> outstanding(R.string.onboarding_perm_state_required)
         }
 
-        OnboardingPermissionKind.AllFiles -> when {
-            StoragePermissions.hasAllFilesAccess(this) -> granted()
-            // Android 10 has no All-files switch to offer, so this is a device limit rather than a
-            // grant still owed; leaving it outstanding would show a row that can never be tapped off.
-            !StoragePermissions.allFilesAccessRequestable() -> OnboardingPermissionStatus(
-                OnboardingPermissionState.UNAVAILABLE,
-                R.string.onboarding_perm_state_not_available
-            )
-            else -> outstanding()
-        }
-
         OnboardingPermissionKind.Notifications -> when {
             Build.VERSION.SDK_INT < 33 -> OnboardingPermissionStatus(
                 OnboardingPermissionState.UNAVAILABLE,
@@ -189,13 +178,6 @@ class FirstRunActivity : AppCompatActivity(), OnboardingPermissionHost {
                     mediaAsked = true
                     mediaLauncher.launch(StoragePermissions.requiredMediaPermissions())
                 }
-            }
-
-            OnboardingPermissionKind.AllFiles -> {
-                if (!StoragePermissions.allFilesAccessRequestable()) return
-                runCatching {
-                    settingsLauncher.launch(StoragePermissions.manageAllFilesIntent(this))
-                }.onFailure { MetroBanner.show(this, "Couldn't open storage access settings") }
             }
 
             OnboardingPermissionKind.Notifications -> {

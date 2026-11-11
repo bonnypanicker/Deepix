@@ -352,6 +352,12 @@ class SettingsActivity : AppCompatActivity() {
     // ------------------------------------------------------------------
 
     private fun bindSafe() {
+        // Safe is gated off in this release (no All-files access for the public vault folder).
+        if (!FeatureFlags.SAFE_ENABLED) {
+            binding.safeHeader.visibility = View.GONE
+            binding.rowSafeLocation.visibility = View.GONE
+            return
+        }
         updateSafeSubtitles()
         binding.rowSafeLocation.setOnClickListener { showSafeLocationDialog() }
     }
@@ -396,10 +402,6 @@ class SettingsActivity : AppCompatActivity() {
     private fun changeSafeVaultDir(newDir: File?) {
         val target = newDir ?: SafeManager.defaultVaultDir(this)
         if (SafeStore.isConfigured(this)) {
-            if (!StoragePermissions.hasAllFilesAccess(this)) {
-                MetroBanner.show(this, "All-files access is needed to move the Safe")
-                return
-            }
             lifecycleScope.launch {
                 val moved = withContext(Dispatchers.IO) {
                     SafeManager.moveVaultToDir(this@SettingsActivity, target)

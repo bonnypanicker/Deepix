@@ -51,12 +51,13 @@ object BinManager {
     // ---- Move-in (delete) ----
 
     /**
-     * Copies each uri into the bin and deletes the original file directly. Requires All-files
-     * access; without it, nothing is binned (caller should have checked and prompted).
+     * Copies each uri into the bin and deletes the original file directly. Requires the Recycle Bin
+     * feature flag (it moves originals via direct file delete). With the flag off nothing is binned;
+     * callers route through [DeleteCoordinator] which hands deletes to the system MediaStore flow.
      */
     fun moveToBin(context: Context, uris: List<Uri>): BinResult = synchronized(lock) {
         val root = binDir(context)
-        if (!StoragePermissions.hasAllFilesAccess(context)) return@synchronized BinResult(0, uris.size)
+        if (!FeatureFlags.RECYCLE_BIN_ENABLED) return@synchronized BinResult(0, uris.size)
         reconcileLocked(root)
         var binned = 0
         var failed = 0
@@ -157,7 +158,7 @@ object BinManager {
             return false
         }
         val targetPath = entry.originalPath
-        val restored = if (targetPath != null && StoragePermissions.hasAllFilesAccess(context)) {
+        val restored = if (targetPath != null && FeatureFlags.RECYCLE_BIN_ENABLED) {
             runCatching {
                 val dest = uniqueFile(File(targetPath))
                 if (!BinLedger.copyDataOut(root, entry, dest)) return@runCatching false
