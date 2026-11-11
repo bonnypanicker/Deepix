@@ -3,7 +3,9 @@ package com.devomind.gallerysearch
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -316,6 +318,7 @@ class CleanupWorker(
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setProgress(total.coerceAtLeast(1), done, total <= 0)
+            .setContentIntent(contentIntent())
             .build()
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ForegroundInfo(NotificationId, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
@@ -323,6 +326,17 @@ class CleanupWorker(
             ForegroundInfo(NotificationId, notification)
         }
     }
+
+    private fun contentIntent(): PendingIntent? = runCatching {
+        // The cleanup screen adopts a running scan with no hand-off — it observes the same unique
+        // work — so a notification tap reopens it on the live progress from anywhere.
+        PendingIntent.getActivity(
+            applicationContext, 0,
+            Intent(applicationContext, SmartCleanupActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }.getOrNull()
 
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
