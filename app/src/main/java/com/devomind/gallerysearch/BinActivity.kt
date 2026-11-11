@@ -1,11 +1,15 @@
 package com.devomind.gallerysearch
 
+import android.app.Activity
+import android.content.IntentSender
 import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -24,14 +28,32 @@ import kotlinx.coroutines.withContext
 /**
  * The Recycle Bin screen: a grid of soft-deleted media. Tapping an item offers Restore or
  * Delete forever; long-pressing enters multi-select for batch Restore / Delete forever, and
- * "Empty bin" clears everything. Retention (30 days) is enforced by [BinManager.purgeExpired] on
- * app start, so this screen only shows still-recoverable items.
+ * "Empty bin" clears everything.
+ *
+ * The bin itself is [BinStore]: the platform's system trash on API 30+ (Restore / Delete-forever are
+ * MediaStore consent requests, so those actions finish through [consentLauncher]) and the
+ * app-private bin on older releases (they complete in place). Retention (30 days) is enforced by the
+ * system on 30+ and by [BinManager.purgeExpired] on app start below that.
  */
 class BinActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityBinBinding
     private lateinit var adapter: BinAdapter
     private lateinit var gridLayoutManager: GridLayoutManager
+
+    /** Message to show once the pending system consent returns, or null when none is in flight. */
+    private var pendingAction: String? = null
+
+    private val consentLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        val label = pendingAction
+        pendingAction = null
+        if (result.resultCode == Activity.RESULT_OK && label != null) {
+            MetroBanner.show(this, label)
+        }
+        refresh()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AccentPalette.apply(this)
@@ -44,8 +66,8 @@ class BinActivity : AppCompatActivity() {
         applyInsets()
 
         adapter = BinAdapter(
-            onClick = { entry -> showOptions(entry) },
-            onLongClick = { entry -> adapter.enterSelection(entry) },
+            onClick = { item -> showOptions(item) },
+            onLongClick = { item -> adapter.enterSelection(item) },
             onSelectionChanged = { count -> updateSelectionUi(count) }
         )
         gridLayoutManager = GridLayoutManager(this, gridColumns())
@@ -111,7 +133,7 @@ class BinActivity : AppCompatActivity() {
 
     private fun refresh() {
         lifecycleScope.launch {
-            val items = withContext(Dispatchers.IO) { BinManager.list(this@BinActivity) }
+            val items = withContext(Dispatchers.IO) { BinStore.list(this@BinActivity) }
             adapter.submit(items)
             binding.emptyState.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
         }
@@ -124,58 +146,42 @@ class BinActivity : AppCompatActivity() {
         binding.selectionCount.text = if (count == 1) "1 item selected" else "$count items selected"
     }
 
-    private fun showOptions(entry: BinEntry) {
+    private fun showOptions(item: BinItem) {
         MetroDialog.items(
             this,
             options = listOf("Restore", "Delete forever"),
             dangerIndices = setOf(1)
         ) { which ->
             when (which) {
-                0 -> restore(entry)
-                1 -> confirmDeleteForever(entry)
+                0 -> restore(listOf(item), restoredLabel(1))
+                1 -> confirmDeleteForever(listOf(item))
             }
         }
     }
 
-    private fun restore(entry: BinEntry) {
-        lifecycleScope.launch {
-            val ok = withContext(Dispatchers.IO) { BinManager.restore(this@BinActivity, entry) }
-            MetroBanner.show(
-                this@BinActivity,
-                if (ok) "Restored to gallery" else "Couldn't restore"
-            )
-            refresh()
-        }
-    }
-
-    /** Restores every selected entry back to its original folder in one batch. */
+    /** Restores every selected entry back to the gallery in one batch. */
     private fun restoreSelected() {
-        val ids = adapter.selectedIds()
-        if (ids.isEmpty()) return
-        lifecycleScope.launch {
-            val restored = withContext(Dispatchers.IO) { BinManager.restoreByIds(this@BinActivity, ids) }
-            val failed = ids.size - restored
-            adapter.clearSelection()
-            MetroBanner.show(this@BinActivity, buildString {
-                append("$restored ${if (restored == 1) "item" else "items"} restored to gallery")
-                if (failed > 0) append(" · $failed failed")
-            })
-            refresh()
-        }
+        val targets = adapter.selectedItems()
+        if (targets.isEmpty()) return
+        adapter.clearSelection()
+        restore(targets, restoredLabel(targets.size))
     }
 
-    private fun confirmDeleteForever(entry: BinEntry) {
+    private fun confirmDeleteForever(targets: List<BinItem>) {
+        val single = targets.size == 1
         MetroDialog.confirm(
             this,
-            title = "Delete forever?",
-            message = "This permanently removes the item. It can't be recovered.",
+            title = if (single) "Delete forever?" else "Delete ${targets.size} items forever?",
+            message = if (single) {
+                "This permanently removes the item. It can't be recovered."
+            } else {
+                "This permanently removes them. It can't be undone."
+            },
             positive = "Proceed",
             danger = true
         ) {
-            lifecycleScope.launch {
-                val gone = withContext(Dispatchers.IO) { BinManager.deleteForever(this@BinActivity, entry) }
-                if (!gone) MetroBanner.show(this@BinActivity, "Couldn't free the item — it stays in the bin")
-                refresh()
+            runBinAction(if (single) "Deleted" else "${targets.size} deleted") {
+                BinStore.deleteForever(this, targets)
             }
         }
     }
@@ -183,24 +189,8 @@ class BinActivity : AppCompatActivity() {
     private fun confirmDeleteSelected() {
         val targets = adapter.selectedItems()
         if (targets.isEmpty()) return
-        val noun = if (targets.size == 1) "item" else "items"
-        MetroDialog.confirm(
-            this,
-            title = "Delete ${targets.size} $noun forever?",
-            message = "This permanently removes them. It can't be undone.",
-            positive = "Proceed",
-            danger = true
-        ) {
-            lifecycleScope.launch {
-                val freed = withContext(Dispatchers.IO) {
-                    targets.count { BinManager.deleteForever(this@BinActivity, it) }
-                }
-                adapter.clearSelection()
-                val failed = targets.size - freed
-                if (failed > 0) MetroBanner.show(this@BinActivity, "$freed deleted · $failed failed")
-                refresh()
-            }
-        }
+        adapter.clearSelection()
+        confirmDeleteForever(targets)
     }
 
     private fun confirmEmpty() {
@@ -211,36 +201,65 @@ class BinActivity : AppCompatActivity() {
             positive = "Proceed",
             danger = true
         ) {
-            lifecycleScope.launch {
-                withContext(Dispatchers.IO) { BinManager.emptyBin(this@BinActivity) }
-                adapter.clearSelection()
-                refresh()
-            }
+            runBinAction("Bin emptied") { BinStore.empty(this) }
+        }
+    }
+
+    private fun restore(targets: List<BinItem>, label: String) {
+        if (targets.isEmpty()) return
+        runBinAction(label) { BinStore.restore(this, targets) }
+    }
+
+    private fun restoredLabel(count: Int): String =
+        if (count == 1) "Restored to gallery" else "$count items restored"
+
+    /**
+     * Runs a bin mutation and finishes it the right way for the backing store: a system consent
+     * dialog on API 30+, or an in-place result below that.
+     */
+    private fun runBinAction(label: String, action: () -> IntentSender?) {
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { action() } }
+            result.fold(
+                onSuccess = { request ->
+                    if (request != null) {
+                        pendingAction = label
+                        consentLauncher.launch(IntentSenderRequest.Builder(request).build())
+                    } else {
+                        MetroBanner.show(this@BinActivity, label)
+                        refresh()
+                    }
+                },
+                onFailure = {
+                    MetroBanner.show(this@BinActivity, "Couldn't complete")
+                    refresh()
+                }
+            )
         }
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     /**
-     * Reuses item_safe_photo (a plain thumbnail cell). Loads binned files via Glide.
+     * Reuses item_safe_photo (a plain thumbnail cell). Loads each item from its content uri.
      *
-     * Selection keys are entry ids, not positions, so it survives a refresh; entries that disappear
+     * Selection keys are item keys, not positions, so it survives a refresh; items that disappear
      * from the bin drop out of the selection on the next [submit].
      */
     private inner class BinAdapter(
-        private val onClick: (BinEntry) -> Unit,
-        private val onLongClick: (BinEntry) -> Unit,
+        private val onClick: (BinItem) -> Unit,
+        private val onLongClick: (BinItem) -> Unit,
         private val onSelectionChanged: (Int) -> Unit = {}
     ) : RecyclerView.Adapter<BinAdapter.VH>() {
 
-        private val items = mutableListOf<BinEntry>()
+        private val items = mutableListOf<BinItem>()
         private val selected = LinkedHashSet<String>()
         private var selectionMode = false
 
-        fun submit(list: List<BinEntry>) {
+        fun submit(list: List<BinItem>) {
             items.clear()
             items.addAll(list)
-            selected.retainAll(items.mapTo(HashSet()) { it.id })
+            selected.retainAll(items.mapTo(HashSet()) { it.key })
             if (selected.isEmpty()) selectionMode = false
             notifyDataSetChanged()
             onSelectionChanged(selected.size)
@@ -248,22 +267,20 @@ class BinActivity : AppCompatActivity() {
 
         fun isSelectionMode(): Boolean = selectionMode
 
-        fun selectedIds(): List<String> = items.filter { it.id in selected }.map { it.id }
+        fun selectedItems(): List<BinItem> = items.filter { it.key in selected }
 
-        fun selectedItems(): List<BinEntry> = items.filter { it.id in selected }
-
-        fun toggle(entry: BinEntry) {
-            if (!selected.remove(entry.id)) selected.add(entry.id)
+        fun toggle(item: BinItem) {
+            if (!selected.remove(item.key)) selected.add(item.key)
             if (selected.isEmpty()) selectionMode = false
             notifyDataSetChanged()
             onSelectionChanged(selected.size)
         }
 
-        fun enterSelection(entry: BinEntry) {
+        fun enterSelection(item: BinItem) {
             if (selectionMode) return
             selectionMode = true
             selected.clear()
-            selected.add(entry.id)
+            selected.add(item.key)
             notifyDataSetChanged()
             onSelectionChanged(selected.size)
         }
@@ -271,7 +288,7 @@ class BinActivity : AppCompatActivity() {
         fun selectAll() {
             if (items.isEmpty()) return
             selectionMode = true
-            items.forEach { selected.add(it.id) }
+            items.forEach { selected.add(it.key) }
             notifyDataSetChanged()
             onSelectionChanged(selected.size)
         }
@@ -289,28 +306,28 @@ class BinActivity : AppCompatActivity() {
         }
 
         override fun onBindViewHolder(holder: VH, position: Int) {
-            val entry = items[position]
+            val item = items[position]
             // The item's XML height is the portrait tile; the column count is not, so the side is
             // set from the grid here and a sideways window gets more squares, not taller ones.
             holder.binding.thumbnail.layoutParams = holder.binding.thumbnail.layoutParams.apply {
                 height = tileSizePx()
             }
             Glide.with(holder.binding.thumbnail)
-                .load(BinManager.storedFile(this@BinActivity, entry))
+                .load(item.displayUri)
                 .centerCrop()
                 .into(holder.binding.thumbnail)
             holder.binding.videoBadge.visibility =
-                if (MediaFormats.isVideoMime(entry.mimeType) ||
-                    MediaFormats.isVideoFileName(entry.fileName)
+                if (MediaFormats.isVideoMime(item.mimeType) ||
+                    MediaFormats.isVideoFileName(item.fileName)
                 ) View.VISIBLE else View.GONE
-            val isSelected = entry.id in selected
+            val isSelected = item.key in selected
             holder.binding.selectionScrim.visibility = if (isSelected) View.VISIBLE else View.GONE
             holder.binding.selectionCheck.visibility = if (isSelected) View.VISIBLE else View.GONE
             holder.binding.root.setOnClickListener {
-                if (selectionMode) toggle(entry) else onClick(entry)
+                if (selectionMode) toggle(item) else onClick(item)
             }
             holder.binding.root.setOnLongClickListener {
-                onLongClick(entry)
+                onLongClick(item)
                 true
             }
         }

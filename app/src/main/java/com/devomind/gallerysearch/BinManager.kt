@@ -218,6 +218,18 @@ object BinManager {
         BinLedger.list(binDir(context))
     }
 
+    /** The app-private bin as [BinItem]s, for the Bin screen below API 30 (no system trash there). */
+    fun listAsItems(context: Context): List<BinItem> = list(context).map { entry ->
+        BinItem(
+            key = entry.id,
+            displayUri = contentUri(context, entry),
+            fileName = entry.fileName,
+            mimeType = entry.mimeType,
+            dateTrashed = entry.deletedAt,
+            appEntry = entry
+        )
+    }
+
     /** Content uri for displaying a binned file (via FileProvider). */
     fun contentUri(context: Context, entry: BinEntry): Uri =
         FileProvider.getUriForFile(

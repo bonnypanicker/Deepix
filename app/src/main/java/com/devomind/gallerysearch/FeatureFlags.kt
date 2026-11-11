@@ -11,8 +11,10 @@ package com.devomind.gallerysearch
  */
 object FeatureFlags {
 
-    /** Recycle Bin moves originals into app-private storage via direct file delete. Phase 2: system trash. */
-    const val RECYCLE_BIN_ENABLED = false
+    /** Recycle Bin. Rebuilt on scoped storage: on API 30+ it *is* the platform's system trash
+     *  (MediaStore createTrashRequest, no direct file access), and below API 30 it keeps using the
+     *  app-private bin. See [BinStore]. */
+    const val RECYCLE_BIN_ENABLED = true
 
     /** Safe vault writes an AES zip to a public folder via direct file I/O. Phase 2: SAF-backed storage. */
     const val SAFE_ENABLED = false

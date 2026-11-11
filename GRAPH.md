@@ -168,9 +168,34 @@ Putting photos into a Folder album  [the one kind that can be written; the other
                     ├── result.copied empty → album_copy_none banner, nothing deleted
                     ├── move → refreshVisibleItems()?.join()   [album fills while originals still exist]
                     │           → performManagedDelete(result.copiedSources, outcomeLabel)
-                    │             [ordinary policy: Recycle Bin → direct → createDeleteRequest consent]
+                    │             [ordinary policy: Recycle Bin → BinStore (system trash) → createTrashRequest consent]
                     ├── copy → banner + refreshVisibleItems()
                     └── maybeStartBackgroundIndexing()          [the copies are new files, so unindexed]
+```
+
+### Recycle Bin Pipeline
+```
+[ON — FeatureFlags.RECYCLE_BIN_ENABLED = true; drawer "recently deleted" + bin tile]
+MainActivity drawer "recently deleted" / bin tile → BinActivity
+  └── BinStore  (the seam: the bin is the platform trash on API 30+, app-private below)
+        ├── usesSystemTrash() = SDK_INT >= R
+        ├── API 30+ → query MediaStore Images+Video with
+        │     Bundle { QUERY_ARG_MATCH_TRASHED = MATCH_ONLY } → BinItem(displayUri = content uri)
+        │     list() / count() read that; restore() → createTrashRequest(uris, false);
+        │     deleteForever() → createDeleteRequest(uris); empty() → createDeleteRequest(all trashed)
+        │     (every mutation returns an IntentSender the screen launches for consent — no direct I/O)
+        └── API 26–29 → BinManager (filesDir bin: bin/data + bin/entries + *.binmeta, BinLedger quota)
+              BinManager.listAsItems() maps each BinEntry → BinItem(appEntry) so the screen is one type;
+              restore()/deleteForever()/empty() act on the app entry in place (no consent needed)
+
+Deleting into the bin (both APIs)
+  performManagedDelete / deleteUris / ViewerActivity.deletePhoto
+    └── DeleteCoordinator.delete() → NeedsSystemDelete → MediaStore.createTrashRequest(resolver, uris, true)
+          [true = trash; false = un-trash. The original never touches a File handle.]
+
+Bin→system-trash invariant: the app holds no All-files access, so the bin *cannot* be a filesDir copy
+of a shared-storage original on API 30+; the platform trash is the only home that survives a delete
+consent. Below API 30 there is no system trash, so the app-private BinManager remains.
 ```
 
 ### Safe (encrypted photo locker) Pipeline
@@ -263,7 +288,11 @@ DbRepository
         ├── FaceDao          → FaceEntity         (idsForPhoto/deleteByPhoto; pairs with PersonDao.clearExemplarFaces)
         └── EmbeddingSourceDao → EmbeddingSourceEntity  (what each stored CLIP embedding was encoded from)
 
-BinManager → BinLedger  (bin/data + bin/entries + *.binmeta; reconcile() at app start and before every move)
+BinStore → MediaStore trash (API 30+: query Images+Video with QUERY_ARG_MATCH_TRASHED = MATCH_ONLY;
+  createTrashRequest / createDeleteRequest return an IntentSender the Bin screen launches for consent)
+BinStore → BinManager  (API 26–29 fallback: the filesDir bin, mapped entry-for-entry to BinItem)
+BinManager → BinLedger  (bin/data + bin/entries + *.binmeta; reconcile() at app start and before every move
+  — below-30 only now that the system trash owns the bin on API 30+)
 BinManager → MediaFileOps.copyToFile  (flush → fd.sync() → close(): the copy is on the platter before the original is deleted)
 SafeManager → SafeWorkGuard  (import/encrypt vs lock; end() returns the lock duty to the last worker out)
 res/xml/backup_rules.xml + data_extraction_rules.xml  (gallery_metadata.db/-wal/-shm excluded from cloud backup and device transfer — see DECISION_GATES Gate C)
@@ -288,10 +317,10 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | `embedding_source` columns / `MediaSignature` fields | `EmbeddingFreshness.decide`, `DbRepository.recordEmbeddingSources`, `MediaItem.embeddingSignature()` — a field added here must be recorded, and an existing library's rows read back as `null` (Backfill), not as a mismatch |
 | `EmbeddingFreshness.StaleSignature` | `DbRepository.invalidatePhotoForReanalysis` (the editor's overwrite) — it must stay impossible for a real file to match, or edited photos stop re-encoding |
 | `IndexCheckpoint` staging name (`*.tmp`) | `GalleryRepository.loadIndex`/`loadMetadataIndex` promote a staged base when `promotable()`; `verifyModelAssets` and the journal's own `.bin.journal` suffix are separate files |
-| `BinLedger` layout (`bin/data`, `bin/entries`, `.binmeta`) | Existing bins on a device are read by `reconcile()`/`list()`; a rename strands photos that are already in the bin — `adoptLegacyIndex` is the precedent for converting, not dropping |
-| `BinLedger.copyComplete` / quota margin | `BinManager.moveToBin` ordering (copy → verify → delete original) and `hasRoomFor`; loosening either re-opens the lost-photo path |
+| `BinLedger` layout (`bin/data`, `bin/entries`, `.binmeta`) | Below-API-30 only now (`BinStore` uses the platform trash on API 30+). Existing bins on a device are read by `reconcile()`/`list()`; a rename strands photos that are already in the bin — `adoptLegacyIndex` is the precedent for converting, not dropping |
+| `BinLedger.copyComplete` / quota margin | `BinManager.moveToBin` ordering (copy → verify → delete original) and `hasRoomFor`; loosening either re-opens the lost-photo path (below-API-30 only) |
 | `SafeWorkGuard` duty semantics | `SafeManager.guarded`/`lock`/`applyLock` and `onStop` — `end()` returning true means a worker owes the lock; a second implementation of "busy" would let an import race the lock again |
-| `BinManager.RETENTION_MS` | `bin_retention_note` (string resources promise the same length) and `purgeExpired()` which runs on every cold start — shortening it deletes photos people are still expecting to find, and no test can recover them |
+| `BinManager.RETENTION_MS` | `bin_retention_note` (string resources promise the same length) and `purgeExpired()` which runs on every cold start — shortening it deletes photos people are still expecting to find, and no test can recover them. Below-API-30 only; the system trash (API 30+) enforces its own retention |
 | `ForegroundBudget.CapMillis` / `StopReserveMillis` | The platform's own 6 h per rolling 24 h grant (`dataSync` FGS, Android 14+) — raising the cap past it trades the deferred run for the `RemoteServiceException` crash again; the reserve is the time left to checkpoint and stop cleanly |
 | `ForegroundBudget` window (`WindowHours`) | `IndexWorker.scheduleResumeAfterForegroundRefill()`'s delay and every worker's `finally` bookkeeping — the ledger must roll like the platform's window or old spend is counted twice |
 | `GalleryRepository.computeBatchSize()` (2/4/6 + override) | Memory pressure on low-RAM devices; `buildIndex()` chunking; OOM override persisted via `IndexPreferences.saveIndexBatchSizeOverride` (IndexWorker OOM path) |
@@ -324,8 +353,8 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | whether a duplicate is pre-selected | `DuplicateVerifier.verify` + `CleanupWorker.decodeDhash`/`dhashCache` (fail closed: an unmeasurable photo is listed, never offered) and `DuplicateVerifierTest` — the chain case (A–B=2, B–C=8, A–C=10) is what stops transitive grouping from condemning the middle of a chain |
 | a manifest `android:name` | `ManifestClassTest` parses `src/main` (+ `src/debug`) against those source sets. A component whose class lives in `src/debug` must be declared in `src/debug/AndroidManifest.xml`, or release builds carry a ghost that crashes on the tap that reaches it |
 | an exported filter's action | `ExternalMediaEntryTest` — the resolver names an entry after the activity answering it, so `ACTION_VIEW` (`.OpenDispatchActivity`) and `ACTION_EDIT` (`.EditDispatchActivity`) cannot share one activity. Merging them reintroduces the bug the split fixed: a view request landing in the editor, whose Save overwrites the original |
-| `MediaFileOps.copyToFile` | `BinManager.moveToBin`'s copy → verify → **fsync** → ledger → delete ordering — the `flush()` must stay before `fd.sync()`, and the sync before `close()`; move either and a crash can leave a ledger entry pointing at a zero-length copy |
-| A `FeatureFlags` kill switch | One object, every flag `false` in this release: `RECYCLE_BIN_ENABLED` (`DeleteCoordinator.usesBin`, `BinManager.moveToBin`/restore), `SAFE_ENABLED` (`SafeManager.hasAccess`/`isConfigured` + every Safe entry point), `COMPRESSION_REPLACE_ENABLED` (`CompressionEngine.commitReplace`), `ALBUM_FOLDER_OPS_ENABLED` (the album "Add photos" row + `AlbumFolderOps`). They stand in for the removed `MANAGE_EXTERNAL_STORAGE` access: each covers a path that used direct `File` I/O on shared storage, so flipping one on without re-establishing write access re-opens an operation that can only fail |
+| `MediaFileOps.copyToFile` | `BinManager.moveToBin`'s copy → verify → **fsync** → ledger → delete ordering (below-API-30 bin path) — the `flush()` must stay before `fd.sync()`, and the sync before `close()`; move either and a crash can leave a ledger entry pointing at a zero-length copy |
+| A `FeatureFlags` kill switch | One object. `RECYCLE_BIN_ENABLED` is **on** (`DeleteCoordinator.usesBin`, `BinStore`, drawer/tile + `SearchShortcut.RecentlyDeleted`) because the bin now rides the platform trash via `BinStore` — no direct shared-storage I/O. The rest stay `false` in this release: `SAFE_ENABLED` (`SafeManager.hasAccess`/`isConfigured` + every Safe entry point), `COMPRESSION_REPLACE_ENABLED` (`CompressionEngine.commitReplace`), `ALBUM_FOLDER_OPS_ENABLED` (the album "Add photos" row + `AlbumFolderOps`). Each still-off flag covers a path that used direct `File` I/O on shared storage, so flipping one on without re-establishing write access re-opens an operation that can only fail |
 | the backup rule XMLs | Both `backup_rules.xml` (API ≤30) and `data_extraction_rules.xml`, and inside the latter **every** section (`cloud-backup` *and* `device-transfer`): a `domain="database"` exclude listed in one only restores the DB through the other door |
 | `AccentPalette.Choice` | the picker (`SettingsActivity.showAccentColorDialog` via `choicesFor`), every activity's `AccentPalette.apply(this)`, the Canvas-paint callers of `solid()`/`light()` — and `Accent.System`, which exists twice: `values/themes.xml` (Azure, so pre-31 resolves) and `values-v31/themes.xml` (framework tones). A new choice needs both halves, or the overlay style is missing where the OS cannot supply one. **Declaration order is also pricing**: `FreeTier.accentLocked` counts from the front of `choices`, so inserting a swatch before the fourth silently makes a paid color free (or a free one paid) for everyone already looking at the picker |
 | `BillingGateway.ProProductId` | the product must exist in Play Console as a one-time INAPP with exactly this id, or every catalogue query answers OK with an empty list (the gateway reports it as `Play does not know the product …`). Renaming strands purchases already made against the old id — nothing here can migrate them |

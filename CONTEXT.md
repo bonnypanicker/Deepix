@@ -212,7 +212,7 @@ kinds have nothing stored to refresh, so the sheet does not offer it.
 
 ### Safe (encrypted photo locker) Flow
 > **Off in this release** — `FeatureFlags.SAFE_ENABLED = false`. Every entry point (drawer "safe",
-> multi-select "safe", the Safe tab, Settings › SAFE, Recently-deleted shortcut) is hidden and
+> multi-select "safe", the Safe tab, Settings › SAFE) is hidden and
 > `SafeManager.setUpVault`/`isConfigured` answer `NO_ACCESS`. The code below is kept, not deleted.
 ```
 Drawer "safe" (or multi-select "safe" command) → SafeActivity
@@ -409,6 +409,8 @@ SAF tree grant (`takePersistableUriPermission`). `SafeActivity` is `excludeFromR
 
 44. **MANAGE_EXTERNAL_STORAGE removed — this is not a core file manager** — Play refused the upload because `MANAGE_EXTERNAL_STORAGE` ("All files access") is reserved for core file-manager features, which a photo gallery is not. The permission is gone from `AndroidManifest.xml`, declared there only as `tools:node="remove"` so no merged library can bring it back; the merged release manifest carries no `MANAGE_EXTERNAL_STORAGE`. `StoragePermissions.hasAllFilesAccess`/`allFilesAccessRequestable`/`manageAllFilesIntent` and every all-files prompt are deleted (the first-run tour's All-files row, Settings, and the three delete entry points). Everything that had been built on top of that access is turned off behind one object, `FeatureFlags` (every flag `false` — a kill switch, not a rewrite): the **Recycle Bin** (`BinManager`), the encrypted **Safe** (`SafeManager`, its drawer/tab/settings entry points), compression **replace** mode (`CompressionEngine.commitReplace`), and album move/copy (`AlbumFolderOps`). The code stays; only the entry points are hidden and the operations early-return. Deleting is now always the platform's: `DeleteCoordinator.delete` takes no direct-file path and routes every request to `MediaStore.createTrashRequest` (API 30+, recoverable) with the legacy path on API 26-29, and `createDeleteRequest` where trash is unsuitable; no `File.delete` reaches shared storage anywhere else. Compression **keep both** still works — it inserts through MediaStore with `RELATIVE_PATH`. Untouched: search, indexing, CLIP, the face pipeline, the viewer, editing.
 
+45. **Recycle Bin rebuilt on the system trash (no All-files access)** — Phase 1 had turned the bin off entirely (#44); it now works without raw file access. On **API 30+ the bin *is* the platform's system trash**: a delete already lands there via `MediaStore.createTrashRequest`, so the Bin screen stopped listing `filesDir/bin` and now queries the trashed rows of the Images/Video collections (`QUERY_ARG_MATCH_TRASHED = MATCH_ONLY`); Restore is the same `createTrashRequest(uris, false)` un-trash request, and Delete-forever / Empty are `createDeleteRequest` — all three are system consent dialogs, so `BinActivity` finishes them through a `StartIntentSenderForResult` launcher and refreshes. `BinStore` is the seam: it answers "which storage backs the bin" (`usesSystemTrash()`) and returns an `IntentSender` when consent is needed, or null when the work was already done in place. Below API 30 there is no system trash, so the app-private bin (`BinManager`/`BinLedger`, `filesDir/bin`) is kept and its operations stay synchronous — that half still needs `WRITE_EXTERNAL_STORAGE` (capped at `maxSdkVersion=29`). `BinItem` is the one grid row type both halves map onto (its `displayUri` is a content uri either way), so the screen no longer knows where the bytes live. `FeatureFlags.RECYCLE_BIN_ENABLED` is back **on**; the other three flags stay off.
+
 ---
 
 ## Active Roadmap Phase (as of last commit)
@@ -432,4 +434,6 @@ SAF tree grant (`takePersistableUriPermission`). `SafeActivity` is `excludeFromR
 
 **Indexing performance & robustness pass — complete.** `ThreadBenchmark` is now wired end-to-end (one-time tuned intra-op thread count, cached in prefs, consumed by both encoders via `SharedEncoders`); index batching scales to device capability (2/4/6 + OOM-persisted fallback); `loadBitmap` does an EXIF-aware two-pass decode (embedding index bumped to v3); OOM during indexing degrades (batch=2 + retry) instead of failing permanently.
 
-**Last commit:** Indexing perf: wire ThreadBenchmark into encoders, device-scaled batches, EXIF-aware two-pass decode, OOM batch fallback
+**Recycle Bin on the system trash — complete.** The Bin is no longer app-private on API 30+: `BinStore` queries the platform's trashed media and drives Restore / Delete-forever / Empty through MediaStore consent requests, so the feature runs without All-files access. Below API 30 it keeps the app-private `BinManager`/`BinLedger` bin. `FeatureFlags.RECYCLE_BIN_ENABLED` is back on; Safe, compression-replace and album move/copy remain off.
+
+**Last commit:** Recycle Bin rebuilt on the MediaStore system trash (API 30+); app-private bin kept below 30

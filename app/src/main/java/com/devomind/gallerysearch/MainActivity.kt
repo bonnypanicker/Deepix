@@ -2953,7 +2953,7 @@ class MainActivity : AppCompatActivity() {
             searchBinShortcutVisible = withContext(Dispatchers.IO) {
                 FeatureFlags.RECYCLE_BIN_ENABLED &&
                     IndexPreferences.isRecycleBinEnabled(applicationContext) &&
-                    BinManager.count(applicationContext) > 0
+                    BinStore.count(applicationContext) > 0
             }
             searchEmptyDataLoaded = true
             refreshSearchEmptyStateIfVisible()

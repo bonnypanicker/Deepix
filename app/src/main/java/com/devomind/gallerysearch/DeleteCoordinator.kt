@@ -12,9 +12,10 @@ import android.net.Uri
  * MediaStore consent flow — [Outcome.NeedsSystemDelete] — which the caller turns into a
  * `MediaStore.createTrashRequest` (API 30+, recoverable system trash) or `createDeleteRequest`.
  *
- * The Recycle Bin (app-private storage) is gated behind [FeatureFlags.RECYCLE_BIN_ENABLED] and is off
- * in this release, so [usesBin] is always false. The bin code stays in place for the Phase 2 rebuild
- * on the system trash.
+ * The Recycle Bin is backed by [BinStore]: the platform's system trash on API 30+ (the same
+ * `createTrashRequest` this coordinator hands off to) and the app-private bin below that, so
+ * [usesBin] is true when the user's Recycle Bin preference is on. It only drives the confirmation
+ * copy — the removal itself is always the platform's consent flow.
  */
 object DeleteCoordinator {
 
@@ -35,7 +36,7 @@ object DeleteCoordinator {
         data object NeedsSystemDelete : Outcome()
     }
 
-    /** The Recycle Bin is off in this release (no all-files access to move originals). */
+    /** Whether the user's deletes should route to the Recycle Bin. */
     fun usesBin(context: Context): Boolean =
         FeatureFlags.RECYCLE_BIN_ENABLED && IndexPreferences.isRecycleBinEnabled(context)
 
