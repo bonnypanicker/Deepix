@@ -240,19 +240,24 @@ Drawer "safe" (or multi-select "safe" command) → SafeActivity
 
 Storage model (all safe photos in ONE encrypted "folder"):
   - The vault is a single standard AES-256 password zip `PixaSafe.zip`, openable in any zip tool with
-    the password. **Where it lives is `VaultStorage`'s business**: `AppPrivateVaultStorage` keeps it in
-    app storage (`filesDir/safe_vault/`, the default — survives lock, dies with the app), and
-    `SafVaultStorage` keeps it as a document in a folder the user picked through
-    `ACTION_OPEN_DOCUMENT_TREE` (persistable permission). Neither needs All-files access, so there is
-    no public vault folder and nothing to resolve: `VaultStores.of` picks the storage from
-    `SafeStore.getTreeUri`, and Settings › SAFE location is the one move (`SafeManager.relocateVault`,
-    which copies first and drops the old copy only once the new one is verified; a target that already
-    holds a vault is refused, never overwritten).
+    the password. **Where it lives is `VaultStorage`'s business**, and there are three homes
+    (`VaultLocation`): `DocumentsVaultStorage` keeps it in the public Documents folder (the default —
+    a MediaStore row, so the user can see and copy the zip out), `AppPrivateVaultStorage` keeps it in
+    app storage (`filesDir/safe_vault/`, hidden, dies with the app), and `SafVaultStorage` keeps it as
+    a document in a folder the user picked through `ACTION_OPEN_DOCUMENT_TREE` (persistable
+    permission). None needs All-files access. `VaultStores.of` resolves the storage from
+    `SafeStore.getVaultLocation`; a location never stored is inherited (a picked folder, then an
+    app-storage archive, then Documents) so an existing vault is not orphaned by the new default.
+    Settings › SAFE location offers the three (`SafeManager.relocateVault`, which copies first and
+    drops the old copy only once the new one is verified; a target that already holds a vault is
+    refused, never overwritten).
   - `SafeCrypto` still only understands a real `File` (zip4j rewrites the whole archive to add or drop
-    one entry), so a picked folder is mirrored into `filesDir/safe_vault_mirror/<tree-hash>/`:
-    `refresh()` pulls the document down before a read, `commit()` pushes it back after a mutation —
-    write a `.tmp` transfer, verify the byte count landed, drop the old archive, rename. Gallery
-    originals are deleted only once `commit()` has returned.
+    one entry), so both a Documents vault and a picked folder are mirrored into `filesDir` —
+    `safe_vault_mirror/documents/` and `safe_vault_mirror/<tree-hash>/` respectively: `refresh()` pulls
+    the remote down before a read, `commit()` pushes it back after a mutation — write a `.tmp`
+    transfer, verify the byte count landed, drop the old archive, rename. Below API 29 there is no
+    MediaStore to write through, so a Documents vault is a plain file in the public folder and no
+    mirror is kept. Gallery originals are deleted only once `commit()` has returned.
   - Legacy `DeepixSafe.zip` is still recognised by name when an archive is discovered.
   - Sub-folders are path prefixes inside the archive (`Trip/beach.jpg`); empty folders keep a
     `.dpixkeep` marker. Extracted plaintext previews go to cacheDir temp dirs wiped after use.

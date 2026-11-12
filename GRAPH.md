@@ -205,17 +205,22 @@ consent. Below API 30 there is no system trash, so the app-private BinManager re
 ```
 MainActivity drawer "safe" / multi-select "safe" → SafeActivity (safeLauncher, StartActivityForResult)
   ├── SafeManager  (session password in-memory; single-archive vault orchestration) — FeatureFlags.SAFE_ENABLED
-  │     ├── SafeStore  (SharedPrefs: salt+verifier, biometric blob/iv, vault tree uri)
+  │     ├── SafeStore  (SharedPrefs: salt+verifier, biometric blob/iv, vault location + tree uri)
   │     ├── SafeCrypto (zip4j AES-256 add/list/extract/remove/verify; PBKDF2; AES-GCM thumbs;
   │     │              thumbnail decode straight from encrypted entry stream)
   │     ├── SafeKeystore (biometric-gated Keystore key → wraps password)
   │     └── VaultStorage  (where the zip lives — this class only ever holds a local File)
-  │           ├── AppPrivateVaultStorage  (default: filesDir/safe_vault/PixaSafe.zip)
+  │           ├── DocumentsVaultStorage  (default: a MediaStore row in public Documents/, so the zip
+  │           │     is visible and copyable; working copy in filesDir/safe_vault_mirror/documents/.
+  │           │     Below API 29 the public folder is written directly — no MediaStore, no mirror)
+  │           ├── AppPrivateVaultStorage  (filesDir/safe_vault/PixaSafe.zip — hidden, dies with the app)
   │           ├── SafVaultStorage  (folder the user picked via ACTION_OPEN_DOCUMENT_TREE, persisted;
   │           │     working copy in filesDir/safe_vault_mirror/<tree-hash>/, refresh() before a read,
   │           │     commit() after a mutation — .tmp → verify length → delete old → rename)
-  │           └── VaultStores.of(context)  → reads SafeStore.getTreeUri; refresh()/commit() are what
-  │                decide when the gallery originals may be dropped (only after commit() returns)
+  │           └── VaultStores.of(context)  → reads SafeStore.getVaultLocation (a location never stored
+  │                is inherited: picked folder → app-storage archive → Documents, so an existing vault
+  │                is not orphaned by the default); refresh()/commit() are what decide when the gallery
+  │                originals may be dropped (only after commit() returns)
   ├── not configured, no archive found → offerRestoreChoice ("Restore a Safe?"): "Find Safe file"
   │     (OpenDocument picker → password → SafeManager.adoptArchive) or "Create new Safe" (setup dialog)
   ├── configured but archive not at its location (SafeManager.archiveMissing — upgraded from the
@@ -226,8 +231,8 @@ MainActivity drawer "safe" / multi-select "safe" → SafeActivity (safeLauncher,
   │       → storage.commit(); the picked source is never modified) → ADOPTED → showContent
   ├── WRONG_PASSWORD (orphaned zip / forgotten pw) → offerResetOrphanedVault → SafeManager.purgeVault
   │     (deletes the storage's archive + both local roots + SafeStore.reset + thumbs) → fresh CREATED setup
-  ├── Settings › SAFE location → changeSafeVaultDir → SafeManager.relocateVault (SAF folder picker or
-  │     app storage; never overwrites an archive already at the target)
+  ├── Settings › SAFE location → changeSafeVaultLocation → SafeManager.relocateVault (Documents /
+  │     app storage / picked folder; never overwrites an archive already at the target)
   ├── BiometricPrompt (CryptoObject) → recover password → unlock
   ├── SafeItemAdapter (grid of decrypted thumbnails; async bindThumb)
   └── returns ExtraImportedUris → MainActivity.deleteUris(permanent = true) (originals removed for good, not binned)

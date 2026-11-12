@@ -144,7 +144,7 @@ object SafeManager {
 
     // ---- Storage location ----
 
-    /** The vault's current home — app storage by default, or the folder the user picked. */
+    /** The vault's current home — Documents by default, app storage, or the folder the user picked. */
     private fun storage(context: Context): VaultStorage = VaultStores.of(context)
 
     /**
@@ -159,19 +159,26 @@ object SafeManager {
     }
 
     /**
-     * Moves the vault to [treeUri] (or back to app storage when null) and persists the choice. The
-     * archive is copied first and the old copy dropped only once the new one is verified, so a
+     * Moves the vault to [location] — a picked folder needs its [treeUri] — and persists the choice.
+     * The archive is copied first and the old copy dropped only once the new one is verified, so a
      * failed move leaves the vault exactly where it was. Returns false only when the target already
      * holds a vault — nothing is ever overwritten.
      */
-    fun relocateVault(context: Context, treeUri: Uri?): Boolean {
-        if (SafeStore.getTreeUri(context) == treeUri) return true
+    fun relocateVault(
+        context: Context,
+        location: VaultLocation,
+        treeUri: Uri? = null
+    ): Boolean {
+        if (location == VaultLocation.PICKED && treeUri == null) return false
+        val samePlace = VaultStores.currentLocation(context) == location &&
+            (location != VaultLocation.PICKED || SafeStore.getTreeUri(context) == treeUri)
+        if (samePlace) return true
+
         val old = storage(context).also { it.refresh() }
         val oldFile = old.localFile()
-        val target: VaultStorage =
-            treeUri?.let { SafVaultStorage(context, it) } ?: AppPrivateVaultStorage(context)
+        val target = VaultStores.of(context, location, treeUri)
         if (!oldFile.exists()) {
-            SafeStore.setTreeUri(context, treeUri)
+            persistLocation(context, location, treeUri)
             return true
         }
         if (target.exists()) return false
@@ -186,9 +193,15 @@ object SafeManager {
             runCatching { targetFile.delete() }
             return false
         }
-        SafeStore.setTreeUri(context, treeUri)
+        persistLocation(context, location, treeUri)
         runCatching { old.delete() }
         return true
+    }
+
+    /** Records where the vault now lives. A tree uri only means anything for a picked folder. */
+    private fun persistLocation(context: Context, location: VaultLocation, treeUri: Uri?) {
+        SafeStore.setVaultLocation(context, location)
+        SafeStore.setTreeUri(context, if (location == VaultLocation.PICKED) treeUri else null)
     }
 
     /**
@@ -210,8 +223,8 @@ object SafeManager {
 
     /**
      * Safe is gated behind [FeatureFlags.SAFE_ENABLED] so this release ships it only once the
-     * storage rebuild has been verified. The vault no longer needs All-files access: it is a file
-     * in app storage, or a document in a folder the user picked.
+     * storage rebuild has been verified. The vault no longer needs All-files access: it is a zip in
+     * the public Documents folder, a file in app storage, or a document in a folder the user picked.
      */
     val hasAccess: Boolean get() = FeatureFlags.SAFE_ENABLED
 

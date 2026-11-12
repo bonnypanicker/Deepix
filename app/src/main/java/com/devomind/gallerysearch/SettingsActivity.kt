@@ -365,17 +365,16 @@ class SettingsActivity : AppCompatActivity() {
         MetroDialog.items(
             this,
             title = "Safe storage location",
-            options = listOf("Choose folder…", "Use app storage (default)")
+            options = listOf("Documents (default)", "Hidden — app storage", "Choose a folder…")
         ) { which ->
             when (which) {
-                0 -> {
-                    runCatching {
-                        safeFolderPicker.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
-                    }.onFailure {
-                        MetroBanner.show(this, "Couldn't open the folder picker")
-                    }
+                0 -> changeSafeVaultLocation(VaultLocation.DOCUMENTS)
+                1 -> changeSafeVaultLocation(VaultLocation.APP_PRIVATE)
+                2 -> runCatching {
+                    safeFolderPicker.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
+                }.onFailure {
+                    MetroBanner.show(this, "Couldn't open the folder picker")
                 }
-                1 -> changeSafeVaultDir(null)
             }
         }
     }
@@ -407,20 +406,20 @@ class SettingsActivity : AppCompatActivity() {
             MetroBanner.show(this, "Couldn't keep access to that folder")
             return@registerForActivityResult
         }
-        changeSafeVaultDir(treeUri)
+        changeSafeVaultLocation(VaultLocation.PICKED, treeUri)
     }
 
     /**
-     * Moves the vault to [treeUri] (or back to app storage when null) and persists the choice. The
-     * vault only moves when the target holds no Safe file, so nothing can be overwritten or lost.
+     * Moves the vault to [location] and persists the choice. The vault only moves when the target
+     * holds no Safe file, so nothing can be overwritten or lost.
      */
-    private fun changeSafeVaultDir(treeUri: Uri?) {
+    private fun changeSafeVaultLocation(location: VaultLocation, treeUri: Uri? = null) {
         lifecycleScope.launch {
             val moved = withContext(Dispatchers.IO) {
-                SafeManager.relocateVault(this@SettingsActivity, treeUri)
+                SafeManager.relocateVault(this@SettingsActivity, location, treeUri)
             }
             if (!moved) {
-                MetroBanner.show(this@SettingsActivity, "The chosen folder already has a Safe file")
+                MetroBanner.show(this@SettingsActivity, "That location already has a Safe file")
                 return@launch
             }
             updateSafeSubtitles()
@@ -432,15 +431,21 @@ class SettingsActivity : AppCompatActivity() {
         binding.safeLocationSubtitle.text = safeLocationLabel()
     }
 
-    /** The vault's home as the row subtitle: the picked folder's name, or app storage. */
-    private fun safeLocationLabel(): String {
-        val tree = SafeStore.getTreeUri(this) ?: return "App storage"
-        val name = runCatching { DocumentsContract.getTreeDocumentId(tree) }
-            .getOrNull()
-            ?.substringAfterLast(':')
-            ?.substringAfterLast('/')
-            ?.takeIf { it.isNotBlank() }
-        return name ?: "Picked folder"
+    /** The vault's home as the row subtitle: the picked folder's name, Documents, or app storage. */
+    private fun safeLocationLabel(): String = when (VaultStores.currentLocation(this)) {
+        VaultLocation.DOCUMENTS -> "Documents"
+        VaultLocation.APP_PRIVATE -> "Hidden — app storage"
+        VaultLocation.PICKED -> {
+            val tree = SafeStore.getTreeUri(this)
+            val name = tree?.let {
+                runCatching { DocumentsContract.getTreeDocumentId(it) }
+                    .getOrNull()
+                    ?.substringAfterLast(':')
+                    ?.substringAfterLast('/')
+                    ?.takeIf { folder -> folder.isNotBlank() }
+            }
+            name ?: "Picked folder"
+        }
     }
 
     private fun rootLabel(root: String): String =

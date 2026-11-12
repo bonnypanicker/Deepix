@@ -15,7 +15,8 @@ import java.security.MessageDigest
  *
  * Stored:
  *  - salt + PBKDF2 verifier   → validate a typed password without touching a zip
- *  - vault tree uri (SAF)     → the public folder that survives uninstall
+ *  - vault location           → Documents (the default), app storage, or a folder the user picked
+ *  - vault tree uri (SAF)     → the picked folder that survives uninstall
  *  - biometric blob + iv      → the password encrypted by a Keystore key (see [SafeKeystore])
  */
 object SafeStore {
@@ -25,6 +26,7 @@ object SafeStore {
     private const val KeyVerifier = "pw_verifier"
     private const val KeyIterations = "pw_iterations"
     private const val KeyTreeUri = "vault_tree_uri"
+    private const val KeyVaultLocation = "vault_location"
     private const val KeyBiometricEnabled = "biometric_enabled"
     private const val KeyBiometricBlob = "biometric_pw_blob"
     private const val KeyBiometricIv = "biometric_pw_iv"
@@ -71,6 +73,18 @@ object SafeStore {
         prefs(context).edit().apply {
             if (uri == null) remove(KeyTreeUri) else putString(KeyTreeUri, uri.toString())
         }.apply()
+    }
+
+    /**
+     * The vault's chosen home, or null when it has never been chosen — a first run, or a build from
+     * before locations existed. [VaultStores.currentLocation] resolves the null case.
+     */
+    fun getVaultLocation(context: Context): VaultLocation? =
+        prefs(context).getString(KeyVaultLocation, null)
+            ?.let { stored -> VaultLocation.entries.firstOrNull { it.name == stored } }
+
+    fun setVaultLocation(context: Context, location: VaultLocation) {
+        prefs(context).edit().putString(KeyVaultLocation, location.name).apply()
     }
 
     fun isBiometricEnabled(context: Context): Boolean =
