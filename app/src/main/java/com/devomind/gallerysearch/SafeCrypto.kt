@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import net.lingala.zip4j.ZipFile
+import net.lingala.zip4j.io.outputstream.ZipOutputStream
 import net.lingala.zip4j.model.ZipParameters
 import net.lingala.zip4j.model.enums.AesKeyStrength
 import net.lingala.zip4j.model.enums.CompressionMethod
@@ -211,6 +212,18 @@ object SafeCrypto {
     /** Adds [source] to the vault archive as entry [innerName] (creates the zip if absent). */
     fun addFileToZip(zip: File, source: File, innerName: String, password: CharArray) {
         ZipFile(zip, password).use { it.addFile(source, aesZipParameters(innerName)) }
+    }
+
+    /**
+     * Writes a valid archive holding no entries, so a Safe created with no photos yet still has a
+     * file at its location. That is what lets [SafeManager.archiveMissing] tell a genuinely empty
+     * Safe apart from one whose archive the app can no longer find. Reads back as [ArchiveRead.Ok]
+     * with no names.
+     */
+    fun createEmptyArchive(zip: File) {
+        zip.parentFile?.mkdirs()
+        // No entries, so the charset is immaterial; naming it avoids the null-ambiguous 2-arg overload.
+        ZipOutputStream(zip.outputStream(), Charsets.UTF_8).use { }
     }
 
     /**

@@ -213,6 +213,14 @@ MainActivity drawer "safe" / multi-select "safe" → SafeActivity (safeLauncher,
   │           │     commit() after a mutation — .tmp → verify length → delete old → rename)
   │           └── VaultStores.of(context)  → reads SafeStore.getTreeUri; refresh()/commit() are what
   │                decide when the gallery originals may be dropped (only after commit() returns)
+  ├── not configured, no archive found → offerRestoreChoice ("Restore a Safe?"): "Find Safe file"
+  │     (OpenDocument picker → password → SafeManager.adoptArchive) or "Create new Safe" (setup dialog)
+  ├── configured but archive not at its location (SafeManager.archiveMissing — upgraded from the
+  │     pre-scoped-storage build, which kept the zip in shared Pictures/Documents, now unreachable)
+  │     → showMissingVault ("Safe file not found") → promptFindVault
+  │     → pickVaultLauncher (ACTION_OPEN_DOCUMENT, */*) → adopt password dialog
+  │     → SafeManager.adoptArchive (copy beside the vault → verify names/password → replaceAtomically
+  │       → storage.commit(); the picked source is never modified) → ADOPTED → showContent
   ├── WRONG_PASSWORD (orphaned zip / forgotten pw) → offerResetOrphanedVault → SafeManager.purgeVault
   │     (deletes the storage's archive + both local roots + SafeStore.reset + thumbs) → fresh CREATED setup
   ├── Settings › SAFE location → changeSafeVaultDir → SafeManager.relocateVault (SAF folder picker or

@@ -225,6 +225,16 @@ object SafeManager {
     }
 
     /**
+     * True when a Safe is configured but its archive is not at the vault's location — the shape an
+     * upgrade out of the build that kept it in shared storage by path leaves behind, and also a
+     * picked folder the user moved or stopped granting. The photos are not gone; the file is simply
+     * elsewhere, so the Safe offers to bring it back instead of showing an empty vault. Reads the
+     * storage location, so call it off the main thread.
+     */
+    fun archiveMissing(context: Context): Boolean =
+        isConfigured(context) && !archive(context).exists()
+
+    /**
      * First-time setup / recovery. Requires the Safe to be enabled. Creates the vault archive and,
      * if one is already present (reinstall or a copied vault), verifies the password against it and
      * adopts it; otherwise starts fresh. Nothing is persisted on a wrong password.
@@ -239,8 +249,58 @@ object SafeManager {
             return SetupOutcome.WRONG_PASSWORD
         }
         SafeStore.savePasswordVerifier(context, password)
+        if (!hasExisting) {
+            // A created Safe holds an (empty) archive from the start, so "configured" always implies
+            // a file at the vault's location and an absent one means the vault is genuinely missing.
+            runCatching {
+                SafeCrypto.createEmptyArchive(zip)
+                storage(context).commit()
+            }
+        }
         openSession(context, password)
         return if (hasExisting) SetupOutcome.ADOPTED else SetupOutcome.CREATED
+    }
+
+    /**
+     * Adopts a vault archive the user picked with the system document picker — how a Safe comes
+     * across from the build that kept it in shared storage by path. The picked document is copied to
+     * a staging file beside the vault and verified against [password] before anything is swapped in,
+     * so a wrong password or an unreadable file leaves the vault's own location untouched. The picked
+     * document itself is never modified — it stays the user's copy.
+     */
+    fun adoptArchive(context: Context, source: Uri, password: String): SetupOutcome {
+        if (!hasAccess) return SetupOutcome.NO_ACCESS
+        val store = storage(context).also { it.refresh() }
+        val target = store.localFile()
+        val staged = File(target.parentFile, "${target.name}.adopt")
+        staged.delete()
+        val copied = runCatching {
+            context.contentResolver.openInputStream(source)?.use { input ->
+                staged.outputStream().use { input.copyTo(it) }
+            } != null
+        }.getOrDefault(false)
+        if (!copied || staged.length() <= 0L) {
+            staged.delete()
+            return SetupOutcome.ARCHIVE_UNREADABLE
+        }
+        val names = (SafeCrypto.readArchive(staged) as? SafeCrypto.ArchiveRead.Ok)?.names.orEmpty()
+        if (names.isEmpty()) {
+            staged.delete()
+            return SetupOutcome.ARCHIVE_UNREADABLE
+        }
+        if (!SafeCrypto.verifyPassword(staged, password.toCharArray())) {
+            staged.delete()
+            return SetupOutcome.WRONG_PASSWORD
+        }
+        val adopted = runCatching {
+            SafeCrypto.replaceAtomically(staged, target)
+            store.commit()
+        }.isSuccess
+        staged.delete()
+        if (!adopted) return SetupOutcome.ARCHIVE_UNREADABLE
+        SafeStore.savePasswordVerifier(context, password)
+        openSession(context, password)
+        return SetupOutcome.ADOPTED
     }
 
     /**

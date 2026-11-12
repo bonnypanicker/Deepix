@@ -17,7 +17,7 @@
 | `ViewerActivity` | Full-screen pager: spring-physics swipe-to-dismiss (single-finger gated), Metro **key-value Info bottom sheet** (filename/date/size/dims/duration/location/device/lens/settings/path/tags), top-bar title+date, favorite/info/overflow actions, flat bottom action row (Share/Edit/Wallpaper/Delete), **Find similar** (image-to-image), Metro delete dialog, video controls |
 | `SmartCleanupActivity` | Dedicated Metro screen: CLIP-detected clutter tiles + storage summary, per-category selectable grid, MediaStore delete. Reads `CleanupResultStore`, observes `CleanupWorker`; progress bar + pause/resume/stop |
 | `SettingsActivity` | Metro preferences screen: Collage layout, **Collage thumbnail size**, Grid columns, Pinned-in-collections, Index-only-while-charging, Safe storage location, **Albums › folder location** (where a *new* album's own folder is made), Clear cleanup cache, About. Writes `IndexPreferences`; MainActivity re-applies on return |
-| `SafeActivity` | Encrypted photo locker ("Safe"). Lock screen (biometric-first, password fallback) → grid of decrypted thumbnails → overflow (Show password / Add photos / fingerprint toggle / Lock / Remove Safe). `FLAG_SECURE`, relocks on background. Launched with `ExtraImportUris` to move gallery photos in; returns `ExtraImportedUris` for the caller to delete originals |
+| `SafeActivity` | Encrypted photo locker ("Safe"). Lock screen (biometric-first, password fallback) → grid of decrypted thumbnails → overflow (Show password / Add photos / fingerprint toggle / Lock / Remove Safe). `FLAG_SECURE`, relocks on background. A configured vault whose archive is missing — or a fresh install with an old file still on the device — offers a find-the-file flow (`ACTION_OPEN_DOCUMENT` → password → adopt). Launched with `ExtraImportUris` to move gallery photos in; returns `ExtraImportedUris` for the caller to delete originals |
 | `SafeManager` | Session + storage orchestration for the Safe — **on again** (`FeatureFlags.SAFE_ENABLED = true`): the vault is a file in app storage or a document in a folder the user picked, so no All-files access is needed (see `VaultStorage`). Holds the unlocked password in-memory; reads/writes the single AES-256 archive (`PixaSafe.zip`) through whatever `VaultStorage` hands it (`archive` refreshes first; a mutation follows with `storage.commit`); `setUpVault` (create/adopt), `unlock`, `listItems`/`listFolder`, `importPhotos`, `decryptToBitmap`/`decryptToTemp`, `restoreToGallery`, `removeItem`, `lock`; `relocateVault` (relocate to a picked folder / back to app storage), `purgeVault` (hard delete — forgotten-password escape), `archiveExists`; `thumbnail` decodes straight from the encrypted entry stream |
 | `VaultStorage` | Where the vault archive physically lives: `AppPrivateVaultStorage` (app storage, default) and `SafVaultStorage` (a picked folder, mirrored into `filesDir`, `refresh()` before reads / `commit()` after mutations — write `.tmp`, verify, swap). `VaultStores.of` picks one from the stored tree Uri |
 | `SafeCrypto` | Crypto/format: zip4j **AES-256 password zip** add/list/extract/remove/verify (the vault is one standard archive, openable in any zip tool with the password); PBKDF2; AES-GCM thumbnail-cache encryption; downscaled thumbnail JPEGs |
@@ -217,15 +217,23 @@ kinds have nothing stored to refresh, so the sheet does not offer it.
 > "safe", multi-select "safe", the Safe tab and Settings › SAFE are all live.
 ```
 Drawer "safe" (or multi-select "safe" command) → SafeActivity
-  Not configured → setup dialog (password + confirm + "keep it safe" warning)
+  Not configured, no archive found → "Restore a Safe?" (offerRestoreChoice):
+        "Find Safe file"  → OpenDocument picker → password → SafeManager.adoptArchive
+        "Create new Safe" → setup dialog below
+  Not configured, archive found → setup dialog (password + confirm + "keep it safe" warning)
     → SafeManager.setUpVault(password):
-        CREATED  (no archive yet)    → savePasswordVerifier + open session
+        CREATED  (no archive yet)    → savePasswordVerifier + write an empty archive + open session
+                                       (so "configured" always implies a file at the vault location)
         ADOPTED  (archive present)   → verify password against the zip, then save verifier + open
         WRONG_PASSWORD               → offerResetOrphanedVault: "Delete & start over" (SafeManager.purgeVault
                                        wipes the vault at its current location + every app-private copy +
                                        config + thumbs) or "Try another
                                        password"  [escape from the reinstall/orphaned-zip deadlock]
     → offer to enable fingerprint (BiometricPrompt + Keystore-wrapped password)
+  Configured but the archive is not at its location (SafeManager.archiveMissing — an upgrade out of the
+               shared-storage build, or a picked folder moved / permission revoked) → showMissingVault:
+               "Find your Safe" → OpenDocument picker → password → SafeManager.adoptArchive — never an
+               empty vault for photos that are still in the file the user has.
   Configured → lock screen: BiometricPrompt first (recovers password from Keystore blob),
                password fallback → SafeManager.unlock() (verifier or archive check).
                "Forgot password?" link → offerResetOrphanedVault (same hard-delete escape).
@@ -257,10 +265,15 @@ Move-in flow (true locker): MainActivity multi-select "safe" → SafeActivity wi
 In-Safe "add photos" uses the system photo picker (copy-in; picker uris aren't deletable).
 Item tap = decrypt → fullscreen PhotoView (FLAG_SECURE). Long-press = Save back to gallery / Remove.
 
-Recovery after uninstall: reinstall → drawer "safe" → enter original password (archive is still at
-  the configured public path) → setUpVault ADOPTS it (verifies against the zip). Thumbnails rebuild
-  lazily. If the password is forgotten, the WRONG_PASSWORD setup path (or the lock-screen "Forgot
-  password?" link) offers `SafeManager.purgeVault` to delete the orphaned vault and start fresh.
+Recovery after uninstall / upgrade: the archive is no longer reachable by path, so the Safe asks for
+  the file instead of guessing at it. A configured Safe whose archive is missing (archiveMissing) —
+  the upgrade out of the shared-storage build — or a fresh install with an old file still on the
+  device both offer "Find Safe file" → OpenDocument picker → password → SafeManager.adoptArchive: it
+  copies the picked document to a staging file, verifies it against the password, then swaps it in and
+  commits. The picked file itself is never modified, and a wrong password or an unreadable file leaves
+  the vault's own location untouched. Thumbnails rebuild lazily. If the password is forgotten, the
+  WRONG_PASSWORD setup path (or the lock-screen "Forgot password?" link) offers `SafeManager.purgeVault`
+  to delete the orphaned vault and start fresh.
 
 Key derivation & biometric:
   - Encryption key = the zip's AES password (PBKDF2 inside zip4j). Password alone is the recovery root.
@@ -448,4 +461,6 @@ SAF tree grant (`takePersistableUriPermission`). `SafeActivity` is `excludeFromR
 
 **Safe storage seam (VaultStorage) — complete.** The Safe vault is no longer a public-folder zip: `AppPrivateVaultStorage` (app storage, default) and `SafVaultStorage` (a user-picked folder, mirrored into `filesDir` with `refresh()`/`commit()`) hand `SafeCrypto` a local `File` either way, so nothing needs All-files access. Settings › SAFE location relocates the vault without ever overwriting one. `FeatureFlags.SAFE_ENABLED` is back on (see #47).
 
-**Last commit:** Safe vault moved onto `VaultStorage` (app storage by default, user-picked folder via SAF) — `FeatureFlags.SAFE_ENABLED` back on
+**Safe migration onto a picked file — complete.** An upgraded user's vault can no longer be reached by path, so the Safe no longer shows an empty grid for it: `SafeManager.archiveMissing` (configured, but no file at the vault's location) sends `SafeActivity` to a "Find your Safe" prompt, and a fresh install with an old file gets the same offer on the setup screen. Either path runs `SafeManager.adoptArchive(context, pickedUri, password)` — copy to a staging file → verify the password → `replaceAtomically` + `commit()` — and never touches the user's own file. A created Safe now writes an empty archive at setup (`SafeCrypto.createEmptyArchive`) so "configured" is never ambiguous about whether a file exists.
+
+**Last commit:** Safe migration — adopt an old `PixaSafe.zip` picked with `ACTION_OPEN_DOCUMENT` (verified, staged, swapped in); `archiveMissing` + empty-archive-at-setup make "configured but missing" detectable

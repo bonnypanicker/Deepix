@@ -40,9 +40,11 @@ import kotlinx.coroutines.withContext
  * The encrypted photo locker ("Safe").
  *
  * Lifecycle:
- *  - Not configured → existing-vault choice (adopt the found archive with its password, or delete
- *    it and start over) → password → [SafeManager.setUpVault].
+ *  - Not configured → existing-vault choice (adopt the found archive with its password, find one from
+ *    another folder, or delete it and start over) → password → [SafeManager.setUpVault].
  *  - Configured     → lock screen (biometric first, password fallback) → grid of decrypted thumbs.
+ *  - Configured but the archive is not at its location → find-the-file prompt → the picked file is
+ *    verified and adopted in place of the missing one (see [SafeManager.adoptArchive]).
  * The activity is [WindowManager.LayoutParams.FLAG_SECURE] (no screenshots / recents preview) and
  * relocks whenever it goes to the background. Moving photos in from the gallery works even before
  * setup: launching with [ExtraImportUris] routes through the same setup chain, and the pending
@@ -74,10 +76,26 @@ class SafeActivity : AppCompatActivity() {
     private val importedForDeletion = ArrayList<Uri>()
     /** Set before launching external system UI so onStop doesn't relock mid-flow. */
     private var suppressRelock = false
+    /** True while a configured vault's archive is not where the app looks for it (migration). */
+    private var vaultMissing = false
+    /** The vault file the user picked to bring across, held between the picker and the password step. */
+    private var adoptSourceUri: Uri? = null
 
     private val pickPhotosLauncher = registerForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris -> if (uris.isNotEmpty()) runImport(uris, isMove = false) }
+
+    private val pickVaultLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) {
+            // The picker was abandoned — return to whichever prompt sent them there.
+            if (vaultMissing) promptFindVault() else offerRestoreChoice()
+        } else {
+            adoptSourceUri = uri
+            showAdoptPasswordDialog()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AccentPalette.apply(this)
@@ -142,7 +160,17 @@ class SafeActivity : AppCompatActivity() {
             override fun handleOnBackPressed() = handleBack()
         })
 
-        if (!SafeManager.isConfigured(this)) startSetup() else showLock()
+        if (!SafeManager.isConfigured(this)) {
+            startSetup()
+        } else {
+            // A configured Safe whose archive is not at its location is not an empty Safe: the
+            // photos are in the file the user still has, so offer to bring it back (see
+            // [SafeManager.archiveMissing]). The existence probe reads the storage location.
+            lifecycleScope.launch {
+                val missing = withContext(Dispatchers.IO) { SafeManager.archiveMissing(this@SafeActivity) }
+                if (missing) showMissingVault() else showLock()
+            }
+        }
     }
 
     private fun handleBack() {
@@ -176,6 +204,9 @@ class SafeActivity : AppCompatActivity() {
         // Nothing to relock before the vault is configured, and re-showing the lock UI mid-setup
         // would strand the flow.
         if (!SafeManager.isConfigured(this)) return
+        // The migration prompt is waiting for a file the user has to go and find; relocking would
+        // replace it with a password field for an archive that isn't there.
+        if (vaultMissing) return
         if (!suppressRelock && !isChangingConfigurations) {
             SafeManager.lock(this)
             showLock()
@@ -239,7 +270,29 @@ class SafeActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val hasExisting = withContext(Dispatchers.IO) { SafeManager.archiveExists(this@SafeActivity) }
             hideBusy()
-            if (hasExisting) offerExistingVaultChoice() else showPasswordSetupDialog(adoptMode = false)
+            if (hasExisting) offerExistingVaultChoice() else offerRestoreChoice()
+        }
+    }
+
+    /**
+     * No vault in the app's own storage: the user may be reinstalling with their encrypted file still
+     * out on the device, where the app can no longer reach it by path — so offer to find it before
+     * starting an empty Safe that would strand those photos.
+     */
+    private fun offerRestoreChoice() {
+        MetroDialog.confirm(
+            this,
+            title = "Restore a Safe?",
+            message = "If you already have a Pixa Safe file (PixaSafe.zip) from before, find it to " +
+                "bring your photos back. Otherwise, create a new Safe.",
+            positive = "Find Safe file",
+            negative = "Create new Safe",
+            iconRes = R.drawable.ic_fluent_lock_closed_24_regular,
+            cancelable = false,
+            onNegative = { showPasswordSetupDialog(adoptMode = false) },
+            onCancel = { finish() }
+        ) {
+            launchVaultPicker()
         }
     }
 
@@ -295,9 +348,12 @@ class SafeActivity : AppCompatActivity() {
             .create()
 
         if (adoptMode) {
-            view.findViewById<TextView>(R.id.safeSetupTitle).text = "Use existing Safe"
+            val picked = adoptSourceUri != null
+            view.findViewById<TextView>(R.id.safeSetupTitle).text =
+                if (picked) "Open Safe file" else "Use existing Safe"
             view.findViewById<TextView>(R.id.safeSetupNote).text =
-                "Enter the password this Safe was created with."
+                if (picked) "Enter the password the Safe file you picked was created with."
+                else "Enter the password this Safe was created with."
             confirm.visibility = View.GONE
             view.findViewById<TextView>(R.id.safeSetupWarning).visibility = View.GONE
             pw.hint = getString(R.string.enter_password_hint)
@@ -306,7 +362,12 @@ class SafeActivity : AppCompatActivity() {
 
         view.findViewById<TextView>(R.id.safeSetupCancel).setOnClickListener {
             dialog.dismiss()
-            if (adoptMode) offerExistingVaultChoice() else finish()
+            when {
+                // A picked file: back to whichever prompt sent them to the picker.
+                adoptSourceUri != null -> if (vaultMissing) promptFindVault() else offerRestoreChoice()
+                adoptMode -> offerExistingVaultChoice()
+                else -> finish()
+            }
         }
         view.findViewById<TextView>(R.id.safeSetupContinue).setOnClickListener {
             val password = pw.text.toString()
@@ -319,7 +380,10 @@ class SafeActivity : AppCompatActivity() {
                     MetroBanner.show(this, "Passwords don't match")
                 else -> {
                     dialog.dismiss()
-                    createOrAdoptVault(password, adoptMode)
+                    // A picked file is copied in and verified as-is; an archive already at the vault's
+                    // location goes through the setup path that re-checks what is there.
+                    if (adoptSourceUri != null) adoptPickedVault(password)
+                    else createOrAdoptVault(password, adoptMode)
                 }
             }
         }
@@ -365,6 +429,101 @@ class SafeActivity : AppCompatActivity() {
                     showContent()
                     offerBiometricEnroll { processPendingImport() }
                 }
+            }
+        }
+    }
+
+    // ---- Migration (bring an old Safe file into the app) ----
+
+    /**
+     * A configured Safe whose archive is not at its location is not an empty Safe — the photos are in
+     * the file the user still has, from the build that kept it in shared storage by path
+     * (see [SafeManager.archiveMissing]). Show the finding prompt instead of a lock for an archive
+     * that isn't there; [vaultMissing] also keeps a trip to the file picker from relocking.
+     */
+    private fun showMissingVault() {
+        vaultMissing = true
+        binding.contentPanel.visibility = View.GONE
+        binding.lockOverlay.visibility = View.VISIBLE
+        binding.lockSubtitle.text = "Safe file not found"
+        binding.fingerprintBtn.visibility = View.GONE
+        binding.lockDivider.visibility = View.GONE
+        binding.lockPasswordInput.visibility = View.GONE
+        binding.unlockBtn.visibility = View.GONE
+        binding.forgotPasswordBtn.visibility = View.GONE
+        promptFindVault()
+    }
+
+    /** Asks the user to point at their Safe file; the picker returns here when it's abandoned. */
+    private fun promptFindVault() {
+        MetroDialog.confirm(
+            this,
+            title = "Find your Safe",
+            message = "Pixa can't see your Safe file where it used to keep it. Your photos are " +
+                "still inside that encrypted file — find it to bring them back.",
+            positive = "Find Safe file",
+            negative = "Not now",
+            iconRes = R.drawable.ic_fluent_lock_closed_24_regular,
+            cancelable = false,
+            onNegative = { finish() },
+            onCancel = { finish() }
+        ) {
+            launchVaultPicker()
+        }
+    }
+
+    /** Opens the system picker for the Safe file. */
+    private fun launchVaultPicker() {
+        suppressRelock = true
+        // Anything goes: providers disagree on a zip's mime type, and the archive is checked against
+        // the password before it is accepted, so a filter would only hide the very file being sought.
+        pickVaultLauncher.launch(arrayOf("*/*"))
+    }
+
+    /** Password step for the picked file — the single-field adopt dialog with its own wording. */
+    private fun showAdoptPasswordDialog() = showPasswordSetupDialog(adoptMode = true)
+
+    /**
+     * Brings the picked file in as the vault. [SafeManager.adoptArchive] copies it, verifies it
+     * against [password] and only then swaps it in, so a wrong password or an unreadable file leaves
+     * both the app's vault and the user's own file untouched. Done off the main thread — it reads and
+     * hashes a whole archive.
+     */
+    private fun adoptPickedVault(password: String) {
+        val source = adoptSourceUri ?: return
+        showBusy()
+        lifecycleScope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                SafeManager.adoptArchive(this@SafeActivity, source, password)
+            }
+            hideBusy()
+            when (outcome) {
+                SafeManager.SetupOutcome.ADOPTED -> {
+                    adoptSourceUri = null
+                    vaultMissing = false
+                    MetroBanner.show(this@SafeActivity, "Safe restored")
+                    showContent()
+                    offerBiometricEnroll { processPendingImport() }
+                }
+                SafeManager.SetupOutcome.WRONG_PASSWORD -> {
+                    MetroBanner.show(this@SafeActivity, "Incorrect password")
+                    showAdoptPasswordDialog()
+                }
+                SafeManager.SetupOutcome.ARCHIVE_UNREADABLE -> MetroDialog.confirm(
+                    this@SafeActivity,
+                    title = "Safe file can't be read",
+                    message = "That file isn't a Pixa Safe, or it can't be opened. Your Safe is " +
+                        "unchanged — try another file.",
+                    positive = "Try another file",
+                    cancelable = false,
+                    onPositive = { launchVaultPicker() }
+                )
+                SafeManager.SetupOutcome.NO_ACCESS -> {
+                    MetroBanner.show(this@SafeActivity, "Safe is not available in this release")
+                    finish()
+                }
+                // A picked file is adopted, never created, so this cannot occur.
+                SafeManager.SetupOutcome.CREATED -> Unit
             }
         }
     }
