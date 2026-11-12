@@ -192,6 +192,9 @@ Deleting into the bin (both APIs)
   performManagedDelete / deleteUris / ViewerActivity.deletePhoto
     └── DeleteCoordinator.delete() → NeedsSystemDelete → MediaStore.createTrashRequest(resolver, uris, true)
           [true = trash; false = un-trash. The original never touches a File handle.]
+  deleteUris(permanent = true) — the Safe move-in handover only — instead takes
+  MediaStore.createDeleteRequest(resolver, uris): the originals are already encrypted in the vault, so
+  they leave for good rather than landing in the Recycle Bin as a duplicate.
 
 Bin→system-trash invariant: the app holds no All-files access, so the bin *cannot* be a filesDir copy
 of a shared-storage original on API 30+; the platform trash is the only home that survives a delete
@@ -227,7 +230,7 @@ MainActivity drawer "safe" / multi-select "safe" → SafeActivity (safeLauncher,
   │     app storage; never overwrites an archive already at the target)
   ├── BiometricPrompt (CryptoObject) → recover password → unlock
   ├── SafeItemAdapter (grid of decrypted thumbnails; async bindThumb)
-  └── returns ExtraImportedUris → MainActivity.deleteUris() (delete originals = "move")
+  └── returns ExtraImportedUris → MainActivity.deleteUris(permanent = true) (originals removed for good, not binned)
 ```
 
 ### UI Layer

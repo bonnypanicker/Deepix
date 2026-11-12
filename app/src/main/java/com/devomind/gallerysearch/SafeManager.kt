@@ -529,44 +529,71 @@ object SafeManager {
         val temp = runCatching { decryptToTemp(context, item) }.getOrNull() ?: return null
         val isVideo = MediaFormats.isVideoFileName(temp.name)
         val originalDir = originalPaths(context)[item.entryName]
-        val qPlus = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-        val target = if (qPlus) restoreTarget(context, originalDir, isVideo) else null
         return try {
-            val values = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, temp.name)
-                put(MediaStore.MediaColumns.MIME_TYPE, mimeFor(temp.name))
-                if (qPlus) {
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, target!!.second)
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                } else if (originalDir != null) {
-                    put(MediaStore.MediaColumns.DATA, File(originalDir, temp.name).absolutePath)
-                }
-            }
-            val collection = if (qPlus) {
-                if (isVideo) MediaStore.Video.Media.getContentUri(target!!.first)
-                else MediaStore.Images.Media.getContentUri(target!!.first)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Its own folder first. A folder that can't be written — a removed SD card, a
+                // directory the platform no longer exposes — must not lose a photo that now lives
+                // only in the vault, so the Deepix folder is the fallback rather than a failure.
+                insertRestored(context, temp, isVideo, restoreTarget(context, originalDir, isVideo), null)
+                    ?: insertRestored(context, temp, isVideo, defaultTarget(isVideo), null)
             } else {
-                if (isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-            }
-            val out = context.contentResolver.insert(collection, values) ?: return null
-            try {
-                context.contentResolver.openOutputStream(out)?.use { os ->
-                    temp.inputStream().use { it.copyTo(os) }
-                } ?: throw java.io.IOException("No output stream for $out")
-                if (qPlus) {
-                    values.clear()
-                    values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                    context.contentResolver.update(out, values, null, null)
-                }
-                out
-            } catch (e: Exception) {
-                // Never leave a broken 0-byte row behind looking like a restored file.
-                runCatching { context.contentResolver.delete(out, null, null) }
-                null
+                insertRestored(context, temp, isVideo, null, originalDir)
             }
         } finally {
             temp.parentFile?.deleteRecursively()
+        }
+    }
+
+    /**
+     * Inserts [temp] into MediaStore and writes its bytes, returning the new row's uri. [target] is
+     * the volume + `RELATIVE_PATH` pair on API 29+; [legacyDir] is the absolute directory the pre-Q
+     * `DATA` column takes. Returns null when the insert, the write or the byte check fails — a short
+     * or empty copy is deleted again rather than published as a restored photo. That check is what
+     * makes dropping the vault copy safe: nothing is dropped on a copy that is not known to be whole.
+     */
+    private fun insertRestored(
+        context: Context,
+        temp: File,
+        isVideo: Boolean,
+        target: Pair<String, String>?,
+        legacyDir: String?
+    ): Uri? {
+        val qPlus = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, temp.name)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeFor(temp.name))
+            if (qPlus) {
+                put(MediaStore.MediaColumns.RELATIVE_PATH, target!!.second)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            } else if (legacyDir != null) {
+                put(MediaStore.MediaColumns.DATA, File(legacyDir, temp.name).absolutePath)
+            }
+        }
+        val collection = if (qPlus) {
+            val volume = target!!.first
+            if (isVideo) MediaStore.Video.Media.getContentUri(volume)
+            else MediaStore.Images.Media.getContentUri(volume)
+        } else {
+            if (isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
+        val out = runCatching { context.contentResolver.insert(collection, values) }.getOrNull()
+            ?: return null
+        return try {
+            val written = context.contentResolver.openOutputStream(out)?.use { os ->
+                temp.inputStream().use { it.copyTo(os) }
+            } ?: throw java.io.IOException("No output stream for $out")
+            if (written != temp.length()) throw java.io.IOException("Short write for $out")
+            if (qPlus) {
+                values.clear()
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                context.contentResolver.update(out, values, null, null)
+            }
+            out
+        } catch (e: Exception) {
+            // Never leave a broken 0-byte row behind looking like a restored file.
+            runCatching { context.contentResolver.delete(out, null, null) }
+            null
         }
     }
 
@@ -599,8 +626,12 @@ object SafeManager {
                 }
             }
         }
-        return MediaStore.VOLUME_EXTERNAL_PRIMARY to if (isVideo) "Movies/Deepix/" else "Pictures/Deepix/"
+        return defaultTarget(isVideo)
     }
+
+    /** The app's own gallery folder for a restored item MediaStore can't put back where it was. */
+    private fun defaultTarget(isVideo: Boolean): Pair<String, String> =
+        MediaStore.VOLUME_EXTERNAL_PRIMARY to if (isVideo) "Movies/Deepix/" else "Pictures/Deepix/"
 
     fun removeItem(context: Context, item: VaultItem): Boolean {
         val password = sessionPassword ?: return false

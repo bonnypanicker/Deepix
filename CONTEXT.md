@@ -261,9 +261,15 @@ Storage model (all safe photos in ONE encrypted "folder"):
     decodes straight from the encrypted zip entry stream (no temp file), then encrypts + writes.
 
 Move-in flow (true locker): MainActivity multi-select "safe" → SafeActivity with ExtraImportUris
-  → encrypt into archive → returns ExtraImportedUris → MainActivity.deleteUris() (normal consent).
+  → encrypt into archive → returns ExtraImportedUris → MainActivity.deleteUris(permanent = true):
+  the originals are gone for good, not binned — they're already encrypted in the vault, so a Recycle
+  Bin copy would just be a duplicate, and the platform's delete-consent dialog (createDeleteRequest)
+  is what removes them without all-files access.
 In-Safe "add photos" uses the system photo picker (copy-in; picker uris aren't deletable).
 Item tap = decrypt → fullscreen PhotoView (FLAG_SECURE). Long-press = Save back to gallery / Remove.
+Save back: SafeManager.restoreToGallery decrypts into the item's recorded source folder (falling back
+  to Pictures|Movies/Deepix when it can't be written), byte-count verified, then removeItem drops the
+  vault copy — nothing is dropped on a copy not known to be whole.
 
 Recovery after uninstall / upgrade: the archive is no longer reachable by path, so the Safe asks for
   the file instead of guessing at it. A configured Safe whose archive is missing (archiveMissing) —

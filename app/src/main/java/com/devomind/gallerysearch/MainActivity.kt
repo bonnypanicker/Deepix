@@ -164,6 +164,8 @@ class MainActivity : AppCompatActivity() {
     private var settingsLaunchAccent: AccentPalette.Choice? = null
     private var pendingDeleteUris: List<Uri> = emptyList()
     private var pendingDeleteNeedsRetry = false
+    /** Whether [pendingDeleteUris] is a permanent delete rather than a move to the Recycle Bin. */
+    private var pendingDeletePermanent = false
     private val hiddenDeletedUris = linkedSetOf<Uri>()
     private var topInsetPx = 0
     private var bottomSystemInsetPx = 0
@@ -367,12 +369,13 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         // Photos successfully moved into the Safe: remove the originals. They're already encrypted
-        // in the vault, so delete them. Without all-files access this always goes through the
-        // platform MediaStore consent flow.
+        // in the vault, so this is a permanent delete — binning them would only leave a duplicate
+        // in the Recycle Bin. Without all-files access it still goes through the platform
+        // MediaStore consent flow.
         @Suppress("DEPRECATION")
         val imported = result.data?.getParcelableArrayListExtra<Uri>(SafeActivity.ExtraImportedUris)
         if (result.resultCode == RESULT_OK && !imported.isNullOrEmpty()) {
-            deleteUris(imported)
+            deleteUris(imported, permanent = true)
         }
     }
 
@@ -381,12 +384,14 @@ class MainActivity : AppCompatActivity() {
     ) { result ->
         val uris = pendingDeleteUris
         val needsRetry = pendingDeleteNeedsRetry
+        val permanent = pendingDeletePermanent
         pendingDeleteUris = emptyList()
         pendingDeleteNeedsRetry = false
+        pendingDeletePermanent = false
 
         if (result.resultCode != RESULT_OK || uris.isEmpty()) return@registerForActivityResult
         if (needsRetry) {
-            deleteUris(uris, afterApproval = true)
+            deleteUris(uris, afterApproval = true, permanent = permanent)
         } else {
             onDeleteCompleted(uris)
         }
@@ -5114,7 +5119,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     @Suppress("InstanceOfCheckForException")
-    private fun deleteUris(uris: List<Uri>, afterApproval: Boolean = false) {
+    private fun deleteUris(uris: List<Uri>, afterApproval: Boolean = false, permanent: Boolean = false) {
         if (uris.isEmpty()) return
         if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q && uris.size > 1 && !afterApproval) {
             MetroBanner.show(this, "Bulk delete requires Android 11 or newer")
@@ -5125,8 +5130,14 @@ class MainActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !afterApproval) {
                 pendingDeleteUris = uris
                 pendingDeleteNeedsRetry = false
-                // API 30+: route deletes through the system trash so they stay recoverable.
-                val request = MediaStore.createTrashRequest(contentResolver, uris, true)
+                pendingDeletePermanent = permanent
+                // API 30+: the platform performs the delete itself. Bin moves stay recoverable;
+                // a permanent delete (the Safe's move) skips the trash so no duplicate lingers.
+                val request = if (permanent) {
+                    MediaStore.createDeleteRequest(contentResolver, uris)
+                } else {
+                    MediaStore.createTrashRequest(contentResolver, uris, true)
+                }
                 deleteRequestLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
                 return
             }
@@ -5143,6 +5154,7 @@ class MainActivity : AppCompatActivity() {
             if (isRecoverable) {
                 pendingDeleteUris = uris
                 pendingDeleteNeedsRetry = true
+                pendingDeletePermanent = permanent
                 launchDeleteConsent(error.userAction.actionIntent.intentSender)
             } else {
                 MetroBanner.show(this, "Delete failed: ${error.message}")
