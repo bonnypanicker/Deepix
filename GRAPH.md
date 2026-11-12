@@ -205,30 +205,50 @@ consent. Below API 30 there is no system trash, so the app-private BinManager re
 ```
 MainActivity drawer "safe" / multi-select "safe" → SafeActivity (safeLauncher, StartActivityForResult)
   ├── SafeManager  (session password in-memory; single-archive vault orchestration) — FeatureFlags.SAFE_ENABLED
-  │     ├── SafeStore  (SharedPrefs: salt+verifier, biometric blob/iv, vault location + tree uri)
+  │     ├── SafeStore  (SharedPrefs: salt+verifier, biometric blob/iv, vault location + tree uri +
+  │     │              document uri + the archive's real name + a vault-dirty flag)
   │     ├── SafeCrypto (zip4j AES-256 add/list/extract/remove/verify; PBKDF2; AES-GCM thumbs;
-  │     │              thumbnail decode straight from encrypted entry stream)
+  │     │              thumbnail decode straight from encrypted entry stream; readEntrySize verify)
   │     ├── SafeKeystore (biometric-gated Keystore key → wraps password)
-  │     └── VaultStorage  (where the zip lives — this class only ever holds a local File)
-  │           ├── DocumentsVaultStorage  (default: a MediaStore row in public Documents/, so the zip
-  │           │     is visible and copyable; working copy in filesDir/safe_vault_mirror/documents/.
-  │           │     Below API 29 the public folder is written directly — no MediaStore, no mirror)
+  │     └── VaultStorage  (where the zip lives — this class only ever holds a local File;
+  │           │             VaultMirror is the pure push/pull rule, VaultDocument the picked-file seam)
+  │           ├── DocumentsVaultStorage  (default: a MediaStore row in public Documents/PixaSafe/, so the
+  │           │     zip is visible and copyable; working copy in filesDir/safe_vault_mirror/documents/.
+  │           │     Below API 29 the public folder is written directly — no MediaStore, no mirror.
+  │           │     A publish re-reads DISPLAY_NAME and throws if MediaStore renamed it; an invisible
+  │           │     same-name file is never overwritten — a unique name goes to prefs instead.
+  │           │     refresh() with no remote row keeps the mirror and reports missing (never deletes it))
   │           ├── AppPrivateVaultStorage  (filesDir/safe_vault/PixaSafe.zip — hidden, dies with the app)
   │           ├── SafVaultStorage  (folder the user picked via ACTION_OPEN_DOCUMENT_TREE, persisted;
   │           │     working copy in filesDir/safe_vault_mirror/<tree-hash>/, refresh() before a read,
-  │           │     commit() after a mutation — .tmp → verify length → delete old → rename)
+  │           │     commit() after a mutation — .tmp → verify length → delete old → rename; an absent
+  │           │     grant routes to the restore screen, not an empty vault)
+  │           ├── PickedDocumentVaultStorage  (the single file picked to restore — one grant, no sibling
+  │           │     temp. commit() keeps the old mirror as PixaSafe.zip.bak, writes with
+  │           │     openOutputStream(uri, "wt"), verifies size + readArchive == Ok, then drops the .bak;
+  │           │     a failure keeps the mirror authoritative and marks the vault dirty for the next unlock)
+  │           ├── VaultDetector.findExistingVault()  (best-effort file probe of Documents/PixaSafe/ +
+  │           │     the legacy DeepixSafe.zip; "likely exists" only, never readability. Also builds the
+  │           │     EXTRA_INITIAL_URI that points the picker straight at PixaSafe.zip)
   │           └── VaultStores.of(context)  → reads SafeStore.getVaultLocation (a location never stored
   │                is inherited: picked folder → app-storage archive → Documents, so an existing vault
   │                is not orphaned by the default); refresh()/commit() are what decide when the gallery
   │                originals may be dropped (only after commit() returns)
-  ├── not configured, no archive found → offerRestoreChoice ("Restore a Safe?"): "Find Safe file"
-  │     (OpenDocument picker → password → SafeManager.adoptArchive) or "Create new Safe" (setup dialog)
+  ├── not configured → offerRestoreChoice ("Restore a Safe?"): "Find Safe file" (primary when
+  │     VaultDetector finds a file; OpenDocument picker → persistable grant → password →
+  │     SafeManager.adoptArchive) or "Create new Safe" (danger-confirmed when a file is likely
+  │     present → setup dialog → SafeManager.setUpVault → CREATED | ADOPTED | WRONG_PASSWORD)
   ├── configured but archive not at its location (SafeManager.archiveMissing — upgraded from the
-  │     pre-scoped-storage build, which kept the zip in shared Pictures/Documents, now unreachable)
-  │     → showMissingVault ("Safe file not found") → promptFindVault
-  │     → pickVaultLauncher (ACTION_OPEN_DOCUMENT, */*) → adopt password dialog
-  │     → SafeManager.adoptArchive (copy beside the vault → verify names/password → replaceAtomically
-  │       → storage.commit(); the picked source is never modified) → ADOPTED → showContent
+  │     pre-scoped-storage build, the MediaStore row gone, or a picked folder/file moved or its
+  │     permission revoked)
+  │     → showMissingVault ("Safe file not found") → promptFindVault ("Find my Safe")
+  │     → pickVaultLauncher (ACTION_OPEN_DOCUMENT, */*, EXTRA_INITIAL_URI at Documents/PixaSafe/PixaSafe.zip,
+  │       FLAG_GRANT_READ|WRITE + FLAG_GRANT_PERSISTABLE → takePersistableUriPermission)
+  │     → adopt password dialog
+  │     → SafeManager.adoptArchive (stage a copy → verify the password → replaceAtomically into the
+  │       mirror → savePasswordVerifier + openSession → persist PICKED_DOCUMENT + the document uri;
+  │       a wrong password or an unreadable file changes nothing and the picked source is never modified)
+  │       → ADOPTED → showContent
   ├── WRONG_PASSWORD (orphaned zip / forgotten pw) → offerResetOrphanedVault → SafeManager.purgeVault
   │     (deletes the storage's archive + both local roots + SafeStore.reset + thumbs) → fresh CREATED setup
   ├── Settings › SAFE location → changeSafeVaultLocation → SafeManager.relocateVault (Documents /
@@ -356,9 +376,9 @@ ForegroundBudget  (SharedPreferences "foreground_budget" / "hourly_millis": `hou
 | `OnnxSessionOptions.DefaultThreadCount` (4) | Fallback only — `SharedEncoders` prefers the cached `ThreadBenchmark` result; benchmark trigger points are `MainActivity.ensureEncodersLoaded` + `IndexWorker.doWork` |
 | `ImageEncoder.resolveVisionModelAssetName` | Also used by `ThreadBenchmark` — priority order must match the shipped assets |
 | `ViewerActivity` gesture logic | Test all 6 gesture scenarios: diagonal swipes, info panel tap-close, fast swiping captions, panel drag smoothness, paging disabled while panel open |
-| `VaultStorage.VAULT_ARCHIVE_NAME` (`PixaSafe.zip`) / `LEGACY_VAULT_ARCHIVE_NAME` (`DeepixSafe.zip`) | The archive name, wherever its storage puts it (`filesDir/safe_vault/` by default, or the picked folder's mirror). Renaming is survivable **only while the old name stays in `ArchiveNames`** — `remoteArchive` resolves the first name that exists, and dropping the legacy name re-orphans every vault created before the rename, which is the only copy of the photos already removed from the gallery. `purgeVault` deletes the storage's archive plus both local roots |
+| `VaultStorage.VAULT_ARCHIVE_NAME` (`PixaSafe.zip`) / `LEGACY_VAULT_ARCHIVE_NAME` (`DeepixSafe.zip`) | The archive name, wherever its storage puts it (`Documents/PixaSafe/` by default, app storage, a picked folder's mirror, or the single picked document). Renaming is survivable **only while the old name stays in `ArchiveNames`** — the lookup resolves the first name that exists, and dropping the legacy name re-orphans every vault created before the rename, which is the only copy of the photos already removed from the gallery. `purgeVault` deletes the storage's archive plus both local roots. When MediaStore renames a publish (collision), the actual name is re-read and stored in prefs — never assume the file landed under the name that was requested |
 | `AlbumRules.AlbumFolderParent` (`Deepix Albums`) | Every album folder the app makes lives under this one segment, inside `IndexPreferences.getAlbumFolderRoot` (pictures\|documents, Settings › ALBUMS). Unlike the Safe the root is **not** followed for albums that already exist — their `folderPath` is stored, so changing the setting moves no photos. `isAlbumFolderPath(path)` reads the parent segment back, which is how an empty album knows whether it is unfilled or abandoned |
-| `SafeStore` SharedPrefs keys / `SafeKeystore` KeyAlias | Stored on device — renaming breaks existing Safe config + biometric unlock. `vault_tree_uri` is the one that picks `SafVaultStorage` over `AppPrivateVaultStorage`; clearing it (not just the file) is what `purgeVault` must do, or `VaultStores.of` keeps resolving to a folder the user no longer means |
+| `SafeStore` SharedPrefs keys / `SafeKeystore` KeyAlias | Stored on device — renaming breaks existing Safe config + biometric unlock. `vault_location` is the master switch and `vault_tree_uri` / `vault_document_uri` the ones that pick `SafVaultStorage` / `PickedDocumentVaultStorage`; clearing the uri *and* the location (not just the file) is what `purgeVault` must do, or `VaultStores.of` keeps resolving to a folder/file the user no longer means. `vault_archive_name` records what MediaStore actually called the published file, and `vault_dirty` is the "the mirror is ahead of the remote, re-push on next unlock" flag |
 | `SafeCrypto` zip params (AES-256 / STORE) | Interop contract — the vault must stay a standard AES zip openable by external tools |
 | `GestureDirection` enum values | Update `handleViewerTouch()` classification logic and `onMediaTap` callback |
 | `Responsive.CRAMPED_HEIGHT_DP` / `MAX_GRID_COLUMNS` | Every screen that trims chrome or counts columns: `MainActivity.applyChromeForHeight`, hero titles through `applyTitleText`, and `gridColumns` — the span canvas is shared with card rows, so a cap re-sizes album cards too. `ResponsiveTest` holds the boundaries |
@@ -435,6 +455,7 @@ activity_safe.xml       → SafeActivity (lock overlay + forgotPasswordBtn + dec
 item_safe_photo.xml     → SafeItemAdapter (decrypted vault thumbnail cell)
 dialog_safe_setup.xml   → SafeActivity (password create + confirm + warning + resolved storage path)
 dialog_safe_password.xml → SafeActivity ("Show password" reveal + copy)
+activity_safe_diagnostics.xml → SafeDiagnosticsActivity (debug-only Step 0 probe: exists/canRead, MediaStore hit, post-reinstall open, persisted grants)
 activity_pro.xml        → ProActivity (full-page Pro offer: hero illustration, WHAT PRO ADDS / WHAT STAYS FREE / HOW THE PURCHASE WORKS, purchase footer; rows styled by ProRow/ProRowGlyph)
 ```
 

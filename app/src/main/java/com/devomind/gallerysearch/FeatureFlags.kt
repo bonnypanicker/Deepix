@@ -1,13 +1,13 @@
 package com.devomind.gallerysearch
 
 /**
- * Kill switches for features that cannot run without All-files access (MANAGE_EXTERNAL_STORAGE).
- * That permission was rejected by Play's All Files Access policy, so these entry points are hidden
- * in this release while the features are rebuilt on scoped storage (MediaStore
- * createTrashRequest / createWriteRequest / SAF).
+ * Kill switches for the features that used to need All-files access (MANAGE_EXTERNAL_STORAGE). That
+ * permission was rejected by Play's All Files Access policy and stays removed, so each feature has
+ * been rebuilt on scoped storage (MediaStore createTrashRequest / createWriteRequest / SAF) and its
+ * flag is now on for this release.
  *
- * The feature code itself stays in place — flipping a flag back on is the whole migration, not a
- * re-implementation. Do not delete the flagged-off code.
+ * The flags stay so a feature can be turned off without ripping its code out — turning one off is a
+ * hidden entry point, not a removal. Do not delete the code behind a flag.
  */
 object FeatureFlags {
 
@@ -16,10 +16,10 @@ object FeatureFlags {
      *  app-private bin. See [BinStore]. */
     const val RECYCLE_BIN_ENABLED = true
 
-    /** Safe vault. Rebuilt on scoped storage: the AES zip is a file in app storage by default, or a
-     *  document in a folder the user picked through the system picker
-     *  (ACTION_OPEN_DOCUMENT_TREE, persisted) — see [VaultStorage]. No public vault folder, so no
-     *  All-files access. */
+    /** Safe vault. Rebuilt on scoped storage: the AES zip is a file in `Documents/PixaSafe/` by
+     *  default — written through MediaStore, so no permission — or the app storage, a folder, or a
+     *  single file the user picked through the system picker (persisted). See [VaultStorage]. No
+     *  public vault folder by path, so no All-files access. */
     const val SAFE_ENABLED = true
 
     /** Compression "Replace originals". Rebuilt on scoped storage: the original's own MediaStore row

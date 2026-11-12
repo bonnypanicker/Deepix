@@ -18,12 +18,13 @@
 | `SmartCleanupActivity` | Dedicated Metro screen: CLIP-detected clutter tiles + storage summary, per-category selectable grid, MediaStore delete. Reads `CleanupResultStore`, observes `CleanupWorker`; progress bar + pause/resume/stop |
 | `SettingsActivity` | Metro preferences screen: Collage layout, **Collage thumbnail size**, Grid columns, Pinned-in-collections, Index-only-while-charging, Safe storage location, **Albums › folder location** (where a *new* album's own folder is made), Clear cleanup cache, About. Writes `IndexPreferences`; MainActivity re-applies on return |
 | `SafeActivity` | Encrypted photo locker ("Safe"). Lock screen (biometric-first, password fallback) → grid of decrypted thumbnails → overflow (Show password / Add photos / fingerprint toggle / Lock / Remove Safe). `FLAG_SECURE`, relocks on background. A configured vault whose archive is missing — or a fresh install with an old file still on the device — offers a find-the-file flow (`ACTION_OPEN_DOCUMENT` → password → adopt). Launched with `ExtraImportUris` to move gallery photos in; returns `ExtraImportedUris` for the caller to delete originals |
-| `SafeManager` | Session + storage orchestration for the Safe — **on again** (`FeatureFlags.SAFE_ENABLED = true`): the vault is a file in app storage or a document in a folder the user picked, so no All-files access is needed (see `VaultStorage`). Holds the unlocked password in-memory; reads/writes the single AES-256 archive (`PixaSafe.zip`) through whatever `VaultStorage` hands it (`archive` refreshes first; a mutation follows with `storage.commit`); `setUpVault` (create/adopt), `unlock`, `listItems`/`listFolder`, `importPhotos`, `decryptToBitmap`/`decryptToTemp`, `restoreToGallery`, `removeItem`, `lock`; `relocateVault` (relocate to a picked folder / back to app storage), `purgeVault` (hard delete — forgotten-password escape), `archiveExists`; `thumbnail` decodes straight from the encrypted entry stream |
-| `VaultStorage` | Where the vault archive physically lives: `AppPrivateVaultStorage` (app storage, default) and `SafVaultStorage` (a picked folder, mirrored into `filesDir`, `refresh()` before reads / `commit()` after mutations — write `.tmp`, verify, swap). `VaultStores.of` picks one from the stored tree Uri |
+| `SafeManager` | Session + storage orchestration for the Safe — **on again** (`FeatureFlags.SAFE_ENABLED = true`): the vault is a file in the public Documents folder, in app storage, in a folder the user picked, or the single file the user picked after a reinstall, so no All-files access is needed (see `VaultStorage`). Holds the unlocked password in-memory; reads/writes the single AES-256 archive (`PixaSafe.zip`) through whatever `VaultStorage` hands it (`archive` refreshes first; a mutation follows with `storage.commit`); `setUpVault` (create/adopt), `adoptArchive` (take a picked file as the vault's home), `unlock`, `listItems`/`listFolder`, `importPhotos`, `decryptToBitmap`/`decryptToTemp`, `restoreToGallery`, `removeItem`, `lock`; `relocateVault` (relocate to a picked folder / back to app storage), `purgeVault` (hard delete — forgotten-password escape), `archiveExists`; `thumbnail` decodes straight from the encrypted entry stream. The map of each item's original gallery folder is stored *inside* the archive (`.pixa/original_paths.json`), so it survives a reinstall |
+| `VaultStorage` | Where the vault archive physically lives: `DocumentsVaultStorage` (public `Documents/PixaSafe/` through MediaStore — the default), `AppPrivateVaultStorage` (app storage), `SafVaultStorage` (a picked folder via `ACTION_OPEN_DOCUMENT_TREE`) and `PickedDocumentVaultStorage` (the single file picked after a reinstall). Every remote home is mirrored into `filesDir` with `refresh()` before reads / `commit()` after mutations — write, verify, swap. `VaultStores.of` picks one from the stored location |
 | `SafeCrypto` | Crypto/format: zip4j **AES-256 password zip** add/list/extract/remove/verify (the vault is one standard archive, openable in any zip tool with the password); PBKDF2; AES-GCM thumbnail-cache encryption; downscaled thumbnail JPEGs |
 | `SafeKeystore` | Android Keystore AES/GCM key gated by `setUserAuthenticationRequired(true)`; encrypts/decrypts the vault password behind `BiometricPrompt` (fingerprint-in, no typing). Invalidated by new biometric enrollment |
-| `SafeStore` | SharedPrefs for the Safe: PBKDF2 salt + password verifier, biometric-enabled flag + Keystore-encrypted password blob/iv. Holds no photos/keys — the vault is recoverable from the password alone |
+| `SafeStore` | SharedPrefs for the Safe: PBKDF2 salt + password verifier, biometric-enabled flag + Keystore-encrypted password blob/iv, the vault location enum + picked tree Uri + picked document Uri, the archive's actual name (MediaStore may rename on collision) and the vault-dirty flag. Holds no photos/keys — the vault is recoverable from the password alone |
 | `SafeItemAdapter` | RecyclerView grid of decrypted vault thumbnails (async decrypt via `bindThumb`, tag-guarded against recycling) |
+| `VaultDetector` | Best-effort discovery of an existing vault file in the public `Documents/PixaSafe/` (also the legacy `DeepixSafe.zip`) so the setup screen can lead with "Restore my Safe". Only ever reports *likely exists* — never that it is readable. Also builds the `EXTRA_INITIAL_URI` that points the picker at that file |
 | `CleanupAnalyzer` | Pure logic: near-dup + similar grouping (embeddings), zero-shot category classify, blur/dark/bright via `ImageStats`, low-res via metadata. Resumable (scannedUris) + streaming (onPartial) |
 | `CleanupWorker` | `CoroutineWorker` (foreground, parallel to `IndexWorker`). Full-library scan, writes `CleanupResultStore` incrementally, resumes from scanned set, pausable via `IndexPreferences.isCleanupPaused` |
 | `CleanupResultStore` | JSON file (`filesDir/cleanup_results.json`): per-category uris + suggested-delete subset + scannedUris + progress/complete |
@@ -213,17 +214,23 @@ kinds have nothing stored to refresh, so the sheet does not offer it.
 
 ### Safe (encrypted photo locker) Flow
 > Rebuilt on scoped storage and **on again** — `FeatureFlags.SAFE_ENABLED = true`. The vault no longer
-> needs All-files access (it lives in app storage, or in a folder the user picked), so the drawer
-> "safe", multi-select "safe", the Safe tab and Settings › SAFE are all live.
+> needs All-files access: a new Safe goes into the public `Documents/PixaSafe/` folder through a
+> MediaStore insert (no prompt), and an existing vault may live in app storage, in a folder the user
+> picked, or in the single file the user picked to restore — so the drawer "safe", multi-select "safe",
+> the Safe tab and Settings › SAFE are all live.
 ```
 Drawer "safe" (or multi-select "safe" command) → SafeActivity
-  Not configured, no archive found → "Restore a Safe?" (offerRestoreChoice):
-        "Find Safe file"  → OpenDocument picker → password → SafeManager.adoptArchive
-        "Create new Safe" → setup dialog below
-  Not configured, archive found → setup dialog (password + confirm + "keep it safe" warning)
+  Not configured → "Restore a Safe?" (offerRestoreChoice) with two actions:
+        "Find Safe file"  → OpenDocument picker, opened at Documents/PixaSafe/PixaSafe.zip
+                            (EXTRA_INITIAL_URI) → password → SafeManager.adoptArchive
+        "Create new Safe" → setup dialog below (warned first when VaultDetector finds a file)
+      VaultDetector.findExistingVault (off the main thread) only reports *likely exists*; when it does,
+      "Find Safe file" is the primary action and "Create new Safe" goes through a danger confirm, so a
+      reinstall cannot silently start an empty Safe over the user's still-present vault.
+  Not configured → setup dialog (password + confirm + "keep it safe" warning)
     → SafeManager.setUpVault(password):
-        CREATED  (no archive yet)    → savePasswordVerifier + write an empty archive + open session
-                                       (so "configured" always implies a file at the vault location)
+        CREATED  (no archive yet)    → savePasswordVerifier + write an empty archive at the vault
+                                       location + open session (so "configured" always implies a file)
         ADOPTED  (archive present)   → verify password against the zip, then save verifier + open
         WRONG_PASSWORD               → offerResetOrphanedVault: "Delete & start over" (SafeManager.purgeVault
                                        wipes the vault at its current location + every app-private copy +
@@ -231,36 +238,56 @@ Drawer "safe" (or multi-select "safe" command) → SafeActivity
                                        password"  [escape from the reinstall/orphaned-zip deadlock]
     → offer to enable fingerprint (BiometricPrompt + Keystore-wrapped password)
   Configured but the archive is not at its location (SafeManager.archiveMissing — an upgrade out of the
-               shared-storage build, or a picked folder moved / permission revoked) → showMissingVault:
-               "Find your Safe" → OpenDocument picker → password → SafeManager.adoptArchive — never an
-               empty vault for photos that are still in the file the user has.
+               shared-storage build, the MediaStore row gone, or a picked folder/file moved / permission
+               revoked) → showMissingVault: "Find my Safe" → OpenDocument picker → password →
+               SafeManager.adoptArchive — never an empty vault for photos that are still in the file the
+               user has. An absent tree grant routes here too, not to an empty grid.
   Configured → lock screen: BiometricPrompt first (recovers password from Keystore blob),
                password fallback → SafeManager.unlock() (verifier or archive check).
                "Forgot password?" link → offerResetOrphanedVault (same hard-delete escape).
 
 Storage model (all safe photos in ONE encrypted "folder"):
   - The vault is a single standard AES-256 password zip `PixaSafe.zip`, openable in any zip tool with
-    the password. **Where it lives is `VaultStorage`'s business**, and there are three homes
-    (`VaultLocation`): `DocumentsVaultStorage` keeps it in the public Documents folder (the default —
-    a MediaStore row, so the user can see and copy the zip out), `AppPrivateVaultStorage` keeps it in
-    app storage (`filesDir/safe_vault/`, hidden, dies with the app), and `SafVaultStorage` keeps it as
-    a document in a folder the user picked through `ACTION_OPEN_DOCUMENT_TREE` (persistable
-    permission). None needs All-files access. `VaultStores.of` resolves the storage from
-    `SafeStore.getVaultLocation`; a location never stored is inherited (a picked folder, then an
-    app-storage archive, then Documents) so an existing vault is not orphaned by the new default.
-    Settings › SAFE location offers the three (`SafeManager.relocateVault`, which copies first and
-    drops the old copy only once the new one is verified; a target that already holds a vault is
-    refused, never overwritten).
+    the password. **Where it lives is `VaultStorage`'s business**, and there are four homes
+    (`VaultLocation`): `DocumentsVaultStorage` keeps it in the public `Documents/PixaSafe/` folder
+    (the default on a new install — an API 29+ MediaStore row the user can see and copy out, or a plain
+    public file below API 29), `AppPrivateVaultStorage` keeps it in app storage
+    (`filesDir/safe_vault/`, hidden, dies with the app), `SafVaultStorage` keeps it as a document in a
+    folder the user picked through `ACTION_OPEN_DOCUMENT_TREE` (persistable permission), and
+    `PickedDocumentVaultStorage` keeps it as the single file the user picked to restore. None needs
+    All-files access. `VaultStores.of` resolves the storage from `SafeStore.getVaultLocation`; a
+    location never stored is inherited (a picked folder, then an app-storage archive, then Documents)
+    so an existing vault is not orphaned by the default. Settings › SAFE location offers Documents,
+    app storage and a picked folder (`SafeManager.relocateVault`, which copies first and drops the old
+    copy only once the new one is verified; a target that already holds a vault is refused, never
+    overwritten). A picked-document home is reached only by restoring, never from Settings.
   - `SafeCrypto` still only understands a real `File` (zip4j rewrites the whole archive to add or drop
-    one entry), so both a Documents vault and a picked folder are mirrored into `filesDir` —
-    `safe_vault_mirror/documents/` and `safe_vault_mirror/<tree-hash>/` respectively: `refresh()` pulls
-    the remote down before a read, `commit()` pushes it back after a mutation — write a `.tmp`
-    transfer, verify the byte count landed, drop the old archive, rename. Below API 29 there is no
-    MediaStore to write through, so a Documents vault is a plain file in the public folder and no
-    mirror is kept. Gallery originals are deleted only once `commit()` has returned.
+    one entry), so every remote home is mirrored into `filesDir` — `safe_vault_mirror/documents/`,
+    `safe_vault_mirror/<tree-hash>/` and `safe_vault_mirror/document_<hash>/`: `refresh()` pulls the
+    remote down before a read (only when its length or last-modified changed), `commit()` pushes it
+    back after a mutation. Both directions verify the byte count landed, and a commit that does not
+    leaves the mirror authoritative and marks the vault dirty for a retry on the next unlock. Below
+    API 29 there is no MediaStore to write through, so a Documents vault is a plain file in the public
+    folder and no mirror is kept. Gallery originals are deleted only once `commit()` has returned.
+  - A picked *document* grants one file, not a folder, so `PickedDocumentVaultStorage.commit()` cannot
+    write a sibling temp file. It keeps the previous mirror as `PixaSafe.zip.bak`, writes the mirror
+    with `openOutputStream(uri, "wt")`, verifies (document size equals mirror size **and**
+    `SafeCrypto.readArchive` on the mirror is `Ok`), and only then drops the `.bak`. On failure the
+    mirror stays authoritative, the vault is marked dirty, and the push is retried on the next unlock.
+  - Publishing into `Documents/` re-reads `DISPLAY_NAME` after the rename and throws if MediaStore
+    changed it (a collision rename is a failed commit, not a silent second file). If `PixaSafe.zip`
+    already exists but cannot be listed, the app creates a unique name and stores the actual name in
+    prefs — it never overwrites a file it cannot see. `DocumentsVaultStorage.refresh()` no longer
+    deletes the local mirror when no remote row is found: the mirror may be the only reachable copy, so
+    it reports the vault as missing instead and lets `archiveMissing()` drive the restore UI. An
+    absent `SafVaultStorage` tree grant routes to the restore screen, not an empty vault.
   - Legacy `DeepixSafe.zip` is still recognised by name when an archive is discovered.
   - Sub-folders are path prefixes inside the archive (`Trip/beach.jpg`); empty folders keep a
-    `.dpixkeep` marker. Extracted plaintext previews go to cacheDir temp dirs wiped after use.
+    `.dpixkeep` marker. The map of where each item came from lives inside the archive too, as one
+    encrypted entry `.pixa/original_paths.json` (`HiddenPrefix = ".pixa/"`, hidden from every listing);
+    the old plaintext `filesDir/safe_original_paths.json` is migrated into the archive on the first
+    write and deleted, so a restore after a reinstall keeps its folders. Extracted plaintext previews
+    go to cacheDir temp dirs wiped after use.
   - Grid thumbnails: app-private AES-GCM cache in filesDir/safe_thumbs (key = PBKDF2(password, salt)).
     Cache hit returns the decrypted bitmap; a corrupt/undecodable entry is deleted + rebuilt. Rebuild
     decodes straight from the encrypted zip entry stream (no temp file), then encrypts + writes.
@@ -276,15 +303,19 @@ Save back: SafeManager.restoreToGallery decrypts into the item's recorded source
   to Pictures|Movies/Deepix when it can't be written), byte-count verified, then removeItem drops the
   vault copy — nothing is dropped on a copy not known to be whole.
 
-Recovery after uninstall / upgrade: the archive is no longer reachable by path, so the Safe asks for
-  the file instead of guessing at it. A configured Safe whose archive is missing (archiveMissing) —
-  the upgrade out of the shared-storage build — or a fresh install with an old file still on the
-  device both offer "Find Safe file" → OpenDocument picker → password → SafeManager.adoptArchive: it
-  copies the picked document to a staging file, verifies it against the password, then swaps it in and
-  commits. The picked file itself is never modified, and a wrong password or an unreadable file leaves
-  the vault's own location untouched. Thumbnails rebuild lazily. If the password is forgotten, the
-  WRONG_PASSWORD setup path (or the lock-screen "Forgot password?" link) offers `SafeManager.purgeVault`
-  to delete the orphaned vault and start fresh.
+Recovery after uninstall / reinstall: the vault is a file in public `Documents/PixaSafe/` (or wherever
+  the user kept it), and a fresh install does not own the old MediaStore row, so the Safe asks for the
+  file rather than guessing at it. `SafeActivity` opens `ACTION_OPEN_DOCUMENT` with
+  `EXTRA_INITIAL_URI` pointing at `Documents/PixaSafe/PixaSafe.zip`, then takes a persistable
+  read|write grant on the picked document. A fresh install whose `VaultDetector` finds a file leads
+  with "Find Safe file"; a configured Safe whose archive is missing (`archiveMissing`) offers the same
+  picker. Either path runs `SafeManager.adoptArchive(context, pickedUri, password)`: stage a copy,
+  verify the password against the zip, swap it into the mirror, `savePasswordVerifier`, `openSession`,
+  and only then persist `VaultLocation.PICKED_DOCUMENT` + the document Uri — so a wrong password or an
+  unreadable file changes nothing and the user's own file is never modified. That document then *is*
+  the vault. Thumbnails rebuild lazily; original folders survive because the map travels inside the
+  archive. If the password is forgotten, the `WRONG_PASSWORD` setup path (or the lock-screen "Forgot
+  password?" link) offers `SafeManager.purgeVault` to delete the orphaned vault and start fresh.
 
 Key derivation & biometric:
   - Encryption key = the zip's AES password (PBKDF2 inside zip4j). Password alone is the recovery root.
@@ -293,6 +324,38 @@ Key derivation & biometric:
     Enroll → BiometricPrompt encrypts the password → blob+iv in SafeStore. Unlock → BiometricPrompt
     decrypts it. New fingerprint enrollment → KeyPermanentlyInvalidatedException → clear + use password.
 ```
+
+#### Safe manual device test list (not yet run)
+
+Step 0 first — the debug-only launcher **"Safe diagnostics"** (`SafeDiagnosticsActivity`, debug builds
+only) reports, for `Documents/PixaSafe/PixaSafe.zip`: `File.exists()` / `canRead()`, whether a
+`MediaStore.Files` query by `DISPLAY_NAME` finds it, whether the app can open it with
+`ContentResolver` *after a reinstall*, and the `persistedUriPermissions` list.
+
+Run on **Android 11 (API 30), 13 (API 33) and 14 (API 34)**; also **API 28** for the no-MediaStore path:
+1. Install the debug build, create a Safe, import 2–3 photos, then open Safe diagnostics and record
+   every row.
+2. Uninstall, reinstall, open Safe diagnostics directly from the launcher, record the same rows.
+   *(The spec's premise — a reinstalled app cannot list the old Documents file — is unverified until
+   this is run. If `File.exists()` is unreliable on a version, detection must be designed around the
+   row that does work.)*
+3. Open the Safe, tap "Find Safe file", pick `Documents/PixaSafe/PixaSafe.zip`, enter the password,
+   confirm the photos and their original folders are back.
+
+Then the functional pass (each on at least API 30 + 34):
+
+| # | Scenario | Expected |
+|---|----------|----------|
+| 1 | Create a new Safe with no existing file | Empty archive published to `Documents/PixaSafe/`; no permission prompt |
+| 2 | Import photos | Originals leave the gallery only after `commit()` returns; grid shows thumbnails |
+| 3 | Save one back to the gallery | Lands in its recorded folder; vault copy dropped only after a verified write |
+| 4 | Kill the app mid-commit (force-stop during import) | Originals still in the gallery; next unlock re-pushes the mirror (vault dirty) |
+| 5 | Restore after uninstall/reinstall via the picker | One tap from the finder; password verifies; folders preserved |
+| 6 | Restore with a wrong password | Nothing changes — no config written, the picked file untouched |
+| 7 | Pre-existing `PixaSafe.zip` already in `Documents/` | Names collide cleanly (never overwritten); the app remembers the real name |
+| 8 | 2nd Safe created while an invisible same-name file exists | New file gets a unique name; the invisible one is left alone |
+| 9 | API 28 device | Documents vault is a plain public file (no MediaStore, no mirror); create/import/restore all work |
+| 10 | Upgraded install on a picked-folder vault | Existing mode kept, files untouched; a revoked grant routes to restore |
 
 ### Index Storage
 - **Embedding index:** `filesDir/embedding_index.bin` — custom binary (magic `0x47534958`, v3;
@@ -366,8 +429,13 @@ FOREGROUND_SERVICE · FOREGROUND_SERVICE_DATA_SYNC · POST_NOTIFICATIONS
 READ_MEDIA_IMAGES · READ_MEDIA_VIDEO · READ_MEDIA_VISUAL_USER_SELECTED
 READ_EXTERNAL_STORAGE (maxSdkVersion=32) · USE_BIOMETRIC (Safe)
 ```
-The Safe uses no storage permission for its folder — durable read/write comes from a persisted
-SAF tree grant (`takePersistableUriPermission`). `SafeActivity` is `excludeFromRecents` + `FLAG_SECURE`.
+The Safe needs no storage permission and adds none. A new vault is published into public
+`Documents/PixaSafe/` through a MediaStore insert (consent-free on API 29+; a plain file below), and a
+vault kept elsewhere gets durable read/write from a persisted SAF grant — a tree
+(`ACTION_OPEN_DOCUMENT_TREE`) or a single document (`ACTION_OPEN_DOCUMENT`) via
+`takePersistableUriPermission`. `android.permission.MANAGE_EXTERNAL_STORAGE` is declared only as
+`tools:node="remove"` so no library can merge all-files access back in; the release manifest has none.
+`SafeActivity` is `excludeFromRecents` + `FLAG_SECURE`.
 `POST_NOTIFICATIONS` is requested at runtime on API 33+ (`MainActivity.ensureNotificationPermission`) so index/cleanup foreground-progress notifications appear (off by default otherwise).
 
 ---
@@ -470,8 +538,10 @@ SAF tree grant (`takePersistableUriPermission`). `SafeActivity` is `excludeFromR
 
 **Album folder copy/move on scoped storage — complete.** The folder album's "Add photos" row is back (`FeatureFlags.ALBUM_FOLDER_OPS_ENABLED` on): `AlbumFolderOps` copies through a MediaStore insert and a move's originals leave via the ordinary delete policy (`createTrashRequest`), so no shared-storage `File` handle is involved.
 
-**Safe storage seam (VaultStorage) — complete.** The Safe vault is no longer a public-folder zip: `AppPrivateVaultStorage` (app storage, default) and `SafVaultStorage` (a user-picked folder, mirrored into `filesDir` with `refresh()`/`commit()`) hand `SafeCrypto` a local `File` either way, so nothing needs All-files access. Settings › SAFE location relocates the vault without ever overwriting one. `FeatureFlags.SAFE_ENABLED` is back on (see #47).
+**Safe storage seam (VaultStorage) — complete.** The Safe vault is no longer a public-folder zip: `DocumentsVaultStorage` (public `Documents/PixaSafe/`, the default), `AppPrivateVaultStorage` (app storage), `SafVaultStorage` (a user-picked folder) and `PickedDocumentVaultStorage` (a single picked file) all hand `SafeCrypto` a local `File` through a `refresh()`/`commit()` mirror, so nothing needs All-files access. Settings › SAFE location relocates the vault without ever overwriting one. `FeatureFlags.SAFE_ENABLED` is back on (see #47).
 
-**Safe migration onto a picked file — complete.** An upgraded user's vault can no longer be reached by path, so the Safe no longer shows an empty grid for it: `SafeManager.archiveMissing` (configured, but no file at the vault's location) sends `SafeActivity` to a "Find your Safe" prompt, and a fresh install with an old file gets the same offer on the setup screen. Either path runs `SafeManager.adoptArchive(context, pickedUri, password)` — copy to a staging file → verify the password → `replaceAtomically` + `commit()` — and never touches the user's own file. A created Safe now writes an empty archive at setup (`SafeCrypto.createEmptyArchive`) so "configured" is never ambiguous about whether a file exists.
+**Safe migration onto a picked file — complete.** An upgraded user's vault can no longer be reached by path, so the Safe no longer shows an empty grid for it: `SafeManager.archiveMissing` (configured, but no file at the vault's location) sends `SafeActivity` to a "Find my Safe" prompt, and a fresh install with an old file gets the same offer led by `VaultDetector`. Either path runs `SafeManager.adoptArchive(context, pickedUri, password)` — stage a copy, verify the password, `replaceAtomically` the mirror, `savePasswordVerifier` + `openSession`, and only then persist `PICKED_DOCUMENT` + the document Uri — so a wrong password leaves the user's own file and the app's config untouched. A created Safe now writes an empty archive at setup (`SafeCrypto.createEmptyArchive`) so "configured" is never ambiguous about whether a file exists.
 
-**Last commit:** Safe migration — adopt an old `PixaSafe.zip` picked with `ACTION_OPEN_DOCUMENT` (verified, staged, swapped in); `archiveMissing` + empty-archive-at-setup make "configured but missing" detectable
+**PixaSafe vault durability across uninstall — complete (code).** The vault now survives an uninstall and comes back in one tap. A new Safe is published into `Documents/PixaSafe/PixaSafe.zip` through a silent MediaStore insert (`RELATIVE_PATH` + `IS_PENDING`, no prompt, no permission); a publish that MediaStore renames on collision is a *failed* commit (the name is re-read and checked), and an invisible same-name file is never overwritten — the app picks a unique name and remembers it. `DocumentsVaultStorage.refresh()` no longer deletes the local mirror when the remote row is gone (the mirror may be the last copy) — it reports the vault missing and `archiveMissing()` drives the restore UI. `PickedDocumentVaultStorage` keeps the previous mirror as `PixaSafe.zip.bak`, writes with `openOutputStream(uri, "wt")`, verifies size + `readArchive == Ok`, and only then drops the `.bak`; a failure keeps the mirror authoritative and marks the vault dirty for a retry on the next unlock. `SafVaultStorage` re-reads the swapped-in name and routes an absent tree grant to the restore screen. The original-folder map moved out of plaintext `filesDir/safe_original_paths.json` into the archive as the hidden entry `.pixa/original_paths.json` (migrated on first write), so folders survive a reinstall. First setup is two options ("Find Safe file" / "Create new Safe"), the former primary and the latter danger-confirmed when a file is likely present, and restore opens `ACTION_OPEN_DOCUMENT` with `EXTRA_INITIAL_URI` + a persistable read|write grant. Backup rules exclude `safe_vault`/`safe_vault_mirror` plus `.bak`/`.adopt` staging files. **Step 0 device diagnostics (the debug-only "Safe diagnostics" screen) were written but not run on hardware, so the "a reinstall cannot list the old Documents file" premise is still an assumption, not a measurement.**
+
+**Last commit:** PixaSafe vault durability — Documents/PixaSafe default via MediaStore, one-tap restore of a picked `PixaSafe.zip` as the vault's home, collision-proof publishes, `.bak`-guarded single-document commits, and the original-folder map moved inside the archive

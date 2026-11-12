@@ -2,11 +2,12 @@
 <!--
   Android 12+ backup rules; backup_rules.xml is the same list for API 30 and below.
 
-  The Safe's vault is a public-storage zip and was never app data, so it can't be backed up by
-  accident. These exclusions keep the things that unlock or describe it — the embedding indices,
-  which are derived data any reinstall can recompute, and the Room database, whose faces table holds
-  face feature vectors as JSON beside person names — out of both the cloud copy and a device-to-
-  device transfer.
+  The Safe's vault archive is a zip in public storage (Documents/PixaSafe/PixaSafe.zip) and was never
+  app data, so it can't be backed up by accident. These exclusions keep the app-private copy of it —
+  safe_vault, safe_vault_mirror, a vault's `.bak` and its `.adopt` staging file included — and the
+  things that unlock or describe it out of both the cloud copy and a device-to-device transfer: the
+  embedding indices, which are derived data any reinstall can recompute, and the Room database, whose
+  faces table holds face feature vectors as JSON beside person names.
 
   Excluding the database costs favorites, tags and person-name labels on a restore onto a new phone;
   no photo lives in it, so nothing a user took with the camera is lost with it.
@@ -14,6 +15,9 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="photo_safe.xml" />
+
+        <exclude domain="file" path="safe_vault" />
+        <exclude domain="file" path="safe_vault_mirror" />
 
         <exclude domain="file" path="safe_original_paths.json" />
         <exclude domain="file" path="safe_thumbs" />
@@ -35,6 +39,9 @@
 
     <device-transfer>
         <exclude domain="sharedpref" path="photo_safe.xml" />
+
+        <exclude domain="file" path="safe_vault" />
+        <exclude domain="file" path="safe_vault_mirror" />
 
         <exclude domain="file" path="safe_original_paths.json" />
         <exclude domain="file" path="safe_thumbs" />

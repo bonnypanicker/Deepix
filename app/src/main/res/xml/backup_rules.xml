@@ -3,11 +3,16 @@
   What must never leave the device in a Google/Android backup (API 30 and below; the Android 12+
   counterpart is data_extraction_rules.xml).
 
-  The vault archive itself sits in public storage (Pictures/Pixa Safe, or Pictures/Deepix Safe for a
-  vault made before the rename) and is outside app data, so
-  it is never part of a backup. What is left behind here is everything that would let an outsider
-  reach it or read the library's derived data: the password verifier and biometric blob, the map of
+  The Safe's vault archive is a zip in public storage (Documents/PixaSafe/PixaSafe.zip) and is
+  outside app data, so it is never part of a backup. What is left behind here is everything that
+  would let an outsider reach it or read the library's derived data: the password verifier and
+  biometric blob, the vault's app-private mirror and the app-storage copy of the vault, the map of
   where each vault photo came from, the search/face indices, and the Room database.
+
+  safe_vault and safe_vault_mirror are excluded because they hold a working copy of the encrypted
+  archive — the `.bak` a commit keeps until its push is verified and the `.adopt` staging file
+  included. A backup carrying them would put the user's locked photos in the cloud, which is the one
+  thing the Safe promises not to do.
 
   The database is excluded because it stores face feature vectors as JSON (faces.embeddingJson) next
   to person names and relationships — biometric material, whatever else it is bundled with. The cost
@@ -20,6 +25,11 @@
 <full-backup-content>
     <!-- Password verifier, salt and the Keystore-encrypted password blob. -->
     <exclude domain="sharedpref" path="photo_safe.xml" />
+
+    <!-- The vault's working copy: the app-storage archive, and the mirror of one kept elsewhere
+         (a picked folder, a picked file, or Documents). Both carry .bak/.adopt siblings. -->
+    <exclude domain="file" path="safe_vault" />
+    <exclude domain="file" path="safe_vault_mirror" />
 
     <!-- Vault entry name -> the gallery folder each photo was swallowed from. -->
     <exclude domain="file" path="safe_original_paths.json" />

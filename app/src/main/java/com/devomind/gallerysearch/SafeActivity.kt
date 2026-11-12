@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.util.LruCache
 import android.view.MotionEvent
@@ -85,16 +86,43 @@ class SafeActivity : AppCompatActivity() {
         ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris -> if (uris.isNotEmpty()) runImport(uris, isMove = false) }
 
+    /**
+     * The Safe-file picker. A raw intent rather than [ActivityResultContracts.OpenDocument] because
+     * the result has to carry the persistable grant — without keeping it the vault would lose its
+     * file on the next launch — and because [Intent.EXTRA_INITIAL_URI] lands the picker on the folder
+     * the app itself keeps a vault in, which is where a previous install's file will be.
+     */
     private val pickVaultLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri == null) {
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri: Uri? = result.data?.data
+        if (result.resultCode != RESULT_OK || uri == null) {
             // The picker was abandoned — return to whichever prompt sent them there.
             if (vaultMissing) promptFindVault() else offerRestoreChoice()
-        } else {
-            adoptSourceUri = uri
-            showAdoptPasswordDialog()
+            return@registerForActivityResult
         }
+        val flags = result.data?.flags ?: 0
+        if (flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION == 0) {
+            MetroBanner.show(this, "That Safe file can't be written to")
+            if (vaultMissing) promptFindVault() else offerRestoreChoice()
+            return@registerForActivityResult
+        }
+        // The persisted permission has to be taken here, while the grant this result carries is
+        // still live — after this callback the uri is only a string.
+        val kept = runCatching {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            )
+            true
+        }.getOrDefault(false)
+        if (!kept) {
+            MetroBanner.show(this, "Couldn't keep access to that file")
+            if (vaultMissing) promptFindVault() else offerRestoreChoice()
+            return@registerForActivityResult
+        }
+        adoptSourceUri = uri
+        showAdoptPasswordDialog()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -277,22 +305,61 @@ class SafeActivity : AppCompatActivity() {
     /**
      * No vault in the app's own storage: the user may be reinstalling with their encrypted file still
      * out on the device, where the app can no longer reach it by path — so offer to find it before
-     * starting an empty Safe that would strand those photos.
+     * starting an empty Safe that would strand those photos. The probe reads the public Documents
+     * folder, so it runs off the main thread with the rest of the storage work.
      */
     private fun offerRestoreChoice() {
+        lifecycleScope.launch {
+            val likely = withContext(Dispatchers.IO) { VaultDetector.findExistingVault() }
+            showRestoreChoice(likely)
+        }
+    }
+
+    /**
+     * With a Safe file already on the device, restoring is the primary action and a new Safe is
+     * guarded by a second prompt — a new vault cannot open the file that is sitting right there, and
+     * a user who taps through would lose track of it.
+     */
+    private fun showRestoreChoice(likelyExists: Boolean) {
         MetroDialog.confirm(
             this,
-            title = "Restore a Safe?",
-            message = "If you already have a Pixa Safe file (PixaSafe.zip) from before, find it to " +
-                "bring your photos back. Otherwise, create a new Safe.",
-            positive = "Find Safe file",
-            negative = "Create new Safe",
+            title = if (likelyExists) "Restore your Safe?" else "Restore a Safe?",
+            message = if (likelyExists) {
+                "A Pixa Safe file was found on this device. Restore it with its password to bring " +
+                    "your photos back."
+            } else {
+                "If you already have a Pixa Safe file (PixaSafe.zip) from before, find it to bring " +
+                    "your photos back. Otherwise, create a new Safe."
+            },
+            positive = "Restore my Safe",
+            negative = "New Safe",
             iconRes = R.drawable.ic_fluent_lock_closed_24_regular,
             cancelable = false,
-            onNegative = { showPasswordSetupDialog(adoptMode = false) },
+            onNegative = {
+                if (likelyExists) warnBeforeNewSafe() else showPasswordSetupDialog(adoptMode = false)
+            },
             onCancel = { finish() }
         ) {
             launchVaultPicker()
+        }
+    }
+
+    /** The second prompt a new Safe needs when a vault file is already on the device. */
+    private fun warnBeforeNewSafe() {
+        MetroDialog.confirm(
+            this,
+            title = "Start a new Safe?",
+            message = "A Pixa Safe file was found on this device. A new Safe cannot open it, and its " +
+                "photos stay locked inside that file until you restore it.",
+            positive = "Create new Safe",
+            negative = "Restore instead",
+            danger = true,
+            iconRes = R.drawable.ic_fluent_lock_closed_24_regular,
+            cancelable = false,
+            onNegative = { offerRestoreChoice() },
+            onCancel = { finish() }
+        ) {
+            showPasswordSetupDialog(adoptMode = false)
         }
     }
 
@@ -461,7 +528,7 @@ class SafeActivity : AppCompatActivity() {
             title = "Find your Safe",
             message = "Pixa can't see your Safe file where it used to keep it. Your photos are " +
                 "still inside that encrypted file — find it to bring them back.",
-            positive = "Find Safe file",
+            positive = "Find my Safe",
             negative = "Not now",
             iconRes = R.drawable.ic_fluent_lock_closed_24_regular,
             cancelable = false,
@@ -477,7 +544,18 @@ class SafeActivity : AppCompatActivity() {
         suppressRelock = true
         // Anything goes: providers disagree on a zip's mime type, and the archive is checked against
         // the password before it is accepted, so a filter would only hide the very file being sought.
-        pickVaultLauncher.launch(arrayOf("*/*"))
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(DocumentsContract.EXTRA_INITIAL_URI, VaultDetector.initialUri)
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
+        }
+        runCatching { pickVaultLauncher.launch(intent) }
+            .onFailure { MetroBanner.show(this, "Couldn't open the file picker") }
     }
 
     /** Password step for the picked file — the single-field adopt dialog with its own wording. */

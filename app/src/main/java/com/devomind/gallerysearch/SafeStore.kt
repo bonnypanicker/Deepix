@@ -15,8 +15,12 @@ import java.security.MessageDigest
  *
  * Stored:
  *  - salt + PBKDF2 verifier   → validate a typed password without touching a zip
- *  - vault location           → Documents (the default), app storage, or a folder the user picked
+ *  - vault location           → Documents (the default), app storage, a folder the user picked, or
+ *                               the one document the user picked
  *  - vault tree uri (SAF)     → the picked folder that survives uninstall
+ *  - vault document uri (SAF) → the picked file that survives uninstall
+ *  - published archive name   → the name a Documents vault actually landed under (collisions)
+ *  - vault dirty flag         → a push to a picked document did not land; the mirror is authoritative
  *  - biometric blob + iv      → the password encrypted by a Keystore key (see [SafeKeystore])
  */
 object SafeStore {
@@ -26,7 +30,10 @@ object SafeStore {
     private const val KeyVerifier = "pw_verifier"
     private const val KeyIterations = "pw_iterations"
     private const val KeyTreeUri = "vault_tree_uri"
+    private const val KeyDocumentUri = "vault_document_uri"
     private const val KeyVaultLocation = "vault_location"
+    private const val KeyArchiveName = "vault_archive_name"
+    private const val KeyVaultDirty = "vault_dirty"
     private const val KeyBiometricEnabled = "biometric_enabled"
     private const val KeyBiometricBlob = "biometric_pw_blob"
     private const val KeyBiometricIv = "biometric_pw_iv"
@@ -73,6 +80,37 @@ object SafeStore {
         prefs(context).edit().apply {
             if (uri == null) remove(KeyTreeUri) else putString(KeyTreeUri, uri.toString())
         }.apply()
+    }
+
+    /** The one document a picked-file vault lives in; a reinstall drops its grant with the app. */
+    fun getDocumentUri(context: Context): Uri? =
+        prefs(context).getString(KeyDocumentUri, null)?.let(Uri::parse)
+
+    fun setDocumentUri(context: Context, uri: Uri?) {
+        prefs(context).edit().apply {
+            if (uri == null) remove(KeyDocumentUri) else putString(KeyDocumentUri, uri.toString())
+        }.apply()
+    }
+
+    /**
+     * The name the vault archive was actually published under in Documents, when MediaStore gave it
+     * a different one — or when the app had to avoid a file it could not see. Absent means the
+     * standard name.
+     */
+    fun getArchiveName(context: Context): String? =
+        prefs(context).getString(KeyArchiveName, null)?.takeIf { it.isNotBlank() }
+
+    fun setArchiveName(context: Context, name: String?) {
+        prefs(context).edit().apply {
+            if (name == null) remove(KeyArchiveName) else putString(KeyArchiveName, name)
+        }.apply()
+    }
+
+    /** True while a picked-document vault's last push did not land and the mirror is authoritative. */
+    fun isVaultDirty(context: Context): Boolean = prefs(context).getBoolean(KeyVaultDirty, false)
+
+    fun setVaultDirty(context: Context, dirty: Boolean) {
+        prefs(context).edit().putBoolean(KeyVaultDirty, dirty).apply()
     }
 
     /**

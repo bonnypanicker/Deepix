@@ -351,7 +351,8 @@ class SettingsActivity : AppCompatActivity() {
     // ------------------------------------------------------------------
 
     private fun bindSafe() {
-        // Safe is gated off in this release (no All-files access for the public vault folder).
+        // No storage permission is involved: the vault is a zip in Documents by default, a file in
+        // app storage, or a folder (or file) the user picked through the system picker.
         if (!FeatureFlags.SAFE_ENABLED) {
             binding.safeHeader.visibility = View.GONE
             binding.rowSafeLocation.visibility = View.GONE
@@ -435,6 +436,10 @@ class SettingsActivity : AppCompatActivity() {
     private fun safeLocationLabel(): String = when (VaultStores.currentLocation(this)) {
         VaultLocation.DOCUMENTS -> "Documents"
         VaultLocation.APP_PRIVATE -> "Hidden — app storage"
+        VaultLocation.PICKED_DOCUMENT -> {
+            val name = SafeStore.getDocumentUri(this)?.lastPathSegment?.substringAfterLast('/')
+            name ?: "Picked file"
+        }
         VaultLocation.PICKED -> {
             val tree = SafeStore.getTreeUri(this)
             val name = tree?.let {

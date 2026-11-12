@@ -17,16 +17,19 @@ import javax.crypto.SecretKey
  * Session + storage orchestration for the encrypted photo locker.
  *
  * All safe photos live inside ONE standard AES-256 zip — the encrypted "folder". Where that zip
- * lives is [VaultStorage]'s business, not this class's: app storage by default, or a folder the user
- * picked through the system picker. Either way this class only ever touches the local [File] that
- * storage exposes, because zip4j rewrites the whole archive to add or drop a single entry.
+ * lives is [VaultStorage]'s business, not this class's: `Documents/PixaSafe/` by default, app
+ * storage, a folder the user picked, or the single file the user picked after a reinstall. Either
+ * way this class only ever touches the local [File] that storage exposes, because zip4j rewrites the
+ * whole archive to add or drop a single entry.
  *
  * An archive the app fails to find is not an empty Safe — it is the only copy of the photos already
  * removed from the gallery, so discovery, not a rename, is what carries a vault over to a new home.
  *
  * Sub-folders are modelled as path prefixes inside the archive (`Trip/beach.jpg`); an empty folder
- * keeps a `.dpixkeep` marker entry so it still lists. Extracted plaintext previews go to cache temp
- * dirs wiped after use. The unlocked password is held in memory for the life of an unlocked Safe.
+ * keeps a `.dpixkeep` marker entry so it still lists, and the map of where each photo came from
+ * lives inside the archive too (`.pixa/original_paths.json`) so a restore keeps its folders after a
+ * reinstall. Both are hidden from listings. Extracted plaintext previews go to cache temp dirs wiped
+ * after use. The unlocked password is held in memory for the life of an unlocked Safe.
  */
 object SafeManager {
 
@@ -91,34 +94,89 @@ object SafeManager {
 
     // ---- Original gallery locations (vault entry name -> absolute source dir) ----
 
+    /** The map lives inside the archive, so a restore keeps its folders across a reinstall. */
+    private const val OriginalPathsEntry = ".pixa/original_paths.json"
+
+    /** Paths starting with this are the vault's own bookkeeping and never show up in a listing. */
+    private const val HiddenPrefix = ".pixa/"
+
+    /** Where the map sat as a plain app-storage file before it moved into the archive. */
     private const val OriginalPathsFile = "safe_original_paths.json"
+
+    @Volatile private var originalPathsNeedMigration = false
 
     /**
      * Remembers where each imported photo lived before the Safe swallowed it, so "Save back to
      * gallery" restores it to its original folder instead of a fixed Deepix folder. Keyed by vault
      * entry name (the URI dies with the original). Survives lock/unlock and process death.
+     *
+     * Read from the archive, which is what makes it survive an uninstall. A vault made before the map
+     * moved in still keeps it in app storage; that copy is read as a fallback and replaced the next
+     * time the map is written.
      */
-    private fun originalPaths(context: Context): MutableMap<String, String> {
+    private fun originalPaths(context: Context, password: String): MutableMap<String, String> {
         originalPathsCache?.let { return it }
         synchronized(this) {
             originalPathsCache?.let { return it }
-            val map = runCatching {
-                val obj = JSONObject(File(context.filesDir, OriginalPathsFile).readText())
-                val m = linkedMapOf<String, String>()
-                for (key in obj.keys()) m[key] = obj.optString(key)
-                m
-            }.getOrDefault(linkedMapOf())
+            val map = readOriginalPaths(context, password)
+            if (map.isEmpty()) {
+                legacyOriginalPaths(context)?.let {
+                    originalPathsNeedMigration = true
+                    map.putAll(it)
+                }
+            }
             originalPathsCache = map
             return map
         }
     }
 
-    private fun saveOriginalPaths(context: Context) {
+    private fun readOriginalPaths(context: Context, password: String): MutableMap<String, String> {
+        val work = File(context.cacheDir, "safe_paths_${System.nanoTime()}")
+        return try {
+            val entry = SafeCrypto.extractEntry(
+                archive(context), OriginalPathsEntry, password.toCharArray(), work
+            )
+            parsePaths(entry.readText())
+        } catch (_: Exception) {
+            linkedMapOf()
+        } finally {
+            runCatching { work.deleteRecursively() }
+        }
+    }
+
+    /** The pre-archive map, if this install still has one. */
+    private fun legacyOriginalPaths(context: Context): MutableMap<String, String>? {
+        val file = File(context.filesDir, OriginalPathsFile)
+        if (!file.exists()) return null
+        return runCatching { parsePaths(file.readText()) }.getOrNull()
+    }
+
+    private fun parsePaths(json: String): MutableMap<String, String> {
+        val obj = JSONObject(json)
+        val map = linkedMapOf<String, String>()
+        for (key in obj.keys()) map[key] = obj.optString(key)
+        return map
+    }
+
+    /**
+     * Writes the map into [zip] as one encrypted entry, replacing any earlier copy, and drops the
+     * plaintext file it may have come from. Called on the archive being built for a commit, so the
+     * map lands in the same verified write as the change that made it stale.
+     */
+    private fun writeOriginalPaths(context: Context, zip: File, password: String) {
         val map = originalPathsCache ?: return
-        runCatching {
-            val obj = JSONObject()
-            for ((key, value) in map) obj.put(key, value)
-            File(context.filesDir, OriginalPathsFile).writeText(obj.toString())
+        val obj = JSONObject()
+        for ((key, value) in map) obj.put(key, value)
+        val work = File(context.cacheDir, "safe_work").apply { mkdirs() }
+        val temp = File(work, "original_paths.json").apply { writeText(obj.toString()) }
+        try {
+            // zip4j appends rather than replaces, so an earlier copy goes first.
+            runCatching { SafeCrypto.removeEntry(zip, OriginalPathsEntry, password.toCharArray()) }
+            SafeCrypto.addFileToZip(zip, temp, OriginalPathsEntry, password.toCharArray())
+            runCatching { File(context.filesDir, OriginalPathsFile).delete() }
+            originalPathsNeedMigration = false
+        } finally {
+            temp.delete()
         }
     }
 
@@ -144,7 +202,7 @@ object SafeManager {
 
     // ---- Storage location ----
 
-    /** The vault's current home — Documents by default, app storage, or the folder the user picked. */
+    /** The vault's current home — Documents by default, app storage, or wherever the user picked. */
     private fun storage(context: Context): VaultStorage = VaultStores.of(context)
 
     /**
@@ -198,10 +256,23 @@ object SafeManager {
         return true
     }
 
-    /** Records where the vault now lives. A tree uri only means anything for a picked folder. */
-    private fun persistLocation(context: Context, location: VaultLocation, treeUri: Uri?) {
+    /**
+     * Records where the vault now lives. A uri only means anything for the location that uses it —
+     * a picked folder for [VaultLocation.PICKED], a picked file for [VaultLocation.PICKED_DOCUMENT]
+     * — so leaving one of those clears the uri instead of leaving a stale grant behind.
+     */
+    private fun persistLocation(
+        context: Context,
+        location: VaultLocation,
+        treeUri: Uri?,
+        documentUri: Uri? = null
+    ) {
         SafeStore.setVaultLocation(context, location)
         SafeStore.setTreeUri(context, if (location == VaultLocation.PICKED) treeUri else null)
+        SafeStore.setDocumentUri(
+            context,
+            if (location == VaultLocation.PICKED_DOCUMENT) documentUri else null
+        )
     }
 
     /**
@@ -214,6 +285,7 @@ object SafeManager {
         VaultStores.purgeLocal(context)
         runCatching { File(context.filesDir, OriginalPathsFile).delete() }
         originalPathsCache = null
+        originalPathsNeedMigration = false
         SafeStore.reset(context)
         applyLock(context)
         runCatching { File(context.filesDir, "safe_thumbs").deleteRecursively() }
@@ -222,9 +294,10 @@ object SafeManager {
     // ---- Configuration ----
 
     /**
-     * Safe is gated behind [FeatureFlags.SAFE_ENABLED] so this release ships it only once the
-     * storage rebuild has been verified. The vault no longer needs All-files access: it is a zip in
-     * the public Documents folder, a file in app storage, or a document in a folder the user picked.
+     * Safe is gated behind [FeatureFlags.SAFE_ENABLED], which is on for this release. The vault
+     * needs no storage permission: by default it is a zip in the public `Documents/PixaSafe/`
+     * folder, and it can also be a file in app storage, a folder the user picked, or the one
+     * document the user picked to restore a Safe after a reinstall.
      */
     val hasAccess: Boolean get() = FeatureFlags.SAFE_ENABLED
 
@@ -238,11 +311,11 @@ object SafeManager {
     }
 
     /**
-     * True when a Safe is configured but its archive is not at the vault's location — the shape an
-     * upgrade out of the build that kept it in shared storage by path leaves behind, and also a
-     * picked folder the user moved or stopped granting. The photos are not gone; the file is simply
-     * elsewhere, so the Safe offers to bring it back instead of showing an empty vault. Reads the
-     * storage location, so call it off the main thread.
+     * True when a Safe is configured but its archive is not at the vault's location — a picked
+     * folder or file the user moved or stopped granting, or the shape an upgrade out of the build
+     * that kept it in shared storage by path leaves behind. The photos are not gone; the file is
+     * simply elsewhere, so the Safe offers to bring it back instead of showing an empty vault. Reads
+     * the storage location, so call it off the main thread.
      */
     fun archiveMissing(context: Context): Boolean =
         isConfigured(context) && !archive(context).exists()
@@ -275,15 +348,19 @@ object SafeManager {
     }
 
     /**
-     * Adopts a vault archive the user picked with the system document picker — how a Safe comes
-     * across from the build that kept it in shared storage by path. The picked document is copied to
-     * a staging file beside the vault and verified against [password] before anything is swapped in,
-     * so a wrong password or an unreadable file leaves the vault's own location untouched. The picked
-     * document itself is never modified — it stays the user's copy.
+     * Adopts a vault archive the user picked with the system document picker — how a Safe comes back
+     * after a reinstall, when the new install cannot list the previous install's rows but a document
+     * the user granted persistently is always reachable.
+     *
+     * The picked file *becomes* the vault: its own storage keeps a mirror in app storage, and the
+     * document itself is only ever written by a later commit. The picked document is copied to a
+     * staging file beside that mirror and verified against [password] before anything is swapped in,
+     * and the vault's home is recorded only after that check, so a wrong password or an unreadable
+     * file leaves both the app's configuration and the user's own file exactly as they were.
      */
     fun adoptArchive(context: Context, source: Uri, password: String): SetupOutcome {
         if (!hasAccess) return SetupOutcome.NO_ACCESS
-        val store = storage(context).also { it.refresh() }
+        val store = PickedDocumentVaultStorage(context, source)
         val target = store.localFile()
         val staged = File(target.parentFile, "${target.name}.adopt")
         staged.delete()
@@ -305,12 +382,12 @@ object SafeManager {
             staged.delete()
             return SetupOutcome.WRONG_PASSWORD
         }
-        val adopted = runCatching {
-            SafeCrypto.replaceAtomically(staged, target)
-            store.commit()
-        }.isSuccess
+        val adopted = runCatching { SafeCrypto.replaceAtomically(staged, target) }.isSuccess
         staged.delete()
         if (!adopted) return SetupOutcome.ARCHIVE_UNREADABLE
+        // Verified — only now does the picked file become where the app keeps the vault.
+        persistLocation(context, VaultLocation.PICKED_DOCUMENT, treeUri = null, documentUri = source)
+        SafeStore.setVaultDirty(context, false)
         SafeStore.savePasswordVerifier(context, password)
         openSession(context, password)
         return SetupOutcome.ADOPTED
@@ -350,7 +427,8 @@ object SafeManager {
         val folders = linkedSetOf<String>()
         val photos = mutableListOf<VaultItem>()
         for (name in names) {
-            if (!name.startsWith(prefix)) continue
+            // The vault's own bookkeeping (the original-folder map) is not a child of any folder.
+            if (name.startsWith(HiddenPrefix) || !name.startsWith(prefix)) continue
             val remainder = name.substring(prefix.length)
             if (remainder.isEmpty()) continue
             val slash = remainder.indexOf('/')
@@ -369,7 +447,7 @@ object SafeManager {
     /** Flat list of every photo in the vault (used where folders don't matter). */
     fun listItems(context: Context): List<VaultItem> =
         SafeCrypto.listEntryNames(archive(context))
-            .filterNot { it.substringAfterLast('/') == FolderMarker }
+            .filterNot { it.startsWith(HiddenPrefix) || it.substringAfterLast('/') == FolderMarker }
             .sortedDescending()
             .map { VaultItem(it) }
 
@@ -413,7 +491,7 @@ object SafeManager {
         val read = SafeCrypto.readArchive(zip)
         if (read is SafeCrypto.ArchiveRead.Unreadable) return ImportResult(0, sources.size, emptyList())
         val existing = (read as? SafeCrypto.ArchiveRead.Ok)?.names.orEmpty().toMutableSet()
-        val originalDirs = originalPaths(context)
+        val originalDirs = originalPaths(context, password)
         val work = File(context.cacheDir, "safe_work").apply { mkdirs() }
         val replacement = File(zip.parentFile, "${zip.name}.tmp")
         replacement.delete()
@@ -471,6 +549,11 @@ object SafeManager {
         }
         if (imported > 0) {
             try {
+                // The map of where these photos came from goes into the archive itself, before the
+                // swap, so it travels with the vault and a restore after a reinstall keeps folders.
+                if (originalDirsDirty || originalPathsNeedMigration) {
+                    writeOriginalPaths(context, replacement, password)
+                }
                 SafeCrypto.replaceAtomically(replacement, zip)
                 // Nothing is settled on the originals until the archive is safely at its location:
                 // a commit that fails reports nothing imported, so the sources stay in the gallery.
@@ -482,7 +565,6 @@ object SafeManager {
         } else {
             replacement.delete()
         }
-        if (originalDirsDirty) saveOriginalPaths(context)
         return ImportResult(imported, failed, importedSources)
     }
 
@@ -539,9 +621,10 @@ object SafeManager {
      *  know it, else the Deepix folder. Videos go to the video collection / Movies, images to the
      *  image collection / Pictures. Returns the new media uri or null. */
     fun restoreToGallery(context: Context, item: VaultItem): Uri? {
+        val password = sessionPassword ?: return null
         val temp = runCatching { decryptToTemp(context, item) }.getOrNull() ?: return null
         val isVideo = MediaFormats.isVideoFileName(temp.name)
-        val originalDir = originalPaths(context)[item.entryName]
+        val originalDir = originalPaths(context, password)[item.entryName]
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 // Its own folder first. A folder that can't be written — a removed SD card, a
@@ -650,20 +733,22 @@ object SafeManager {
         val password = sessionPassword ?: return false
         // zip4j rewrites the whole archive to drop one entry, so this is the other write a lock must
         // not be allowed to stand on top of.
-        val removed = guarded(context) {
+        return guarded(context) {
             runCatching {
-                SafeCrypto.removeEntry(archive(context), item.entryName, password.toCharArray())
+                val zip = archive(context)
+                val paths = originalPaths(context, password)
+                SafeCrypto.removeEntry(zip, item.entryName, password.toCharArray())
+                // The map lives in the archive, so the dropped entry has to leave it in the same
+                // write that settles the removal — otherwise a later restore re-creates its folder.
+                if (paths.remove(item.entryName) != null || originalPathsNeedMigration) {
+                    writeOriginalPaths(context, zip, password)
+                }
                 // Settled at the vault's location before the thumbnail that mirrors it is dropped.
                 storage(context).commit()
                 thumbFile(context, item.entryName).delete()
                 true
             }.getOrDefault(false)
         }
-        if (removed) {
-            originalPaths(context).remove(item.entryName)
-            saveOriginalPaths(context)
-        }
-        return removed
     }
 
     // ---- Helpers ----

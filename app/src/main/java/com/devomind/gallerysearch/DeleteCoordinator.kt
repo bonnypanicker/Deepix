@@ -21,8 +21,9 @@ object DeleteCoordinator {
 
     sealed class Outcome {
         /**
-         * Handled here (kept for the bin rebuild; never produced while the bin is flagged off).
-         * [toBin] distinguishes soft-delete from permanent for the confirmation copy.
+         * Handled here, for the paths that never reach the platform flow (an empty request, and the
+         * callers that only need the bin's own accounting). [toBin] distinguishes soft-delete from
+         * permanent for the confirmation copy.
          */
         data class Done(
             val succeeded: Int,
