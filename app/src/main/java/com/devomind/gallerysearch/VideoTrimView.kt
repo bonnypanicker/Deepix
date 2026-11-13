@@ -27,6 +27,15 @@ class VideoTrimView @JvmOverloads constructor(
     /** Fired when the user releases a handle (good moment to seek the preview). */
     var onRangeCommitted: ((startFraction: Float, endFraction: Float) -> Unit)? = null
 
+    /** Fired as the playhead is dragged, so the preview can follow it frame by frame. */
+    var onPlayheadScrubbed: ((positionFraction: Float) -> Unit)? = null
+
+    /** Fired when a playhead drag begins; playback should pause for the duration of the drag. */
+    var onPlayheadScrubStarted: (() -> Unit)? = null
+
+    /** Fired when a playhead drag ends, whether it was released or cancelled. */
+    var onPlayheadScrubEnded: (() -> Unit)? = null
+
     var startFraction = 0f
         private set
     var endFraction = 1f
@@ -62,9 +71,11 @@ class VideoTrimView @JvmOverloads constructor(
     private val handleWidth = dp(14f)
     private val stripInset = dp(14f)
     private val touchSlop = dp(24f)
+    /** The playhead is a 2dp line, so it gets a finger-sized target of its own. */
+    private val playheadTouchSlop = dp(22f)
     private val minRangePx = dp(36f)
 
-    private enum class Drag { NONE, START, END }
+    private enum class Drag { NONE, START, END, PLAYHEAD }
     private var drag = Drag.NONE
 
     fun setFrames(bitmaps: List<Bitmap>) {
@@ -140,34 +151,56 @@ class VideoTrimView @JvmOverloads constructor(
         if (strip.width() <= 0f) return false
         val startX = strip.left + startFraction * strip.width()
         val endX = strip.left + endFraction * strip.width()
+        val playX = strip.left + playheadFraction * strip.width()
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 drag = when {
                     abs(event.x - startX) <= touchSlop && abs(event.x - startX) <= abs(event.x - endX) -> Drag.START
                     abs(event.x - endX) <= touchSlop -> Drag.END
+                    // Only inside the kept range: outside it the line is not drawn, so there is
+                    // nothing there to grab. Handles win when both targets overlap.
+                    playheadFraction in startFraction..endFraction &&
+                        abs(event.x - playX) <= playheadTouchSlop -> Drag.PLAYHEAD
                     else -> Drag.NONE
                 }
+                if (drag == Drag.PLAYHEAD) onPlayheadScrubStarted?.invoke()
                 if (drag != Drag.NONE) parent?.requestDisallowInterceptTouchEvent(true)
                 return drag != Drag.NONE
             }
             MotionEvent.ACTION_MOVE -> {
                 if (drag == Drag.NONE) return false
                 val fraction = ((event.x - strip.left) / strip.width()).coerceIn(0f, 1f)
-                val minRange = minRangePx / strip.width()
-                if (drag == Drag.START) {
-                    startFraction = fraction.coerceAtMost(endFraction - minRange).coerceAtLeast(0f)
-                } else {
-                    endFraction = fraction.coerceAtLeast(startFraction + minRange).coerceAtMost(1f)
+                when (drag) {
+                    Drag.START -> {
+                        val minRange = minRangePx / strip.width()
+                        startFraction = fraction.coerceAtMost(endFraction - minRange).coerceAtLeast(0f)
+                        onRangeChanged?.invoke(startFraction, endFraction)
+                    }
+                    Drag.END -> {
+                        val minRange = minRangePx / strip.width()
+                        endFraction = fraction.coerceAtLeast(startFraction + minRange).coerceAtMost(1f)
+                        onRangeChanged?.invoke(startFraction, endFraction)
+                    }
+                    Drag.PLAYHEAD -> {
+                        // Scrubbing stays inside the kept range: that is the range that plays.
+                        playheadFraction = fraction.coerceIn(startFraction, endFraction)
+                        onPlayheadScrubbed?.invoke(playheadFraction)
+                    }
+                    Drag.NONE -> Unit
                 }
-                onRangeChanged?.invoke(startFraction, endFraction)
                 invalidate()
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (drag != Drag.NONE) {
+                    val wasPlayhead = drag == Drag.PLAYHEAD
                     drag = Drag.NONE
-                    onRangeCommitted?.invoke(startFraction, endFraction)
+                    if (wasPlayhead) {
+                        onPlayheadScrubEnded?.invoke()
+                    } else {
+                        onRangeCommitted?.invoke(startFraction, endFraction)
+                    }
                     return true
                 }
             }

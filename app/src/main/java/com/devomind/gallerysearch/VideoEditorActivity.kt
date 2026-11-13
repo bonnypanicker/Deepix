@@ -71,11 +71,16 @@ class VideoEditorActivity : AppCompatActivity() {
     private var pendingOverwriteFile: File? = null
     private var edited = false
 
+    // Playhead scrubbing: pauses playback for the drag and keeps the 100ms ticker from
+    // overwriting the position the finger is holding.
+    private var scrubbingPlayhead = false
+    private var resumeAfterPlayheadScrub = false
+
     private val progressHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val progressTick = object : Runnable {
         override fun run() {
             val p = player ?: return
-            if (durationMs > 0) {
+            if (durationMs > 0 && !scrubbingPlayhead) {
                 binding.trimView.playheadFraction = p.currentPosition.toFloat() / durationMs
             }
             // Loop preview inside the kept range, like Google Photos' trim preview.
@@ -172,6 +177,27 @@ class VideoEditorActivity : AppCompatActivity() {
         }
         binding.trimView.onRangeCommitted = { start, _ ->
             player?.seekTo((start * durationMs).toLong())
+        }
+        binding.trimView.onPlayheadScrubStarted = {
+            scrubbingPlayhead = true
+            player?.let { p ->
+                resumeAfterPlayheadScrub = p.isPlaying
+                if (p.isPlaying) p.pause()
+            }
+        }
+        binding.trimView.onPlayheadScrubbed = { fraction ->
+            if (durationMs > 0) {
+                // Preview follows the marker while the finger is down. Stay 1ms shy of the media
+                // duration: seeking exactly to the end reports STATE_ENDED, which snaps back to
+                // the trim start through the playback listener.
+                player?.seekTo((fraction * durationMs).toLong().coerceIn(0L, (durationMs - 1).coerceAtLeast(0L)))
+            }
+        }
+        binding.trimView.onPlayheadScrubEnded = {
+            scrubbingPlayhead = false
+            val p = player
+            if (p != null && resumeAfterPlayheadScrub) p.play()
+            resumeAfterPlayheadScrub = false
         }
 
         binding.exportCancel.setOnClickListener { cancelExport() }
