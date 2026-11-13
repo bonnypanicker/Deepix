@@ -66,6 +66,22 @@ class EditorSavePolicyTest {
         )
     }
 
+    @Test
+    fun grantedWriteConsentRendersWhenNoBitmapWasWaiting() {
+        val source = File(moduleDir(), "src/main/java/com/devomind/gallerysearch/PhotoEditorActivity.kt").readText()
+        val approval = source
+            .substringAfter("ActivityResultContracts.StartIntentSenderForResult()")
+            .substringBefore("override fun onCreate")
+        assertTrue(
+            "Approval must clear the pending-consent flag before the save runs",
+            "awaitingWriteConsent = false" in approval
+        )
+        assertTrue(
+            "A pre-flight grant holds no rendered bitmap, so approval must let the normal path render it",
+            "performOverwrite(afterConsent = pendingSaveBitmap != null)" in approval
+        )
+    }
+
     private fun moduleDir(): File {
         val from = File(System.getProperty("user.dir"))
         return listOf(from, File(from, "app")).firstOrNull {

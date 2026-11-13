@@ -74,17 +74,11 @@ class PhotoEditorActivity : AppCompatActivity() {
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         if (result.resultCode == RESULT_OK) {
-            when {
-                pendingSaveBitmap != null -> {
-                    hasWriteConsent = true
-                    performOverwrite(afterConsent = true)
-                }
-                awaitingWriteConsent -> {
-                    hasWriteConsent = true
-                    awaitingWriteConsent = false
-                    performOverwrite(afterConsent = true)
-                }
-            }
+            hasWriteConsent = true
+            awaitingWriteConsent = false
+            // A grant requested before any render (the Android 11+ pre-flight check) has no bitmap
+            // to reuse, so the normal path renders the full-resolution edit and then writes it.
+            performOverwrite(afterConsent = pendingSaveBitmap != null)
         } else {
             pendingSaveBitmap?.recycle()
             pendingSaveBitmap = null
