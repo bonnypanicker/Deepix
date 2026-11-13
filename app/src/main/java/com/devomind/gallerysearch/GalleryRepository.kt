@@ -264,6 +264,21 @@ class GalleryRepository(
         return queryVideoItems(albumIds)
     }
 
+    /** Resolves just the requested MediaStore videos, mirroring [getImageItemsForUris]. */
+    fun getVideoItemsForUris(uris: Collection<String>): List<MediaItem> {
+        val ids = uris.asSequence()
+            .mapNotNull { uri -> runCatching { Uri.parse(uri).lastPathSegment?.toLongOrNull() }.getOrNull() }
+            .filter { it > 0L }
+            .distinct()
+            .toList()
+        if (ids.isEmpty()) return emptyList()
+
+        return ids.chunked(MediaStoreQueryChunkSize)
+            .flatMap { chunk -> queryVideoItems(emptySet(), videoIds = chunk) }
+            .distinctBy { it.uri.toString() }
+            .sortedByDescending { it.dateMillis }
+    }
+
     private fun queryImageItems(
         albumIds: Set<String>,
         imageIds: List<Long>? = null,
@@ -358,7 +373,11 @@ class GalleryRepository(
         return items
     }
 
-    private fun queryVideoItems(albumIds: Set<String>, limit: Int? = null): List<MediaItem> {
+    private fun queryVideoItems(
+        albumIds: Set<String>,
+        limit: Int? = null,
+        videoIds: List<Long>? = null
+    ): List<MediaItem> {
         val collection = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
         } else {
@@ -384,6 +403,11 @@ class GalleryRepository(
         val sortOrder = "${MediaStore.Video.Media.DATE_ADDED} DESC"
         val items = ArrayList<MediaItem>()
 
+        val selection = videoIds?.joinToString(
+            prefix = "${MediaStore.Video.Media._ID} IN (",
+            postfix = ")"
+        ) { "?" }
+        val selectionArgs = videoIds?.map(Long::toString)?.toTypedArray()
         val mediaCursor = if (limit != null) {
             val bundle = Bundle().apply {
                 putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, sortOrder)
@@ -391,7 +415,7 @@ class GalleryRepository(
             }
             context.contentResolver.query(collection, projection, bundle, null)
         } else {
-            context.contentResolver.query(collection, projection, null, null, sortOrder)
+            context.contentResolver.query(collection, projection, selection, selectionArgs, sortOrder)
         }
         mediaCursor?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)

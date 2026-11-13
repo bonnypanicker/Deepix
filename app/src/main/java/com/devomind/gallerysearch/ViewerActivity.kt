@@ -107,8 +107,17 @@ class ViewerActivity : AppCompatActivity() {
     private val editorLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        val edited = result.data?.getBooleanExtra(PhotoEditorActivity.ExtraEdited, false) == true
-        if (edited) onImageEdited()
+        val data = result.data
+        if (data?.getBooleanExtra(PhotoEditorActivity.ExtraEdited, false) != true) {
+            return@registerForActivityResult
+        }
+        val savedUri = data.getStringExtra(PhotoEditorActivity.ExtraSavedUri)?.let(Uri::parse)
+        val replacedOriginal = data.getBooleanExtra(PhotoEditorActivity.ExtraReplacedOriginal, true)
+        when {
+            savedUri == null -> refreshCurrentPage()
+            replacedOriginal -> showEditedOriginal(savedUri)
+            else -> showSavedCopy(savedUri)
+        }
     }
 
     private var previousPosition = -1
@@ -1241,15 +1250,57 @@ class ViewerActivity : AppCompatActivity() {
         editorLauncher.launch(intent)
     }
 
-    /** After an edit is saved, refresh the current page (bust Glide cache) and mark content changed. */
-    private fun onImageEdited() {
+    private fun refreshCurrentPage() {
+        items.getOrNull(currentPosition)?.let { showEditedOriginal(it.uri) }
+    }
+
+    /**
+     * After Save rewrote the original in place, decode the new bytes. The pager's bind guard would
+     * skip the unchanged Uri, and Glide would hand back the pre-edit frame, so both caches are
+     * dropped and the page is force-rebound.
+     */
+    private fun showEditedOriginal(savedUri: Uri) {
         contentChanged = true
-        lifecycleScope.launch(Dispatchers.IO) {
-            runCatching { com.bumptech.glide.Glide.get(this@ViewerActivity).clearDiskCache() }
-            withContext(Dispatchers.Main) {
-                com.bumptech.glide.Glide.get(this@ViewerActivity).clearMemory()
-                adapter.notifyItemChanged(currentPosition)
+        val index = items.indexOfFirst { it.uri == savedUri }
+        if (index < 0) return
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching { com.bumptech.glide.Glide.get(this@ViewerActivity).clearDiskCache() }
             }
+            com.bumptech.glide.Glide.get(this@ViewerActivity).clearMemory()
+            adapter.refresh(index)
+            if (index == currentPosition) bindPage(index)
+        }
+    }
+
+    /**
+     * After Save a copy, put the new file on screen: resolve its MediaStore row, slot it directly
+     * after the source so a swipe returns to the original, and select it.
+     */
+    private fun showSavedCopy(savedUri: Uri) {
+        if (items.isEmpty()) return
+        contentChanged = true
+        val sourcePosition = currentPosition.coerceIn(items.indices)
+        val mediaType = items[sourcePosition].mediaType
+        lifecycleScope.launch {
+            val copy = withContext(Dispatchers.IO) {
+                val repository = GalleryRepository(applicationContext)
+                val resolved = when (mediaType) {
+                    GalleryRepository.MediaType.Image ->
+                        repository.getImageItemsForUris(listOf(savedUri.toString()))
+                    GalleryRepository.MediaType.Video ->
+                        repository.getVideoItemsForUris(listOf(savedUri.toString()))
+                }
+                resolved.firstOrNull()
+            }
+            if (copy == null) {
+                MetroBanner.show(this@ViewerActivity, "Saved a copy")
+                return@launch
+            }
+            val at = (sourcePosition + 1).coerceIn(0, items.size)
+            items.add(at, copy)
+            adapter.notifyItemInserted(at)
+            binding.viewPager.setCurrentItem(at, false)
         }
     }
 

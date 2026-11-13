@@ -520,7 +520,7 @@ class VideoEditorActivity : AppCompatActivity() {
             }
             result.onSuccess {
                 file.delete()
-                finishSaved()
+                finishSaved(sourceUri, replacedOriginal = true)
             }.onFailure { error ->
                 val recoverable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
                     error is RecoverableSecurityException
@@ -566,9 +566,9 @@ class VideoEditorActivity : AppCompatActivity() {
                 }
             }
             file.delete()
-            result.onSuccess {
+            result.onSuccess { savedUri ->
                 MetroBanner.show(this@VideoEditorActivity, "Saved a copy")
-                finishSaved()
+                finishSaved(savedUri, replacedOriginal = false)
             }.onFailure {
                 hideExportOverlay()
                 MetroBanner.show(this@VideoEditorActivity, "Save failed: ${it.message}")
@@ -576,8 +576,14 @@ class VideoEditorActivity : AppCompatActivity() {
         }
     }
 
-    private fun finishSaved() {
-        setResult(RESULT_OK, Intent().putExtra(ExtraEdited, true))
+    private fun finishSaved(savedUri: Uri, replacedOriginal: Boolean) {
+        setResult(
+            RESULT_OK,
+            Intent()
+                .putExtra(ExtraEdited, true)
+                .putExtra(ExtraSavedUri, savedUri.toString())
+                .putExtra(ExtraReplacedOriginal, replacedOriginal)
+        )
         finish()
     }
 
@@ -618,7 +624,9 @@ class VideoEditorActivity : AppCompatActivity() {
     companion object {
         const val ExtraUri = "editor_uri"
         const val ExtraName = "editor_name"
-        // Same key as PhotoEditorActivity.ExtraEdited: the viewer uses one launcher for both editors.
+        // Same keys as the photo editor: the viewer uses one launcher for both editors.
         const val ExtraEdited = "editor_edited"
+        const val ExtraSavedUri = "editor_saved_uri"
+        const val ExtraReplacedOriginal = "editor_replaced_original"
     }
 }

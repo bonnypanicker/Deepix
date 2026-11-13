@@ -51,6 +51,8 @@ class MediaPagerAdapter(
     // the adapter makes a later video bind inherit the correct autoplay state.
     private var primaryPosition = initialPosition
 
+    private object ReloadPayload
+
     override fun getItemCount(): Int = items.size
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageViewHolder {
@@ -63,6 +65,24 @@ class MediaPagerAdapter(
         val isInitial = position == initialPosition
         val transitionName = if (isInitial) initialTransitionName else "media_${item.uri}"
         holder.bind(item, position, transitionName, isInitial && initialTransitionName != null)
+    }
+
+    override fun onBindViewHolder(holder: PageViewHolder, position: Int, payloads: MutableList<Any>) {
+        if (payloads.contains(ReloadPayload)) {
+            holder.reload(items[position], position)
+            return
+        }
+        super.onBindViewHolder(holder, position, payloads)
+    }
+
+    /**
+     * Re-binds [position] even though its item (and Uri) is unchanged, so an in-place rewrite of the
+     * file behind it is decoded again. A plain notifyItemChanged would be swallowed by the bind
+     * guard that skips work for the same Uri.
+     */
+    fun refresh(position: Int) {
+        if (position !in items.indices) return
+        notifyItemChanged(position, ReloadPayload)
     }
 
     override fun onViewRecycled(holder: PageViewHolder) {
@@ -147,6 +167,15 @@ class MediaPagerAdapter(
             } else {
                 bindImage(item, transitionName, isInitialSharedElement)
             }
+        }
+
+        /**
+         * Re-decode this page after the file behind its Uri was rewritten in place. [cleanup] drops
+         * the previous frame and player; clearing the bound Uri lets the normal [bind] guards pass.
+         */
+        fun reload(item: GalleryRepository.MediaItem, position: Int) {
+            cleanup()
+            bind(item, position, transitionName = "media_${item.uri}", isInitialSharedElement = false)
         }
 
         /**

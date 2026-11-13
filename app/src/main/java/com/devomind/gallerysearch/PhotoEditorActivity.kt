@@ -520,7 +520,7 @@ class PhotoEditorActivity : AppCompatActivity() {
                 // edit itself is already on disk, so it must not surface as a save error.
                 runCatching { DbRepository(applicationContext).invalidatePhotoForReanalysis(sourceUri.toString()) }
                     .onFailure { Log.w(Tag, "Stale-index invalidation failed for $sourceUri", it) }
-                finishSaved()
+                finishSaved(sourceUri, replacedOriginal = true)
             }.onFailure { error ->
                 val recoverable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
                     error is RecoverableSecurityException
@@ -562,9 +562,9 @@ class PhotoEditorActivity : AppCompatActivity() {
                 }
             }
             binding.editorLoading.visibility = View.GONE
-            result.onSuccess {
+            result.onSuccess { savedUri ->
                 Toast.makeText(this@PhotoEditorActivity, "Saved a copy", Toast.LENGTH_SHORT).show()
-                finishSaved()
+                finishSaved(savedUri, replacedOriginal = false)
             }.onFailure {
                 MetroBanner.show(this@PhotoEditorActivity, "Save failed: ${it.message}", bottomMarginDp = 120)
             }
@@ -587,8 +587,14 @@ class PhotoEditorActivity : AppCompatActivity() {
         writeRequestLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
     }
 
-    private fun finishSaved() {
-        setResult(RESULT_OK, Intent().putExtra(ExtraEdited, true))
+    private fun finishSaved(savedUri: Uri, replacedOriginal: Boolean) {
+        setResult(
+            RESULT_OK,
+            Intent()
+                .putExtra(ExtraEdited, true)
+                .putExtra(ExtraSavedUri, savedUri.toString())
+                .putExtra(ExtraReplacedOriginal, replacedOriginal)
+        )
         finish()
     }
 
@@ -656,6 +662,9 @@ class PhotoEditorActivity : AppCompatActivity() {
         const val ExtraUri = "editor_uri"
         const val ExtraName = "editor_name"
         const val ExtraEdited = "editor_edited"
+        /** The file the save actually wrote: the original when replaced, otherwise the new copy. */
+        const val ExtraSavedUri = "editor_saved_uri"
+        const val ExtraReplacedOriginal = "editor_replaced_original"
         private const val Tag = "PhotoEditor"
         private const val EDIT_MAX_DIM = 2560
     }
