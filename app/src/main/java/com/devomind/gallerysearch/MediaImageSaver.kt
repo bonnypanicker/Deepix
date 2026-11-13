@@ -72,6 +72,19 @@ object MediaImageSaver {
      * an absolute directory on older releases. When null the copy goes to Pictures/Deepix.
      */
     fun saveCopy(context: Context, bitmap: Bitmap, baseName: String, destFolder: String? = null): Uri {
+        return try {
+            saveCopyToFolder(context, bitmap, baseName, destFolder)
+        } catch (failure: Exception) {
+            if (EditorSavePolicy.shouldRetryCopyInOwnedFolder(Build.VERSION.SDK_INT, destFolder, failure)) {
+                saveCopyToFolder(context, bitmap, baseName, null)
+            } else {
+                throw failure
+            }
+        }
+    }
+
+    /** Writes one copy to [destFolder], removing a pending row if the write cannot complete. */
+    private fun saveCopyToFolder(context: Context, bitmap: Bitmap, baseName: String, destFolder: String?): Uri {
         val resolver = context.contentResolver
         val name = "${baseName}_edited_${System.currentTimeMillis()}.jpg"
         val values = ContentValues().apply {
@@ -89,17 +102,24 @@ object MediaImageSaver {
         } else {
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         }
-        val newUri = resolver.insert(collection, values)
-            ?: throw IllegalStateException("Failed to create new image entry")
-        resolver.openOutputStream(newUri)?.use { out ->
-            compress(bitmap, out, jpeg = true)
-        } ?: throw IllegalStateException("Failed to open new image for writing")
+        var newUri: Uri? = null
+        try {
+            val createdUri = resolver.insert(collection, values)
+                ?: throw IllegalStateException("Failed to create new image entry")
+            newUri = createdUri
+            resolver.openOutputStream(createdUri)?.use { out ->
+                compress(bitmap, out, jpeg = true)
+            } ?: throw IllegalStateException("Failed to open new image for writing")
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            values.clear()
-            values.put(MediaStore.Images.Media.IS_PENDING, 0)
-            resolver.update(newUri, values, null, null)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(createdUri, values, null, null)
+            }
+            return createdUri
+        } catch (failure: Exception) {
+            newUri?.let { runCatching { resolver.delete(it, null, null) } }
+            throw failure
         }
-        return newUri
     }
 }

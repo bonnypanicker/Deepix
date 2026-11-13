@@ -58,6 +58,8 @@ class PhotoEditorActivity : AppCompatActivity() {
     private var tool: Tool? = null
 
     private var pendingSaveBitmap: Bitmap? = null    // rendered full-res result awaiting write consent
+    private var awaitingWriteConsent = false
+    private var hasWriteConsent = false
 
     private sealed class EditOp {
         class Rotate(val degrees: Float) : EditOp()
@@ -71,11 +73,22 @@ class PhotoEditorActivity : AppCompatActivity() {
     private val writeRequestLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        if (result.resultCode == RESULT_OK && pendingSaveBitmap != null) {
-            performOverwrite(afterConsent = true)
+        if (result.resultCode == RESULT_OK) {
+            when {
+                pendingSaveBitmap != null -> {
+                    hasWriteConsent = true
+                    performOverwrite(afterConsent = true)
+                }
+                awaitingWriteConsent -> {
+                    hasWriteConsent = true
+                    awaitingWriteConsent = false
+                    performOverwrite(afterConsent = true)
+                }
+            }
         } else {
             pendingSaveBitmap?.recycle()
             pendingSaveBitmap = null
+            awaitingWriteConsent = false
         }
     }
 
@@ -483,6 +496,14 @@ class PhotoEditorActivity : AppCompatActivity() {
     }
 
     private fun performOverwrite(afterConsent: Boolean) {
+        if (!afterConsent && awaitingWriteConsent) return
+        if (!afterConsent && !hasWriteConsent && EditorSavePolicy.requiresWriteConsent(
+                Build.VERSION.SDK_INT, sourceUri.scheme, sourceUri.authority
+            )
+        ) {
+            requestOverwriteConsent()
+            return
+        }
         binding.editorLoading.visibility = View.VISIBLE
         lifecycleScope.launch {
             val bmp = if (afterConsent) pendingSaveBitmap
@@ -517,9 +538,7 @@ class PhotoEditorActivity : AppCompatActivity() {
                         )
                     }
                     !afterConsent && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
-                        pendingSaveBitmap = bmp
-                        val pi = android.provider.MediaStore.createWriteRequest(contentResolver, listOf(sourceUri))
-                        writeRequestLauncher.launch(IntentSenderRequest.Builder(pi.intentSender).build())
+                        requestOverwriteConsent(bmp)
                     }
                     else -> {
                         pendingSaveBitmap = null
@@ -537,13 +556,15 @@ class PhotoEditorActivity : AppCompatActivity() {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val bmp = renderFullRes()
-                    // Write the copy beside the original rather than into the app's own folder, so it
-                    // shows up where the user expects. Falls back to Pictures/Deepix when the original's
-                    // folder can't be resolved.
-                    val destFolder = MediaFileOps.resolveParentFolder(this@PhotoEditorActivity, sourceUri)
-                    val uri = MediaImageSaver.saveCopy(this@PhotoEditorActivity, bmp, displayName, destFolder)
-                    bmp.recycle()
-                    uri
+                    try {
+                        // Preserve the user's original folder. MediaImageSaver falls back to the
+                        // app-owned collection only if scoped/selected-photo access rejects it.
+                        val sourceFolder = MediaFileOps.resolveParentFolder(this@PhotoEditorActivity, sourceUri)
+                        val destFolder = EditorSavePolicy.copyDestinationFolder(sourceFolder)
+                        MediaImageSaver.saveCopy(this@PhotoEditorActivity, bmp, displayName, destFolder)
+                    } finally {
+                        bmp.recycle()
+                    }
                 }
             }
             binding.editorLoading.visibility = View.GONE
@@ -554,6 +575,22 @@ class PhotoEditorActivity : AppCompatActivity() {
                 MetroBanner.show(this@PhotoEditorActivity, "Save failed: ${it.message}", bottomMarginDp = 120)
             }
         }
+    }
+
+    /** Requests a MediaStore write grant before saving, or retries an already-rendered bitmap. */
+    private fun requestOverwriteConsent(bitmap: Bitmap? = null) {
+        val request = runCatching {
+            android.provider.MediaStore.createWriteRequest(contentResolver, listOf(sourceUri))
+        }.getOrElse { error ->
+            bitmap?.recycle()
+            binding.editorLoading.visibility = View.GONE
+            MetroBanner.show(this, "Couldn't request permission to save", bottomMarginDp = 120)
+            Log.w(Tag, "Write consent request failed for $sourceUri", error)
+            return
+        }
+        pendingSaveBitmap = bitmap
+        awaitingWriteConsent = bitmap == null
+        writeRequestLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
     }
 
     private fun finishSaved() {

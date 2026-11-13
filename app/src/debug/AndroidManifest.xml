@@ -12,19 +12,5 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:theme="@style/Theme.GallerySearch" />
-
-        <!-- Safe-vault durability probe (Step 0). Launcher-visible on purpose: it has to be openable
-             right after an uninstall/reinstall, when the app's own Safe flow cannot be reached yet.
-             Debug-only, so it never merges into a release manifest. -->
-        <activity
-            android:name=".SafeDiagnosticsActivity"
-            android:exported="true"
-            android:label="Safe diagnostics"
-            android:theme="@style/Theme.GallerySearch">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
     </application>
 </manifest>
