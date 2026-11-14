@@ -44,6 +44,7 @@ class ProActivity : AppCompatActivity() {
         applyResponsiveChrome()
 
         binding.backBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
+        binding.closeBtn.setOnClickListener { onBackPressedDispatcher.onBackPressed() }
         binding.buyBtn.setOnClickListener {
             // Play's sheet opens on the user's word for it. When it cannot be opened the reason has to
             // appear on this page, because the button pressing it is the only feedback they get.
@@ -82,23 +83,23 @@ class ProActivity : AppCompatActivity() {
     private fun applyInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.proRoot) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            binding.topBar.updatePadding(top = bars.top + dp(4))
-            binding.proFooter.updatePadding(bottom = bars.bottom + dp(6))
+            binding.topBar.updatePadding(top = bars.top + dp(8))
+            binding.proFooter.updatePadding(bottom = bars.bottom + dp(16))
             insets
         }
     }
 
     /**
-     * The mosaic is drawn for this app's reference width, so it is given a compact share of it: the
-     * mark is an anchor beside the title, not a hero that pushes six rows and the price off the screen.
-     * A short window gets a proportionally smaller mark for the same reason.
+     * The mosaic is drawn for this app's reference width, so it is given exactly that much room and no
+     * more: on a wide window the gutters take 40dp and the rest of the width would only make the tiles
+     * huge. A short window cannot afford 200dp of picture either, so the same clamp tightens there.
      */
     private fun applyResponsiveChrome() {
         Responsive.applyTitleText(binding.proTitle, this, HERO_TITLE_SP)
         val capDp = if (Responsive.cramped(this)) HERO_CRAMPED_WIDTH_DP else HERO_MAX_WIDTH_DP
         val params = binding.heroIllustration.layoutParams as LinearLayout.LayoutParams
         params.width = minOf(resources.displayMetrics.widthPixels - dp(40), dp(capDp))
-        params.gravity = Gravity.START
+        params.gravity = Gravity.CENTER_HORIZONTAL
         binding.heroIllustration.layoutParams = params
     }
 
@@ -117,9 +118,6 @@ class ProActivity : AppCompatActivity() {
         if (reason.isNullOrBlank()) return
         binding.reasonText.text = reason
         binding.reasonText.visibility = View.VISIBLE
-        // The gate's own sentence becomes the intro; the generic mosaic steps aside so a two- or
-        // three-line reason still lands inside one screen on the 800dp baseline.
-        binding.heroIllustration.visibility = View.GONE
     }
 
     private fun renderOffer() {
@@ -155,9 +153,9 @@ class ProActivity : AppCompatActivity() {
         /** The sentence a gate showed, repeated here above the price. */
         const val ExtraReason = "pro_reason"
 
-        private const val HERO_TITLE_SP = 30f
-        private const val HERO_MAX_WIDTH_DP = 140
-        private const val HERO_CRAMPED_WIDTH_DP = 120
+        private const val HERO_TITLE_SP = 40f
+        private const val HERO_MAX_WIDTH_DP = 420
+        private const val HERO_CRAMPED_WIDTH_DP = 220
 
         fun intent(context: Context, reason: String? = null): Intent =
             Intent(context, ProActivity::class.java).apply {
