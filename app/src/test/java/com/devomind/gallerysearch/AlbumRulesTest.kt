@@ -158,7 +158,101 @@ class AlbumRulesTest {
         val cell = album.toAlbum(count = 41)
         assertEquals(41, cell.count)
         assertEquals(AlbumKind.Folder, cell.kind)
+        // The tile carries the folder it stands for, so the page can recognise the device bucket that
+        // is that same folder and not list it a second time.
+        assertEquals("DCIM/Camera", cell.folderPath)
         // A smart album has no library to ask, so its stored list is the answer.
         assertEquals(2, album.copy(kind = AlbumKind.Smart).toAlbum().count)
     }
+
+    @Test
+    fun aMediaPathBecomesTheFolderItSitsIn() {
+        // RELATIVE_PATH arrives relative, with a trailing separator and without the file name.
+        assertEquals(
+            listOf("Pictures", "Pixa Albums", "Trips"),
+            AlbumRules.folderSegments("Pictures/Pixa Albums/Trips/", "Trips", "IMG_0001.jpg")
+        )
+        // DATA arrives absolute and carries the file name, which is dropped only when it is the row's
+        // own display name.
+        assertEquals(
+            listOf("DCIM", "Camera"),
+            AlbumRules.folderSegments("/storage/emulated/0/DCIM/Camera/IMG_0001.jpg", "Camera", "IMG_0001.jpg")
+        )
+        // A card spells the volume differently, and /sdcard is the old name for primary storage.
+        assertEquals(
+            listOf("Pictures", "Screenshots"),
+            AlbumRules.folderSegments("/storage/1234-ABCD/Pictures/Screenshots/shot.png", "Screenshots", "shot.png")
+        )
+        assertEquals(
+            listOf("Download"),
+            AlbumRules.folderSegments("/sdcard/Download/file.jpg", "Download", "file.jpg")
+        )
+        // A row that names no path is its bucket — which is what MediaStore calls the same folder.
+        assertEquals(listOf("Camera"), AlbumRules.folderSegments("", "Camera", "IMG_0001.jpg"))
+    }
+
+    @Test
+    fun theSameFolderComparesEqualWhateverItsCaseOrTrailingSlash() {
+        assertEquals(
+            AlbumRules.folderKey("Pictures/Pixa Albums/Trips"),
+            AlbumRules.folderKey("/pictures/pixa albums/trips/")
+        )
+        assertEquals("pictures/pixa albums/trips", AlbumRules.folderKey("Pictures/Pixa Albums/Trips/"))
+    }
+
+    @Test
+    fun aFolderAlbumHidesItsOwnDeviceBucketAndNoOther() {
+        val saved = listOf(savedFolderAlbum("Pictures/Pixa Albums/Trips"))
+        val buckets = listOf(
+            bucket("1", "Trips", "Pictures/Pixa Albums/Trips"),
+            // Same name, different folder: a real album of its own, so it stays.
+            bucket("2", "Trips", "DCIM/Trips"),
+            bucket("3", "Camera", "DCIM/Camera")
+        )
+        assertEquals(listOf("2", "3"), AlbumRules.withoutMirroredFolders(buckets, saved).map { it.id })
+        // With no saved album for a folder, every bucket is still its own album.
+        assertEquals(3, AlbumRules.withoutMirroredFolders(buckets, emptyList()).size)
+    }
+
+    @Test
+    fun aFolderAlbumsCountComesFromTheBucketsBeneathIt() {
+        val buckets = listOf(
+            bucket("1", "Trips", "Pictures/Pixa Albums/Trips", count = 4),
+            bucket("2", "2026", "Pictures/Pixa Albums/Trips/2026", count = 3),
+            bucket("3", "Camera", "DCIM/Camera", count = 9)
+        )
+        assertEquals(7, AlbumRules.folderContents(buckets, "Pictures/Pixa Albums/Trips").count)
+        // Paths match on whole segments, so a prefix that is not a folder finds nothing, and an album
+        // with no folder at all holds nothing.
+        assertEquals(0, AlbumRules.folderContents(buckets, "Pictures/Pixa Albums/Trip").count)
+        assertEquals(0, AlbumRules.folderContents(buckets, "").count)
+    }
+
+    private fun bucket(
+        id: String,
+        name: String,
+        folderPath: String,
+        count: Int = 0,
+        latestMillis: Long = 0L
+    ) = GalleryRepository.Album(
+        id = id,
+        name = name,
+        count = count,
+        coverUri = null,
+        folderPath = folderPath,
+        latestMillis = latestMillis
+    )
+
+    private fun savedFolderAlbum(path: String) = CollectionAlbum(
+        id = CollectionAlbumStore.folderIdFor(path),
+        name = path.substringAfterLast('/'),
+        prompt = "",
+        searchMode = "",
+        memberUris = emptyList(),
+        coverUri = null,
+        createdAt = 0L,
+        updatedAt = 0L,
+        kind = AlbumKind.Folder,
+        folderPath = path
+    )
 }

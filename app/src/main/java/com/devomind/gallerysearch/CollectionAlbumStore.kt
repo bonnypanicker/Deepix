@@ -54,7 +54,8 @@ data class CollectionAlbum(
             name = name,
             count = count,
             coverUri = coverUri?.let(Uri::parse),
-            kind = kind
+            kind = kind,
+            folderPath = folderPath
         )
 }
 
@@ -75,7 +76,7 @@ class CollectionAlbumStore(context: Context) {
         return getAll().find { it.id == id }
     }
 
-    fun upsert(album: CollectionAlbum) {
+    fun upsert(album: CollectionAlbum): List<CollectionAlbum> {
         val albums = getAll().toMutableList()
         val idx = albums.indexOfFirst { it.id == album.id }
         if (idx >= 0) {
@@ -84,6 +85,9 @@ class CollectionAlbumStore(context: Context) {
             albums += album
         }
         saveAll(albums)
+        // Answered rather than read back: every save path needs the new list, and parsing the whole
+        // prefs blob a second time on the way to a re-render is work the caller already paid for.
+        return albums
     }
 
     fun delete(id: String) {

@@ -1447,40 +1447,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Derive user-facing folder segments from a media item's filesystem path.
+     * The folder a media row lives in, as storage-relative segments.
      * - Strips absolute storage prefixes (e.g. /storage/emulated/0/, /sdcard/).
      * - Drops the filename so files are grouped under their parent directory.
      * Falls back to the bucket name for items that have no usable path.
+     *
+     * The rules live in [AlbumRules.folderSegments] with the volume patterns compiled once; this method
+     * used to compile three regexes per photo, which is what froze an old phone the first time an album
+     * folder tree had to be built.
      */
     private fun folderSegmentsFor(
         path: String,
         bucketName: String,
         displayName: String?
-    ): List<String> {
-        var dir = path.trim().replace('\\', '/')
-        if (dir.isEmpty()) return listOf(bucketName)
-
-        if (dir.endsWith("/")) dir = dir.dropLast(1)
-
-        // DATA contains the filename; RELATIVE_PATH does not. Compare against DISPLAY_NAME rather
-        // than treating every dotted directory as a file (folders such as "com.example" are valid).
-        val lastSlash = dir.lastIndexOf('/')
-        if (lastSlash >= 0) {
-            val last = dir.substring(lastSlash + 1)
-            if (!displayName.isNullOrBlank() && last.equals(displayName, ignoreCase = true)) {
-                dir = dir.substring(0, lastSlash)
-            }
-        }
-
-        dir = dir
-            .replace(Regex("^/storage/emulated/\\d+/"), "")
-            .replace(Regex("^/storage/[^/]+/"), "")
-            .removePrefix("/sdcard/")
-            .trimStart('/')
-
-        val segments = dir.split('/').filter { it.isNotBlank() }
-        return segments.ifEmpty { listOf(bucketName) }
-    }
+    ): List<String> = AlbumRules.folderSegments(path, bucketName, displayName)
 
     private fun buildFolderTree(
         items: List<GalleryRepository.MediaItem>,
@@ -1759,13 +1739,20 @@ class MainActivity : AppCompatActivity() {
         ensureDefaultPins()
         val pinnedIds = albumPinStore.getPinnedAlbumIds()
 
-        val collectionById = collectionAlbumViews().associateBy { it.id }
-        val albumById = (albums + collectionById.values).associateBy { it.id }
+        // A folder album stands for its own device folder, and once photos are put in it MediaStore
+        // reports that folder as a bucket of its own. Both would otherwise be listed — the album under
+        // PINNED and its folder under OTHERS — so the bucket steps aside for the album.
+        val deviceAlbums = AlbumRules.withoutMirroredFolders(albums, collectionAlbums)
+        val collectionViews = collectionAlbumViews()
+        val albumById = (deviceAlbums + collectionViews).associateBy { it.id }
 
         val pinnedAlbums = pinnedIds.mapNotNull { albumById[it] }
         val currentSort = SortManager.optionFor(this, AlbumsSortScope)
-        val normalAlbums = albums.filter { it.id !in pinnedIds }.sortedWith(albumComparator(currentSort))
-
+        // Saved albums are listed whether or not they are pinned: pinning decides which header an album
+        // sits under, never whether it is visible at all.
+        val normalAlbums = (deviceAlbums + collectionViews)
+            .filter { it.id !in pinnedIds }
+            .sortedWith(albumComparator(currentSort))
         val cells = mutableListOf<GalleryCell>()
         // Onboarding: nudge first-time users to try smart albums (until dismissed).
         if (collectionAlbums.none { it.kind == AlbumKind.Smart } &&
@@ -3835,9 +3822,13 @@ class MainActivity : AppCompatActivity() {
                 if (record.kind == AlbumKind.Tags) {
                     add(MetroDropdownMenu.Item("Edit tags") { showTagAlbumDialog(record) })
                 }
+                // A saved album lives under PINNED or OTHERS, never both and never neither, so the
+                // menu has to be able to move it either way — an unpinned album is now still on the
+                // page and needs a way back up.
+                val isPinned = albumPinStore.isPinned(record.id)
                 add(
-                    MetroDropdownMenu.Item("Unpin") {
-                        albumPinStore.unpin(record.id)
+                    MetroDropdownMenu.Item(if (isPinned) "Unpin" else "Pin") {
+                        if (isPinned) albumPinStore.unpin(record.id) else albumPinStore.pin(record.id)
                         renderCurrentSection()
                     }
                 )
@@ -3867,8 +3858,9 @@ class MainActivity : AppCompatActivity() {
             initial = smart.name,
             iconRes = collectionAlbumIconRes(smart.kind)
         ) { newName ->
-            collectionAlbumStore.upsert(smart.copy(name = newName, updatedAt = System.currentTimeMillis()))
-            collectionAlbums = collectionAlbumStore.getAll()
+            collectionAlbums = collectionAlbumStore.upsert(
+                smart.copy(name = newName, updatedAt = System.currentTimeMillis())
+            )
             if (currentMode == Mode.CollectionAlbumDetail && currentCollectionAlbum?.id == smart.id) {
                 currentCollectionAlbum = collectionAlbumStore.get(smart.id)
             }
@@ -3886,8 +3878,7 @@ class MainActivity : AppCompatActivity() {
             iconRes = R.drawable.ic_deepix_ai_orb_24
         ) { newPrompt ->
             val updated = smart.copy(prompt = newPrompt, updatedAt = System.currentTimeMillis())
-            collectionAlbumStore.upsert(updated)
-            collectionAlbums = collectionAlbumStore.getAll()
+            collectionAlbums = collectionAlbumStore.upsert(updated)
             handleSmartAlbumRefresh(updated)
         }
     }
@@ -4334,12 +4325,11 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * The one write path for a saved collection: store it, refresh the in-memory list, and re-render
-     * whatever page is showing. [pin] puts a brand-new album where it can be seen — the Albums page
-     * lists saved collections through the pinned strip, so an unpinned album is an invisible one.
+     * whatever page is showing. [pin] puts a brand-new album under PINNED so it is where the user is
+     * looking; unpinned albums stay on the page under OTHERS.
      */
     private fun saveCollectionAlbum(album: CollectionAlbum, pin: Boolean) {
-        collectionAlbumStore.upsert(album)
-        collectionAlbums = collectionAlbumStore.getAll()
+        collectionAlbums = collectionAlbumStore.upsert(album)
         if (pin) albumPinStore.pin(album.id)
         if (currentMode == Mode.CollectionAlbumDetail && currentCollectionAlbum?.id == album.id) {
             renderCollectionAlbumDetail(album)
@@ -4366,13 +4356,12 @@ class MainActivity : AppCompatActivity() {
      * The Albums-grid cells for every saved collection. A smart album reports the URIs it stored; a
      * folder or tag album asks the library how much it holds right now, so a tile's count is never
      * one photo behind — the same reason those kinds are not offered a Refresh.
+     *
+     * A folder album is folded from the device albums already in memory rather than from a folder tree
+     * of every photo: a bucket is a directory, so the two agree, and the page no longer walks the whole
+     * library on the UI thread the first time an album folder exists.
      */
     private fun collectionAlbumViews(): List<GalleryRepository.Album> {
-        val folderRoots = if (collectionAlbums.any { it.kind == AlbumKind.Folder }) {
-            albumFolderRoots()
-        } else {
-            emptyList()
-        }
         // The grid needs a count and a cover, not the membership itself, and one pass over the library
         // answers for every tag album at once — a photo can sit in several of them.
         val tagAlbums = collectionAlbums.filter { it.kind == AlbumKind.Tags }
@@ -4393,8 +4382,11 @@ class MainActivity : AppCompatActivity() {
         return collectionAlbums.map { album ->
             when (album.kind) {
                 AlbumKind.Folder -> {
-                    val node = AlbumRules.findFolderNode(folderRoots, album.folderPath)
-                    album.toAlbum(count = node?.itemCount ?: 0, coverUri = node?.coverUri?.toString())
+                    val contents = AlbumRules.folderContents(albums, album.folderPath)
+                    album.toAlbum(
+                        count = contents.count,
+                        coverUri = contents.coverUri?.toString()
+                    )
                 }
                 AlbumKind.Tags -> album.toAlbum(
                     count = tagCounts[album.id] ?: 0,
@@ -4578,8 +4570,7 @@ class MainActivity : AppCompatActivity() {
             coverUri = resultUris.firstOrNull()?.toString(),
             updatedAt = System.currentTimeMillis()
         )
-        collectionAlbumStore.upsert(updated)
-        collectionAlbums = collectionAlbumStore.getAll()
+        collectionAlbums = collectionAlbumStore.upsert(updated)
         return updated
     }
 

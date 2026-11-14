@@ -108,7 +108,14 @@ class GalleryRepository(
         val count: Int,
         val coverUri: Uri?,
         val sizeBytes: Long = 0L,
-        val kind: AlbumKind = AlbumKind.Device
+        val kind: AlbumKind = AlbumKind.Device,
+        /**
+         * The storage-relative folder this album is, for a device bucket or a saved folder album.
+         * Empty for smart and tag albums, which are not a place on the disk.
+         */
+        val folderPath: String = "",
+        /** When the newest photo in this album was taken — chooses a folder album's cover. */
+        val latestMillis: Long = 0L
     )
 
     data class Snapshot(
@@ -1041,11 +1048,23 @@ class GalleryRepository(
         items.forEach { item ->
             val existing = buckets[item.bucketId]
             if (existing == null) {
-                buckets[item.bucketId] = Album(item.bucketId, item.bucketName, 1, item.uri, item.sizeBytes)
+                // A bucket is a directory, so the folder is asked once per album rather than once per
+                // photo — the path work here would otherwise be paid across the whole library.
+                buckets[item.bucketId] = Album(
+                    id = item.bucketId,
+                    name = item.bucketName,
+                    count = 1,
+                    coverUri = item.uri,
+                    sizeBytes = item.sizeBytes,
+                    folderPath = AlbumRules.folderSegments(item.path, item.bucketName, item.displayName)
+                        .joinToString("/"),
+                    latestMillis = item.dateMillis
+                )
             } else {
                 buckets[item.bucketId] = existing.copy(
                     count = existing.count + 1,
-                    sizeBytes = existing.sizeBytes + item.sizeBytes
+                    sizeBytes = existing.sizeBytes + item.sizeBytes,
+                    latestMillis = maxOf(existing.latestMillis, item.dateMillis)
                 )
             }
         }
