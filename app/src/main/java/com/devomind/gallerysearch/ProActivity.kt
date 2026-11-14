@@ -83,7 +83,7 @@ class ProActivity : AppCompatActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.proRoot) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             binding.topBar.updatePadding(top = bars.top + dp(4))
-            binding.proFooter.updatePadding(bottom = bars.bottom + dp(8))
+            binding.proFooter.updatePadding(bottom = bars.bottom + dp(6))
             insets
         }
     }
@@ -117,9 +117,8 @@ class ProActivity : AppCompatActivity() {
         if (reason.isNullOrBlank()) return
         binding.reasonText.text = reason
         binding.reasonText.visibility = View.VISIBLE
-        // The gate's own sentence becomes the intro. The generic mosaic and reassurance step aside so a
-        // two- or three-line reason still lands inside one screen on the 800dp baseline.
-        binding.proSubtitle.visibility = View.GONE
+        // The gate's own sentence becomes the intro; the generic mosaic steps aside so a two- or
+        // three-line reason still lands inside one screen on the 800dp baseline.
         binding.heroIllustration.visibility = View.GONE
     }
 
