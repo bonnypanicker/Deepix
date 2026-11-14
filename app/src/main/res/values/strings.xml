@@ -417,7 +417,7 @@
     <string name="onboarding_perm_title">A few things to get started</string>
     <string name="onboarding_perm_body">Your library stays on this device. Choose the access Pixa needs; notifications are optional.</string>
     <string name="onboarding_perm_media">Photos &amp; videos</string>
-    <string name="onboarding_perm_media_summary">So Pixa can show, search, and index your library</string>
+    <string name="onboarding_perm_media_summary">Show, search, and index your library</string>
     <string name="onboarding_perm_notifications">Notifications</string>
     <string name="onboarding_perm_notifications_summary">Optional — progress while indexing runs in the background</string>
 
