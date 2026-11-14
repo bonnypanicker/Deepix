@@ -23,6 +23,30 @@ class EditorSavePolicyTest {
     }
 
     @Test
+    fun aCopyGoesBackToTheVolumeItsOriginalLivesOn() {
+        // A video on a card is copied to the card, in the same folder, not to internal storage.
+        assertEquals(
+            "1234-ABCD",
+            EditorSavePolicy.copyVolume("DCIM/Camera/", "1234-ABCD")
+        )
+        // Internal storage names itself the same way, and the answer is the primary volume.
+        assertEquals(
+            "external_primary",
+            EditorSavePolicy.copyVolume("DCIM/Camera/", "external_primary")
+        )
+    }
+
+    @Test
+    fun aCopyFallsBackToThePrimaryVolumeWhenTheOriginalCannotBeNamed() {
+        // No volume on the row (pre-Q, or a provider that has no such column).
+        assertEquals(null, EditorSavePolicy.copyVolume("DCIM/Camera/", null))
+        assertEquals(null, EditorSavePolicy.copyVolume("DCIM/Camera/", ""))
+        // No folder means the copy is not going beside the original at all, so it belongs in the
+        // app's own folder on primary storage — never in a same-named folder on the card.
+        assertEquals(null, EditorSavePolicy.copyVolume(null, "1234-ABCD"))
+    }
+
+    @Test
     fun android11MediaStoreOriginalsRequestWriteConsentBeforeSaving() {
         assertTrue(EditorSavePolicy.requiresWriteConsent(30, "content", "media"))
         assertFalse(EditorSavePolicy.requiresWriteConsent(29, "content", "media"))

@@ -67,16 +67,25 @@ object MediaImageSaver {
     }
 
     /**
-     * Inserts a new image and returns its content uri. [destFolder] is the original's folder, as
-     * returned by [MediaFileOps.resolveParentFolder]: a MediaStore `RELATIVE_PATH` on API 29+, or
-     * an absolute directory on older releases. When null the copy goes to Pictures/Deepix.
+     * Inserts a new image and returns its content uri. [destFolder] is the original's folder and
+     * [destVolume] the volume it sits on, both as returned by [MediaFileOps]: a MediaStore
+     * `RELATIVE_PATH` on API 29+, or an absolute directory on older releases. When [destFolder] is
+     * null the copy goes to Pictures/Deepix on primary storage.
      */
-    fun saveCopy(context: Context, bitmap: Bitmap, baseName: String, destFolder: String? = null): Uri {
+    fun saveCopy(
+        context: Context,
+        bitmap: Bitmap,
+        baseName: String,
+        destFolder: String? = null,
+        destVolume: String? = null
+    ): Uri {
         return try {
-            saveCopyToFolder(context, bitmap, baseName, destFolder)
+            saveCopyToFolder(context, bitmap, baseName, destFolder, destVolume)
         } catch (failure: Exception) {
             if (EditorSavePolicy.shouldRetryCopyInOwnedFolder(Build.VERSION.SDK_INT, destFolder, failure)) {
-                saveCopyToFolder(context, bitmap, baseName, null)
+                // The owned folder is on primary storage, so the retry drops the original's volume
+                // with its folder.
+                saveCopyToFolder(context, bitmap, baseName, null, null)
             } else {
                 throw failure
             }
@@ -84,7 +93,13 @@ object MediaImageSaver {
     }
 
     /** Writes one copy to [destFolder], removing a pending row if the write cannot complete. */
-    private fun saveCopyToFolder(context: Context, bitmap: Bitmap, baseName: String, destFolder: String?): Uri {
+    private fun saveCopyToFolder(
+        context: Context,
+        bitmap: Bitmap,
+        baseName: String,
+        destFolder: String?,
+        destVolume: String?
+    ): Uri {
         val resolver = context.contentResolver
         val name = "${baseName}_edited_${System.currentTimeMillis()}.jpg"
         val values = ContentValues().apply {
@@ -98,7 +113,9 @@ object MediaImageSaver {
             }
         }
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            // The original's own volume, so a photo kept on a card is copied to that card.
+            val volume = EditorSavePolicy.copyVolume(destFolder, destVolume)
+            MediaStore.Images.Media.getContentUri(volume ?: MediaStore.VOLUME_EXTERNAL_PRIMARY)
         } else {
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         }

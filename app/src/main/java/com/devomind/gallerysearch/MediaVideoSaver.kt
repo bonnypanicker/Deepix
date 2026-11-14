@@ -31,11 +31,18 @@ object MediaVideoSaver {
 
     /**
      * Inserts the exported file as a new video and returns its content uri. [destFolder] is the
-     * original's folder, as returned by [MediaFileOps.resolveParentFolder]: a MediaStore
-     * `RELATIVE_PATH` on API 29+, or an absolute directory on older releases. When null the copy
-     * goes to Movies/Deepix.
+     * original's folder and [destVolume] the volume it sits on, both as returned by [MediaFileOps]:
+     * a MediaStore `RELATIVE_PATH` on API 29+, or an absolute directory on older releases. When
+     * [destFolder] is null the copy goes to Movies/Deepix on primary storage.
      */
-    fun saveCopy(context: Context, source: File, baseName: String, durationMs: Long, destFolder: String? = null): Uri {
+    fun saveCopy(
+        context: Context,
+        source: File,
+        baseName: String,
+        durationMs: Long,
+        destFolder: String? = null,
+        destVolume: String? = null
+    ): Uri {
         val resolver = context.contentResolver
         val name = "${baseName.substringBeforeLast('.')}_edited_${System.currentTimeMillis()}.mp4"
         val values = ContentValues().apply {
@@ -51,7 +58,9 @@ object MediaVideoSaver {
             }
         }
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            // The original's own volume, so a video kept on a card is copied to that card.
+            val volume = EditorSavePolicy.copyVolume(destFolder, destVolume)
+            MediaStore.Video.Media.getContentUri(volume ?: MediaStore.VOLUME_EXTERNAL_PRIMARY)
         } else {
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI
         }

@@ -551,11 +551,18 @@ class PhotoEditorActivity : AppCompatActivity() {
                 runCatching {
                     val bmp = renderFullRes()
                     try {
-                        // Preserve the user's original folder. MediaImageSaver falls back to the
-                        // app-owned collection only if scoped/selected-photo access rejects it.
+                        // Preserve the user's original folder and volume. MediaImageSaver falls back
+                        // to the app-owned collection only if scoped/selected-photo access rejects it.
                         val sourceFolder = MediaFileOps.resolveParentFolder(this@PhotoEditorActivity, sourceUri)
+                        val sourceVolume = MediaFileOps.resolveVolumeName(this@PhotoEditorActivity, sourceUri)
                         val destFolder = EditorSavePolicy.copyDestinationFolder(sourceFolder)
-                        MediaImageSaver.saveCopy(this@PhotoEditorActivity, bmp, displayName, destFolder)
+                        MediaImageSaver.saveCopy(
+                            this@PhotoEditorActivity,
+                            bmp,
+                            displayName,
+                            destFolder,
+                            sourceVolume
+                        )
                     } finally {
                         bmp.recycle()
                     }

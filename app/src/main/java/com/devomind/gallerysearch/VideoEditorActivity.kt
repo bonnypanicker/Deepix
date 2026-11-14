@@ -43,8 +43,8 @@ import kotlinx.coroutines.withContext
  * Metro-themed video editor: trim (filmstrip with drag handles), crop (free/1:1/4:3/16:9)
  * and 90-degree rotation, previewed live on ExoPlayer and exported with Media3 Transformer.
  * Save overwrites the original (with the platform write-consent flow on Q+); Save a copy
- * writes a new MP4 to Movies/Deepix. Mirrors PhotoEditorActivity's contract:
- * returns [ExtraEdited] so the viewer refreshes.
+ * writes a new MP4 beside the original, on the same volume. Mirrors PhotoEditorActivity's
+ * contract: returns [ExtraEdited] so the viewer refreshes.
  */
 @UnstableApi
 class VideoEditorActivity : AppCompatActivity() {
@@ -579,15 +579,18 @@ class VideoEditorActivity : AppCompatActivity() {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     // Write the copy beside the original rather than into the app's own folder, so it
-                    // shows up where the user expects. Falls back to Movies/Deepix when the original's
-                    // folder can't be resolved.
+                    // shows up where the user expects — on the same volume, too, so a video kept on a
+                    // card is written back to that card. Falls back to Movies/Deepix when the
+                    // original's folder can't be resolved.
                     val destFolder = MediaFileOps.resolveParentFolder(this@VideoEditorActivity, sourceUri)
+                    val destVolume = MediaFileOps.resolveVolumeName(this@VideoEditorActivity, sourceUri)
                     MediaVideoSaver.saveCopy(
                         this@VideoEditorActivity,
                         file,
                         displayName,
                         trimEndMs - trimStartMs,
-                        destFolder
+                        destFolder,
+                        destVolume
                     )
                 }
             }

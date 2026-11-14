@@ -73,6 +73,35 @@ object MediaFileOps {
         return resolvePath(context, uri)?.let { File(it).parent }
     }
 
+    /**
+     * The volume [uri] lives on, so an edited copy can be written back to the same one. A photo or
+     * video kept on a card belongs on that card, not on internal storage at the same relative path.
+     *
+     * The name is what MediaStore's own `getContentUri` takes: `external_primary` for internal
+     * storage, `1234-ABCD` for a card. Null below API 29, where volumes are addressed by DATA path
+     * and there is no such column, and null when the row names only the aggregate `external`
+     * volume — an insert through that alias lands on primary storage anyway.
+     */
+    fun resolveVolumeName(context: Context, uri: Uri): String? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        runCatching {
+            context.contentResolver
+                .query(uri, arrayOf(MediaStore.MediaColumns.VOLUME_NAME), null, null, null)
+                ?.use { c ->
+                    if (c.moveToFirst()) {
+                        val idx = c.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME)
+                        if (idx >= 0) {
+                            val volume = c.getString(idx)
+                            if (!volume.isNullOrBlank() && volume != MediaStore.VOLUME_EXTERNAL) {
+                                return volume
+                            }
+                        }
+                    }
+                }
+        }.onFailure { Log.w(TAG, "resolveVolumeName failed for $uri", it) }
+        return null
+    }
+
     /** Deletes the underlying file directly and clears its MediaStore row. Returns true on success. */
     fun deleteFileDirect(context: Context, uri: Uri): Boolean {
         val path = resolvePath(context, uri) ?: return false
