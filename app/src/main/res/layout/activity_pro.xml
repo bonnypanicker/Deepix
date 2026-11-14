@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Pixa Pro, the whole offer on one page. Chrome and metrics are the settings page's:
-     a 48dp back button in a bare top bar, a 40sp light screen title, 20dp side gutters, hairline
-     rules instead of cards, and a pinned footer carrying the action.
-     The hero mosaic states the deal without a sentence: the app's tiles, half of them yours and half
+<!-- Pixa Pro, the whole offer on one screen. Chrome and metrics are the settings page's: a 48dp back
+     button in a bare top bar, 20dp side gutters, hairline rules instead of cards, and a pinned footer
+     carrying the action.
+     The compact mosaic states the deal without a sentence: the app's tiles, half of them yours and half
      of them accent. Everything below it is a rule or a fact — what Pro adds with the free number next
      to each one. The numbers are filled in code from FreeTier, so this page cannot disagree with the
      limits the features enforce — and the rows that carry one hold it as tools:text, which is
-     design-time only, so a raw "%1$d" can never reach a screen. -->
+     design-time only, so a raw "%1$d" can never reach a screen.
+     The content is sized to land inside one 360x800dp window; the scroll view is a fallback for short
+     or split-screen windows and for the reason banner, not the normal reading path. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/proRoot"
@@ -23,8 +25,8 @@
             android:id="@+id/topBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingTop="14dp"
-            android:paddingBottom="6dp">
+            android:paddingTop="4dp"
+            android:paddingBottom="2dp">
 
             <ImageButton
                 android:id="@+id/backBtn"
@@ -37,25 +39,14 @@
                 android:padding="12dp"
                 android:src="@drawable/ic_fluent_back_24_regular"
                 android:tint="@color/metroTextPrimary" />
-
-            <ImageButton
-                android:id="@+id/closeBtn"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_gravity="end|center_vertical"
-                android:layout_marginEnd="6dp"
-                android:background="@drawable/metro_row_pressed"
-                android:contentDescription="@string/close"
-                android:padding="12dp"
-                android:src="@drawable/ic_fluent_dismiss_24_regular"
-                android:tint="@color/metroTextPrimary" />
         </FrameLayout>
 
-        <!-- ===================== scrollable content ===================== -->
+        <!-- ===================== one-screen content ===================== -->
         <ScrollView
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
+            android:fillViewport="true"
             android:scrollbars="none">
 
             <LinearLayout
@@ -63,16 +54,16 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:paddingStart="20dp"
-                android:paddingTop="8dp"
+                android:paddingTop="2dp"
                 android:paddingEnd="20dp"
-                android:paddingBottom="20dp">
+                android:paddingBottom="8dp">
 
                 <ImageView
                     android:id="@+id/heroIllustration"
-                    android:layout_width="match_parent"
+                    android:layout_width="140dp"
                     android:layout_height="wrap_content"
                     android:layout_gravity="start"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="2dp"
                     android:adjustViewBounds="true"
                     android:contentDescription="@string/pro_hero_description"
                     android:src="@drawable/illustration_pro_hero" />
@@ -81,15 +72,15 @@
                     android:id="@+id/proEyebrow"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="22dp"
-                    android:layout_marginBottom="10dp"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginBottom="4dp"
                     android:fontFamily="@font/open_sans_regular"
                     android:includeFontPadding="false"
                     android:letterSpacing="0.09"
                     android:text="@string/pro_title"
                     android:textAllCaps="true"
                     android:textColor="?attr/accentColor"
-                    android:textSize="12sp" />
+                    android:textSize="11sp" />
 
                 <TextView
                     android:id="@+id/proTitle"
@@ -97,11 +88,23 @@
                     android:layout_height="wrap_content"
                     android:fontFamily="@font/open_sans_regular"
                     android:includeFontPadding="false"
-                    android:letterSpacing="-0.02"
-                    android:lineSpacingMultiplier="1.02"
+                    android:letterSpacing="-0.01"
+                    android:lineSpacingMultiplier="1.05"
                     android:text="@string/onboarding_pro_title"
                     android:textColor="@color/metroTextPrimary"
-                    android:textSize="40sp" />
+                    android:textSize="30sp" />
+
+                <TextView
+                    android:id="@+id/proSubtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:fontFamily="@font/open_sans_regular"
+                    android:includeFontPadding="false"
+                    android:lineSpacingMultiplier="1.25"
+                    android:text="@string/pro_subtitle"
+                    android:textColor="@color/metroTextSecondary"
+                    android:textSize="13sp" />
 
                 <!-- The gate that opened this page, kept where it can be answered rather than dismissed:
                      an accent rule down the left edge plus the same sentence the feature showed. -->
@@ -109,7 +112,7 @@
                     android:id="@+id/reasonText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="22dp"
+                    android:layout_marginTop="12dp"
                     android:background="@drawable/pro_reason_bg"
                     android:lineSpacingMultiplier="1.3"
                     android:paddingStart="12dp"
@@ -124,7 +127,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="26dp"
+                    android:layout_marginTop="14dp"
                     android:fontFamily="@font/open_sans_regular"
                     android:includeFontPadding="false"
                     android:letterSpacing="0.06"
@@ -142,11 +145,11 @@
                     <LinearLayout style="@style/SettingsRowText">
 
                         <TextView
-                            style="@style/SettingsRowTitle"
+                            style="@style/ProRowTitle"
                             android:text="@string/onboarding_pro_benefit_people" />
 
                         <TextView
-                            style="@style/SettingsRowSubtitle"
+                            style="@style/ProRowSubtitle"
                             android:text="@string/pro_add_people_detail" />
                     </LinearLayout>
                 </LinearLayout>
@@ -162,12 +165,12 @@
                     <LinearLayout style="@style/SettingsRowText">
 
                         <TextView
-                            style="@style/SettingsRowTitle"
+                            style="@style/ProRowTitle"
                             android:text="@string/onboarding_pro_benefit_accents" />
 
                         <TextView
                             android:id="@+id/proDetailAccents"
-                            style="@style/SettingsRowSubtitle"
+                            style="@style/ProRowSubtitle"
                             tools:text="@string/pro_add_accents_detail" />
                     </LinearLayout>
                 </LinearLayout>
@@ -183,12 +186,12 @@
                     <LinearLayout style="@style/SettingsRowText">
 
                         <TextView
-                            style="@style/SettingsRowTitle"
+                            style="@style/ProRowTitle"
                             android:text="@string/onboarding_pro_benefit_safe" />
 
                         <TextView
                             android:id="@+id/proDetailSafe"
-                            style="@style/SettingsRowSubtitle"
+                            style="@style/ProRowSubtitle"
                             tools:text="@string/pro_add_safe_detail" />
                     </LinearLayout>
                 </LinearLayout>
@@ -204,11 +207,11 @@
                     <LinearLayout style="@style/SettingsRowText">
 
                         <TextView
-                            style="@style/SettingsRowTitle"
+                            style="@style/ProRowTitle"
                             android:text="@string/onboarding_pro_benefit_cleanup" />
 
                         <TextView
-                            style="@style/SettingsRowSubtitle"
+                            style="@style/ProRowSubtitle"
                             android:text="@string/pro_add_cleanup_detail" />
                     </LinearLayout>
                 </LinearLayout>
@@ -224,12 +227,12 @@
                     <LinearLayout style="@style/SettingsRowText">
 
                         <TextView
-                            style="@style/SettingsRowTitle"
+                            style="@style/ProRowTitle"
                             android:text="@string/onboarding_pro_benefit_compression" />
 
                         <TextView
                             android:id="@+id/proDetailCompression"
-                            style="@style/SettingsRowSubtitle"
+                            style="@style/ProRowSubtitle"
                             tools:text="@string/pro_add_compression_detail" />
                     </LinearLayout>
                 </LinearLayout>
@@ -245,12 +248,12 @@
                     <LinearLayout style="@style/SettingsRowText">
 
                         <TextView
-                            style="@style/SettingsRowTitle"
+                            style="@style/ProRowTitle"
                             android:text="@string/onboarding_pro_benefit_albums" />
 
                         <TextView
                             android:id="@+id/proDetailAlbums"
-                            style="@style/SettingsRowSubtitle"
+                            style="@style/ProRowSubtitle"
                             tools:text="@string/pro_add_albums_detail" />
                     </LinearLayout>
                 </LinearLayout>
@@ -266,9 +269,9 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingStart="20dp"
-            android:paddingTop="12dp"
+            android:paddingTop="6dp"
             android:paddingEnd="20dp"
-            android:paddingBottom="16dp">
+            android:paddingBottom="8dp">
 
             <LinearLayout
                 android:id="@+id/purchaseBar"
@@ -289,14 +292,14 @@
                 <TextView
                     android:id="@+id/buyBtn"
                     android:layout_width="match_parent"
-                    android:layout_height="52dp"
-                    android:layout_marginTop="12dp"
+                    android:layout_height="50dp"
+                    android:layout_marginTop="8dp"
                     android:background="@drawable/onboarding_button_bg"
                     android:clickable="true"
                     android:focusable="true"
                     android:fontFamily="@font/open_sans_regular"
                     android:gravity="center"
-                    android:letterSpacing="0.06"
+                    android:letterSpacing="0.04"
                     android:text="@string/pro_buy"
                     android:textColor="@color/metroTextPrimary"
                     android:textSize="14sp" />
@@ -306,7 +309,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="2dp"
                     android:background="@drawable/metro_row_pressed"
                     android:clickable="true"
                     android:focusable="true"

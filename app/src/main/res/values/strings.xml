@@ -149,35 +149,36 @@
     <string name="forgot_password">Forgot password?</string>
     <string name="section_pro">PRO</string>
     <string name="pro_row_title">Pixa Pro</string>
-    <string name="pro_checking">Checking with Google Play</string>
+    <string name="pro_checking">Checking price with Google Play</string>
     <string name="pro_not_purchased">Not purchased</string>
     <string name="pro_owned_subtitle">Unlocked on this device</string>
     <string name="pro_title">Pixa Pro</string>
     <string name="pro_body">Nothing is uploaded to buy it or to use it — every photo is still processed on this phone. Pro lifts the limits on the features that do the most work, and takes nothing away.</string>
-    <string name="pro_price_line">%1$s, one-time</string>
+    <string name="pro_subtitle">The free app stays free. Pro adds more.</string>
+    <string name="pro_price_line">%1$s, one-time purchase</string>
     <string name="pro_price_unknown">Price unavailable</string>
-    <string name="pro_buy">Buy</string>
-    <string name="pro_buy_price">Buy %1$s</string>
-    <string name="pro_restore">Restore</string>
+    <string name="pro_buy">Unlock Pro</string>
+    <string name="pro_buy_price">Unlock Pro for %1$s</string>
+    <string name="pro_restore">Restore purchase</string>
     <string name="pro_owned_body">Pixa Pro is unlocked on this device. Features stay active across reinstalls.</string>
     <!-- The Pro page: the offer and the limits it lifts, in numbers ProActivity fills in from
          FreeTier, because a page that types "50" is a page that will still say "50" after the
          Safe moves to 80. -->
-    <string name="pro_hero_description">Eight flat tiles in the accent color, representing the features Pixa Pro adds.</string>
+    <string name="pro_hero_description">A mosaic of eight tiles: the free app on the left, Pixa Pro on the right.</string>
     <string name="pro_section_adds">What Pro adds</string>
-    <string name="pro_add_people_detail">Free: the face clusters, unnamed</string>
+    <string name="pro_add_people_detail">Free: face groups without names</string>
     <string name="pro_add_accents_detail">Free: %1$d accent colors</string>
-    <string name="pro_add_safe_detail">Free: %1$d photos in the Safe</string>
-    <string name="pro_add_cleanup_detail">Free: duplicates, similar shots, screenshots &amp; quality checks</string>
+    <string name="pro_add_safe_detail">Free: %1$d photos</string>
+    <string name="pro_add_cleanup_detail">Free: duplicates and similar shots</string>
     <string name="pro_add_compression_detail">Free: %1$d photo per run</string>
     <string name="pro_add_albums_detail">Free: %1$d smart albums</string>
     <!-- What the user reached for, said back to them inside the offer. Each gate passes its own limit from
          FreeTier rather than hard-coding the number here, so the sentence and the rule cannot drift apart. -->
     <string name="gate_accent">More accent colors are part of Pixa Pro.</string>
     <string name="gate_people">Naming people is part of Pixa Pro.</string>
-    <string name="gate_safe">The free Safe holds %1$d items. Pixa Pro removes that limit.</string>
+    <string name="gate_safe">The free Safe holds %1$d photos. Pixa Pro removes that limit.</string>
     <string name="gate_cleanup">Unlock %1$s with Pixa Pro.</string>
-    <string name="gate_compression">The free app compresses %1$d photo at a time. Pixa Pro runs the whole selection in one go.</string>
+    <string name="gate_compression">The free app compresses %1$d photo per run. Pro compresses as many as you pick.</string>
     <string name="gate_smart_albums">The free app saves %1$d smart albums. Pixa Pro adds as many as you like.</string>
     <string name="section_display">DISPLAY</string>
     <string name="collage_layout">Collage layout</string>
@@ -404,22 +405,20 @@
          first, because that is the promise the rest of the tour rests on. Limits are the ones in
          FreeTier — keep the two in step when a number changes. -->
     <string name="onboarding_pro_eyebrow">Pixa Pro</string>
-    <string name="onboarding_pro_title">One purchase, kept forever</string>
+    <string name="onboarding_pro_title">One purchase, yours forever</string>
     <string name="onboarding_pro_body">The free app is not a trial. Pro lifts the advanced limits with one purchase and never changes how your photos are processed.</string>
-    <string name="onboarding_pro_benefit_people">Name people and label relationships</string>
-    <string name="onboarding_pro_benefit_accents">Every accent color, including your device\'s own</string>
+    <string name="onboarding_pro_benefit_people">Name people and relationships</string>
+    <string name="onboarding_pro_benefit_accents">Every accent color</string>
     <string name="onboarding_pro_benefit_safe">Unlimited photos in the Safe</string>
-    <string name="onboarding_pro_benefit_cleanup">Bursts, documents, receipts, QR &amp; sensitive review</string>
-    <string name="onboarding_pro_benefit_compression">Compress a whole batch at once</string>
+    <string name="onboarding_pro_benefit_cleanup">Burst, receipt and QR review</string>
+    <string name="onboarding_pro_benefit_compression">Batch compression</string>
     <string name="onboarding_pro_benefit_albums">Unlimited smart albums</string>
 
     <string name="onboarding_perm_eyebrow">Before you start</string>
     <string name="onboarding_perm_title">A few things to get started</string>
-    <string name="onboarding_perm_body">Your library stays on this device. Choose the access Pixa needs; notifications and all-files access are optional.</string>
+    <string name="onboarding_perm_body">Your library stays on this device. Choose the access Pixa needs; notifications are optional.</string>
     <string name="onboarding_perm_media">Photos &amp; videos</string>
     <string name="onboarding_perm_media_summary">So Pixa can show, search, and index your library</string>
-    <string name="onboarding_perm_files">All files access</string>
-    <string name="onboarding_perm_files_summary">Only for Safe and the recycle bin — lets Pixa move or delete the originals you choose</string>
     <string name="onboarding_perm_notifications">Notifications</string>
     <string name="onboarding_perm_notifications_summary">Optional — progress while indexing runs in the background</string>
 

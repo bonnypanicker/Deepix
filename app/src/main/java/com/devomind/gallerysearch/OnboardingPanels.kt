@@ -103,10 +103,9 @@ private const val IllustrationHeight = 220f
  * fastest way to make them stop reading; [ProActivity] is offered once, after "Get started", where it
  * can be dismissed without the tour having to wait on it.
  *
- * The permissions page lists what this build actually requests — media access gates every feature,
- * all-files access is what lets Safe and the recycle bin move or delete originals, and notifications
- * are the optional one. Fingerprint is not listed: it has no runtime request and is enrolled inside
- * Safe.
+ * The permissions page lists what this build actually requests — media access gates every feature and
+ * notifications are the optional one. All-files access is not listed because this build does not request
+ * it. Fingerprint is not listed: it has no runtime request and is enrolled inside Safe.
  */
 fun onboardingPanels(): List<OnboardingPanel> = listOf(
     OnboardingPanel(

@@ -377,14 +377,25 @@
     <!-- Pixa Pro page. The rows explain the offer, so they borrow the settings row's metrics and drop
          its press state and its clickability: nothing in the three sections is a control. The glyph is
          a 24dp line icon in the text color, never an accent tint — accent appears on this page only
-         where it means something (the paid half of the hero, the CTA, the section labels). -->
+         where it means something (the paid half of the hero, the CTA, the section labels).
+         The metrics are tighter than the settings row because six of these have to land in one window
+         next to the offer's footer, and the rows are read, not tapped. -->
     <style name="ProRow">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:orientation">horizontal</item>
         <item name="android:gravity">center_vertical</item>
-        <item name="android:paddingTop">14dp</item>
-        <item name="android:paddingBottom">14dp</item>
+        <item name="android:paddingTop">6dp</item>
+        <item name="android:paddingBottom">6dp</item>
+    </style>
+
+    <style name="ProRowTitle" parent="SettingsRowTitle">
+        <item name="android:textSize">15sp</item>
+    </style>
+
+    <style name="ProRowSubtitle" parent="SettingsRowSubtitle">
+        <item name="android:paddingTop">1dp</item>
+        <item name="android:textSize">12sp</item>
     </style>
 
     <style name="ProRowGlyph">
