@@ -404,7 +404,7 @@
          first, because that is the promise the rest of the tour rests on. Limits are the ones in
          FreeTier — keep the two in step when a number changes. -->
     <string name="onboarding_pro_eyebrow">Pixa Pro</string>
-    <string name="onboarding_pro_title">One purchase, kept forever</string>
+    <string name="onboarding_pro_title">Unlock all premium features</string>
     <string name="onboarding_pro_body">The free app is not a trial. Pro lifts the advanced limits with one purchase and never changes how your photos are processed.</string>
     <string name="onboarding_pro_benefit_people">Name people and label relationships</string>
     <string name="onboarding_pro_benefit_accents">Every accent color, including your device\'s own</string>
