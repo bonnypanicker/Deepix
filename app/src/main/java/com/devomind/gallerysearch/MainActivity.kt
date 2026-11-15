@@ -177,6 +177,10 @@ class MainActivity : AppCompatActivity() {
     private var barProgress = 0f
     private var barAnimator: ValueAnimator? = null
     private var selectionActive = false
+    /** How many tiles the last [renderSelectionState] was told about, so growth can be told from shrinkage. */
+    private var selectionCount = 0
+    /** One preview tip per selection session: it is shown when the selection first grows past one tile. */
+    private var selectionPreviewHintShown = false
 
     // Infinite scroll state for search results
     // Supports lazy loading with 20 results per page, capped at 80 total
@@ -4803,10 +4807,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderSelectionState(count: Int) {
         val selecting = count > 0
-        // Entering a selection (0 → n) is the one moment worth announcing the long-press preview:
-        // once the user is picking, repeating the hint on every added tile would just chatter.
-        val enteringSelection = selecting && !selectionActive
+        // The preview gesture is announced once the selection is really under way, not on the long
+        // press that starts it: a tip about pressing a selected photo again lands before the user has
+        // anything selected twice. It is shown on the first tile added after that — whatever adds it,
+        // a tap or another long press — and only once per selection, so a run of taps does not chatter.
+        val grewPastTheFirstTile = selecting && selectionActive && count > selectionCount &&
+            !selectionPreviewHintShown
         selectionActive = selecting
+        selectionCount = count
+        if (!selecting) selectionPreviewHintShown = false
         // Selection swaps in the command bar and re-titles the header — both bars must be visible.
         showBars()
         // Metro pattern: the selection command bar takes over the bottom nav's slot.
@@ -4841,7 +4850,8 @@ class MainActivity : AppCompatActivity() {
             updateTopBarForMode(currentTopTitle())
         }
 
-        if (enteringSelection) {
+        if (grewPastTheFirstTile) {
+            selectionPreviewHintShown = true
             // Lifted above the selection bar so the hint doesn't land on the command row.
             MetroBanner.show(
                 this,
