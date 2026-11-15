@@ -48,6 +48,10 @@ android {
     androidResources {
         noCompress += "onnx"
         noCompress += "ort"
+        // The app's own strings are English-only (no values-* locale folders), but AndroidX ships
+        // strings in dozens of locales that would otherwise all be packaged. Filtering to English
+        // drops those entries from res/ and resources.arsc.
+        localeFilters.add("en")
     }
 
     buildFeatures {

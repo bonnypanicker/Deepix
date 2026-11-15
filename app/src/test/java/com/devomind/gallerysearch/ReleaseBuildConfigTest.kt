@@ -21,6 +21,10 @@ class ReleaseBuildConfigTest {
         )
         assertTrue("Unused resources should not ship", build.contains("shrinkResources true"))
         assertTrue(
+            "Library locale strings must not ship in an English-only app",
+            build.contains("localeFilters.add(\"en\")")
+        )
+        assertTrue(
             "R8 must read the app's own keep rules",
             build.contains("proguardFiles getDefaultProguardFile(\"proguard-android-optimize.txt\"), " +
                 "\"proguard-rules.pro\"")
