@@ -223,6 +223,7 @@ class PhotoEditorActivity : AppCompatActivity() {
         ops.add(op)
         edited = true
         rebuildPreview()
+        syncSaveButton()
     }
 
     private fun rebuildPreview() {
@@ -241,6 +242,7 @@ class PhotoEditorActivity : AppCompatActivity() {
         binding.closeBtn.setOnClickListener { if (tool != null) cancelTool() else confirmDiscardAndExit() }
         binding.undoBtn.setOnClickListener { undo() }
         binding.saveBtn.setOnClickListener { showSaveMenu() }
+        syncSaveButton()
 
         binding.toolCrop.setOnClickListener { enterTool(Tool.CROP) }
         binding.toolPerspective.setOnClickListener { enterTool(Tool.PERSPECTIVE) }
@@ -276,6 +278,17 @@ class PhotoEditorActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this) {
             if (tool != null) cancelTool() else confirmDiscardAndExit()
         }
+    }
+
+    /**
+     * Save is live only once the tick has confirmed an edit — an op exists — and no tool is holding
+     * work the user has not confirmed yet. Without the gate, opening the editor and tapping Save
+     * rewrote the original with a re-render of zero ops (a lossy re-encode of the untouched photo),
+     * and a tool's pending sliders or crop were silently dropped by a save.
+     */
+    private fun syncSaveButton() {
+        binding.saveBtn.isEnabled = ops.isNotEmpty() && tool == null
+        binding.saveBtn.alpha = if (binding.saveBtn.isEnabled) 1f else 0.4f
     }
 
     private fun buildSwatches() {
@@ -314,6 +327,7 @@ class PhotoEditorActivity : AppCompatActivity() {
 
     private fun enterTool(t: Tool) {
         tool = t
+        syncSaveButton()
         binding.toolBar.visibility = View.GONE
         binding.toolActionBar.visibility = View.VISIBLE
         binding.panelCrop.visibility = View.GONE
@@ -377,6 +391,7 @@ class PhotoEditorActivity : AppCompatActivity() {
 
     private fun exitTool() {
         tool = null
+        syncSaveButton()
         binding.cropView.magnifierSource = null
         binding.quadView.magnifierSource = null
         binding.cropView.visibility = View.GONE
@@ -452,12 +467,13 @@ class PhotoEditorActivity : AppCompatActivity() {
         ops.removeAt(ops.lastIndex)
         edited = ops.isNotEmpty()
         rebuildPreview()
+        syncSaveButton()
     }
 
     // ------------------------------------------------------------------ save
 
     private fun showSaveMenu() {
-        if (working == null) return
+        if (working == null || ops.isEmpty()) return
         val menu = androidx.appcompat.widget.PopupMenu(this, binding.saveBtn)
         menu.menu.add(0, 1, 0, "Save")
         menu.menu.add(0, 2, 1, "Save a copy")
