@@ -32,6 +32,19 @@ android {
         versionName "1.2"
     }
 
+    buildTypes {
+        release {
+            // Play's bundle analysis reports the release DEX as unoptimised and ~1% obfuscated when
+            // R8 is off, and it is right: without it the shipped bundle carries essentially the code
+            // the debug build does. R8 shrinks, optimises and renames; the keeps those passes need
+            // are in proguard-rules.pro. Shrinking resources too, so unused layouts and drawables
+            // do not ship. Debug stays unminified for readable stack traces and fast rebuilds.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+
     androidResources {
         noCompress += "onnx"
         noCompress += "ort"
