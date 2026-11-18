@@ -2523,7 +2523,7 @@ class MainActivity : AppCompatActivity() {
             if (pagedContext == ctx && pagedDisplayedCount == from && items === pagedItems) {
                 pagedDisplayedCount = to
                 pagedLastDay = lastDay
-                adapter.updateCells(adapter.cells + cells)
+                adapter.appendCells(cells)
                 updateFastScrollVisibility()
             }
             pagingInFlight = false
@@ -3237,7 +3237,7 @@ class MainActivity : AppCompatActivity() {
         val newCells = buildSearchPhotoCells(nextBatch)
 
         currentDisplayedSearchResultCount += nextBatch.size
-        adapter.updateCells(adapter.cells + newCells)
+        adapter.appendCells(newCells)
         updateSearchResultCount()
     }
 

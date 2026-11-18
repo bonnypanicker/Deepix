@@ -532,6 +532,20 @@ class ImageAdapter(
         onSelectionChanged(selected.size)
     }
 
+    /**
+     * Appends cells that continue the current listing — pagination, which only ever grows the list
+     * at its end. [updateCells] would diff every cell and copy the list twice on the main thread,
+     * which lands in the middle of the fling that asked for the page; an append is a range insert by
+     * construction, so it needs neither. Selection is untouched: nothing leaves the list, so nothing
+     * can fall out of it.
+     */
+    fun appendCells(newCells: List<GalleryCell>) {
+        if (newCells.isEmpty()) return
+        val start = cells.size
+        cells.addAll(newCells)
+        notifyItemRangeInserted(start, newCells.size)
+    }
+
     fun removeMediaUris(uris: Set<Uri>) {
         if (uris.isEmpty()) return
         val filtered = cells.mapNotNull { cell ->
@@ -732,28 +746,30 @@ class ImageAdapter(
     }
 
     private fun stableIdFor(cell: GalleryCell): Long {
-        val key = when (cell) {
+        // Values are unchanged from the interpolated form these replaced; StableId just folds the
+        // parts without building the joined string.
+        return when (cell) {
             // sortLabel is deliberately excluded: a sort change should rebind the header in place
             // (areContentsTheSame sees the field) rather than look like a different item.
-            is GalleryCell.Header -> "header:${cell.title}:${cell.subtitle}"
-            is GalleryCell.SortRow -> "sort_row"
-            is GalleryCell.Photo -> "photo:${cell.item.uri}"
-            is GalleryCell.Collage -> "collage:${cell.items.joinToString("|") { it.uri.toString() }}"
-            is GalleryCell.AlbumCell -> "album:${cell.album.id}"
-            is GalleryCell.FolderCell -> "folder:${cell.node.path}"
-            is GalleryCell.PinnedAlbumsHeader -> "pinned_albums_header"
-            is GalleryCell.SearchSection -> "search_section:${cell.section.section.name}"
-            is GalleryCell.SmartAlbumOnboarding -> "smart_album_onboarding"
-            is GalleryCell.Empty -> "empty:${cell.text}"
-            is GalleryCell.Loading -> "search_loading"
-            is GalleryCell.IndexBanner -> "search_index_banner"
-            is GalleryCell.SuggestionChips -> "search_suggestions"
-            is GalleryCell.PeopleRow -> "search_people_row"
-            is GalleryCell.TimeFilters -> "search_time_filters"
-            is GalleryCell.ContentShortcuts -> "search_shortcuts"
-            is GalleryCell.RecentSearches -> "search_recents"
+            is GalleryCell.Header -> StableId.of("header:", cell.title, ":", cell.subtitle)
+            is GalleryCell.SortRow -> StableId.of("sort_row")
+            is GalleryCell.Photo -> StableId.of("photo:", cell.item.uri.toString())
+            // Only ever two or three tiles, so the join is cheaper than threading separators by hand.
+            is GalleryCell.Collage -> StableId.of("collage:", cell.items.joinToString("|") { it.uri.toString() })
+            is GalleryCell.AlbumCell -> StableId.of("album:", cell.album.id)
+            is GalleryCell.FolderCell -> StableId.of("folder:", cell.node.path)
+            is GalleryCell.PinnedAlbumsHeader -> StableId.of("pinned_albums_header")
+            is GalleryCell.SearchSection -> StableId.of("search_section:", cell.section.section.name)
+            is GalleryCell.SmartAlbumOnboarding -> StableId.of("smart_album_onboarding")
+            is GalleryCell.Empty -> StableId.of("empty:", cell.text)
+            is GalleryCell.Loading -> StableId.of("search_loading")
+            is GalleryCell.IndexBanner -> StableId.of("search_index_banner")
+            is GalleryCell.SuggestionChips -> StableId.of("search_suggestions")
+            is GalleryCell.PeopleRow -> StableId.of("search_people_row")
+            is GalleryCell.TimeFilters -> StableId.of("search_time_filters")
+            is GalleryCell.ContentShortcuts -> StableId.of("search_shortcuts")
+            is GalleryCell.RecentSearches -> StableId.of("search_recents")
         }
-        return key.fold(1125899906842597L) { hash, char -> 31L * hash + char.code.toLong() }
     }
 
     class HeaderViewHolder(
@@ -785,6 +801,9 @@ class ImageAdapter(
         private val isBlurred: (GalleryRepository.MediaItem) -> Boolean = { false },
         private val onReveal: (Uri) -> Unit = {}
     ) : RecyclerView.ViewHolder(binding.root) {
+
+        /** The blank tile Glide shows until a thumbnail arrives; one per holder, reused per bind. */
+        private var placeholder: ColorDrawable? = null
 
         /** Sizes a new ordinary-grid holder before RecyclerView attaches it. */
         fun prepareGridHeight(gridColumnCount: Int, gridWidth: Int) {
@@ -826,6 +845,9 @@ class ImageAdapter(
             blurred: Boolean,
             fitCenter: Boolean = false
         ) {
+            // One blank tile per holder: this view is the only one that ever draws it, and a bind
+            // used to allocate a fresh ColorDrawable for every recycled cell it flew past.
+            val blank = placeholder ?: ColorDrawable(0xFF111111.toInt()).also { placeholder = it }
             // Blur = decode at a tiny size and let the ImageView upscale it (a cheap, all-API blur).
             val targetW = if (blurred) BLUR_DOWNSCALE_PX else width
             val targetH = if (blurred) BLUR_DOWNSCALE_PX else height
@@ -837,7 +859,7 @@ class ImageAdapter(
                     .apply { if (fitCenter) fitCenter() else centerCrop() }
                     .override(targetW, targetH)
                     .dontAnimate()
-                    .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
+                    .placeholder(blank)
             } else {
                 Glide.with(context)
                     .load(item.uri)
@@ -845,7 +867,7 @@ class ImageAdapter(
                     .apply { if (fitCenter) fitCenter() else centerCrop() }
                     .override(targetW, targetH)
                     .dontAnimate()
-                    .placeholder(ColorDrawable(Color.rgb(17, 17, 17)))
+                    .placeholder(blank)
             }
             request.into(imageView)
         }

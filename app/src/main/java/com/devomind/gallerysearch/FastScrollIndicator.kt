@@ -219,7 +219,11 @@ class FastScrollIndicator @JvmOverloads constructor(
         val cy = top + fraction.coerceIn(0f, 1f) * (trackBottom() - top).coerceAtLeast(1f)
         if (Math.abs(thumbY - cy) > dip(1f)) {
             thumbY = cy
-            updateFromFraction(fraction)
+            // The label is only ever drawn while the thumb is held, and finding it walks the cell
+            // list back to the previous header — on a headerless order (name/size) all the way to
+            // the top of the list. Doing that on every fling frame was pure waste; dragTo updates
+            // it instead, so the bubble is still right the moment the thumb is grabbed.
+            if (isDragging) updateFromFraction(fraction)
             invalidate()
         }
     }
