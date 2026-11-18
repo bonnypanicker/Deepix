@@ -389,122 +389,133 @@
             android:layout_marginEnd="4dp"
             android:visibility="gone" />
 
+        <!-- The bar is a wrap_content shell around a fixed 64dp row. The activity applies the
+             navigation-bar inset to this shell as padding, so on three-button navigation the inset
+             becomes space below the row instead of eating into the height the icons live in. A fixed
+             64dp shell made the inset crush 28dp icons into the ~16dp that was left. -->
         <LinearLayout
             android:id="@+id/bottomPanel"
             android:layout_width="match_parent"
-            android:layout_height="64dp"
+            android:layout_height="wrap_content"
             android:layout_gravity="bottom"
             android:background="@drawable/bottom_nav_bg"
-            android:orientation="horizontal">
+            android:orientation="vertical">
 
             <LinearLayout
-                android:id="@+id/bottomCollections"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:paddingTop="2dp">
+                android:id="@+id/bottomTabs"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:orientation="horizontal">
 
-                <ImageView
-                    android:id="@+id/bottomCollectionsIcon"
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
-                    android:contentDescription="@string/tab_collection"
-                    android:src="@drawable/ic_deepix_collections_24_regular"
-                    android:tint="?attr/accentColor" />
-            </LinearLayout>
+                <LinearLayout
+                    android:id="@+id/bottomCollections"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingTop="2dp">
 
-            <LinearLayout
-                android:id="@+id/bottomVideos"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:paddingTop="2dp">
+                    <ImageView
+                        android:id="@+id/bottomCollectionsIcon"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:contentDescription="@string/tab_collection"
+                        android:src="@drawable/ic_deepix_collections_24_regular"
+                        android:tint="?attr/accentColor" />
+                </LinearLayout>
 
-                <ImageView
-                    android:id="@+id/bottomVideosIcon"
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
-                    android:contentDescription="@string/tab_videos"
-                    android:src="@drawable/ic_deepix_video_24_regular"
-                    android:tint="@color/metroTextSecondary" />
-            </LinearLayout>
+                <LinearLayout
+                    android:id="@+id/bottomVideos"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingTop="2dp">
 
-            <LinearLayout
-                android:id="@+id/bottomAlbums"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:paddingTop="2dp">
+                    <ImageView
+                        android:id="@+id/bottomVideosIcon"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:contentDescription="@string/tab_videos"
+                        android:src="@drawable/ic_deepix_video_24_regular"
+                        android:tint="@color/metroTextSecondary" />
+                </LinearLayout>
 
-                <ImageView
-                    android:id="@+id/bottomAlbumsIcon"
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
-                    android:contentDescription="@string/tab_albums"
-                    android:src="@drawable/ic_deepix_albums_24_regular"
-                    android:tint="@color/metroTextSecondary" />
-            </LinearLayout>
+                <LinearLayout
+                    android:id="@+id/bottomAlbums"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingTop="2dp">
 
-            <LinearLayout
-                android:id="@+id/bottomFavorites"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:paddingTop="2dp">
+                    <ImageView
+                        android:id="@+id/bottomAlbumsIcon"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:contentDescription="@string/tab_albums"
+                        android:src="@drawable/ic_deepix_albums_24_regular"
+                        android:tint="@color/metroTextSecondary" />
+                </LinearLayout>
 
-                <ImageView
-                    android:id="@+id/bottomFavoritesIcon"
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
-                    android:contentDescription="@string/tab_favorites"
-                    android:src="@drawable/ic_deepix_favorite_24_regular"
-                    android:tint="@color/metroTextSecondary" />
-            </LinearLayout>
+                <LinearLayout
+                    android:id="@+id/bottomFavorites"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingTop="2dp">
 
-            <LinearLayout
-                android:id="@+id/bottomFolders"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:paddingTop="2dp"
-                android:visibility="gone">
+                    <ImageView
+                        android:id="@+id/bottomFavoritesIcon"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:contentDescription="@string/tab_favorites"
+                        android:src="@drawable/ic_deepix_favorite_24_regular"
+                        android:tint="@color/metroTextSecondary" />
+                </LinearLayout>
 
-                <ImageView
-                    android:id="@+id/bottomFoldersIcon"
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
-                    android:contentDescription="@string/tab_folders"
-                    android:src="@drawable/ic_deepix_folders_24_regular"
-                    android:tint="@color/metroTextSecondary" />
-            </LinearLayout>
+                <LinearLayout
+                    android:id="@+id/bottomFolders"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingTop="2dp"
+                    android:visibility="gone">
 
-            <LinearLayout
-                android:id="@+id/bottomSafe"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:paddingTop="2dp"
-                android:visibility="gone">
+                    <ImageView
+                        android:id="@+id/bottomFoldersIcon"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:contentDescription="@string/tab_folders"
+                        android:src="@drawable/ic_deepix_folders_24_regular"
+                        android:tint="@color/metroTextSecondary" />
+                </LinearLayout>
 
-                <ImageView
-                    android:id="@+id/bottomSafeIcon"
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
-                    android:contentDescription="@string/safe_title"
-                    android:src="@drawable/ic_deepix_safe_nav_24_regular"
-                    android:tint="@color/metroTextSecondary" />
+                <LinearLayout
+                    android:id="@+id/bottomSafe"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingTop="2dp"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:id="@+id/bottomSafeIcon"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:contentDescription="@string/safe_title"
+                        android:src="@drawable/ic_deepix_safe_nav_24_regular"
+                        android:tint="@color/metroTextSecondary" />
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
 

@@ -5846,9 +5846,11 @@ class MainActivity : AppCompatActivity() {
             )
         }
         // The bar's own height is the other half of the budget: on a 360dp-tall screen every dp it
-        // spends on itself is a dp of photo it does not have.
+        // spends on itself is a dp of photo it does not have. This sizes the row, not the panel: the
+        // panel stays wrap_content so the navigation-bar inset is padding below the row rather than
+        // height taken out of it.
         val barHeightPx = dp(if (cramped) BOTTOM_BAR_HEIGHT_CRAMPED_DP else BOTTOM_BAR_HEIGHT_DP)
-        val bar = binding.bottomPanel
+        val bar = binding.bottomTabs
         if (bar.layoutParams.height != barHeightPx) {
             bar.layoutParams = bar.layoutParams.apply { height = barHeightPx }
             bar.requestLayout()
@@ -6010,11 +6012,13 @@ class MainActivity : AppCompatActivity() {
         // previously enabled the Safe tab must not see it until the SAF-backed rebuild ships.
         val visibleDestinations = BottomBarConfig.enabledOrder(this)
             .filter { it != BottomBarDestination.Safe || FeatureFlags.SAFE_ENABLED }
-        binding.bottomPanel.removeAllViews()
+        // The panel is a shell whose bottom padding absorbs the navigation-bar inset, so the tabs
+        // themselves are added to the fixed-height row inside it.
+        binding.bottomTabs.removeAllViews()
         visibleDestinations.forEach { destination ->
             tabs.getValue(destination).let { tab ->
                 tab.visibility = View.VISIBLE
-                binding.bottomPanel.addView(tab)
+                binding.bottomTabs.addView(tab)
             }
         }
         tabs.filterKeys { it !in visibleDestinations }.values.forEach {

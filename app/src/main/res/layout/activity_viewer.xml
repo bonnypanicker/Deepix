@@ -100,99 +100,108 @@
         </LinearLayout>
     </FrameLayout>
 
-    <!-- Bottom chrome: opaque Metro bar, flat action row -->
+    <!-- Bottom chrome: opaque Metro bar, flat action row. The bar is a wrap_content shell around a
+         fixed 64dp row: the activity applies the navigation-bar inset to this shell as padding, so
+         the inset becomes space below the row instead of crushing the 22dp icons and their labels. -->
     <LinearLayout
         android:id="@+id/bottomControls"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
+        android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:background="@color/metroBgPrimary"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp">
+        android:orientation="vertical">
 
         <LinearLayout
-            android:id="@+id/actionShare"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:background="@drawable/metro_row_pressed"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical">
+            android:id="@+id/bottomActionRow"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp">
 
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:contentDescription="@string/share"
-                android:src="@drawable/ic_fluent_share_android_24_regular"
-                android:tint="@color/metroTextPrimary" />
+            <LinearLayout
+                android:id="@+id/actionShare"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/metro_row_pressed"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:includeFontPadding="false"
-                android:text="@string/share"
-                android:textAppearance="@style/TextAppearance.Metro.IconAction" />
-        </LinearLayout>
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:contentDescription="@string/share"
+                    android:src="@drawable/ic_fluent_share_android_24_regular"
+                    android:tint="@color/metroTextPrimary" />
 
-        <LinearLayout
-            android:id="@+id/actionEdit"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:background="@drawable/metro_row_pressed"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:includeFontPadding="false"
+                    android:text="@string/share"
+                    android:textAppearance="@style/TextAppearance.Metro.IconAction" />
+            </LinearLayout>
 
-            <ImageView
-                android:id="@+id/editIcon"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:contentDescription="@string/edit"
-                android:src="@drawable/ic_fluent_options_24_regular"
-                android:tint="@color/metroTextPrimary" />
+            <LinearLayout
+                android:id="@+id/actionEdit"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/metro_row_pressed"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/editLabel"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:includeFontPadding="false"
-                android:text="@string/edit"
-                android:textAppearance="@style/TextAppearance.Metro.IconAction" />
-        </LinearLayout>
+                <ImageView
+                    android:id="@+id/editIcon"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:contentDescription="@string/edit"
+                    android:src="@drawable/ic_fluent_options_24_regular"
+                    android:tint="@color/metroTextPrimary" />
 
-        <LinearLayout
-            android:id="@+id/actionDelete"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:background="@drawable/metro_row_pressed"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical">
+                <TextView
+                    android:id="@+id/editLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:includeFontPadding="false"
+                    android:text="@string/edit"
+                    android:textAppearance="@style/TextAppearance.Metro.IconAction" />
+            </LinearLayout>
 
-            <ImageView
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:contentDescription="@string/delete"
-                android:src="@drawable/ic_fluent_delete_24_regular"
-                android:tint="@color/metroTextPrimary" />
+            <LinearLayout
+                android:id="@+id/actionDelete"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/metro_row_pressed"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:includeFontPadding="false"
-                android:text="@string/delete"
-                android:textAppearance="@style/TextAppearance.Metro.IconAction" />
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:contentDescription="@string/delete"
+                    android:src="@drawable/ic_fluent_delete_24_regular"
+                    android:tint="@color/metroTextPrimary" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:includeFontPadding="false"
+                    android:text="@string/delete"
+                    android:textAppearance="@style/TextAppearance.Metro.IconAction" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
