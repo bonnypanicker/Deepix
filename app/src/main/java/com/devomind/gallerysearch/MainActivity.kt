@@ -4787,26 +4787,33 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * The photos the viewer may page through — in exactly the order the grid is showing them.
+     *
+     * Each page keeps its own listing. Browse-style pages (sections, album detail, folder detail,
+     * collection albums) render through [renderPagedTimeline], which sorts into [pagedItems] and
+     * builds the cells from that same list; search keeps its filtered, sorted results in
+     * [fullSearchResults]. Reading the raw section snapshots here — which are always newest-first —
+     * is what made swiping disagree with the grid: pick "smallest to largest" and the photo after
+     * the one you tapped was the newest one, not the one beside it.
+     *
+     * Search is checked first on purpose: [pagedItems] outlives the browse page that filled it, so
+     * a search that trusted it would page through the last section's photos.
+     */
     private fun currentViewerItems(): List<GalleryRepository.MediaItem> {
-        return when {
-            currentAlbum != null -> albumDetailItems
-            currentFolder != null -> folderDetailItems()
-            currentMode == Mode.Search || currentMode == Mode.CollectionAlbumDetail -> {
-                adapter.cells.asSequence()
-                    .flatMap { cell ->
-                        when (cell) {
-                            is GalleryCell.Photo -> sequenceOf(cell.item)
-                            is GalleryCell.Collage -> cell.items.asSequence()
-                            else -> emptySequence()
-                        }
-                    }
-                    .toList()
+        if (currentMode == Mode.Search) return fullSearchResults.map { it.item }
+        if (pagedContext != null && pagedItems.isNotEmpty()) return pagedItems
+        // No listing owns the grid right now (or its first page is still being built): whatever is
+        // rendered is, by definition, in the order the user can see.
+        return adapter.cells.asSequence()
+            .flatMap { cell ->
+                when (cell) {
+                    is GalleryCell.Photo -> sequenceOf(cell.item)
+                    is GalleryCell.Collage -> cell.items.asSequence()
+                    else -> emptySequence()
+                }
             }
-            activeSection == Section.Collection -> collectionItems
-            activeSection == Section.Videos -> videoItems
-            activeSection == Section.Favorites -> favoriteItems
-            else -> collectionItems
-        }
+            .toList()
     }
 
     private fun renderSelectionState(count: Int) {
