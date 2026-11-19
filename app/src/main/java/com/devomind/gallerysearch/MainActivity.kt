@@ -2813,18 +2813,10 @@ class MainActivity : AppCompatActivity() {
         // Progressive renders re-enter here as more categories resolve; only the first
         // entry into the landing scrolls to top — later inserts stay in place.
         if (!alreadyLanding) resetGridToTop()
-        val total = searchResultsMaster.size
-        val albumOnlySection = searchSectionResults.singleOrNull { it.section == SearchSection.Albums }
-        val tagOnlySection = searchSectionResults.singleOrNull { it.section == SearchSection.Tags }
-        setSearchResultSummary(if (total == 0 && albumOnlySection != null) {
-            "${SearchSection.Albums.label} · ${albumOnlySection.count}"
-        } else if (total == 0 && tagOnlySection != null) {
-            "${SearchSection.Tags.label} · ${tagOnlySection.count}"
-        } else if (total == 1) {
-            resources.getQuantityString(R.plurals.result_count, 1, 1)
-        } else {
-            getString(R.string.photos_count_summary, total)
-        })
+        // The cards below carry their own counts ("Smart · 25"), so a summary above them only said
+        // the same thing twice. Leaving it empty collapses the row: the grid starts directly under
+        // the search field instead of behind a band of text.
+        setSearchResultSummary("")
     }
 
     // ---------------------------------------------------------------------------------------------
