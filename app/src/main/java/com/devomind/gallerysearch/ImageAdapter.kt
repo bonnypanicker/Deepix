@@ -446,6 +446,22 @@ class ImageAdapter(
 
     override fun getItemCount(): Int = cells.size
 
+    /**
+     * True when the grid is showing a rendered result — photos, albums, folders, or the search
+     * landing's section cards — rather than the pre-query hints or a "Searching your library" row.
+     *
+     * Search asks this before replacing the grid for a still-pending query. Wiping a result the
+     * user is reading on every keystroke is a flash; replacing the hints is the "searching"
+     * feedback the first query actually needs.
+     */
+    fun isShowingResults(): Boolean = cells.any {
+        it is GalleryCell.Photo ||
+            it is GalleryCell.Collage ||
+            it is GalleryCell.AlbumCell ||
+            it is GalleryCell.FolderCell ||
+            it is GalleryCell.SearchSection
+    }
+
     /** The grid's measured width, falling back to the panel only before the host has measured it. */
     internal fun widthOr(panelWidthPx: Int): Int = gridWidthPx.takeIf { it > 0 } ?: panelWidthPx
 

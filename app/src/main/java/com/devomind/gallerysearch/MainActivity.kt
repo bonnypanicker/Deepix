@@ -716,9 +716,9 @@ class MainActivity : AppCompatActivity() {
             updateSearchPillState()
             // searchPanel visibility is cosmetic (summary header); the session gate is the mode.
             if (currentMode == Mode.Search) {
-                // Do not leave a previous query's People/Smart cards on screen during debounce or
-                // while its cancelled coroutine unwinds. This is especially misleading for an
-                // unmatched / gibberish query.
+                // The previous query's result owners are dropped, but its rendered cards are left on
+                // screen (see showSearchPending): blanking the grid on every key made the cards
+                // disappear and come back a debounce later, which reads as a flash.
                 searchJob?.cancel()
                 clearSearchPresentationForPendingInput()
                 searchDebounceJob?.cancel()
@@ -2188,12 +2188,7 @@ class MainActivity : AppCompatActivity() {
                         forceSmartSection = personScoped
                     )
                 } else if (!liveRefresh) {
-                    clearSearchSections()
-                    adapter.replaceCells(listOf(GalleryCell.Loading(getString(R.string.search_loading))))
-                    resetGridToTop()
-                    // Only the centered loading cell carries the label; keeping the summary empty
-                    // collapses the header row above it so "Searching your library" isn't drawn twice.
-                    setSearchResultSummary("")
+                    showSearchPending()
                 }
                 mark("interim")
 
@@ -3253,11 +3248,9 @@ class MainActivity : AppCompatActivity() {
         updateDrawerState()
         updateBottomPanelState()
         updateSearchPillState()
-        // Consistent with text search: a loading screen while the embedding pass runs.
-        adapter.replaceCells(listOf(GalleryCell.Loading(getString(R.string.search_loading))))
-        resetGridToTop()
-        // The centered loading cell owns the label; the header row above it stays collapsed.
-        setSearchResultSummary("")
+        // The embedding pass is slow, so the grid may sit on the searching row — but only when it
+        // has no result of its own to keep (see showSearchPending).
+        showSearchPending()
 
         searchJob?.cancel()
         searchJob = lifecycleScope.launch {
@@ -3373,7 +3366,11 @@ class MainActivity : AppCompatActivity() {
         clearSearchAlbumChips()
     }
 
-    /** Clears every result owner before a changed query starts its debounce/search lifecycle. */
+    /**
+     * Detaches every result owner from the query that is about to change, so nothing stale can be
+     * paged, opened or counted while the new one resolves. The rendered cells are not touched here
+     * — see [showSearchPending] for why.
+     */
     private fun clearSearchPresentationForPendingInput() {
         searchResultsMaster = emptyList()
         fullSearchResults = emptyList()
@@ -3381,13 +3378,28 @@ class MainActivity : AppCompatActivity() {
         clearSearchSections()
         if (effectiveQuery().isBlank() && !imageSearchActive) {
             renderSearchEmptyState()
-        } else {
-            adapter.replaceCells(listOf(GalleryCell.Loading(getString(R.string.search_loading))))
-            // One label only — the centered loading cell, so it stays the single owner of
-            // "Searching your library" while the query is pending.
+            setSearchResultSummary("")
+            return
         }
-        // Collapses the header row above the grid: there is no count to show yet, and it can't
-        // go stale if the search then fails.
+        showSearchPending()
+    }
+
+    /**
+     * The "Searching your library" row for a query that is still resolving, shown *instead of* the
+     * result only when there is no result to keep.
+     *
+     * Every keystroke used to blank the grid to this row, so cards a user was reading vanished and
+     * came back a debounce later — a flash on each key. What is on screen while a new query runs is
+     * the previous query's result, which the render replaces in place, so the honest state is to
+     * leave it alone. The row is still worth its flash when the grid holds the pre-query hints (the
+     * first query of a session) or an older loading row, where there is nothing to preserve.
+     */
+    private fun showSearchPending() {
+        if (adapter.isShowingResults()) return
+        adapter.replaceCells(listOf(GalleryCell.Loading(getString(R.string.search_loading))))
+        resetGridToTop()
+        // Only the centered loading cell carries the label; keeping the summary empty collapses the
+        // header row above it so "Searching your library" isn't drawn twice.
         setSearchResultSummary("")
     }
 
