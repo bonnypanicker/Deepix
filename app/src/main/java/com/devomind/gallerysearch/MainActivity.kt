@@ -2682,31 +2682,30 @@ class MainActivity : AppCompatActivity() {
             val entry = merged.getOrPut(item.uri) { SearchAccumulator(item) }
             entry.metadataScore = normalizedRank(index, metadataHits.size)
         }
-        scopedSemanticHits.forEachIndexed { index, hit ->
-            val item = byUri[hit.uri] ?: return@forEachIndexed
+        scopedSemanticHits.forEach { hit ->
+            val item = byUri[hit.uri] ?: return@forEach
             val entry = merged.getOrPut(hit.uri) { SearchAccumulator(item) }
-            entry.aiScore = normalizedRank(index, scopedSemanticHits.size)
+            // The cosine itself, not its place in the list. Ranking by position throws away the
+            // margin between the best match and the tenth, which is the thing the user is reading.
+            entry.aiScore = hit.score
         }
 
-        val now = System.currentTimeMillis().coerceAtLeast(1L).toDouble()
-        return merged.values.asSequence()
-            .map { entry ->
-                val hasAi = entry.aiScore > 0f
-                val hasMetadata = entry.metadataScore > 0f
-                val recencyBoost = (entry.item.dateMillis / now).coerceIn(0.0, 1.0).toFloat() * 0.05f
-                val combinedScore =
-                    (entry.aiScore * 1.1f) +
-                        entry.metadataScore +
-                        (if (hasAi && hasMetadata) 0.35f else 0f) +
-                        recencyBoost
-                PhotoSearchResult(
-                    item = entry.item,
-                    sources = SearchSources(ai = hasAi, metadata = hasMetadata),
-                    score = combinedScore
-                )
-            }
+        return merged.values.map { entry ->
+            val hasAi = entry.aiScore > 0f
+            val hasMetadata = entry.metadataScore > 0f
+            PhotoSearchResult(
+                item = entry.item,
+                sources = SearchSources(ai = hasAi, metadata = hasMetadata),
+                score = if (hasAi) entry.aiScore else entry.metadataScore
+            )
+        }
+            // Similarity first, and the clock only breaks an exact tie. A name or album match still
+            // rides along as its own source, but it can no longer lift a weak visual match above a
+            // stronger one, and a newer photo can no longer outrank a closer one. Sources stay
+            // grouped because their scores are in different units: a cosine and a rank.
             .sortedWith(
-                compareByDescending<PhotoSearchResult> { it.score }
+                compareByDescending<PhotoSearchResult> { it.sources.ai }
+                    .thenByDescending { it.score }
                     .thenByDescending { it.item.dateMillis }
             )
             .toList()  // Return full list without hard cap
