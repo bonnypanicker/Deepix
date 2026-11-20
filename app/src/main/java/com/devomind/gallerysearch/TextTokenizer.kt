@@ -73,15 +73,7 @@ class TextTokenizer(context: Context) {
         return TokenizedText(inputIds, attentionMask)
     }
 
-    private fun normalizeQuery(query: String): String {
-        val cleaned = query.trim().replace(Regex("""\s+"""), " ")
-        if (cleaned.isBlank()) return "a photo"
-        return if (cleaned.lowercase(Locale.ROOT).startsWith(PhotoPrefix)) {
-            cleaned
-        } else {
-            "$PhotoPrefix$cleaned"
-        }
-    }
+    private fun normalizeQuery(query: String): String = withPhotoPrefix(query)
 
     private fun tokenize(text: String): List<Int> {
         val output = ArrayList<Int>()
@@ -170,5 +162,20 @@ class TextTokenizer(context: Context) {
         const val ContextLength = 77
         private const val EndOfWord = "</w>"
         private const val PhotoPrefix = "a photo of "
+
+        /**
+         * Puts a bare phrase into the caption shape the text model was trained on. Applying it twice
+         * changes nothing, which is what lets [QueryVariants] de-duplicate its phrasings before the
+         * tokenizer sees them without altering what is actually encoded.
+         */
+        fun withPhotoPrefix(query: String): String {
+            val cleaned = query.trim().replace(Regex("""\s+"""), " ")
+            if (cleaned.isBlank()) return "a photo"
+            return if (cleaned.lowercase(Locale.ROOT).startsWith(PhotoPrefix)) {
+                cleaned
+            } else {
+                "$PhotoPrefix$cleaned"
+            }
+        }
     }
 }

@@ -765,11 +765,14 @@ class GalleryRepository(
         val snapshot = snapshotIndex()
         if (snapshot.isEmpty()) return emptyList()
 
-        val variants = buildQueryVariants(query)
+        val variants = QueryVariants.build(query)
         val bestScores = HashMap<String, Float>(snapshot.size)
         for (variant in variants) {
             val queryEmbedding = textEncoder.encode(variant)
             for ((uri, embedding) in snapshot) {
+                // A row from a different model would make the similarity check throw; skipping it keeps
+                // a mismatched index file from taking the whole search down.
+                if (embedding.size != queryEmbedding.size) continue
                 val score = EmbeddingUtils.cosineSimilarity(queryEmbedding, embedding)
                 val current = bestScores[uri]
                 if (current == null || score > current) {
@@ -1031,6 +1034,7 @@ class GalleryRepository(
         val scored = ArrayList<SemanticSearchHit>(snapshot.size)
         for ((uri, embedding) in snapshot) {
             if (uri == excludeUri) continue
+            if (embedding.size != query.size) continue
             val score = EmbeddingUtils.cosineSimilarity(query, embedding)
             if (score >= floor) scored.add(SemanticSearchHit(Uri.parse(uri), score))
         }
@@ -1093,17 +1097,6 @@ class GalleryRepository(
             dateAddedMs > 0L -> dateAddedMs.coerceIn(MinValidMillis, nowPlusDay)
             else -> System.currentTimeMillis()
         }
-    }
-
-    private fun buildQueryVariants(query: String): List<String> {
-        val cleaned = query.trim().replace(Regex("""\s+"""), " ")
-        if (cleaned.isBlank()) return listOf(query)
-        return listOf(
-            cleaned,
-            "a photo of $cleaned",
-            "a picture of $cleaned",
-            "$cleaned photo"
-        ).distinct()
     }
 
     private fun isEmbeddingValid(embedding: FloatArray): Boolean {
