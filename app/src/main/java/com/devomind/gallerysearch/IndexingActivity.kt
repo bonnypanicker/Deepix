@@ -40,6 +40,12 @@ class IndexingActivity : AppCompatActivity() {
     private var folders: List<GalleryRepository.Album> = emptyList()
     private var originalScope: Set<String> = emptySet()
 
+    /**
+     * True when the checks now cover a different set of folders than the scope this screen opened
+     * with, so the index still has to be reconciled (dropped folders pruned).
+     */
+    private var scopeNeedsRebuild = false
+
     // Power snapshot so we can re-enqueue when a constraint changes mid-run
     private var originalChargingOnly = false
     private var originalNightCharging = false
@@ -93,7 +99,12 @@ class IndexingActivity : AppCompatActivity() {
         binding.btnIndexToggle.setOnClickListener {
             when {
                 isRunningState(latestIndexState) -> IndexController.pause(this)
-                else -> IndexController.start(this)
+                else -> {
+                    // The scope is stored on every check (see [saveFolderScopeNow]), and the pass this
+                    // starts reconciles against it. An exit-time rebuild would only cancel this pass.
+                    markScopeApplied()
+                    IndexController.start(this)
+                }
             }
             // Optimistic refresh; the observer will correct it as WorkManager transitions.
             renderIndexing(latestIndexState, latestLivePercent, latestCurrent, latestTotal)
@@ -290,6 +301,7 @@ class IndexingActivity : AppCompatActivity() {
                 selected.addAll(folders.map { it.id })
             }
             renderFolderState()
+            saveFolderScopeNow()
         }
     }
 
@@ -301,12 +313,9 @@ class IndexingActivity : AppCompatActivity() {
             row.folderName.text = folder.name
             row.folderCount.text = if (folder.count == 1) "1 item" else "${folder.count} items"
             row.root.setOnClickListener {
-                if (selected.add(folder.id)) {
-                    // was added (now selected) — no-op beyond the add
-                } else {
-                    selected.remove(folder.id)
-                }
+                if (!selected.add(folder.id)) selected.remove(folder.id)
                 renderFolderState()
+                saveFolderScopeNow()
             }
             row.root.tag = folder.id
             binding.foldersContainer.addView(row.root)
@@ -339,23 +348,59 @@ class IndexingActivity : AppCompatActivity() {
         super.finish()
     }
 
+    /**
+     * The checks, in stored form. "All folders" is the empty set — both what the store documents and
+     * what keeps folders created later covered — so a full selection must not be written out as an
+     * explicit list of today's folders.
+     */
+    private fun normalizedScope(): Set<String> =
+        IndexScopeStore.normalizeSelection(selected, folders.map { it.id }.toSet())
+
+    /** The folders a stored scope covers right now; the empty set means every known folder. */
+    private fun scopeCovers(scope: Set<String>): Set<String> =
+        if (scope.isEmpty()) folders.map { it.id }.toSet() else scope
+
+    private fun scopeCoversDifferentFolders(a: Set<String>, b: Set<String>): Boolean =
+        scopeCovers(a) != scopeCovers(b)
+
+    /**
+     * A pass has just been started against the current checks: from here the index is being built
+     * against them, so leaving the screen must not cancel it with a redundant rebuild.
+     */
+    private fun markScopeApplied() {
+        if (folders.isEmpty()) return
+        saveFolderScopeNow()
+        originalScope = normalizedScope()
+        scopeNeedsRebuild = false
+    }
+
+    /**
+     * Stores the checks as they are made. The play button starts a pass with whatever scope is
+     * stored, so saving only in [finish] meant "resume" indexed the previous folders and only
+     * leaving this screen applied the new selection.
+     */
+    private fun saveFolderScopeNow() {
+        if (folders.isEmpty()) return  // never loaded; don't clobber the existing scope
+        val scope = normalizedScope()
+        if (scope != IndexScopeStore.getFolderIds(this)) {
+            IndexScopeStore.setFolderIds(this, scope)
+        }
+        // Against the scope this screen opened with, not the last write: checking and unchecking
+        // back to the original selection leaves nothing to rebuild.
+        scopeNeedsRebuild = scopeCoversDifferentFolders(originalScope, scope)
+    }
+
+    /**
+     * Only a scope that actually changed needs a pass, to prune the folders that were dropped.
+     * Rescanning here on every exit is what made a paused index restart just by visiting this
+     * screen: with the old comparison, "all folders" was written as an explicit list of every
+     * folder, which read as a change on the way out.
+     */
     private fun persistFolderScopeIfChanged() {
-        if (folders.isEmpty()) return  // never loaded; don't clobber existing scope
-        val existingIds = folders.map { it.id }.toSet()
-        val newScope: Set<String> = if (selected.isEmpty()) {
-            emptySet() // unchecking everything falls back to "all"
-        } else {
-            selected.intersect(existingIds)
-        }
-        val scopeChanged = when {
-            originalScope.isEmpty() && newScope.isEmpty() -> false  // both mean "all"
-            originalScope.isEmpty() || newScope.isEmpty() -> true
-            else -> originalScope != newScope
-        }
-        if (scopeChanged) {
-            IndexScopeStore.setFolderIds(this, newScope)
-            IndexController.rescan(this)
-        }
+        saveFolderScopeNow()
+        if (!scopeNeedsRebuild) return
+        scopeNeedsRebuild = false
+        IndexController.rescan(this)
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()

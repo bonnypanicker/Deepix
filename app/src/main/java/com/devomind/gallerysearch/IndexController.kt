@@ -49,15 +49,24 @@ object IndexController {
         IndexPreferences.setIndexPaused(context, false)
         IndexPreferences.setIndexConsentGiven(context, true)
         IndexWorker.cancelStatusNotification(context)
-        enqueue(context, ExistingWorkPolicy.KEEP)
+        // REPLACE, not KEEP: an explicit start has to take effect now. KEEP would keep an older
+        // queued spec — the previous folder scope, the previous constraints — and the tap would
+        // look like nothing happened. No pass can be live here: that state offers "pause" instead.
+        enqueue(context, ExistingWorkPolicy.REPLACE)
     }
 
-    /** Indexed-folder scope changed: rebuild against the new scope now (prunes removed, adds new). */
+    /**
+     * Indexed-folder scope changed: the next pass rebuilds against the new scope (prunes removed
+     * folders, adds new ones).
+     *
+     * The scope is already stored by the picker, so this must not undo a deliberate pause or stop:
+     * starting a pass here is what made "paused" quietly resume just by changing a folder. The pass
+     * that runs on resume reconciles against the stored scope anyway.
+     */
     fun rescan(context: Context) {
-        IndexPreferences.setIndexStopped(context, false)
-        IndexPreferences.setIndexPaused(context, false)
-        IndexPreferences.setIndexConsentGiven(context, true)
         IndexWorker.cancelStatusNotification(context)
+        if (IndexPreferences.isIndexPaused(context) || IndexPreferences.isIndexStopped(context)) return
+        IndexPreferences.setIndexConsentGiven(context, true)
         enqueue(context, ExistingWorkPolicy.REPLACE)
     }
 

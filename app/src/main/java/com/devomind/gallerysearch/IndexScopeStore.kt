@@ -32,5 +32,17 @@ object IndexScopeStore {
             .apply()
     }
 
+    /**
+     * The stored form of a folder picker's checks. Everything checked means the same thing as
+     * "all folders" and is stored as the empty set: a list of every folder that happens to exist
+     * today is a frozen snapshot, so folders created later would stop being covered. Only a real
+     * subset is stored as a list.
+     */
+    fun normalizeSelection(selected: Set<String>, knownIds: Set<String>): Set<String> {
+        if (knownIds.isEmpty()) return emptySet()
+        if (selected.isEmpty() || selected.containsAll(knownIds)) return emptySet()
+        return selected.intersect(knownIds)
+    }
+
     fun isAllFolders(context: Context): Boolean = getFolderIds(context).isEmpty()
 }

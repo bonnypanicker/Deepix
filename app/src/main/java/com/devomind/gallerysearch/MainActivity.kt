@@ -1188,7 +1188,9 @@ class MainActivity : AppCompatActivity() {
     private fun resumeIndexing() {
         IndexPreferences.setIndexPaused(this, false)
         IndexPreferences.setIndexStopped(this, false)
-        enqueueIndexWork(ExistingWorkPolicy.KEEP)
+        // REPLACE, not KEEP: a resume must adopt the folder scope and constraints as they are now,
+        // instead of reviving an older queued spec that still points at the previous selection.
+        enqueueIndexWork(ExistingWorkPolicy.REPLACE)
         updateIndexingRow()
         refreshSearchEmptyStateIfVisible()
         MetroBanner.show(this, "Indexing resumed")
@@ -1253,10 +1255,19 @@ class MainActivity : AppCompatActivity() {
         collectionItems = visibleCollection
         videoItems = visibleVideos
         allUris = visibleImages.map { it.uri }
+        refreshIndexScopeUris()
+        librarySnapshotReady = true
+    }
+
+    /**
+     * The in-memory URI list the indexing gates compare against ("is there anything left to index?").
+     * Kept as a function because the folder scope can change outside a library reload — returning from
+     * the Indexing screen otherwise left the gates running against the previous selection.
+     */
+    private fun refreshIndexScopeUris() {
         val scope = IndexScopeStore.getFolderIds(applicationContext)
         indexScopeUris = if (scope.isEmpty()) allUris
-        else visibleImages.filter { it.bucketId in scope }.map { it.uri }
-        librarySnapshotReady = true
+        else imageItems.filter { it.bucketId in scope }.map { it.uri }
     }
 
     /**
@@ -6074,6 +6085,9 @@ class MainActivity : AppCompatActivity() {
         searchEmptyDataLoaded = false
         // The viewer may have applied tag edits while this screen was paused.
         tagCacheStale = true
+        // The Indexing screen may have changed the folder scope while this one was paused; the
+        // indexing gates read this list, and no library reload is pending to refresh it.
+        refreshIndexScopeUris()
         refreshSearchEmptyStateIfVisible()
         refreshBackgroundTaskRows()
         rescoreIfThresholdChanged()
