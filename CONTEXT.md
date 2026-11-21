@@ -92,7 +92,7 @@ MainActivity.submitSearch()
   → repo.search(textQuery) [semantic, unless MetadataOnly mode]
       → QueryExpander.buildWeightedEmbedding(query)  [if WordNet loaded]
       → TextEncoder.encode() × N query variants
-      → cosine similarity over embedding map; threshold 0.19f
+      → cosine similarity over embedding map; flat threshold 0.175f
   → buildMergedPhotoSearchResults()  [merge + dedupe, NO hard cap]
   → renderSearchResults() → applySortAndShow()
       → Relevance: flat ranked grid, paginate 30 at a time (infinite)
@@ -370,11 +370,10 @@ Then the functional pass (each on at least API 30 + 34):
 
 ## Search Tuning Constants (`SearchTuning.kt`)
 ```kotlin
-ScoreThreshold   = 0.19f   // cosine sim floor — real quality gate
+ScoreThreshold   = 0.175f  // cosine sim floor, the only gate
 PageSize         = 30      // per-page in paginator
 DefaultTopK      = Int.MAX_VALUE  // no artificial cap
 FallbackCount    = 0
-MaxScoreDropRatio = 0.75f
 ```
 
 ## Design Tokens (selected critical ones, `DesignTokens.kt`)

@@ -1,0 +1,4 @@
+# Downloaded calibration photos, their embedding cache and run transcripts are inputs, not source.
+photos/
+embeddings.npz
+run.log

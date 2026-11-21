@@ -786,11 +786,12 @@ class GalleryRepository(
             .sortedByDescending { it.second }
             .toList()
 
-        val bestScore = ranked.firstOrNull()?.second ?: return emptyList()
-        val relativeCutoff = bestScore * SearchTuning.MaxScoreDropRatio
+        if (ranked.isEmpty()) return emptyList()
 
+        // A flat absolute floor, on purpose. The old rule also dropped anything below a fraction of
+        // the best match, which let one strong photo raise the bar for its whole query: a subject
+        // whose best hit scored 0.33 lost the photos scoring 0.18 that it exists to return.
         val results = ranked
-            .filter { it.second >= relativeCutoff }
             .filter { it.second >= SearchTuning.ScoreThreshold }
             .map { SemanticSearchHit(uri = Uri.parse(it.first), score = it.second) }
 
