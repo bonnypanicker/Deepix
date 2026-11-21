@@ -10,5 +10,7 @@ object SearchTuning {
      * GalleryRepository.search().
      */
     const val ScoreThreshold    = 0.175f
+    /** TEMP test-build switch: the stricter floor this build can be flipped to on-device. */
+    const val ScoreThresholdStrict = 0.19f
     const val FallbackCount     = 0
 }

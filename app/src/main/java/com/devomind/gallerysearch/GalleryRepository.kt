@@ -791,8 +791,11 @@ class GalleryRepository(
         // A flat absolute floor, on purpose. The old rule also dropped anything below a fraction of
         // the best match, which let one strong photo raise the bar for its whole query: a subject
         // whose best hit scored 0.33 lost the photos scoring 0.18 that it exists to return.
+        // TEMP test-build switch: IndexPreferences.searchThreshold() is 0.175 unless the settings
+        // row was flipped, in which case it is 0.19.
+        val threshold = IndexPreferences.searchThreshold(context)
         val results = ranked
-            .filter { it.second >= SearchTuning.ScoreThreshold }
+            .filter { it.second >= threshold }
             .map { SemanticSearchHit(uri = Uri.parse(it.first), score = it.second) }
 
         return results

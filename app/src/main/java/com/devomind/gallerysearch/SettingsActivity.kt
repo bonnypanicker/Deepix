@@ -70,6 +70,7 @@ class SettingsActivity : AppCompatActivity() {
         bindAlbums()
         bindIndexing()
         bindAbout()
+        bindScoreThreshold()
     }
 
     override fun onResume() {
@@ -102,6 +103,22 @@ class SettingsActivity : AppCompatActivity() {
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             binding.topBar.updatePadding(top = bars.top + dp(8))
             insets
+        }
+    }
+
+    // TEMP test-build threshold switch. Delete with the settings row and searchThreshold().
+    private fun bindScoreThreshold() {
+        fun render() {
+            val strict = IndexPreferences.isStrictSearchThreshold(this)
+            binding.switchScoreThreshold.isChecked = strict
+            binding.scoreThresholdSubtitle.setText(
+                if (strict) R.string.search_threshold_strict else R.string.search_threshold_loose
+            )
+        }
+        render()
+        binding.rowScoreThreshold.setOnClickListener {
+            IndexPreferences.setStrictSearchThreshold(this, !binding.switchScoreThreshold.isChecked)
+            render()
         }
     }
 

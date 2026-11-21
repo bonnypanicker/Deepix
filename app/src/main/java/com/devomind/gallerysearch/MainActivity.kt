@@ -155,6 +155,8 @@ class MainActivity : AppCompatActivity() {
     /** True while the visible grid came from the startup LIMIT preview, until the full library lands. */
     private var firstFrameWasPreview = false
     private var searchMode = SearchMode.Hybrid
+    /** TEMP test-build threshold switch: the floor the grid on screen was scored with. */
+    private var appliedScoreThreshold = Float.NaN
     private var searchJob: Job? = null
     private var searchDebounceJob: Job? = null
     private var renderJob: Job? = null
@@ -6074,12 +6076,27 @@ class MainActivity : AppCompatActivity() {
         tagCacheStale = true
         refreshSearchEmptyStateIfVisible()
         refreshBackgroundTaskRows()
+        rescoreIfThresholdChanged()
     }
 
     override fun onPause() {
         mediaRefreshScheduler.onPause()
         super.onPause()
         stopSearchHintCycle()
+    }
+
+    /**
+     * TEMP test-build threshold switch: a grid that is already on screen was scored with the floor
+     * that was active when the query ran, so flipping the value in Settings would otherwise leave the
+     * old results staring back. Re-running the same query is cheap - it reads the cached embeddings.
+     */
+    private fun rescoreIfThresholdChanged() {
+        val threshold = IndexPreferences.searchThreshold(this)
+        val changed = !appliedScoreThreshold.isNaN() && threshold != appliedScoreThreshold
+        appliedScoreThreshold = threshold
+        if (changed && binding.searchPanel.visibility == View.VISIBLE && effectiveQuery().isNotBlank()) {
+            submitSearch()
+        }
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
