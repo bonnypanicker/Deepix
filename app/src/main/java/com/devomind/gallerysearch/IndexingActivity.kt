@@ -125,7 +125,11 @@ class IndexingActivity : AppCompatActivity() {
                 // a pass that has never reported (a fresh enqueue) comes back empty, and stays hidden.
                 val current = work?.progress?.getInt(IndexWorker.ProgressCurrentKey, -1) ?: -1
                 val total = work?.progress?.getInt(IndexWorker.ProgressTotalKey, -1) ?: -1
-                latestLivePercent = livePercent
+                // Keep the last live reading instead of blanking it: pausing cancels the work and
+                // drops it to a non-RUNNING state, and the paused screen has to keep showing the
+                // number the user was looking at, not fall back to a stored value another worker
+                // may have overwritten.
+                if (livePercent != null) latestLivePercent = livePercent
                 if (current >= 0 && total > 0) {
                     latestCurrent = current
                     latestTotal = total
@@ -144,7 +148,13 @@ class IndexingActivity : AppCompatActivity() {
         // paused or idle screen. It is the wrong reading while a pass is live but has published
         // nothing yet: that is the model still loading, and the stored value belongs to the previous
         // pass — which is what flashed 100% at the start of a run.
-        val percent = livePercent ?: IndexPreferences.getIndexProgressPercent(this)
+        //
+        // When nothing is live, this session's last live reading wins over the stored value. A pause
+        // cancels the work, and the number the user was just looking at must not be replaced by a
+        // stored one that another worker could have written.
+        val percent = livePercent
+            ?: latestLivePercent
+            ?: IndexPreferences.getIndexProgressPercent(this)
         val chargingOnly = IndexPreferences.isChargingOnlyIndexing(this)
         val nightOnly = IndexPreferences.isNightChargingOnly(this)
         val waitReason = IndexPreferences.getLastIndexWaitReason(this)

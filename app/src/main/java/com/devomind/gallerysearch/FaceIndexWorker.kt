@@ -496,7 +496,10 @@ class FaceIndexWorker(
                 )
             )
         }
-        runCatching { IndexPreferences.setIndexProgressPercent(applicationContext, percent) }
+        // Deliberately NOT IndexPreferences.setIndexProgressPercent: that stored value belongs to the
+        // photo index and is what the Indexing screen shows while paused. This worker runs alongside
+        // it on the same photos, so writing its own percent here overwrote a pass paused at 25% with
+        // the face run's 100%.
         // Barrier against the Worker cancellation race: yield so the cancellation exception
         // surfaces on the next suspension point, not from inside the reporter.
         Thread.yield()
@@ -511,7 +514,7 @@ class FaceIndexWorker(
                 )
             )
         }
-        runCatching { IndexPreferences.setIndexProgressPercent(applicationContext, p.percent) }
+        // Same reason as [reportProgress] above: the face pass must not move the photo index's percent.
     }
 
     /**
