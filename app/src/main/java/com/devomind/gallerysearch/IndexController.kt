@@ -56,12 +56,12 @@ object IndexController {
     }
 
     /**
-     * Indexed-folder scope changed: the next pass rebuilds against the new scope (prunes removed
-     * folders, adds new ones).
+     * Indexed-folder scope gained a folder: the next pass encodes the photos there. A folder that
+     * was only removed needs no rescan — its indexed photos stay searchable (see [IndexRetention]).
      *
      * The scope is already stored by the picker, so this must not undo a deliberate pause or stop:
      * starting a pass here is what made "paused" quietly resume just by changing a folder. The pass
-     * that runs on resume reconciles against the stored scope anyway.
+     * that runs on resume reads the stored scope anyway.
      */
     fun rescan(context: Context) {
         IndexWorker.cancelStatusNotification(context)

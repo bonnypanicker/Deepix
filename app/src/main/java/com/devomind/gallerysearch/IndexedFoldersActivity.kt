@@ -16,12 +16,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Fresh, self-contained picker for which folders the AI search index covers. Independent of the
- * gallery view (every photo still shows normally) and of any prior album-scope code.
+ * Fresh, self-contained picker for which folders the AI search index works through. Independent of
+ * the gallery view (every photo still shows normally) and of any prior album-scope code.
  *
- * Persists to [IndexScopeStore] (empty = all folders, incl. future ones). On any change it triggers
- * [IndexController.rescan] so the index is rebuilt against the new scope — added folders get
- * indexed, unchecked folders are pruned from search results.
+ * Persists to [IndexScopeStore] (empty = all folders, incl. future ones). Only a change that adds a
+ * folder triggers [IndexController.rescan], so its photos get encoded; unchecking a folder keeps
+ * what is already indexed searchable (see [IndexRetention]) and needs no pass.
  */
 class IndexedFoldersActivity : AppCompatActivity() {
 
@@ -130,7 +130,11 @@ class IndexedFoldersActivity : AppCompatActivity() {
         }
         if (newScope != originalScope) {
             IndexScopeStore.setFolderIds(this, newScope)
-            IndexController.rescan(this)
+            // Only a folder that just joined the scope has photos waiting to be encoded. Dropping
+            // one leaves its indexed photos searchable, so it must not start a pass.
+            if (IndexScopeStore.addedFolders(originalScope, newScope, existingIds).isNotEmpty()) {
+                IndexController.rescan(this)
+            }
         }
     }
 

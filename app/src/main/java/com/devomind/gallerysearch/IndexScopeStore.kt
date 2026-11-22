@@ -3,14 +3,17 @@ package com.devomind.gallerysearch
 import android.content.Context
 
 /**
- * Which device folders (MediaStore bucket ids) the AI search index covers.
+ * Which device folders (MediaStore bucket ids) an indexing pass does its work in.
  *
  * This is completely independent of the normal gallery view — the app always shows every photo.
- * It only controls what [IndexWorker] embeds for search.
+ * It only controls where [IndexWorker] spends encoding work.
  *
  * Semantics:
  *  - empty set  => "all folders" (default) and future folders are included automatically.
- *  - non-empty  => index exactly those folders; nothing else.
+ *  - non-empty  => encode the photos of those folders that are not indexed yet.
+ *
+ * An unticked folder is not "unsearchable": photos already embedded there keep their rows and stay
+ * in AI search. Only a photo that leaves the library loses its row — see [IndexRetention].
  */
 object IndexScopeStore {
     private const val PrefName = "index_scope"
@@ -43,6 +46,18 @@ object IndexScopeStore {
         if (selected.isEmpty() || selected.containsAll(knownIds)) return emptySet()
         return selected.intersect(knownIds)
     }
+
+    /**
+     * The folders [next] will encode that [previous] did not — the only scope change that needs a
+     * pass. Unchecking a folder is deliberately not in here: rows already indexed stay searchable
+     * (see [IndexRetention]), so dropping a folder leaves nothing to rebuild.
+     */
+    fun addedFolders(previous: Set<String>, next: Set<String>, knownIds: Set<String>): Set<String> =
+        covered(next, knownIds) - covered(previous, knownIds)
+
+    /** The folders a stored scope covers; the empty set means every known folder. */
+    private fun covered(scope: Set<String>, knownIds: Set<String>): Set<String> =
+        if (scope.isEmpty()) knownIds else scope
 
     fun isAllFolders(context: Context): Boolean = getFolderIds(context).isEmpty()
 }

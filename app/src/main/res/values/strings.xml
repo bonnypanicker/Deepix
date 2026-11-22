@@ -49,7 +49,7 @@
     <string name="bin_retention_note">Deleted photos are kept here for 30 days, then removed automatically.</string>
     <string name="bin_empty_state">Recycle bin is empty</string>
     <string name="indexed_folders_title">indexed folders</string>
-    <string name="indexed_folders_intro">Choose which folders AI search indexes. This does not change your gallery — every photo still shows normally.</string>
+    <string name="indexed_folders_intro">Choose which folders AI search works through. Unticking one only skips new photos there — everything already indexed stays searchable. Your gallery shows every photo either way.</string>
     <string name="all_folders">All folders</string>
     <string name="index_every_folder_subtitle">Index every folder, including ones you add later</string>
     <string name="section_folders">FOLDERS</string>

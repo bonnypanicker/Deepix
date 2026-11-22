@@ -40,4 +40,27 @@ class IndexScopeStoreTest {
         // The exact stale shape an older build left behind: every folder written out individually.
         assertEquals(emptySet<String>(), IndexScopeStore.normalizeSelection(setOf("Screenshots", "Camera", "Downloads"), known))
     }
+
+    @Test
+    fun narrowingTheScopeNeedsNoPass() {
+        // "All folders" -> a subset only drops work. The dropped folders' indexed photos stay
+        // searchable, so there is nothing to re-encode.
+        assertEquals(emptySet<String>(), IndexScopeStore.addedFolders(emptySet(), setOf("Camera"), known))
+        assertEquals(
+            emptySet<String>(),
+            IndexScopeStore.addedFolders(setOf("Camera", "Downloads"), setOf("Camera"), known)
+        )
+    }
+
+    @Test
+    fun wideningTheScopeNamesOnlyTheNewlyCoveredFolders() {
+        assertEquals(setOf("Downloads", "Screenshots"), IndexScopeStore.addedFolders(setOf("Camera"), emptySet(), known))
+        assertEquals(setOf("Downloads"), IndexScopeStore.addedFolders(setOf("Camera"), setOf("Camera", "Downloads"), known))
+    }
+
+    @Test
+    fun anUnchangedSelectionNeedsNoPass() {
+        assertEquals(emptySet<String>(), IndexScopeStore.addedFolders(emptySet(), emptySet(), known))
+        assertEquals(emptySet<String>(), IndexScopeStore.addedFolders(setOf("Camera"), setOf("Camera"), known))
+    }
 }

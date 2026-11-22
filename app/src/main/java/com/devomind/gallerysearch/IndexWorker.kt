@@ -139,14 +139,17 @@ class IndexWorker(
             )
 
             // The full set of images currently in scope (empty scope = all folders).
-            // buildIndex reconciles the index against this exact set: it encodes newly-added
-            // photos and drops embeddings for any photo no longer in scope (e.g. an unchecked
-            // folder), so scope changes take effect deterministically.
+            // buildIndex encodes the photos in this set that need work; it prunes rows against the
+            // whole library instead, so unchecking a folder only stops future work there and never
+            // deletes what AI search can already find (see IndexRetention).
             val scope = IndexScopeStore.getFolderIds(applicationContext)
             val items = repository.getImageItemsForAlbumIds(scope)
+            val libraryItems =
+                if (scope.isEmpty()) items else repository.getImageItemsForAlbumIds(emptySet())
+            val libraryUris = libraryItems.mapTo(HashSet(libraryItems.size)) { it.uri.toString() }
             if (items.isEmpty()) {
-                // No images in scope — prune the index to empty, then finish.
-                repository.buildIndex(items, onProgress = { _, _ -> })
+                // Nothing in scope — keep what is already indexed, drop only what the library lost.
+                repository.buildIndex(items, libraryUris = libraryUris, onProgress = { _, _ -> })
                 IndexPreferences.saveLastIndexedTime(applicationContext)
                 IndexPreferences.setIndexProgressPercent(applicationContext, 100)
                 return Result.success()
@@ -161,7 +164,7 @@ class IndexWorker(
             val dbRepository = DbRepository(applicationContext)
             val signatures = dbRepository.embeddingSignatures()
 
-            repository.buildIndex(items, signatures = signatures, onProgress = { current, _ ->
+            repository.buildIndex(items, signatures = signatures, libraryUris = libraryUris, onProgress = { current, _ ->
                 if (IndexPreferences.isIndexPaused(applicationContext)) {
                     throw IndexPausedException()
                 }

@@ -528,19 +528,25 @@ class GalleryRepository(
      * state); a photo whose current state differs is re-encoded even though its embedding exists, and
      * embeddings with no record are handed to [onUnsignedEmbeddings] to be recorded without being
      * re-encoded. The repository stays database-free, so both come in and go out as callbacks.
+     *
+     * [items] is this pass's work (the folders the user has ticked); [libraryUris] is every photo the
+     * library still holds and is the only set rows are pruned against — see [IndexRetention].
      */
     suspend fun buildIndex(
         items: List<MediaItem>,
         signatures: Map<String, MediaSignature> = emptyMap(),
+        libraryUris: Set<String> = items.mapTo(HashSet()) { it.uri.toString() },
         onProgress: (current: Int, total: Int) -> Unit,
         onEmbeddingsStored: suspend (List<IndexedEmbedding>) -> Unit = {},
         onUnsignedEmbeddings: suspend (List<MediaItem>) -> Unit = {}
     ) {
-        val uriSet = items.mapTo(HashSet()) { it.uri.toString() }
-        // Reconcile against the requested set: keep in-scope embeddings, drop everything else
-        // (e.g. photos from a folder the user unchecked).
+        // Reconcile against the library, not against [items]: unchecking a folder stops the work a
+        // pass would do there, but the photos already embedded stay searchable.
         val onDisk = loadIndex()
-        val loaded = onDisk.filterKeys { it in uriSet }
+        val loaded = onDisk.filterKeys { IndexRetention.keeps(it, libraryUris) }
+        // A row dropped here only reaches the base on a rewrite, so the exit path must not skip it
+        // as "nothing pending".
+        val prunedRows = loaded.size != onDisk.size
         synchronized(indexLock) {
             embeddings = LinkedHashMap(loaded)
             // Reconciled against disk: nothing is pending until this pass stores new records.
@@ -570,9 +576,13 @@ class GalleryRepository(
         if (unsigned.isNotEmpty()) onUnsignedEmbeddings(unsigned)
 
         if (unindexed.isEmpty()) {
-            // Nothing new to encode, but persist any pruning so removed folders don't reappear.
-            compactIndex(force = loaded.size != onDisk.size)
-            Log.d(Tag, "All $total images already indexed (pruned ${onDisk.size - loaded.size})")
+            // Nothing new to encode, but persist any pruning so rows of deleted photos don't linger.
+            compactIndex(force = prunedRows)
+            if (prunedRows) {
+                Log.d(Tag, "All $total images already indexed (dropped ${onDisk.size - loaded.size} deleted rows)")
+            } else {
+                Log.d(Tag, "All $total images already indexed")
+            }
             onProgress(total, total)
             return
         }
@@ -582,9 +592,6 @@ class GalleryRepository(
         val alreadyDone = total - unindexed.size
         var processedNew = 0
         val dirty = AtomicBoolean(false)
-        // The reconcile above dropped embeddings for photos that left the scope (an unchecked folder).
-        // Only a base rewrite persists that, so the exit path must not skip it as "nothing pending".
-        val scopePruned = loaded.size != onDisk.size
 
         // Report the already-indexed count immediately
         onProgress(alreadyDone, total)
@@ -674,7 +681,7 @@ class GalleryRepository(
             // up to a full interval of finished inference thrown away per thermal wait. Skipped when
             // there is nothing to fold: a wait that fired before any batch finished would otherwise pay
             // a whole-library rewrite for no work at all.
-            compactIndex(force = scopePruned)
+            compactIndex(force = prunedRows)
         }
     }
 

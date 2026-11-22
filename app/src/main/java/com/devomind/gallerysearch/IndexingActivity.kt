@@ -101,7 +101,7 @@ class IndexingActivity : AppCompatActivity() {
                 isRunningState(latestIndexState) -> IndexController.pause(this)
                 else -> {
                     // The scope is stored on every check (see [saveFolderScopeNow]), and the pass this
-                    // starts reconciles against it. An exit-time rebuild would only cancel this pass.
+                    // starts encodes exactly that scope. An exit-time rebuild would only cancel it.
                     markScopeApplied()
                     IndexController.start(this)
                 }
@@ -366,12 +366,8 @@ class IndexingActivity : AppCompatActivity() {
     private fun normalizedScope(): Set<String> =
         IndexScopeStore.normalizeSelection(selected, folders.map { it.id }.toSet())
 
-    /** The folders a stored scope covers right now; the empty set means every known folder. */
-    private fun scopeCovers(scope: Set<String>): Set<String> =
-        if (scope.isEmpty()) folders.map { it.id }.toSet() else scope
-
-    private fun scopeCoversDifferentFolders(a: Set<String>, b: Set<String>): Boolean =
-        scopeCovers(a) != scopeCovers(b)
+    private fun scopeAddsFolders(original: Set<String>, scope: Set<String>): Boolean =
+        IndexScopeStore.addedFolders(original, scope, folders.map { it.id }.toSet()).isNotEmpty()
 
     /**
      * A pass has just been started against the current checks: from here the index is being built
@@ -397,14 +393,17 @@ class IndexingActivity : AppCompatActivity() {
         }
         // Against the scope this screen opened with, not the last write: checking and unchecking
         // back to the original selection leaves nothing to rebuild.
-        scopeNeedsRebuild = scopeCoversDifferentFolders(originalScope, scope)
+        scopeNeedsRebuild = scopeAddsFolders(originalScope, scope)
     }
 
     /**
-     * Only a scope that actually changed needs a pass, to prune the folders that were dropped.
-     * Rescanning here on every exit is what made a paused index restart just by visiting this
-     * screen: with the old comparison, "all folders" was written as an explicit list of every
-     * folder, which read as a change on the way out.
+     * A pass is only needed when the checks cover a folder they didn't before: that folder's photos
+     * still have to be encoded. Unchecking one needs no rebuild — its indexed photos stay searchable
+     * (see [IndexRetention]) and the pass simply stops doing work there.
+     *
+     * Rescanning on every exit is what made a paused index restart just by visiting this screen:
+     * with the old comparison, "all folders" was written as an explicit list of every folder, which
+     * read as a change on the way out.
      */
     private fun persistFolderScopeIfChanged() {
         saveFolderScopeNow()
