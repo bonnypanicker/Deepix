@@ -7,7 +7,7 @@ The app used to keep a photo when both of these held:
     score >= ScoreThreshold                      (0.19, the absolute floor)
 
 where `best_score` is the highest score the query reaches anywhere in the library. It now ships the
-absolute floor alone, at 0.175, because this measurement showed the relative term to be the thing
+absolute floor alone, at 0.179, because this measurement showed the relative term to be the thing
 that emptied real queries: one strong photo raised the bar for its whole query.
 
 The sweep still covers both terms. The ratio is what was measured and rejected, and keeping it in

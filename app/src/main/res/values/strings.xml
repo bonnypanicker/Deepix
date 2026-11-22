@@ -210,7 +210,7 @@
     <string name="manage_indexing">Manage indexing</string>
     <!-- TEMP test-build threshold switch; delete with the settings row. -->
     <string name="search_threshold">Search threshold</string>
-    <string name="search_threshold_loose">0.175 · shows more</string>
+    <string name="search_threshold_loose">0.179 · shows more</string>
     <string name="search_threshold_strict">0.19 · shows fewer</string>
     <string name="section_privacy">PRIVACY</string>
     <string name="blur_sensitive">Blur sensitive content · Beta</string>

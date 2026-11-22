@@ -19,13 +19,20 @@ score >= best_score * SearchTuning.MaxScoreDropRatio     // 0.75, the "relative"
 score >= SearchTuning.ScoreThreshold                     // 0.19
 ```
 
-It now ships the second line only, at 0.175. The sweep still covers both terms, because the
+It now ships the second line only, at 0.179. The sweep still covers both terms, because the
 relative cutoff is what this calibration found to be harmful: one strong photo raised the bar for
 its whole query, and a subject whose best hit scored 0.33 lost the photos scoring 0.18 that it
 exists to return. `results.json` keeps the pre-change setting as its baseline row. Nothing else
 filters, so the threshold is the whole rule: `DefaultTopK` is `Int.MAX_VALUE` and `FallbackCount` is
 0. `calibrate.py` sweeps the pair `(threshold, ratio)` over this rule and reports recall,
 false-positive rate, precision and F1 per query plus the macro average.
+
+0.179 rather than the 0.175 the sweep also names: 0.175 is the F1 maximum (78% recall, 2.1%
+unrelated), but 0.180 falls off a measured cliff to 74% for a tenth of a point of precision, and
+0.179 is the last point on the near side of it - 75% recall, 1.6% unrelated. Don't read that ledge
+as a stable optimum: it is where this photo set's borderline positives happen to cluster, and a
+score shift of half a point (the gap between these 640px thumbnails and full-resolution phone
+photos) moves the operating point further than the 0.004 step does.
 
 ## Why it can be trusted
 

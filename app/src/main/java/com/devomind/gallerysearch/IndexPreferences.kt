@@ -436,7 +436,7 @@ object IndexPreferences {
             .apply()
     }
 
-    // TEMP test-build threshold switch: lets a build be compared on-device at 0.175 vs 0.19 before
+    // TEMP test-build threshold switch: lets a build be compared on-device at 0.179 vs 0.19 before
     // the value is settled. Delete this, [KeyStrictSearchThreshold], [SearchTuning.ScoreThresholdStrict],
     // the settings row and the read in GalleryRepository.search() to remove it.
     fun isStrictSearchThreshold(context: Context): Boolean {
