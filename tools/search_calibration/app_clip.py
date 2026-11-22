@@ -40,7 +40,9 @@ IMAGE_SIZE = 256
 PHOTO_PREFIX = "a photo of "
 
 _TOKEN_PATTERN = re.compile(
-    r"""<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]+|[^\s\p{L}\p{N}]+""",
+    # Single digits, not runs: the BPE merges were trained over one digit per piece (see the note in
+    # TextTokenizer.kt). This file is a port of that tokenizer, so the pattern has to match it.
+    r"""<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+""",
     re.IGNORECASE,
 )
 

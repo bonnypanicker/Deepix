@@ -9,15 +9,27 @@ data class TokenizedText(
     val attentionMask: LongArray
 )
 
+/**
+ * The CLIP pre-tokenizer split, applied after lowercasing. Pieces are what the BPE runs on.
+ *
+ * Digits are matched **one at a time**. The vocabulary carries the word-final digit tokens the text
+ * tower was trained on ("2</w>", "3</w>") and none for whole numbers ("2023</w>"), so a run matched as
+ * `[\p{N}]+` arrived as a single word-final piece and tokenized differently from training.
+ */
+internal val ClipTokenPattern = Regex(
+    """<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+""",
+    setOf(RegexOption.IGNORE_CASE)
+)
+
+/** Lowercases [text] and returns every regex piece, in order. */
+internal fun clipTokenPieces(text: String): List<String> =
+    ClipTokenPattern.findAll(text.lowercase(Locale.ROOT)).map { it.value }.toList()
+
 class TextTokenizer(context: Context) {
     private val vocab: Map<String, Int>
     private val bpeRanks: Map<Pair<String, String>, Int>
     private val byteEncoder: Map<Int, Char> = buildByteEncoder()
     private val cache = HashMap<String, String>()
-    private val tokenPattern = Regex(
-        """<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]+|[^\s\p{L}\p{N}]+""",
-        setOf(RegexOption.IGNORE_CASE)
-    )
 
     private val startOfTextId: Int
     private val endOfTextId: Int
@@ -77,8 +89,7 @@ class TextTokenizer(context: Context) {
 
     private fun tokenize(text: String): List<Int> {
         val output = ArrayList<Int>()
-        for (match in tokenPattern.findAll(text.lowercase(Locale.ROOT))) {
-            val token = match.value
+        for (token in clipTokenPieces(text)) {
             if (token == "<|startoftext|>") {
                 output += startOfTextId
                 continue
