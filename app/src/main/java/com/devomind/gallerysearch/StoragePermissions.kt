@@ -38,6 +38,20 @@ object StoragePermissions {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         } || hasPartialMediaAccess(context)
 
+    /**
+     * Whether a photo's original EXIF block — the one carrying GPS — can be read.
+     *
+     * On API 29+ MediaStore hands back a stripped block without `ACCESS_MEDIA_LOCATION`, which is
+     * why the Locations sweep must not re-read stored rows while this is false: the stripped read
+     * would be written over a row that already had good coordinates. Below 29 there is nothing to
+     * redact.
+     */
+    fun canReadOriginalExif(context: Context): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_MEDIA_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
     /** API 34+ "Select photos": full media access denied but a user-selected subset granted. */
     fun hasPartialMediaAccess(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < 34) return false

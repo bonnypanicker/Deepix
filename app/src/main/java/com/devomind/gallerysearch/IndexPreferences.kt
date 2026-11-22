@@ -34,6 +34,10 @@ object IndexPreferences {
     private const val KeyAppFont = "app_font"
     /** TEMP test-build threshold switch. Remove with [searchThreshold]. */
     private const val KeyStrictSearchThreshold = "strict_search_threshold"
+    /** How many already-stored EXIF rows the Locations sweep has re-read to repair redacted GPS. */
+    private const val KeyExifRevisitCursor = "exif_revisit_cursor"
+    /** Whether ACCESS_MEDIA_LOCATION was available the last time the sweep ran. */
+    private const val KeyExifRepairPermission = "exif_repair_permission"
     /** Last entitlement verdict Play could prove, by [Entitlement] name. */
     private const val KeyProEntitlement = "pro_entitlement"
     /** Set once the user takes the FirstRun onboarding path. */
@@ -458,6 +462,36 @@ object IndexPreferences {
         } else {
             SearchTuning.ScoreThreshold
         }
+
+    /**
+     * Position of the repair sweep over already-stored EXIF rows.
+     *
+     * The Locations section re-reads stored rows because older builds saved GPS as redacted. That
+     * used to restart at the first row on every search, which re-opened the same 150 files forever;
+     * this cursor makes it a single pass over the library instead.
+     */
+    fun exifRevisitCursor(context: Context): Int =
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getInt(KeyExifRevisitCursor, 0)
+
+    fun setExifRevisitCursor(context: Context, cursor: Int) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KeyExifRevisitCursor, cursor)
+            .apply()
+    }
+
+    /** True when the last sweep could read original EXIF (a false→true edge restarts the sweep). */
+    fun hadExifRepairPermission(context: Context): Boolean =
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .getBoolean(KeyExifRepairPermission, false)
+
+    fun setExifRepairPermission(context: Context, had: Boolean) {
+        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KeyExifRepairPermission, had)
+            .apply()
+    }
 
     private const val KeyAlbumFolderRoot = "album_folder_root"
 

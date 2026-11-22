@@ -159,6 +159,8 @@ class MainActivity : AppCompatActivity() {
     private var appliedScoreThreshold = Float.NaN
     private var searchJob: Job? = null
     private var searchDebounceJob: Job? = null
+    /** The Locations card resolves after the first paint — see [scheduleLocationSection]. */
+    private var locationSectionJob: Job? = null
     private var renderJob: Job? = null
     private var lastProgressRefresh = -1
     private var indexRunning = false
@@ -2036,6 +2038,7 @@ class MainActivity : AppCompatActivity() {
         val repo = repository ?: return
         searchDebounceJob?.cancel()
         searchJob?.cancel()
+        locationSectionJob?.cancel()
         val parsedQuery = StructuredSearch.parse(query)
         val sessionMode = searchMode
         val sessionAlbumId = currentAlbum?.id
@@ -2126,6 +2129,7 @@ class MainActivity : AppCompatActivity() {
                         preserveViewport = liveRefresh
                     )
                     mark("render")
+                    scheduleLocationSection(query, sessionMode, sessionSection, sessionAlbumId)
                     return@launch
                 }
                 if (barePersonWord) personClause = null
@@ -2173,6 +2177,7 @@ class MainActivity : AppCompatActivity() {
                         preserveViewport = liveRefresh
                     )
                     mark("render")
+                    scheduleLocationSection(query, sessionMode, sessionSection, sessionAlbumId)
                     return@launch
                 }
 
@@ -2231,6 +2236,7 @@ class MainActivity : AppCompatActivity() {
                     preserveViewport = liveRefresh
                 )
                 mark("render")
+                scheduleLocationSection(query, sessionMode, sessionSection, sessionAlbumId)
             } catch (cancelled: CancellationException) {
                 Log.d(TAG, "Search job cancelled.", cancelled)
             } catch (error: Throwable) {
@@ -3370,6 +3376,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun clearSearchSections() {
+        locationSectionJob?.cancel()
         searchSectionResults = emptyList()
         selectedSearchSection = null
         selectedSearchAlbumId = null
@@ -3540,9 +3547,8 @@ class MainActivity : AppCompatActivity() {
         val matchedAlbums = if (text.isBlank()) emptyList() else albums.filter { it.name.lowercase(Locale.getDefault()).contains(text) }
         val matchedTags = if (text.isBlank()) emptyList() else allTags.filter { it.name.lowercase(Locale.getDefault()).contains(text) }
         val tagUris = matchedTags.flatMapTo(LinkedHashSet()) { tag -> tagUriMap[tag.id].orEmpty() }
-        val db = dbRepository
         val explicitPeople = peopleResultUris?.mapNotNull(resultByUri::get).orEmpty()
-        // Name-based sections (Albums/Tags/Locations) resolve through the current photo pool and
+        // Name-based sections (Albums/Tags) resolve through the current photo pool and
         // stand on their own — they are never intersected with the semantic/metadata result sets.
         val pool = currentSearchPhotoItems()
         val itemsByUri = pool.associateBy { it.uri }
@@ -3576,21 +3582,53 @@ class MainActivity : AppCompatActivity() {
             if (!personScoped && explicitPeople.isNotEmpty()) {
                 add(SearchSectionResult(SearchSection.People, explicitPeople.size, explicitPeople))
             }
-            // Locations match the query's place name against photo GPS (EXIF -> geocode radius) —
-            // independent of the semantic/metadata result sets, like Albums. Fails soft (empty match).
-            if (!text.isBlank() && db != null) {
-                val locationUris = LocationSearch.matchingUris(
-                    this@MainActivity, text, db, pool.map { it.uri }
-                )
-                if (locationUris.isNotEmpty()) {
-                    val locationResults = locationUris.mapNotNull { uri ->
-                        itemsByUri[Uri.parse(uri)]?.let { PhotoSearchResult(it, SearchSources(), 1f) }
-                    }
-                    if (locationResults.isNotEmpty()) {
-                        add(SearchSectionResult(SearchSection.Locations, locationResults.size, locationResults))
-                    }
-                }
+        }
+    }
+
+    /**
+     * Resolves the "Locations" card after the semantic/metadata results are already on screen.
+     *
+     * The pass reads MediaProvider (EXIF for photos never opened in the viewer), the GPS table and the
+     * geocode cache, so running it inside [buildSearchSections] delayed every text search by the time
+     * it took to read a bounded batch of photos — on the render path, for a card most queries never
+     * fill. Appending it re-enters [showSearchLanding], which keeps the scroll position because the
+     * landing is already showing.
+     */
+    private fun scheduleLocationSection(
+        query: String,
+        sessionMode: SearchMode,
+        sessionSection: Section,
+        sessionAlbumId: String?
+    ) {
+        locationSectionJob?.cancel()
+        val text = StructuredSearch.parse(query).textQuery.trim()
+        val db = dbRepository
+        if (text.isBlank() || db == null) return
+        val pool = currentSearchPhotoItems()
+        if (pool.isEmpty()) return
+        // The EXIF sweep covers the whole library, not the section-scoped pool: the repair cursor is
+        // an index into a stable list, and a Favorites- or folder-scoped search would otherwise
+        // advance it over a shorter list and skip rows. Matching results are still mapped through
+        // [pool], so which photos the card can show is unchanged.
+        val libraryUris = imageItems.map { it.uri }
+        locationSectionJob = lifecycleScope.launch {
+            // matchingUris dispatches its own I/O; this await suspends the coroutine, not the thread.
+            val locationUris = LocationSearch.matchingUris(
+                this@MainActivity, text, db, libraryUris
+            )
+            if (locationUris.isEmpty()) return@launch
+            if (!isSearchSessionCurrent(query, sessionMode, sessionSection, sessionAlbumId)) return@launch
+            if (searchSectionResults.any { it.section == SearchSection.Locations }) return@launch
+            val itemsByUri = pool.associateBy { it.uri }
+            val results = locationUris.mapNotNull { uri ->
+                itemsByUri[Uri.parse(uri)]?.let { item -> PhotoSearchResult(item, SearchSources(), 1f) }
             }
+            if (results.isEmpty()) return@launch
+            searchSectionResults = searchSectionResults +
+                SearchSectionResult(SearchSection.Locations, results.size, results)
+            // The landing is the only surface that lists sections. A drilled-in grid keeps its
+            // viewport and still finds the card when the user comes back to the landing.
+            if (selectedSearchSection == null) showSearchLanding()
         }
     }
 

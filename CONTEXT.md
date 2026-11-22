@@ -97,6 +97,11 @@ MainActivity.submitSearch()
   → renderSearchResults() → applySortAndShow()
       → Relevance: flat ranked grid, paginate 30 at a time (infinite)
       → Newest/Oldest: month-grouped timeline cells (cap 1500), pagination off
+  → scheduleLocationSection()  [after the first paint]
+      → LocationSearch.matchingUris()  [Dispatchers.IO: geocode target, then EXIF fill]
+      → unread photos first, stored rows revisited by a persisted one-way cursor
+        (one sweep of the library, never the same 150 files per keystroke)
+      → card appended to the landing; a drilled-in grid is never yanked
 
 Search UI (revamp):
   - Search bar: magnifier / query-image thumbnail + input + × clear
