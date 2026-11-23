@@ -36,7 +36,10 @@ object IndexHardwareMonitor {
             } else {
                 false
             },
-            isDeviceLightIdle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            // `isDeviceLightIdleMode` is API 33, not 23. The `M` guard beside it belongs to
+            // `isDeviceIdleMode`; copying it here meant calling a method that does not exist on
+            // Android 6–12L, which threw NoSuchMethodError on every hardware probe (the indexing pass).
+            isDeviceLightIdle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 powerManager.isDeviceLightIdleMode
             } else {
                 false

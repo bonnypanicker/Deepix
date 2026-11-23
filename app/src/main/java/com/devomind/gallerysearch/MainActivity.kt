@@ -136,6 +136,15 @@ class MainActivity : AppCompatActivity() {
             mediaRefreshScheduler.onMediaChanged()
         }
     }
+
+    /**
+     * The MediaStore provider root, built from [MediaStore.AUTHORITY] instead of
+     * [MediaStore.AUTHORITY_URI]. That field only exists from API 29, and a static read of it is
+     * resolved by the runtime, not inlined — so on Android 8/9 it throws `NoSuchFieldError` at launch,
+     * before the first frame, which is the crash 26–28 devices reported. `AUTHORITY` has been a
+     * compile-time String since API 1, so the URI is the same value ("content://media") on every level.
+     */
+    private val mediaStoreAuthorityUri: Uri = Uri.parse("content://${MediaStore.AUTHORITY}")
     private var folderTreeRoots = listOf<FolderNode>()
     /**
      * The folder tree as album resolution sees it, held against the exact [collectionItems] list it
@@ -917,7 +926,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun initializeCore() {
         if (!mediaObserverRegistered) {
-            contentResolver.registerContentObserver(MediaStore.AUTHORITY_URI, true, mediaObserver)
+            contentResolver.registerContentObserver(mediaStoreAuthorityUri, true, mediaObserver)
             mediaObserverRegistered = true
         }
         // -------------------- TRACK A (UI critical path) --------------
