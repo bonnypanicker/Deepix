@@ -736,17 +736,17 @@ class SafeActivity : AppCompatActivity() {
     }
 
     private fun loadItems() {
-        showBusy()
+        val refresh = showBusy()
         lifecycleScope.launch {
             val items = runCatching {
                 withContext(Dispatchers.IO) { SafeManager.listItems(this@SafeActivity) }
             }.getOrElse {
-                hideBusy()
+                hideBusy(refresh)
                 MetroBanner.show(this@SafeActivity, "Safe file can't be read")
                 showLock()
                 return@launch
             }
-            hideBusy()
+            hideBusy(refresh)
             adapter.submit(items)
             binding.emptyState.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
         }
@@ -1123,14 +1123,25 @@ class SafeActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Which [showBusy] currently owns the overlay. Unlocking with photos waiting to move in starts a
+     * grid refresh *and* the import: the refresh is the slower of the two and used to hide the
+     * encryption spinner when it finished, leaving a bare grid with no sign of the write.
+     */
+    private var busyGeneration = 0
+
     /** Shows the busy overlay; [label] adds a progress line ("Encrypting 3 of 12…"). */
-    private fun showBusy(label: String? = null) {
+    private fun showBusy(label: String? = null): Int {
+        busyGeneration++
         binding.busyPanel.visibility = View.VISIBLE
         binding.busyLabel.visibility = if (label != null) View.VISIBLE else View.GONE
         binding.busyLabel.text = label
+        return busyGeneration
     }
 
-    private fun hideBusy() {
+    /** Hides the overlay when [generation] still owns it; a stale refresh leaves a write's progress up. */
+    private fun hideBusy(generation: Int = busyGeneration) {
+        if (generation != busyGeneration) return
         binding.busyPanel.visibility = View.GONE
         binding.busyLabel.visibility = View.GONE
     }
