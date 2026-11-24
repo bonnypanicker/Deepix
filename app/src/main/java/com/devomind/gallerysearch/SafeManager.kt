@@ -12,6 +12,7 @@ import android.provider.OpenableColumns
 import android.util.Log
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.locks.ReentrantLock
 import javax.crypto.SecretKey
 
 /**
@@ -60,6 +61,14 @@ object SafeManager {
 
     private val workGuard = SafeWorkGuard()
 
+    /**
+     * One rewrite of the archive at a time. Every mutation edits its own copy and replaces the
+     * original, so two of them overlapping would each build on a vault the other has already moved
+     * past — the older replace silently dropping the newer change, or both appending to the same
+     * staging copy until the vault no longer reads whole.
+     */
+    private val writeLock = ReentrantLock()
+
     val isUnlocked: Boolean get() = sessionPassword != null
     fun currentPassword(): String? = sessionPassword
 
@@ -91,11 +100,16 @@ object SafeManager {
 
     /** Runs one archive mutation with the lock held off until it lands. */
     private fun <T> guarded(context: Context, body: () -> T): T {
-        workGuard.begin()
+        writeLock.lock()
         try {
-            return body()
+            workGuard.begin()
+            try {
+                return body()
+            } finally {
+                if (workGuard.end()) applyLock(context)
+            }
         } finally {
-            if (workGuard.end()) applyLock(context)
+            writeLock.unlock()
         }
     }
 

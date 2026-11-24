@@ -33,6 +33,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.viewpager2.widget.ViewPager2
 import com.devomind.gallerysearch.databinding.ActivitySafeBinding
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -75,6 +76,8 @@ class SafeActivity : AppCompatActivity() {
 
     private var pendingImportUris: List<Uri> = emptyList()
     private val importedForDeletion = ArrayList<Uri>()
+    /** Back during a vault write waits for it; see [SafeLeaveGate]. */
+    private val leaveGate = SafeLeaveGate()
     /** Set before launching external system UI so onStop doesn't relock mid-flow. */
     private var suppressRelock = false
     /** True while a configured vault's archive is not where the app looks for it (migration). */
@@ -205,7 +208,11 @@ class SafeActivity : AppCompatActivity() {
         when {
             binding.viewerOverlay.visibility == View.VISIBLE -> closeViewer()
             adapter.isSelectionMode() -> adapter.clearSelection()
-            else -> finish()
+            leaveGate.requestLeave() -> finish()
+            // The vault is being rewritten right now. Leaving would not stop that write — it would
+            // only discard its result, so the photos would sit in the Safe and in the gallery both.
+            // The exit is parked instead and the write's own completion closes the screen.
+            else -> MetroBanner.show(this, "Finishing the Safe write…")
         }
     }
 
@@ -789,7 +796,7 @@ class SafeActivity : AppCompatActivity() {
      * is returned for deletion, a photo that did not make it into the vault stays exactly where it was.
      */
     private fun runImport(uris: List<Uri>, isMove: Boolean) {
-        lifecycleScope.launch {
+        vaultWrite {
             val allowed = withContext(Dispatchers.IO) {
                 val inVault = runCatching { SafeManager.listItems(this@SafeActivity).size }.getOrDefault(0)
                 uris.take(
@@ -802,7 +809,7 @@ class SafeActivity : AppCompatActivity() {
                     this@SafeActivity,
                     getString(R.string.gate_safe, FreeTier.FreeSafePhotos)
                 )
-                return@launch
+                return@vaultWrite
             }
             showBusy(if (allowed.size > 1) "Encrypting 1 of ${allowed.size}…" else "Encrypting…")
             val result = withContext(Dispatchers.IO) {
@@ -852,7 +859,7 @@ class SafeActivity : AppCompatActivity() {
         val targets = adapter.selectedItems()
         if (targets.isEmpty()) return
         showBusy(if (targets.size > 1) "Restoring 1 of ${targets.size}…" else "Restoring…")
-        lifecycleScope.launch {
+        vaultWrite {
             var restored = 0
             var failed = 0
             for ((index, item) in targets.withIndex()) {
@@ -888,7 +895,7 @@ class SafeActivity : AppCompatActivity() {
             positive = "Remove",
             danger = true
         ) {
-            lifecycleScope.launch {
+            vaultWrite {
                 showBusy(if (targets.size > 1) "Removing 1 of ${targets.size}…" else "Removing…")
                 var removed = 0
                 var failed = 0
@@ -1094,6 +1101,25 @@ class SafeActivity : AppCompatActivity() {
             java.io.File(filesDir, "safe_thumbs").deleteRecursively()
             Toast.makeText(this, "Safe removed from this device", Toast.LENGTH_LONG).show()
             finish()
+        }
+    }
+
+    /**
+     * Runs [body] as a vault write the screen may not walk away from.
+     *
+     * The write does not stop when the activity does — the archive rewrite is blocking — so closing
+     * the screen mid-write only loses the answer (an import would report nothing to delete from the
+     * gallery while the vault already holds the photos). [SafeLeaveGate] parks a back press and hands
+     * it back here once the last write settles.
+     */
+    private fun vaultWrite(body: suspend CoroutineScope.() -> Unit) {
+        lifecycleScope.launch {
+            leaveGate.begin()
+            try {
+                body()
+            } finally {
+                if (leaveGate.settle() && !isFinishing && !isDestroyed) finish()
+            }
         }
     }
 
