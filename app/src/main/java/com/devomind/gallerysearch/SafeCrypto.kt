@@ -45,6 +45,9 @@ object SafeCrypto {
     const val ThumbMaxPx = 512
     const val VaultExtension = ".zip"
 
+    /** Suffix of the sibling copy a settled removal is built on before it replaces the vault. */
+    private const val SETTLE_SUFFIX = ".remove"
+
     sealed interface ArchiveRead {
         data object Missing : ArchiveRead
         data class Ok(val names: List<String>) : ArchiveRead
@@ -295,6 +298,44 @@ object SafeCrypto {
 
     fun removeEntry(zip: File, innerName: String, password: CharArray) {
         ZipFile(zip, password).use { it.removeFile(innerName) }
+    }
+
+    /**
+     * Drops [innerName] and settles the result as a whole archive, the same way an import does: the
+     * rewrite happens on a sibling copy, [rewrite] may change that copy again (the vault's
+     * original-folder map), and only an archive that still reads whole replaces [zip].
+     *
+     * zip4j reports success for an entry it never matched, and a rewrite that dies halfway leaves
+     * a torn archive that is the only copy of every photo — so the caller gets `true` only when the
+     * entry is provably gone from a readable archive.
+     */
+    fun removeEntrySettled(
+        zip: File,
+        innerName: String,
+        password: CharArray,
+        rewrite: ((File) -> Unit)? = null
+    ): Boolean {
+        val replacement = File(zip.parentFile, zip.name + SETTLE_SUFFIX)
+        replacement.delete()
+        return try {
+            // The entry has to be in the vault the caller is looking at. zip4j reports success for
+            // a name it never matched, which is exactly how a removal "succeeds" and changes nothing.
+            val before = readArchive(zip)
+            if (before !is ArchiveRead.Ok || innerName !in before.names) return false
+            zip.copyTo(replacement, overwrite = true)
+            removeEntry(replacement, innerName, password)
+            val afterRemoval = readArchive(replacement)
+            if (afterRemoval !is ArchiveRead.Ok || innerName in afterRemoval.names) return false
+            rewrite?.invoke(replacement)
+            // The map write is a second mutation of the same copy; it has to leave it readable too.
+            if (readArchive(replacement) !is ArchiveRead.Ok) return false
+            replaceAtomically(replacement, zip)
+            true
+        } catch (_: Exception) {
+            false
+        } finally {
+            replacement.delete()
+        }
     }
 
     /**

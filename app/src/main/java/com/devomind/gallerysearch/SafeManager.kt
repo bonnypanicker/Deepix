@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import android.util.Log
 import org.json.JSONObject
 import java.io.File
 import javax.crypto.SecretKey
@@ -51,6 +52,8 @@ object SafeManager {
 
     private const val FolderMarker = ".dpixkeep"
 
+    private const val TAG = "SafeManager"
+
     @Volatile private var sessionPassword: String? = null
     @Volatile private var thumbKey: SecretKey? = null
     @Volatile private var originalPathsCache: MutableMap<String, String>? = null
@@ -73,6 +76,10 @@ object SafeManager {
     private fun applyLock(context: Context?) {
         sessionPassword = null
         thumbKey = null
+        // The map is read from the archive; keeping it across a lock would write last session's
+        // folders into whatever vault is opened next.
+        originalPathsCache = null
+        originalPathsNeedMigration = false
         context?.let { ctx ->
             runCatching {
                 File(ctx.cacheDir, "safe_work").deleteRecursively()
@@ -273,6 +280,9 @@ object SafeManager {
             context,
             if (location == VaultLocation.PICKED_DOCUMENT) documentUri else null
         )
+        // A new home has no unsettled push; leaving the old location's flag set would stop the new
+        // one from ever pulling its archive down.
+        SafeStore.setVaultDirty(context, false)
     }
 
     /**
@@ -284,8 +294,6 @@ object SafeManager {
         runCatching { storage(context).delete() }
         VaultStores.purgeLocal(context)
         runCatching { File(context.filesDir, OriginalPathsFile).delete() }
-        originalPathsCache = null
-        originalPathsNeedMigration = false
         SafeStore.reset(context)
         applyLock(context)
         runCatching { File(context.filesDir, "safe_thumbs").deleteRecursively() }
@@ -407,6 +415,12 @@ object SafeManager {
         }
         if (!ok) return false
         if (!SafeStore.isConfigured(context)) SafeStore.savePasswordVerifier(context, password)
+        // A push that did not land is settled here — off the main thread, on the way into the
+        // session — so the vault's home catches up instead of staying a copy behind the mirror.
+        if (SafeStore.isVaultDirty(context)) {
+            runCatching { storage(context).commit() }
+                .onFailure { Log.w(TAG, "Vault is still not settled in its home", it) }
+        }
         openSession(context, password)
         return true
     }
@@ -734,20 +748,37 @@ object SafeManager {
         // zip4j rewrites the whole archive to drop one entry, so this is the other write a lock must
         // not be allowed to stand on top of.
         return guarded(context) {
-            runCatching {
+            try {
                 val zip = archive(context)
                 val paths = originalPaths(context, password)
-                SafeCrypto.removeEntry(zip, item.entryName, password.toCharArray())
-                // The map lives in the archive, so the dropped entry has to leave it in the same
-                // write that settles the removal — otherwise a later restore re-creates its folder.
-                if (paths.remove(item.entryName) != null || originalPathsNeedMigration) {
-                    writeOriginalPaths(context, zip, password)
+                // The map entry is held aside and only put back when the vault still has the photo,
+                // so a failed removal never costs a restore its original folder.
+                val originalDir = paths.remove(item.entryName)
+                val settled = SafeCrypto.removeEntrySettled(
+                    zip, item.entryName, password.toCharArray()
+                ) { target ->
+                    // The map lives in the archive, so the dropped entry has to leave it in the same
+                    // write that settles the removal — otherwise a later restore re-creates its folder.
+                    if (originalDir != null || originalPathsNeedMigration) {
+                        writeOriginalPaths(context, target, password)
+                    }
                 }
-                // Settled at the vault's location before the thumbnail that mirrors it is dropped.
-                storage(context).commit()
+                if (!settled) {
+                    originalDir?.let { paths[item.entryName] = it }
+                    return@guarded false
+                }
+                // Settled at the vault's location before the thumbnail that mirrors it is dropped. A
+                // push that does not land marks the vault dirty, so the next pull cannot quietly undo
+                // this removal; the photo is already gone from the vault the app reads.
+                runCatching { storage(context).commit() }
+                    .onFailure { Log.w(TAG, "Removal is not settled in the vault's home yet", it) }
                 thumbFile(context, item.entryName).delete()
                 true
-            }.getOrDefault(false)
+            } catch (e: Exception) {
+                // One item that cannot be removed must not take the batch (or the app) down with it.
+                Log.w(TAG, "Could not remove ${item.entryName}", e)
+                false
+            }
         }
     }
 

@@ -87,9 +87,13 @@ internal object VaultMirror {
      * Whether a remote archive of a *known, different* size has to be pulled down. A missing remote
      * (null) never becomes a pull — and never a delete either: after a reinstall the mirror is the
      * only copy of the vault the app can reach, not a stale cache of one.
+     *
+     * [dirty] is a push that has not landed yet. The working copy then holds a change the remote
+     * does not, so pulling would throw that change away — the vault is never pulled while dirty.
      */
-    fun needsPull(local: File, remoteSize: Long?): Boolean =
-        remoteSize != null && !(local.exists() && remoteSize >= 0 && local.length() == remoteSize)
+    fun needsPull(local: File, remoteSize: Long?, dirty: Boolean = false): Boolean =
+        !dirty && remoteSize != null &&
+            !(local.exists() && remoteSize >= 0 && local.length() == remoteSize)
 
     /**
      * Whether a push may be trusted: the destination reports the mirror's byte count and the mirror
@@ -231,7 +235,9 @@ class DocumentsVaultStorage(private val context: Context) : VaultStorage {
         // it may be the only copy of the photos this install can still reach.
         val remote = remoteArchive(rows) ?: return
         val local = mirror()
-        if (!VaultMirror.needsPull(local, remoteSize(remote))) return
+        if (!VaultMirror.needsPull(local, remoteSize(remote), SafeStore.isVaultDirty(context))) {
+            return
+        }
         runCatching {
             local.parentFile?.mkdirs()
             val temp = File(local.parentFile, "${local.name}.refresh")
@@ -248,7 +254,15 @@ class DocumentsVaultStorage(private val context: Context) : VaultStorage {
     override fun commit() {
         if (!qPlus()) return
         val local = mirror()
-        if (!local.exists()) return
+        if (!local.exists()) {
+            // Nothing local is waiting to be pushed.
+            SafeStore.setVaultDirty(context, false)
+            return
+        }
+        // Until the row is published the mirror is the only settled copy, so the vault is dirty for
+        // the whole push: a refresh then retries instead of pulling the older row back and losing
+        // the change this push exists to carry.
+        SafeStore.setVaultDirty(context, true)
         // Without knowing what is already there a second archive could be planted beside the first.
         val rows = remoteRows() ?: throw IOException("Cannot list the vault folder")
         rows[VAULT_ARCHIVE_NAME + TRANSFER_SUFFIX]?.let { runCatching { resolver.delete(it, null, null) } }
@@ -300,6 +314,8 @@ class DocumentsVaultStorage(private val context: Context) : VaultStorage {
             throw IOException("The vault archive was published under another name")
         }
         if (target != VAULT_ARCHIVE_NAME) SafeStore.setArchiveName(context, target)
+        // The push landed whole; the mirror and the row are in step again.
+        SafeStore.setVaultDirty(context, false)
     }
 
     override fun exists(): Boolean =
@@ -552,7 +568,9 @@ class SafVaultStorage(private val context: Context, private val treeUri: Uri) : 
         // because it may be the only copy of the photos this install can still reach.
         val remote = remoteArchive() ?: return
         val local = mirror()
-        if (!VaultMirror.needsPull(local, remoteSize(remote))) return
+        if (!VaultMirror.needsPull(local, remoteSize(remote), SafeStore.isVaultDirty(context))) {
+            return
+        }
         runCatching {
             local.parentFile?.mkdirs()
             val temp = File(local.parentFile, "${local.name}.refresh")
@@ -573,7 +591,13 @@ class SafVaultStorage(private val context: Context, private val treeUri: Uri) : 
      */
     override fun commit() {
         val local = mirror()
-        if (!local.exists()) return
+        if (!local.exists()) {
+            // Nothing local is waiting to be pushed.
+            SafeStore.setVaultDirty(context, false)
+            return
+        }
+        // The mirror holds the change until the folder's copy is whole: see [DocumentsVaultStorage.commit].
+        SafeStore.setVaultDirty(context, true)
         val existing = runCatching { children() }.getOrDefault(emptyMap())
         if (existing.containsKey(VAULT_ARCHIVE_NAME + TRANSFER_SUFFIX)) {
             existing[VAULT_ARCHIVE_NAME + TRANSFER_SUFFIX]
@@ -605,6 +629,7 @@ class SafVaultStorage(private val context: Context, private val treeUri: Uri) : 
             runCatching { DocumentsContract.deleteDocument(resolver, renamed) }
             throw IOException("The vault archive was finalized under another name")
         }
+        SafeStore.setVaultDirty(context, false)
     }
 
     override fun exists(): Boolean = granted() && (mirror().exists() || remoteArchive() != null)

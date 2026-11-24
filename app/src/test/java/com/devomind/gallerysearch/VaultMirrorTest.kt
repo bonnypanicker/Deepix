@@ -49,6 +49,22 @@ class VaultMirrorTest {
     }
 
     @Test
+    fun aPushThatHasNotLandedIsNeverPulledBack() {
+        val local = File(temp.root, VAULT_ARCHIVE_NAME).apply { writeBytes(ByteArray(64)) }
+
+        // The working copy holds a change the remote does not: pulling the remote would undo it.
+        assertFalse(VaultMirror.needsPull(local, 900, dirty = true))
+        assertFalse(
+            "a dirty vault with no mirror at all is still not a pull — the push has to land",
+            VaultMirror.needsPull(File(temp.root, "absent"), 900, dirty = true)
+        )
+        assertTrue(
+            "once the push has landed a different length is the remote's change",
+            VaultMirror.needsPull(local, 900, dirty = false)
+        )
+    }
+
+    @Test
     fun aMissingDocumentLeavesTheMirrorAlone() {
         val dir = vaultMirrorDir()
         val mirror = archiveOf(dir)

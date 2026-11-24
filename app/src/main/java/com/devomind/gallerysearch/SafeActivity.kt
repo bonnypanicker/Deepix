@@ -889,9 +889,13 @@ class SafeActivity : AppCompatActivity() {
             danger = true
         ) {
             lifecycleScope.launch {
+                showBusy(if (targets.size > 1) "Removing 1 of ${targets.size}…" else "Removing…")
                 var removed = 0
                 var failed = 0
-                for (item in targets) {
+                for ((index, item) in targets.withIndex()) {
+                    if (targets.size > 1) {
+                        binding.busyLabel.text = "Removing ${index + 1} of ${targets.size}…"
+                    }
                     if (withContext(Dispatchers.IO) { SafeManager.removeItem(this@SafeActivity, item) }) {
                         removed++
                     } else {
@@ -900,9 +904,13 @@ class SafeActivity : AppCompatActivity() {
                 }
                 targets.forEach { thumbCache.remove(it.entryName) }
                 adapter.clearSelection()
-                if (failed > 0) {
-                    MetroBanner.show(this@SafeActivity, "$removed removed · $failed failed")
-                }
+                hideBusy()
+                // Always answer: a silent removal that did not settle is indistinguishable from a
+                // tap that never registered.
+                MetroBanner.show(this@SafeActivity, buildString {
+                    append("$removed ${if (removed == 1) "item" else "items"} removed")
+                    if (failed > 0) append(" · $failed failed")
+                })
                 loadItems()
             }
         }
