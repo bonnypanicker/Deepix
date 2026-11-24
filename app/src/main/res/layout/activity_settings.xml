@@ -284,29 +284,6 @@
                         android:tint="@color/metroTextTertiary" />
                 </LinearLayout>
 
-                <!-- TEMP test-build threshold switch: delete this row with searchThreshold(). -->
-                <LinearLayout
-                    android:id="@+id/rowScoreThreshold"
-                    style="@style/SettingsRow">
-
-                    <LinearLayout style="@style/SettingsRowText">
-
-                        <TextView style="@style/SettingsRowTitle" android:text="@string/search_threshold" />
-
-                        <TextView
-                            android:id="@+id/scoreThresholdSubtitle"
-                            style="@style/SettingsRowSubtitle"
-                            android:text="@string/search_threshold_loose" />
-                    </LinearLayout>
-
-                    <androidx.appcompat.widget.SwitchCompat
-                        android:id="@+id/switchScoreThreshold"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:clickable="false"
-                        android:focusable="false" />
-                </LinearLayout>
-
                 <View style="@style/SettingsDivider" />
 
                 <!-- ===================== PRIVACY ===================== -->

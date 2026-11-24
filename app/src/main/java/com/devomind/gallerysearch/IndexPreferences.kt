@@ -31,9 +31,6 @@ object IndexPreferences {
     private const val KeyRecycleBinEnabled = "recycle_bin_enabled"
     private const val KeySkipDeleteConfirm = "skip_delete_confirm"
     private const val KeyAccentColor = "accent_color"
-    private const val KeyAppFont = "app_font"
-    /** TEMP test-build threshold switch. Remove with [searchThreshold]. */
-    private const val KeyStrictSearchThreshold = "strict_search_threshold"
     /** How many already-stored EXIF rows the Locations sweep has re-read to repair redacted GPS. */
     private const val KeyExifRevisitCursor = "exif_revisit_cursor"
     /** Whether ACCESS_MEDIA_LOCATION was available the last time the sweep ran. */
@@ -440,29 +437,6 @@ object IndexPreferences {
             .apply()
     }
 
-    // TEMP test-build threshold switch: lets a build be compared on-device at 0.179 vs 0.19 before
-    // the value is settled. Delete this, [KeyStrictSearchThreshold], [SearchTuning.ScoreThresholdStrict],
-    // the settings row and the read in GalleryRepository.search() to remove it.
-    fun isStrictSearchThreshold(context: Context): Boolean {
-        return context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .getBoolean(KeyStrictSearchThreshold, false)
-    }
-
-    fun setStrictSearchThreshold(context: Context, strict: Boolean) {
-        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(KeyStrictSearchThreshold, strict)
-            .apply()
-    }
-
-    /** The cosine floor search should use right now. */
-    fun searchThreshold(context: Context): Float =
-        if (isStrictSearchThreshold(context)) {
-            SearchTuning.ScoreThresholdStrict
-        } else {
-            SearchTuning.ScoreThreshold
-        }
-
     /**
      * Position of the repair sweep over already-stored EXIF rows.
      *
@@ -571,20 +545,6 @@ object IndexPreferences {
         context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
             .edit()
             .putString(KeyAccentColor, key)
-            .apply()
-    }
-
-    /** The typeface picked on the Settings font test page; [AppFont.Default] until one is chosen. */
-    fun getAppFont(context: Context): AppFont =
-        AppFont.fromName(
-            context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-                .getString(KeyAppFont, null)
-        )
-
-    fun setAppFont(context: Context, font: AppFont) {
-        context.getSharedPreferences(PrefName, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KeyAppFont, font.name)
             .apply()
     }
 

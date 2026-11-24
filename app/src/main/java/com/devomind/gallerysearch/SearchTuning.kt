@@ -9,10 +9,8 @@ object SearchTuning {
      * ones. 0.175 was the F1 optimum (78% / 2.1%) and 0.180 is past a cluster of borderline
      * positives where recall drops to 74%; 0.179 takes the precision before that cliff. The old 0.19
      * plus a 75%-of-best rule kept 55%. Deliberately absolute - see the note in
-     * GalleryRepository.search().
+     * GalleryRepository.search(), and fixed: it is not user-tunable.
      */
     const val ScoreThreshold    = 0.179f
-    /** TEMP test-build switch: the stricter floor this build can be flipped to on-device. */
-    const val ScoreThresholdStrict = 0.19f
     const val FallbackCount     = 0
 }

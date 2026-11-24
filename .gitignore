@@ -44,6 +44,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Local debug session config (never shipped)
+.dbg/
+
 # Coverage
 coverage/
 htmlcov/
