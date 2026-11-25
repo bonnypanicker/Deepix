@@ -9,13 +9,42 @@
     android:paddingEnd="0dp"
     android:paddingBottom="0dp">
 
-    <TextView
-        android:id="@+id/timeFiltersHeader"
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginEnd="16dp"
-        android:text="@string/search_empty_time_header"
-        android:textAppearance="@style/TextAppearance.Metro.SectionLabel" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/timeFiltersHeader"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/search_empty_time_header"
+            android:textAppearance="@style/TextAppearance.Metro.SectionLabel" />
+
+        <!-- Calendar glyph: the label alone reads as a heading, so the icon carries the affordance
+             that this section can jump to any day, not only the chips below. -->
+        <FrameLayout
+            android:id="@+id/timeFiltersDatePicker"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/metro_row_pressed"
+            android:clickable="true"
+            android:contentDescription="@string/search_date_picker_open"
+            android:focusable="true"
+            android:tooltipText="@string/search_date_picker_open">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_fluent_calendar_ltr_24_regular"
+                android:tint="@color/metroTextSecondary" />
+        </FrameLayout>
+    </LinearLayout>
 
     <HorizontalScrollView
         android:layout_width="match_parent"

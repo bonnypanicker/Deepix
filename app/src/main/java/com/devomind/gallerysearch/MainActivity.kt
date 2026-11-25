@@ -247,6 +247,7 @@ class MainActivity : AppCompatActivity() {
     private val onSearchTimeFilterClick: (SearchTimeFilter) -> Unit = { filter ->
         if (filter.query.isBlank()) showYearPickerDialog() else runSearchQuery(filter.query)
     }
+    private val onSearchDatePickerClick: () -> Unit = { showDatePickerDialog() }
     private val onSearchShortcutClick: (SearchShortcutItem) -> Unit = { item ->
         when (item.shortcut) {
             SearchShortcut.Videos -> navigateToSection(Section.Videos)
@@ -2857,7 +2858,7 @@ class MainActivity : AppCompatActivity() {
         if (searchPeoplePreviews.isNotEmpty()) {
             cells += GalleryCell.PeopleRow(searchPeoplePreviews, onSearchPersonPreviewClick)
         }
-        cells += GalleryCell.TimeFilters(currentTimeFilters(), onSearchTimeFilterClick)
+        cells += GalleryCell.TimeFilters(currentTimeFilters(), onSearchTimeFilterClick, onSearchDatePickerClick)
         cells += GalleryCell.ContentShortcuts(currentContentShortcuts(), onSearchShortcutClick)
         if (recentSearchQueries.isNotEmpty()) {
             cells += GalleryCell.RecentSearches(
@@ -3013,6 +3014,13 @@ class MainActivity : AppCompatActivity() {
                     rotationDegrees = face?.rotationDegrees ?: 0
                 )
             }
+        }
+    }
+
+    /** Calendar glyph beside "Jump to date": any day up to today, searched as an exact date. */
+    private fun showDatePickerDialog() {
+        MetroDatePicker.show(this) { date ->
+            runSearchQuery("date:$date")
         }
     }
 

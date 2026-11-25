@@ -190,7 +190,8 @@ sealed class GalleryCell {
     /** Horizontal row of quick date filters (Today / Yesterday / … / Year picker). */
     data class TimeFilters(
         val filters: List<SearchTimeFilter>,
-        val onSelect: (SearchTimeFilter) -> Unit
+        val onSelect: (SearchTimeFilter) -> Unit,
+        val onPickDate: () -> Unit
     ) : GalleryCell()
 
     /** Horizontal row of content-type shortcut tiles (Videos, Screenshots, Favorites, …). */
@@ -1484,6 +1485,7 @@ class ImageAdapter(
         private val binding: ItemSearchTimeFiltersBinding
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(cell: GalleryCell.TimeFilters) {
+            binding.timeFiltersDatePicker.setOnClickListener { cell.onPickDate() }
             binding.timeFiltersRow.removeAllViews()
             cell.filters.forEach { filter ->
                 val chip = inflateChip(binding.timeFiltersRow, filter.label)

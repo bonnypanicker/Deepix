@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Today's cell keeps the app's flat press overlay while the ring stays a circle inside it. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="34dp"
+        android:height="34dp"
+        android:drawable="@drawable/date_picker_today_ring"
+        android:gravity="center" />
+    <item android:drawable="@drawable/metro_row_pressed" />
+</layer-list>

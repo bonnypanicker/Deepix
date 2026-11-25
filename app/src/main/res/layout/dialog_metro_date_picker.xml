@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MetroDatePicker: the calendar opened by the glyph beside "Jump to date". Same near-black panel,
+     thin uppercase title and accent Fluent icon as MetroDialog; the month grid itself is built in
+     code so weekday order follows the locale. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="16dp"
+    android:background="@drawable/dialog_metro_bg"
+    android:orientation="vertical"
+    android:paddingTop="20dp"
+    android:paddingBottom="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingEnd="8dp">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_fluent_calendar_ltr_24_regular"
+            android:tint="?attr/accentColor" />
+
+        <TextView
+            android:id="@+id/datePickerTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:includeFontPadding="false"
+            android:text="@string/search_empty_time_header"
+            android:textAppearance="@style/TextAppearance.Metro.DialogTitle" />
+
+        <ImageView
+            android:id="@+id/datePickerDismiss"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/metro_row_pressed"
+            android:clickable="true"
+            android:contentDescription="@string/search_date_picker_close"
+            android:focusable="true"
+            android:padding="8dp"
+            android:src="@drawable/ic_fluent_dismiss_24_regular"
+            android:tint="@color/metroTextSecondary" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp">
+
+        <ImageView
+            android:id="@+id/datePickerPrev"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/metro_row_pressed"
+            android:clickable="true"
+            android:contentDescription="@string/search_date_picker_previous_month"
+            android:focusable="true"
+            android:padding="10dp"
+            android:rotation="180"
+            android:src="@drawable/ic_fluent_chevron_right_24_regular"
+            android:tint="@color/metroTextPrimary" />
+
+        <TextView
+            android:id="@+id/datePickerMonth"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:textAppearance="@style/TextAppearance.Metro.Body"
+            android:textColor="@color/metroTextPrimary" />
+
+        <ImageView
+            android:id="@+id/datePickerNext"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/metro_row_pressed"
+            android:clickable="true"
+            android:contentDescription="@string/search_date_picker_next_month"
+            android:focusable="true"
+            android:padding="10dp"
+            android:src="@drawable/ic_fluent_chevron_right_24_regular"
+            android:tint="@color/metroTextPrimary" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/datePickerWeekdays"
+        android:layout_width="match_parent"
+        android:layout_height="24dp"
+        android:layout_marginTop="2dp"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp" />
+
+    <!-- Height is fitted to the window in MetroDatePicker; the scroll is the fallback for a phone
+         lying sideways, where six rows cannot all fit without shrinking the touch targets. -->
+    <ScrollView
+        android:id="@+id/datePickerGridScroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:overScrollMode="never"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/datePickerGrid"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
+</LinearLayout>

@@ -426,6 +426,10 @@
     <string name="search_empty_suggestions_header">Suggestions</string>
     <string name="search_empty_people_header">Search by person</string>
     <string name="search_empty_time_header">Jump to date</string>
+    <string name="search_date_picker_open">Pick a date</string>
+    <string name="search_date_picker_previous_month">Previous month</string>
+    <string name="search_date_picker_next_month">Next month</string>
+    <string name="search_date_picker_close">Close</string>
     <string name="search_empty_shortcuts_header">Browse by type</string>
     <string name="search_empty_recent_header">Recent searches</string>
     <string name="search_empty_clear_all">Clear all</string>
